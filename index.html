@@ -212,6 +212,7 @@ tbody tr:hover{background:#f7f9fd}
           <div class="card"><h2>🏆 Top clients <span class="sub" style="font-weight:400">(CA accepté HT)</span></h2><div id="dashTop"></div></div>
           <div class="card"><h2>🕓 Derniers devis</h2><div id="dashRecent"></div></div>
         </div>
+        <div id="dashRelance"></div>
         <div class="card"><h2>🧰 Rentabilité par type de chantier <span class="sub" style="font-weight:400">(devis acceptés — repère tes chantiers les plus rentables)</span></h2><div id="dashTypes"></div></div>
       </section>
 
@@ -830,6 +831,11 @@ tbody tr:hover{background:#f7f9fd}
 <div class="toast" id="toast"></div>
 
 <script>
+/* ============ DÉTECTEUR D'ERREUR VISIBLE (debug terrain) ============ */
+window.onerror=function(msg,src,line){try{var d=document.createElement('div');
+  d.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:999999;background:#7f1d1d;color:#fff;padding:10px 14px;border-radius:10px;font:12px/1.5 monospace;box-shadow:0 8px 30px rgba(0,0,0,.4)';
+  d.textContent='⚠ Erreur app : '+msg+' (ligne '+line+') — fais une capture de ce bandeau et envoie-la à Claude';
+  document.body.appendChild(d);setTimeout(function(){if(d.parentNode)d.parentNode.removeChild(d);},30000);}catch(e){}};
 /* ============ STORAGE ============ */
 const LS={devis:'cp2_devis',clients:'cp2_clients',custom:'cp2_prix_custom',over:'cp2_params_over',cmd:'cp2_cmd',cache:'cp2_tarif_cache',machlib:'cp2_machlib',dep:'cp2_dep',facseq:'cp2_facseq',loc:'cp2_loc',locseq:'cp2_locseq',adiacat:'cp2_adiacat',pin:'cp2_pin',lastbk:'cp2_lastbackup'};
 const load=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v;}catch(e){return d}};
@@ -837,7 +843,7 @@ const load=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==nul
 var SUPA_URL='https://onnmomydxfoozcmmtsnz.supabase.co';
 var SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ubm1vbXlkeGZvb3pjbW10c256Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4MzkzMjUsImV4cCI6MjA5OTQxNTMyNX0.wfGW17EMzPTUMMG23Aegg4-iAvfE3QrBOqVlKW0uFn0';
 var sb=null,SESS=null,_pushT=null;
-var SYNC_KEYS=['cp2_devis','cp2_clients','cp2_prix_custom','cp2_params_over','cp2_cmd','cp2_machlib','cp2_dep','cp2_facseq','cp2_loc','cp2_locseq','cp2_adiacat','cp2_adiasel','cp2_adiacfg','cp2_tarif_cache','cp2_tarif_cache2'];
+var SYNC_KEYS=['cp2_devis','cp2_clients','cp2_prix_custom','cp2_params_over','cp2_cmd','cp2_machlib','cp2_dep','cp2_facseq','cp2_loc','cp2_locseq','cp2_adiacat','cp2_adiasel','cp2_adiacfg','cp2_tarif_cache','cp2_tarif_cache2','cp2_typedefaults'];
 const save=(k,v)=>{localStorage.setItem(k,JSON.stringify(v));if(SYNC_KEYS.indexOf(k)>=0)markDirty();};
 const uid=()=>Math.random().toString(36).slice(2,8).toUpperCase();
 const eur=n=>(Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
@@ -851,7 +857,7 @@ const DS_TARIFS="collection://ea0e1f83-66ca-4b19-87c4-4487a8eb9ba5";
 async function fetchTarifs(){
   const r=await window.cowork.callMcpTool(NQ_TOOL,{data:{data_source_urls:[DS_TARIFS],query:'SELECT * FROM "'+DS_TARIFS+'"'}});
   if(r.isError)throw new Error(((r.content&&r.content[0]&&r.content[0].text)||'Erreur Notion').slice(0,200));
-  const o=r.structuredContent??JSON.parse(r.content[0].text);
+  const o=(r.structuredContent!=null)?r.structuredContent:JSON.parse(r.content[0].text);
   if(!o.results||!o.results[0])throw new Error('Base tarifs Notion vide');
   return o.results[0];
 }
@@ -860,7 +866,7 @@ const DS_MAT="collection://75427bd7-93a5-496c-bc75-09f790274fea";
 async function fetchMatos(){
   const r=await window.cowork.callMcpTool(NQ_TOOL,{data:{data_source_urls:[DS_MAT],query:'SELECT "Nom","Catégorie","Unité","Achat HT","Marge %","À vérifier" FROM "'+DS_MAT+'"'}});
   if(r.isError)throw new Error('Matériel v2 injoignable');
-  const o=r.structuredContent??JSON.parse(r.content[0].text);
+  const o=(r.structuredContent!=null)?r.structuredContent:JSON.parse(r.content[0].text);
   return o.results||[];
 }
 function buildPrixMatos(rows){
@@ -1129,6 +1135,11 @@ function renderDash(){
   document.getElementById('dashTop').innerHTML=top.length?top.map(([n,v])=>`
     <div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between"><b>${n}</b><b>${eur0(v)}</b></div>
     <div style="height:7px;border-radius:5px;background:var(--line);margin-top:3px;overflow:hidden"><div style="height:100%;width:${maxc>0?v/maxc*100:0}%;background:var(--blue)"></div></div></div>`).join(''):'<div class="empty">Aucun devis accepté encore.</div>';
+  const rel=document.getElementById('dashRelance');
+  if(rel){const stale=a.filter(x=>x.statut==='envoye'&&x.sentAt&&(Date.now()-x.sentAt)>7*86400000)
+      .sort((x,y)=>x.sentAt-y.sentAt);
+    rel.innerHTML=stale.length?'<div class="card" style="border-left:4px solid var(--orange)"><h2>📞 À relancer <span class="sub" style="font-weight:400">(devis envoyés depuis plus de 7 jours sans réponse)</span></h2>'
+      +stale.map(d=>'<div class="recap-line" style="cursor:pointer" onclick="openDevis(\''+d.id+'\')"><div><b>'+devisName(d)+'</b><div class="sub2">'+d.num+' · envoyé il y a '+Math.floor((Date.now()-d.sentAt)/86400000)+' jours · '+(d.cTel||'pas de tél')+'</div></div><b>'+eur0(d._c.totalHT)+'</b></div>').join('')+'</div>':'';}
   const rec=[...a].sort((x,y)=>(y.created||0)-(x.created||0)).slice(0,6);
   document.getElementById('dashRecent').innerHTML=rec.length?rec.map(d=>`
     <div class="recap-line" style="cursor:pointer" onclick="openDevis('${d.id}')">
@@ -1281,7 +1292,9 @@ function fillSelects(){
 function onRateChange(){document.getElementById('f_rateCustom').style.display=document.getElementById('f_rateChoice').value==='custom'?'block':'none';recalc();}
 function updateWizName(){document.getElementById('wizTitle').textContent=(document.getElementById('f_cNom').value||'Sans nom');}
 function autofillClient(){const nom=document.getElementById('f_cNom').value.trim().toLowerCase();const c=CLIENTS.find(x=>(x.nom||'').toLowerCase()===nom);if(!c)return;
-  document.getElementById('f_cTel').value=c.tel||'';document.getElementById('f_cMail').value=c.mail||'';document.getElementById('f_cType').value=c.type||'Particulier';document.getElementById('f_cAdr').value=c.adr||'';document.getElementById('f_cVille').value=c.ville||'';toast('Client « '+c.nom+' » chargé');}
+  document.getElementById('f_cTel').value=c.tel||'';document.getElementById('f_cMail').value=c.mail||'';document.getElementById('f_cType').value=c.type||'Particulier';document.getElementById('f_cAdr').value=c.adr||'';document.getElementById('f_cVille').value=c.ville||'';
+  if(c.lastZone&&P.zone[c.lastZone]!=null){const z=document.getElementById('f_zone');if(z){z.value=c.lastZone;}}
+  recalc();toast('Client « '+c.nom+' » chargé'+(c.lastZone?' · zone '+c.lastZone:''));}
 function loadDevisToForm(){
   fillSelects();
   document.getElementById('wizNum').textContent=cur.num;
@@ -1324,6 +1337,12 @@ function onTypeChange(){const t=document.getElementById('f_type').value;formToDe
     fitArray('splits',cur.nbSplit,()=>({puiss:3.5,liaison:'Liaison 1/4 - 3/8',long:5,cableInter:'Câble 5G1,5'}));
     renderMachines();renderSplits();}
   const mesEl=document.getElementById('f_mes');if(mesEl&&P.mes[t]!=null)mesEl.value=t;
+  /* défauts mémorisés : l'app se souvient de tes derniers réglages pour ce type de chantier */
+  const td=load('cp2_typedefaults',{})[t];
+  if(td){['moMode','rateChoice','zone','brasure','tests','taille'].forEach(k=>{
+      if(td[k]!=null){cur[k]=td[k];const e=document.getElementById('f_'+k);if(e)e.value=td[k];}});
+    if(td.rateCustom!=null){cur.rateCustom=td.rateCustom;const e=document.getElementById('f_rateCustom');if(e)e.value=td.rateCustom;}
+    const rc=document.getElementById('f_rateCustom');if(rc)rc.style.display=(cur.rateChoice==='custom')?'block':'none';}
   updateSplitNote();recalc();}
 function fitArray(key,n,mk){while(cur[key].length<n)cur[key].push(mk());if(cur[key].length>n)cur[key]=cur[key].slice(0,n);}
 function syncMachines(){const n=Math.max(0,+document.getElementById('f_nbMach').value||0);formToDevis();fitArray('machines',n,()=>({marque:'',ref:'',achat:0,marge:35}));renderMachines();}
@@ -1439,9 +1458,13 @@ function recalc(){formToDevis();const c=compute(cur);
 }
 function cancelWizard(){if(confirm('Abandonner ce devis sans enregistrer ?')){cur=null;go('dash');}}
 function upsertClient(){if(!cur.cNom)return;const i=CLIENTS.findIndex(c=>(c.nom||'').toLowerCase()===cur.cNom.toLowerCase());
-  const o={nom:cur.cNom,type:cur.cType,tel:cur.cTel,mail:cur.cMail,adr:cur.cAdr,ville:cur.cVille};
+  const o={nom:cur.cNom,type:cur.cType,tel:cur.cTel,mail:cur.cMail,adr:cur.cAdr,ville:cur.cVille,lastZone:cur.zone||''};
   if(i>=0){CLIENTS[i]={...CLIENTS[i],...o};}else{CLIENTS.push({id:uid(),notes:'',...o});}save(LS.clients,CLIENTS);}
 function saveDevis(){formToDevis();if(!cur.cNom){if(!confirm('Nom client vide. Enregistrer quand même ?')){step(1);return;}}
+  if(cur.statut==='envoye'&&!cur.sentAt)cur.sentAt=Date.now();
+  const td=load('cp2_typedefaults',{});
+  td[cur.type]={moMode:cur.moMode,rateChoice:cur.rateChoice,rateCustom:cur.rateCustom,zone:cur.zone,brasure:cur.brasure,tests:cur.tests,taille:cur.taille};
+  save('cp2_typedefaults',td);
   upsertClient();
   const i=DEVIS.findIndex(d=>d.id===cur.id); if(i>=0)DEVIS[i]=cur;else DEVIS.push(cur);
   save(LS.devis,DEVIS);toast('💾 Devis enregistré');updateBadges();
@@ -1796,7 +1819,9 @@ function applyItypeVis(){
 function onItypeChange(){formToDep();applyItypeVis();recalcDep();}
 function onMesMode(){formToDep();applyItypeVis();recalcDep();}
 function autofillClientDep(){const nom=document.getElementById('dp_cNom').value.trim().toLowerCase();const c=CLIENTS.find(x=>(x.nom||'').toLowerCase()===nom);if(!c)return;
-  document.getElementById('dp_cTel').value=c.tel||'';document.getElementById('dp_cMail').value=c.mail||'';document.getElementById('dp_cType').value=c.type||'Particulier';document.getElementById('dp_cAdr').value=c.adr||'';document.getElementById('dp_cVille').value=c.ville||'';toast('Client « '+c.nom+' » chargé');}
+  document.getElementById('dp_cTel').value=c.tel||'';document.getElementById('dp_cMail').value=c.mail||'';document.getElementById('dp_cType').value=c.type||'Particulier';document.getElementById('dp_cAdr').value=c.adr||'';document.getElementById('dp_cVille').value=c.ville||'';
+  if(c.lastZone&&P.zone[c.lastZone]!=null){const z=document.getElementById('dp_zone');if(z){z.value=c.lastZone;recalcDep();}}
+  toast('Client « '+c.nom+' » chargé'+(c.lastZone?' · zone '+c.lastZone:''));}
 function loadDepForm(){
   fillDepSelects();
   const d=curDep,set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v;};
@@ -2258,7 +2283,8 @@ function autofillClientLoc(){const n=document.getElementById('lc_nom').value.tri
   const c=CLIENTS.find(x=>(x.nom||'').toLowerCase()===n);if(!c)return;
   document.getElementById('lc_tel').value=c.tel||'';document.getElementById('lc_mail').value=c.mail||'';
   document.getElementById('lc_type').value=c.type||'Professionnel';
-  document.getElementById('lc_adr').value=c.adr||'';document.getElementById('lc_ville').value=c.ville||'';}
+  document.getElementById('lc_adr').value=c.adr||'';document.getElementById('lc_ville').value=c.ville||'';
+  if(c.lastZone&&P.zone[c.lastZone]!=null){const z=document.getElementById('lc_zone');if(z){z.value=c.lastZone;locZone();}}}
 function renderLocItems(){
   const mobiles=ADIACAT.filter(m=>!m.fixe);
   document.getElementById('locItems').innerHTML=(curLoc.items||[]).map((x,i)=>
@@ -2305,6 +2331,14 @@ function locUpsertClient(l){if(!l.cNom)return;const i=CLIENTS.findIndex(c=>(c.no
 function saveLoc(printAfter){formToLoc();
   if(!curLoc.cNom){toast('⚠ Renseigne le nom du client');return;}
   if(!(curLoc.items||[]).some(x=>x.ref&&Number(x.qte)>0)){toast('⚠ Ajoute au moins une machine');return;}
+  /* détection de chevauchement : même machine louée sur des dates qui se croisent */
+  const nd=x=>new Date(x+'T00:00:00').getTime();
+  const confl=LOC.filter(o=>o.id!==curLoc.id&&o.statut!=='rendu'&&o.dateDebut&&o.dateFin&&curLoc.dateDebut&&curLoc.dateFin
+    &&nd(o.dateDebut)<=nd(curLoc.dateFin)&&nd(curLoc.dateDebut)<=nd(o.dateFin)
+    &&(o.items||[]).some(i=>(curLoc.items||[]).some(j=>j.ref===i.ref)));
+  if(confl.length&&!confirm('⚠ CHEVAUCHEMENT : la même machine est déjà réservée/louée sur ces dates :\n'
+    +confl.map(o=>'· '+(o.num||'?')+' — '+o.cNom+' ('+o.dateDebut+' → '+o.dateFin+')').join('\n')
+    +'\n\nEnregistrer quand même ? (vérifie ton stock réel)'))return;
   if(!curLoc.num)curLoc.num=nextLocNum();
   locUpsertClient(curLoc);
   const i=LOC.findIndex(x=>x.id===curLoc.id);if(i>=0)LOC[i]=curLoc;else LOC.push(curLoc);
@@ -2406,7 +2440,9 @@ function renderSecu(){const el=document.getElementById('secuStatus');if(el)el.in
 /* ===== RAPPEL DE SAUVEGARDE ===== */
 function checkBackup(){const b=document.getElementById('bkbanner');if(!b)return;
   const has=DEVIS.length||DEP.length||LOC.length||CLIENTS.length;
-  if(!has){b.className='syncbanner';b.innerHTML='';return;}
+  if(!has){b.className='syncbanner warn';
+    b.innerHTML='👋 <b>Appareil vide.</b> Tes devis et clients sont dans l\'ancien ClimPilot ? Là-bas : <b>⤓ Sauvegarde</b> → ici : <b>⤒ Importer</b> (boutons en haut). Tout partira ensuite automatiquement dans le cloud. <span class="sub">Si le cloud contient déjà tes données, connecte-toi et elles arrivent toutes seules.</span>';
+    return;}
   const last=load(LS.lastbk,null);const days=last?Math.floor((Date.now()-last)/86400000):null;
   if(last&&days<7){b.className='syncbanner';b.innerHTML='';return;}
   b.className='syncbanner warn';
