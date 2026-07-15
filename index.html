@@ -151,6 +151,7 @@ tbody tr:hover{background:#f7f9fd}
       <a data-v="dash" class="active"><span class="ico">📊</span><span class="txt">Tableau de bord</span></a>
       <a data-v="wizard"><span class="ico">📝</span><span class="txt">Nouveau devis</span></a>
       <a data-v="dim"><span class="ico">📐</span><span class="txt">Dimensionnement</span></a>
+      <a data-v="plan"><span class="ico">📅</span><span class="txt">Planning</span><span class="badge" id="planBadge">0</span></a>
       <div class="sep"></div>
       <a data-v="verifier"><span class="ico">📋</span><span class="txt">À vérifier</span><span class="badge" data-c="verifier">0</span></a>
       <a data-v="pret"><span class="ico">📨</span><span class="txt">Prêts à envoyer</span><span class="badge" data-c="pret">0</span></a>
@@ -164,6 +165,9 @@ tbody tr:hover{background:#f7f9fd}
       <a data-v="loc"><span class="ico">📄</span><span class="txt">Locations adia</span><span class="badge" id="locBadge">0</span></a>
       <div class="sep"></div>
       <a data-v="commander"><span class="ico">📦</span><span class="txt">À commander</span></a>
+      <a data-v="recettes"><span class="ico">💶</span><span class="txt">Recettes</span></a>
+      <a data-v="contrats"><span class="ico">🤝</span><span class="txt">Entretien</span><span class="badge" id="ctrBadge">0</span></a>
+      <a data-v="fluides"><span class="ico">🧪</span><span class="txt">Fluides</span></a>
       <a data-v="clients"><span class="ico">👥</span><span class="txt">Clients</span></a>
       <a data-v="prix"><span class="ico">🏷️</span><span class="txt">Base de prix</span></a>
       <a data-v="params"><span class="ico">⚙️</span><span class="txt">Paramètres</span></a>
@@ -202,6 +206,7 @@ tbody tr:hover{background:#f7f9fd}
           <button class="qbtn" style="background:#7c3aed" onclick="newDep('dep')"><span>🔧</span>Dépannage</button>
           <button class="qbtn" style="background:#0891b2" onclick="newDep('mes')"><span>🧊</span>Mise en service</button>
           <button class="qbtn" style="background:#0e1c36" onclick="go('commander')"><span>📦</span>À commander</button>
+          <button class="qbtn" style="background:#0d6e7c" onclick="go('plan')"><span>📅</span>Planning</button>
         </div>
         <div class="kpis" id="dashKpis"></div>
         <div class="grid2" style="grid-template-columns:1.5fr 1fr">
@@ -213,6 +218,7 @@ tbody tr:hover{background:#f7f9fd}
           <div class="card"><h2>🕓 Derniers devis</h2><div id="dashRecent"></div></div>
         </div>
         <div id="dashRelance"></div>
+        <div id="dashFin"></div>
         <div class="card"><h2>🧰 Rentabilité par type de chantier <span class="sub" style="font-weight:400">(devis acceptés — repère tes chantiers les plus rentables)</span></h2><div id="dashTypes"></div></div>
       </section>
 
@@ -335,14 +341,16 @@ tbody tr:hover{background:#f7f9fd}
           <div class="card"><h2>📦 Liste du matériel à commander</h2><div id="recapMat"></div></div>
           <div class="navbtns">
             <button class="btn-ghost" onclick="step(5)">‹ Précédent</button>
+            <div id="fBloc"></div>
             <div class="row-actions">
               <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none">Statut
-                <select id="f_statut" style="width:auto" onchange="recalc()">
+                <select id="f_statut" style="width:auto" onchange="recalc();renderFBloc()">
                   <option value="brouillon">Brouillon</option><option value="verifier">À vérifier</option>
                   <option value="pret">Prêt à envoyer</option><option value="envoye">Envoyé</option>
                   <option value="accepte">Accepté</option><option value="refuse">Refusé</option>
                 </select></label>
               <button class="btn-ghost" onclick="printDevis()">🖨️ Aperçu / PDF</button>
+              <button class="btn-ghost" onclick="mailDevis()">✉️ Mail au client</button>
               <button class="btn-dark" onclick="saveDevis()">💾 Enregistrer le devis</button>
             </div>
           </div>
@@ -416,6 +424,66 @@ tbody tr:hover{background:#f7f9fd}
           <div class="sub" style="margin-top:8px">Méthode : abaque rapide W/m³ (positif : 130 → 65 W/m³ du petit au grand volume · négatif : 180 → 100 W/m³), dimensionné pour ~16 h de marche/24. Panneaux : 60-80 mm en positif, 100 mm mini en négatif (+ résistance de cordon de porte). ⚠️ Abaque de pré-chiffrage : le bilan frigorifique complet (denrées, rotation, T° d'entrée) reste obligatoire avant de commander le groupe.</div>
           <div class="row-actions" style="margin-top:10px"><button class="btn-pri btn-sm" onclick="devisFromDim('Chambre froide','cf')">📝 Créer le devis chambre froide + kit (panneaux pré-calculés)</button></div>
         </div>
+      </section>
+
+      <!-- CONTRATS D'ENTRETIEN -->
+      <section class="view" id="v-contrats">
+        <div class="flexhead">
+          <div class="warnbox" style="margin:0;flex:1">🤝 <b>Ton revenu récurrent.</b> Un contrat = visite(s) planifiée(s) automatiquement + facture annuelle en 1 clic (série F- commune) + rappel client par mail. Adia : 2 visites (mise en route + hivernage). Clim : 1 visite.</div>
+          <div class="row-actions"><button class="btn-pri btn-sm" onclick="openCtr()">+ Nouveau contrat</button></div>
+        </div>
+        <div class="card"><div id="ctrTable"></div></div>
+        <div class="card"><h2>🛡️ Garanties qui se terminent <span class="sub" style="font-weight:400">— le bon moment pour proposer un contrat d'entretien</span></h2><div id="garTable"></div></div>
+      </section>
+
+      <!-- FICHE CLIENT 360 -->
+      <section class="view" id="v-client360">
+        <div id="c360"></div>
+      </section>
+
+      <!-- REGISTRE FLUIDES -->
+      <section class="view" id="v-fluides">
+        <div class="flexhead">
+          <div class="warnbox" style="margin:0;flex:1">🧪 <b>Traçabilité fluides frigorigènes</b> : une fiche par intervention avec manipulation de fluide (modèle Cerfa 15497*04, valide sous forme électronique — art. R.543-83). Fais <b>signer le client</b> sur le PDF et conserve tout <b>5 ans</b>. Renseigne ton n° d'attestation de capacité dans Paramètres → Mon entreprise.</div>
+          <div class="row-actions"><button class="btn-pri btn-sm" onclick="openFlu()">+ Nouvelle fiche</button></div>
+        </div>
+        <div class="kpis" id="fluKpis"></div>
+        <div class="card">
+          <div class="row-actions" style="margin-bottom:10px">
+            <select id="fluYear" style="max-width:120px" onchange="renderFluides()"></select>
+            <button class="btn-ghost btn-sm" onclick="exportCSVFlu()">📊 Export CSV (registre)</button>
+          </div>
+          <div id="fluTable"></div>
+        </div>
+      </section>
+
+      <!-- RECETTES -->
+      <section class="view" id="v-recettes">
+        <div class="warnbox" style="background:var(--green-soft);border-color:#b7e3c6;color:#0f6b39">📗 <b>Livre des recettes</b> — registre obligatoire en micro-entreprise. Il se remplit tout seul dès que tu marques une facture « payée » (chantiers, interventions, locations). Conserve les exports avec tes factures.</div>
+        <div class="kpis" id="recKpis"></div>
+        <div class="card">
+          <div class="row-actions" style="margin-bottom:10px">
+            <select id="recYear" style="max-width:120px" onchange="renderRecettes()"></select>
+            <button class="btn-ghost btn-sm" onclick="exportCSVRecettes()">📊 Export CSV</button>
+            <button class="btn-dark btn-sm" onclick="printRecettes()">🖨️ Imprimer le registre</button>
+          </div>
+          <div id="recTable"></div>
+        </div>
+      </section>
+
+      <!-- PLANNING -->
+      <section class="view" id="v-plan">
+        <div class="flexhead">
+          <div class="row-actions">
+            <button class="btn-ghost btn-sm" onclick="planShift(-1)">‹ Semaine préc.</button>
+            <button class="btn-pri btn-sm" onclick="planShift(0)">Aujourd'hui</button>
+            <button class="btn-ghost btn-sm" onclick="planShift(1)">Semaine suiv. ›</button>
+          </div>
+          <div id="planCharge" style="text-align:right"></div>
+        </div>
+        <div class="card"><h2 id="planTitle">📅 Semaine</h2><div id="planGrid"></div>
+          <div class="sub" style="margin-top:10px">🛠️ chantier · 🔧 dépannage · 🧊 mise en service · 🚚 livraison location · ↩️ reprise location — clique un événement pour l'ouvrir.</div></div>
+        <div class="card"><h2>🗓️ Chantiers acceptés à planifier <span class="sub" style="font-weight:400">— choisis une date, il apparaît dans la semaine</span></h2><div id="planTodo"></div></div>
       </section>
 
       <!-- ADIA -->
@@ -666,6 +734,8 @@ tbody tr:hover{background:#f7f9fd}
         <div class="navbtns">
           <button class="btn-ghost" onclick="go('dep')">‹ Retour</button>
           <div class="row-actions">
+            <button class="btn-ghost btn-sm" onclick="openFlu(null,{client:document.getElementById('dp_cNom').value,date:document.getElementById('dp_date')?document.getElementById('dp_date').value:'',nature:curDep&&curDep.itype==='mes'?'mes':'depannage'})">🧪 Fiche fluide</button>
+            <button class="btn-ghost btn-sm" onclick="printPV()">📋 PV de mise en service</button>
             <button class="btn-ghost" onclick="printFacture()">🧾 Facture (aperçu / PDF)</button>
             <button class="btn-pri" onclick="factureDep()">✓ Facturer (n° définitif)</button>
             <button class="btn-dark" onclick="saveDep()">💾 Enregistrer</button>
@@ -815,6 +885,66 @@ tbody tr:hover{background:#f7f9fd}
   </div>
 </div>
 
+<div class="modal" id="mFlu"><div class="box" style="max-width:680px"><div class="hd"><b id="mfTitle">Fiche d'intervention fluides (modèle Cerfa 15497)</b><button class="iconbtn" onclick="closeModal('mFlu')">✕</button></div>
+  <div class="bd">
+    <div class="frm">
+      <input type="hidden" id="fl_id">
+      <label>Date d'intervention<input type="date" id="fl_date"></label>
+      <label>Nature<select id="fl_nature"><option value="mes">Mise en service</option><option value="entretien">Entretien / maintenance</option><option value="depannage">Dépannage / réparation</option><option value="etancheite">Contrôle d'étanchéité périodique</option><option value="demantelement">Démantèlement / récupération finale</option></select></label>
+      <label>Client (détenteur) *<input id="fl_client" list="clientDL" onchange="fluEquipList()"></label>
+      <label>Équipement du parc<select id="fl_equip" onchange="fluEquipPick()"><option value="">— saisie libre —</option></select></label>
+      <label class="full">Description équipement (type, marque, modèle, n° série)<input id="fl_desc" placeholder="Ex : Monosplit Samsung WindFree — SN 123456"></label>
+      <label>Fluide<select id="fl_fluide"><option>R32</option><option>R410A</option><option>R134a</option><option>R290</option><option>R404A</option><option>R448A</option><option>Autre</option></select></label>
+      <label>Charge nominale (kg)<input type="number" id="fl_charge" step="0.01" min="0" value="0"></label>
+      <label>Contrôle d'étanchéité<select id="fl_ctrl"><option value="na">Non requis (charge &lt; seuil)</option><option value="ok">Réalisé — pas de fuite</option><option value="fuite_rep">Fuite détectée et réparée</option><option value="fuite_nonrep">Fuite détectée NON réparée</option></select></label>
+    </div>
+    <h3 style="font-size:13px;color:var(--blue);margin:12px 0 6px">Quantités chargées (kg)</h3>
+    <div class="frm">
+      <label>Fluide vierge<input type="number" id="fl_qv" step="0.01" min="0" value="0"></label>
+      <label>Fluide recyclé<input type="number" id="fl_qrec" step="0.01" min="0" value="0"></label>
+      <label>Fluide régénéré<input type="number" id="fl_qreg" step="0.01" min="0" value="0"></label>
+    </div>
+    <h3 style="font-size:13px;color:var(--blue);margin:12px 0 6px">Quantités récupérées (kg)</h3>
+    <div class="frm">
+      <label>Pour traitement (déchet)<input type="number" id="fl_qrt" step="0.01" min="0" value="0"><span class="note-inline">remise à un point de collecte → bordereau via Trackdéchets</span></label>
+      <label>Pour réutilisation<input type="number" id="fl_qru" step="0.01" min="0" value="0"></label>
+      <label>N° des contenants / bouteilles<input id="fl_bout" placeholder="Ex : B-1234"></label>
+    </div>
+    <div class="frm"><label class="full">Observations<textarea id="fl_obs"></textarea></label></div>
+  </div>
+  <div class="navbtns"><button class="btn-ghost" onclick="closeModal('mFlu')">Annuler</button>
+    <div class="row-actions"><button class="btn-dark" onclick="saveFlu(false)">💾 Enregistrer</button><button class="btn-pri" onclick="saveFlu(true)">🖨️ Enregistrer + fiche PDF</button></div></div></div>
+</div>
+
+<div class="modal" id="mEquip"><div class="box"><div class="hd"><b id="meTitle">Équipement installé</b><button class="iconbtn" onclick="closeModal('mEquip')">✕</button></div>
+  <div class="bd"><div class="frm">
+    <input type="hidden" id="eq_id"><input type="hidden" id="eq_devis">
+    <label>Client *<input id="eq_client" list="clientDL"></label>
+    <label>Type<select id="eq_type"><option>Monosplit</option><option>Bisplit</option><option>Trisplit</option><option>Quadrisplit</option><option>Gainable</option><option>PAC air-air</option><option>PAC air-eau</option><option>Ballon thermodynamique</option><option>Chambre froide</option><option>Rafraîchisseur adiabatique</option><option>Vitrine réfrigérée</option><option>Autre</option></select></label>
+    <label>Marque<input id="eq_marque"></label>
+    <label>Modèle / référence<input id="eq_modele"></label>
+    <label>N° de série<input id="eq_serie"></label>
+    <label>Fluide<select id="eq_fluide"><option>R32</option><option>R410A</option><option>R290</option><option>R134a</option><option value="Sans">Sans (adiabatique…)</option><option>Autre</option></select></label>
+    <label>Charge fluide (kg)<input type="number" id="eq_charge" step="0.01" min="0" value="0"></label>
+    <label>Date de pose<input type="date" id="eq_date"></label>
+    <label>Garantie (mois)<input type="number" id="eq_gar" min="0" value="24"><span class="note-inline">pièces constructeur : souvent 24-36 — vérifie la carte de garantie</span></label>
+    <label class="full">Notes (accès, particularités…)<textarea id="eq_notes"></textarea></label>
+  </div><div class="navbtns"><button class="btn-ghost" onclick="closeModal('mEquip')">Annuler</button><button class="btn-pri" onclick="saveEquip()">Enregistrer</button></div></div>
+</div>
+
+<div class="modal" id="mCtr"><div class="box"><div class="hd"><b id="mcTitle2">Contrat d'entretien</b><button class="iconbtn" onclick="closeModal('mCtr')">✕</button></div>
+  <div class="bd"><div class="frm">
+    <input type="hidden" id="ct_id">
+    <label>Client *<input id="ct_client" list="clientDL"></label>
+    <label>Type<select id="ct_type" onchange="ctrTypeDefaults()"><option>Climatisation</option><option>PAC</option><option>Adiabatique</option><option>Froid commercial</option></select></label>
+    <label>Prix / an (€ HT)<input type="number" id="ct_prix" min="0" value="180"></label>
+    <label>Visites / an<select id="ct_visites"><option value="1">1 (entretien annuel)</option><option value="2">2 (mise en route + hivernage)</option></select></label>
+    <label>Prochaine visite<input type="date" id="ct_next"></label>
+    <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none">Contrat actif <input type="checkbox" id="ct_actif" checked style="width:auto"></label>
+    <label class="full">Contenu / notes<textarea id="ct_notes" placeholder="Ex : nettoyage filtres + échangeurs, contrôle étanchéité visuel, pressions, désinfection, vidange hivernage…"></textarea></label>
+  </div><div class="navbtns"><button class="btn-ghost" onclick="closeModal('mCtr')">Annuler</button><button class="btn-pri" onclick="saveCtr()">Enregistrer</button></div></div>
+</div>
+
 <div id="lockScreen">
   <div class="lk">
     <div style="font-size:34px">🔐</div>
@@ -843,7 +973,7 @@ const load=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==nul
 var SUPA_URL='https://onnmomydxfoozcmmtsnz.supabase.co';
 var SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ubm1vbXlkeGZvb3pjbW10c256Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4MzkzMjUsImV4cCI6MjA5OTQxNTMyNX0.wfGW17EMzPTUMMG23Aegg4-iAvfE3QrBOqVlKW0uFn0';
 var sb=null,SESS=null,_pushT=null;
-var SYNC_KEYS=['cp2_devis','cp2_clients','cp2_prix_custom','cp2_params_over','cp2_cmd','cp2_machlib','cp2_dep','cp2_facseq','cp2_loc','cp2_locseq','cp2_adiacat','cp2_adiasel','cp2_adiacfg','cp2_tarif_cache','cp2_tarif_cache2','cp2_typedefaults'];
+var SYNC_KEYS=['cp2_devis','cp2_clients','cp2_prix_custom','cp2_params_over','cp2_cmd','cp2_machlib','cp2_dep','cp2_facseq','cp2_loc','cp2_locseq','cp2_adiacat','cp2_adiasel','cp2_adiacfg','cp2_tarif_cache','cp2_tarif_cache2','cp2_typedefaults','cp2_stock','cp2_equip','cp2_contrats','cp2_fluides','cp2_fluseq'];
 const save=(k,v)=>{localStorage.setItem(k,JSON.stringify(v));if(SYNC_KEYS.indexOf(k)>=0)markDirty();};
 const uid=()=>Math.random().toString(36).slice(2,8).toUpperCase();
 const eur=n=>(Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
@@ -960,6 +1090,7 @@ function deriveParams(T){return {
   acomptePctDefaut:30, validiteJours:30,
   entreprise:{nom:'Gabriel Leroy — Froid & Climatisation',activite:'Installation • Dépannage • Maintenance clim & froid',
     adresse:'',cp:'',ville:'',tel:'',email:'',siret:'',tvaIntra:'',rib:'',statut:'Micro-entreprise (en création)',capital:'',naf:'',
+    attFluides:'',attOrganisme:'',mediateur:'',mediateurSite:'',assurance:'',assuranceZone:'',
     mentionTVA:'',piedNote:'Devis gratuit, valable 30 jours. Prix matériel indicatifs à confirmer selon fournisseur. Diamètres de liaisons et sections de câble à valider avec la notice constructeur.'}
 };}
 
@@ -1014,6 +1145,10 @@ let CMD=load(LS.cmd,{});
 let MACHLIB=load(LS.machlib,[]);
 let DEP=load(LS.dep,[]);
 let LOC=load(LS.loc,[]);
+let STOCK=load('cp2_stock',{});
+let EQUIP=load('cp2_equip',[]);
+let CTR=load('cp2_contrats',[]);
+let FLU=load('cp2_fluides',[]);
 let MATOS=load('cp2_tarif_cache2',[]);
 // Catalogue pièces dépannage : articles locaux « à vérifier », prix marché 07/2026 (Spareka, Aircco, guides recharge R32/R410A). Fluides : marge relevée pour coller au marché (R32 vendu 60-80 €/kg).
 function seedPieces(){
@@ -1046,6 +1181,11 @@ const TITLES={dash:['Tableau de bord','Prépare tes devis, vérifie la marge, su
   tous:['Tous les devis','Toute ta base de devis.'],commander:['À commander','Matériel des chantiers signés.'],
   clients:['Clients','Ta clientèle.'],prix:['Base de prix','Tes tarifs matériel & main-d’œuvre — synchro Notion.'],params:['Paramètres','Règle ton chiffrage.'],
   dep:['Interventions','Dépannages & mises en service — factures et suivi des paiements.'],depform:['Intervention','Dépannage ou mise en service : chiffre, facture, encaisse.'],
+  plan:['Planning','Chantiers, interventions, livraisons et reprises — semaine par semaine, avec ta charge en heures.'],
+  recettes:['Livre des recettes','Registre chronologique de tes encaissements — obligation micro-entreprise, généré tout seul.'],
+  contrats:['Contrats d\'entretien','Ton revenu récurrent : visites planifiées, facture annuelle en 1 clic, relances de garantie.'],
+  client360:['Fiche client','Tout l\'historique du client : devis, factures, interventions, locations, équipements, contrats.'],
+  fluides:['Registre des fluides frigorigènes','Fiches d\'intervention (modèle Cerfa 15497) et bilan annuel — traçabilité obligatoire, conservation 5 ans.'],
   adia:['Rafraîchissement adiabatique','Dimensionne, choisis la machine, puis crée le devis vente ou la location en 1 clic.'],
   loc:['Locations adiabatique','Suivi du parc loué : réservations, contrats PDF, retours.']};
 const LISTV=['verifier','pret','envoye','accepte','tous'];
@@ -1066,6 +1206,11 @@ function go(v){
   if(v==='dim'){dimClim();dimGain();dimPac();dimBal();dimCF();}
   if(v==='adia')renderAdia();
   if(v==='loc')renderLoc();
+  if(v==='plan')renderPlanning();
+  if(v==='recettes')renderRecettes();
+  if(v==='contrats')renderContrats();
+  if(v==='client360')renderClient360();
+  if(v==='fluides')renderFluides();
 }
 document.getElementById('nav').addEventListener('click',e=>{const a=e.target.closest('a');if(a)go(a.dataset.v);});
 
@@ -1074,7 +1219,10 @@ function devisName(d){return d.cNom?`${d.type} – ${d.cNom}`:`${d.type} (sans c
 function statusTag(s){const m={brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'Accepté',refuse:'Refusé'};return `<span class="tag ${s}">${m[s]||s}</span>`;}
 function updateBadges(){document.querySelectorAll('.badge[data-c]').forEach(b=>{b.textContent=DEVIS.filter(d=>d.statut===b.dataset.c).length;});
   const db=document.getElementById('depBadge');if(db)db.textContent=DEP.filter(x=>x.statut==='facturee').length;
-  const lb=document.getElementById('locBadge');if(lb)lb.textContent=LOC.filter(x=>x.statut==='reserve'||x.statut==='encours').length;}
+  const lb=document.getElementById('locBadge');if(lb)lb.textContent=LOC.filter(x=>x.statut==='reserve'||x.statut==='encours').length;
+  const pb=document.getElementById('planBadge');if(pb){try{pb.textContent=planEvents(0).ev.length;}catch(e){}}
+  const cb=document.getElementById('ctrBadge');if(cb){const t=new Date().getFullYear()+'-'+String(new Date().getMonth()+1).padStart(2,'0')+'-'+String(new Date().getDate()).padStart(2,'0');
+    cb.textContent=CTR.filter(c=>c.actif!==false&&c.prochaineVisite&&c.prochaineVisite<=t).length;}}
 /* ============ DASHBOARD ============ */
 function calcAll(){return DEVIS.map(d=>({...d,_c:compute(d)}));}
 let caChart=null;
@@ -1092,11 +1240,13 @@ function renderDash(){
   const locsYear=locsAct.filter(l=>new Date((l.dateDebut?l.dateDebut+'T00:00:00':null)||l.created||0).getFullYear()===year);
   const caLocYear=locsYear.reduce((s,l)=>s+l._c.totalHT,0);
   const caTotal=caYear+caDepYear+caLocYear;
+  const encYear=allRecettes().filter(r=>(r.date||'').slice(0,4)===String(year)).reduce((s,r)=>s+r.montant,0);
+  const impayes=allImpayes();const impTot=impayes.reduce((s,f)=>s+f.montant,0);
   const benef=accepted.reduce((s,d)=>s+d._c.benefice,0);
   const benefNet=accepted.reduce((s,d)=>s+d._c.benefNet,0);
   const margeMoy=caAccepte>0?benef/caAccepte*100:0;
   const k=[['Devis créés',a.length,'blue','📊'],['Acceptés',by('accepte').length,'good','✅'],
-   ['CA '+year+' HT (devis + interv. + loc.)',eur0(caTotal),'good','€'],['dont interventions (dép.+MES)',eur0(caDepYear),'purple','🔧'],['dont locations adia',eur0(caLocYear),'blue','💨'],['Marge moyenne devis',pct(margeMoy),'good','📈'],
+   ['CA '+year+' HT (devis + interv. + loc.)',eur0(caTotal),'good','€'],['💶 ENCAISSÉ '+year,eur0(encYear),'good','💶'],['Facturé — en attente',eur0(impTot),'warn','⌛'],['dont interventions (dép.+MES)',eur0(caDepYear),'purple','🔧'],['dont locations adia',eur0(caLocYear),'blue','💨'],['Marge moyenne devis',pct(margeMoy),'good','📈'],
    ['Bénéfice brut',eur0(benef),'good','💰'],['Net après cotis. '+P.cotisTaux+' %',eur0(benefNet),'purple','🧾'],
    ['À vérifier',by('verifier').length,'warn','📋']];
   document.getElementById('dashKpis').innerHTML=k.map(x=>`<div class="kpi ${x[2]}"><div class="lab">${x[0]}<span>${x[3]}</span></div><div class="val">${x[1]}</div></div>`).join('');
@@ -1139,7 +1289,21 @@ function renderDash(){
   if(rel){const stale=a.filter(x=>x.statut==='envoye'&&x.sentAt&&(Date.now()-x.sentAt)>7*86400000)
       .sort((x,y)=>x.sentAt-y.sentAt);
     rel.innerHTML=stale.length?'<div class="card" style="border-left:4px solid var(--orange)"><h2>📞 À relancer <span class="sub" style="font-weight:400">(devis envoyés depuis plus de 7 jours sans réponse)</span></h2>'
-      +stale.map(d=>'<div class="recap-line" style="cursor:pointer" onclick="openDevis(\''+d.id+'\')"><div><b>'+devisName(d)+'</b><div class="sub2">'+d.num+' · envoyé il y a '+Math.floor((Date.now()-d.sentAt)/86400000)+' jours · '+(d.cTel||'pas de tél')+'</div></div><b>'+eur0(d._c.totalHT)+'</b></div>').join('')+'</div>':'';}
+      +stale.map(d=>'<div class="recap-line"><div style="cursor:pointer" onclick="openDevis(\''+d.id+'\')"><b>'+devisName(d)+'</b><div class="sub2">'+d.num+' · envoyé il y a '+Math.floor((Date.now()-d.sentAt)/86400000)+' jours · '+(d.cTel||'pas de tél')+'</div></div><div class="row-actions"><b>'+eur0(d._c.totalHT)+'</b><button class="iconbtn" title="Mail de relance" onclick="mailRelance(\''+d.id+'\')">✉️</button></div></div>').join('')+'</div>':'';}
+  const fin=document.getElementById('dashFin');
+  if(fin){
+    const u=urssafNext();const q={T1:0,T2:1,T3:2,T4:3}[u.q];
+    const encQ=allRecettes().filter(r=>{const dd=new Date(r.date+'T00:00:00');return dd.getFullYear()===new Date().getFullYear()&&Math.floor(dd.getMonth()/3)===q;}).reduce((s,r)=>s+r.montant,0);
+    const prov=encQ*(Number(P.cotisTaux)||0)/100;
+    const late=impayes.filter(f=>f.days>30);
+    fin.innerHTML='<div class="card" style="border-left:4px solid var(--red)"><h2>💸 Paiements & URSSAF</h2>'
+     +'<div class="recap-line"><div class="lbl">🏦 À provisionner pour l\'URSSAF ('+u.q+' : '+eur0(encQ)+' encaissés × '+P.cotisTaux+' %)</div><div><b>'+eur0(prov)+'</b></div></div>'
+     +'<div class="recap-line"><div class="lbl">📅 Prochaine déclaration '+u.q+'</div><div><b>avant le '+u.dl+'</b></div></div>'
+     +(late.length?'<div style="margin-top:10px"><b style="color:var(--red)">Factures en retard (+30 j) :</b>'
+       +late.map(f=>'<div class="recap-line"><div><b>'+f.num+' — '+f.client+'</b><div class="sub2">émise le '+(f.date||'—')+' · '+f.days+' jours</div></div><div class="row-actions"><b>'+eur0(f.montant)+'</b><button class="iconbtn" title="Mail de rappel" onclick="mailRelancePaiement(\''+f.kind+'\',\''+f.id+'\',\''+f.which+'\')">✉️</button><button class="btn-pri btn-sm" onclick="payerFacture(\''+f.kind+'\',\''+f.id+'\',\''+f.which+'\')">💶 Payée</button></div></div>').join('')+'</div>'
+       :'<div class="sub" style="margin-top:8px">✔ Aucune facture en retard de plus de 30 jours.</div>')
+     +'</div>';
+  }
   const rec=[...a].sort((x,y)=>(y.created||0)-(x.created||0)).slice(0,6);
   document.getElementById('dashRecent').innerHTML=rec.length?rec.map(d=>`
     <div class="recap-line" style="cursor:pointer" onclick="openDevis('${d.id}')">
@@ -1147,15 +1311,17 @@ function renderDash(){
       <div style="text-align:right"><b>${eur(d._c.totalHT)}</b><div>${statusTag(d.statut)}</div></div></div>`).join(''):'<div class="empty">Aucun devis pour l\'instant.</div>';
   // rentabilité par type (marge % = Σ bénéfice brut ÷ Σ CA ; gain net/h = Σ net ÷ Σ heures)
   const byType={};
-  accepted.forEach(d=>{const t=d.type||'Autre';if(!byType[t])byType[t]={n:0,ca:0,benef:0,net:0,h:0};
-    byType[t].n++;byType[t].ca+=d._c.totalHT;byType[t].benef+=d._c.benefice;byType[t].net+=d._c.benefNet;byType[t].h+=Number(d.heures)||0;});
+  accepted.forEach(d=>{const t=d.type||'Autre';if(!byType[t])byType[t]={n:0,ca:0,benef:0,net:0,h:0,nR:0,hR:0,benefR:0};
+    byType[t].n++;byType[t].ca+=d._c.totalHT;byType[t].benef+=d._c.benefice;byType[t].net+=d._c.benefNet;byType[t].h+=Number(d.heures)||0;
+    const r=realStats(d,d._c);if(r&&r.hR>0){byType[t].nR++;byType[t].hR+=r.hR;byType[t].benefR+=r.benef;}});
   const tRows=Object.entries(byType).sort((x,y)=>y[1].ca-x[1].ca);
   document.getElementById('dashTypes').innerHTML=tRows.length?`<div class="scroll"><table>
-    <thead><tr><th class="l">Type</th><th>Chantiers</th><th>CA HT</th><th>Marge brute</th><th>Net après cotis.</th><th>Gain net €/h</th></tr></thead>
-    <tbody>${tRows.map(([t,v])=>{const mp=v.ca>0?v.benef/v.ca*100:0;const gh=v.h>0?v.net/v.h:0;
+    <thead><tr><th class="l">Type</th><th>Chantiers</th><th>CA HT</th><th>Marge brute</th><th>Net après cotis.</th><th>Gain net €/h prévu</th><th>Gain RÉEL €/h brut</th></tr></thead>
+    <tbody>${tRows.map(([t,v])=>{const mp=v.ca>0?v.benef/v.ca*100:0;const gh=v.h>0?v.net/v.h:0;const gr=v.hR>0?v.benefR/v.hR:null;
       return `<tr><td class="l"><b>${t}</b></td><td>${v.n}</td><td>${eur0(v.ca)}</td>
       <td style="font-weight:600;color:${mp<20?'var(--red)':'var(--green)'}">${pct(mp)}</td>
-      <td>${eur0(v.net)}</td><td style="font-weight:600;color:${gh>0&&gh<45?'var(--orange)':'var(--ink)'}">${v.h>0?eur(gh):'—'}</td></tr>`;}).join('')}</tbody></table></div>
+      <td>${eur0(v.net)}</td><td style="font-weight:600;color:${gh>0&&gh<45?'var(--orange)':'var(--ink)'}">${v.h>0?eur(gh):'—'}</td>
+      <td style="font-weight:700;color:${gr==null?'var(--muted)':gr<45?'var(--red)':'var(--green)'}">${gr!=null?eur(gr)+' ('+v.nR+' ch.)':'—'}</td></tr>`;}).join('')}</tbody></table></div>
     <div class="sub" style="margin-top:8px">Repères business plan : monosplit ≈ 30 % de marge / 104 €/h brut · maintenance ≈ 51 % mais ≈ 53 €/h — surveille le gain horaire, pas seulement la marge.</div>`:'<div class="empty">Accepte des devis pour voir quels types de chantiers te rapportent le plus.</div>';
   updateBadges();
 }
@@ -1311,7 +1477,7 @@ function loadDevisToForm(){
   set('f_tvaRate',String(cur.tvaRate!=null?cur.tvaRate:P.tva));document.getElementById('f_acompteOn').checked=!!cur.acompteOn;set('f_acomptePct',cur.acomptePct!=null?cur.acomptePct:P.acomptePctDefaut);
   set('f_notes',cur.notes||'');
   set('f_statut',cur.statut);
-  renderMachines();renderSplits();renderGoulottes();renderExtras();updateSplitNote();
+  renderMachines();renderSplits();renderGoulottes();renderExtras();updateSplitNote();renderFBloc();
 }
 function formToDevis(){
   if(!cur)return;
@@ -1502,8 +1668,9 @@ function renderCommander(){
     if(!agg[k])agg[k]={nom:m.nom,unite:m.unite,qte:0,achatU:m.achatU,chantiers:[]};
     agg[k].qte+=m.qte; if(!agg[k].chantiers.includes(devisName(d)))agg[k].chantiers.push(devisName(d));});});
   const rows=Object.values(agg).sort((a,b)=>a.nom.localeCompare(b.nom));
+  rows.forEach(r=>{r.stock=Number(STOCK[r.nom])||0;r.aCmd=Math.max(0,r.qte-r.stock);});
   const totalAchat=rows.reduce((s,r)=>s+r.qte*r.achatU,0);
-  const reste=rows.filter(r=>!CMD[r.nom]).reduce((s,r)=>s+r.qte*r.achatU,0);
+  const reste=rows.filter(r=>!CMD[r.nom]).reduce((s,r)=>s+r.aCmd*r.achatU,0);
   document.getElementById('cmdKpis').innerHTML=`
     <div class="kpi blue"><div class="lab">Chantiers signés<span>✅</span></div><div class="val">${acc.length}</div></div>
     <div class="kpi"><div class="lab">Articles à gérer<span>📦</span></div><div class="val">${rows.length}</div></div>
@@ -1514,13 +1681,17 @@ function renderCommander(){
   const box=document.getElementById('cmdTable');
   if(!acc.length){box.innerHTML='<div class="empty">Aucun chantier accepté pour l\'instant. Passe un devis au statut « Accepté » pour le voir ici.</div>';return;}
   if(cmdView==='article'){
-    box.innerHTML=`<div class="scroll"><table>
-      <thead><tr><th class="l">✓</th><th class="l">Article</th><th>Qté totale</th><th>Achat U</th><th>Total achat HT</th><th class="l">Chantiers</th></tr></thead>
+    box.innerHTML=`<div class="row-actions" style="margin-bottom:10px"><button class="btn-dark btn-sm" onclick="mailDemandePrix()">✉️ Demande de prix fournisseur (reste à commander)</button></div>
+      <div class="scroll"><table>
+      <thead><tr><th class="l">✓</th><th class="l">Article</th><th>Besoin</th><th>En stock</th><th>À commander</th><th>Achat U</th><th>Total HT</th><th class="l">Chantiers</th></tr></thead>
       <tbody>${rows.map((r,ix)=>`<tr style="${CMD[r.nom]?'opacity:.5':''}">
         <td class="l"><input type="checkbox" style="width:auto" ${CMD[r.nom]?'checked':''} data-nom="${r.nom.replace(/"/g,'&quot;')}" onchange="toggleCmd(this)"></td>
-        <td class="l"><b>${r.nom}</b></td><td>${fmtQ(r.qte)} ${r.unite}</td><td>${eur(r.achatU)}</td><td>${eur(r.qte*r.achatU)}</td>
+        <td class="l"><b>${r.nom}</b></td><td>${fmtQ(r.qte)} ${r.unite}</td>
+        <td><input type="number" min="0" step="0.5" value="${r.stock}" style="width:70px;padding:4px 6px" onchange="setStock('${r.nom.replace(/'/g,"\\'")}',this.value)"></td>
+        <td>${r.aCmd>0?'<b style="color:var(--orange)">'+fmtQ(r.aCmd)+' '+r.unite+'</b>':'<b style="color:var(--green)">✔ en stock</b>'}</td>
+        <td>${eur(r.achatU)}</td><td>${eur(r.aCmd*r.achatU)}</td>
         <td class="l sub2">${r.chantiers.join(', ')}</td></tr>`).join('')}</tbody></table></div>
-      <div class="sub" style="margin-top:8px">Vue fournisseur : quantités cumulées sur tous les chantiers signés. Coche ce qui est commandé.</div>`;
+      <div class="sub" style="margin-top:8px">Vue fournisseur : besoin cumulé des chantiers signés − ton stock = à commander. Le stock est mémorisé et synchronisé. Coche quand c'est commandé.</div>`;
   } else {
     box.innerHTML=acc.map(d=>{const mat=compute(d).mat;const tot=mat.reduce((s,m)=>s+m.achatU*m.qte,0);
       return `<div class="subcard"><h3 style="color:var(--green)">🚚 ${devisName(d)} <span class="sub2" style="font-weight:400">— ${d.num} • achat ${eur(tot)}</span></h3>
@@ -1539,10 +1710,10 @@ function renderClients(){
   document.getElementById('clientTable').innerHTML=a.length?`<div class="scroll"><table>
    <thead><tr><th class="l">Nom</th><th class="l">Type</th><th class="l">Contact</th><th class="l">Ville</th><th>Devis</th><th>CA accepté HT</th><th></th></tr></thead>
    <tbody>${a.map(c=>`<tr>
-     <td class="l"><b>${c.nom}</b></td><td class="l"><span class="tag ${c.type==='Professionnel'?'pro':'part'}">${c.type||'Particulier'}</span></td>
+     <td class="l" style="cursor:pointer" onclick="openClient360('${c.id}')"><b style="color:var(--blue)">${c.nom}</b><div class="sub2" style="font-size:10px">fiche complète →</div></td><td class="l"><span class="tag ${c.type==='Professionnel'?'pro':'part'}">${c.type||'Particulier'}</span></td>
      <td class="l">${c.tel||''}${c.mail?'<div class="sub2">'+c.mail+'</div>':''}</td><td class="l">${c.ville||''}</td>
      <td>${c._n}</td><td>${eur(c._ca)}</td>
-     <td><button class="iconbtn" onclick="editClient('${c.id}')">✏️</button><button class="iconbtn d" onclick="delClient('${c.id}')">🗑</button></td>
+     <td><button class="iconbtn" title="Fiche 360°" onclick="openClient360('${c.id}')">👤</button><button class="iconbtn" onclick="editClient('${c.id}')">✏️</button><button class="iconbtn d" onclick="delClient('${c.id}')">🗑</button></td>
    </tr>`).join('')}</tbody></table></div>`:'<div class="empty">Aucun client. Ils se créent automatiquement quand tu enregistres un devis avec un nom client.</div>';
 }
 function editClient(id){const c=id?CLIENTS.find(x=>x.id===id):{};document.getElementById('mcTitle').textContent=id?'Modifier client':'Nouveau client';
@@ -1606,6 +1777,9 @@ function renderParams(){
     txtRow('Téléphone','pe_tel',E.tel)+txtRow('Email','pe_email',E.email)+
     txtRow('Statut','pe_statut',E.statut)+txtRow('Capital (€)','pe_capital',E.capital)+txtRow('Code NAF','pe_naf',E.naf)+
     txtRow('SIRET','pe_siret',E.siret)+txtRow('N° TVA intracom.','pe_tvaintra',E.tvaIntra)+txtRow('RIB / IBAN','pe_rib',E.rib,true)+
+    txtRow('N° attestation de capacité fluides','pe_attflu',E.attFluides)+txtRow('Organisme (attestation fluides)','pe_attorg',E.attOrganisme)+
+    txtRow('Médiateur de la consommation (nom)','pe_medi',E.mediateur)+txtRow('Médiateur — site web','pe_medisite',E.mediateurSite)+
+    txtRow('Assurance pro (assureur + n° contrat)','pe_assur',E.assurance)+txtRow('Assurance — couverture géographique','pe_assurzone',E.assuranceZone)+
     txtRow('Note bas de devis','pe_pied',E.piedNote,true);
   document.getElementById('paramGen').innerHTML=
     `<label class="full">Régime TVA<select id="pg_regime"><option value="franchise" ${P.regimeTVA!=='assujetti'?'selected':''}>Franchise en base (micro — je ne facture pas la TVA)</option><option value="assujetti" ${P.regimeTVA==='assujetti'?'selected':''}>Assujetti à la TVA (je facture et récupère)</option></select><span class="note-inline">franchise = mention « 293 B » sur le devis + matériel compté en TTC pour ta marge réelle</span></label>`+
@@ -1644,7 +1818,8 @@ function renderParams(){
 }
 function saveParams(){const g=id=>+document.getElementById(id).value;const t=id=>document.getElementById(id)?document.getElementById(id).value:'';
   const cand=JSON.parse(JSON.stringify(P));
-  cand.entreprise={...P.entreprise,nom:t('pe_nom'),activite:t('pe_act'),adresse:t('pe_adr'),cp:t('pe_cp'),ville:t('pe_ville'),tel:t('pe_tel'),email:t('pe_email'),statut:t('pe_statut'),capital:t('pe_capital'),naf:t('pe_naf'),siret:t('pe_siret'),tvaIntra:t('pe_tvaintra'),rib:t('pe_rib'),piedNote:t('pe_pied')};
+  cand.entreprise={...P.entreprise,nom:t('pe_nom'),activite:t('pe_act'),adresse:t('pe_adr'),cp:t('pe_cp'),ville:t('pe_ville'),tel:t('pe_tel'),email:t('pe_email'),statut:t('pe_statut'),capital:t('pe_capital'),naf:t('pe_naf'),siret:t('pe_siret'),tvaIntra:t('pe_tvaintra'),rib:t('pe_rib'),
+    attFluides:t('pe_attflu'),attOrganisme:t('pe_attorg'),mediateur:t('pe_medi'),mediateurSite:t('pe_medisite'),assurance:t('pe_assur'),assuranceZone:t('pe_assurzone'),piedNote:t('pe_pied')};
   cand.acomptePctDefaut=g('pg_acpt');cand.objectifCA=g('pg_obj');cand.regimeTVA=t('pg_regime')||'franchise';cand.achatTVA=g('pg_achattva');
   cand.defaultRate=g('pg_taux');cand.tauxHoraire=cand.defaultRate;cand.coutInterne=g('pg_cout');cand.cotisTaux=g('pg_cotis');cand.tva=g('pg_tva');cand.fraisAdmin=g('pg_fadm');cand.fraisCommande=g('pg_fcmd');
   cand.accGoulParM=g('pg_accg');cand.conso={petit:g('pg_cp'),moyen:g('pg_cm'),gros:g('pg_cg')};
@@ -1909,8 +2084,8 @@ function factureDep(){formToDep();
   saveDep();loadDepForm();toast('🧾 Facture '+curDep.facNum+' — série continue, ne pas supprimer une facture émise');
 }
 function payDep(id){const d=DEP.find(x=>x.id===id);if(!d)return;
-  if(d.statut==='payee'){d.statut='facturee';d.payeLe=null;}
-  else if(d.statut==='facturee'){d.statut='payee';d.payeLe=new Date().toISOString().slice(0,10);}
+  if(d.statut==='payee'){d.statut='facturee';d.payeLe=null;d.modeReg='';}
+  else if(d.statut==='facturee'){d.statut='payee';d.payeLe=new Date().toISOString().slice(0,10);d.modeReg=askMode();}
   save(LS.dep,DEP);renderDep();updateBadges();}
 function delDep(id){const d=DEP.find(x=>x.id===id);
   if(d&&d.facNum&&!confirm('⚠️ Cette intervention a une facture émise ('+d.facNum+'). En comptabilité une facture ne se supprime pas, elle s\'annule par avoir. Supprimer quand même ?'))return;
@@ -1967,7 +2142,7 @@ function exportCSVDep(){
   toast('📊 Export dépannages téléchargé');
 }
 function docTop(E,C,ic,dateStr,sub){return '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px"><div style="display:flex;gap:12px;align-items:center"><div style="width:54px;height:54px;border-radius:12px;background:'+C+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px">'+ic+'</div><div><div style="font-size:19px;font-weight:800">'+(E.nom||'—')+'</div><div style="font-size:10.5px;color:#666">'+((E.activite||'')+(sub||''))+'</div><div style="font-size:10.5px;color:#666">'+[E.adresse,E.cp,E.ville].filter(Boolean).join(' ')+'</div><div style="font-size:10.5px;color:#666">'+[E.tel?'Tél : '+E.tel:'',E.email].filter(Boolean).join(' — ')+'</div></div></div><div style="font-size:10.5px;color:#666;text-align:right">'+(E.ville?'À '+E.ville+', le ':'Le ')+dateStr+'<br>Page 1/1</div></div>';}
-function docLegal(E,C){const legal=[E.nom,[E.statut,E.capital?'capital '+E.capital+' €':'',E.naf?'Code NAF '+E.naf:''].filter(Boolean).join(' • '),[E.adresse,E.cp,E.ville].filter(Boolean).join(' '),[E.tel?'Tél : '+E.tel:'',E.email].filter(Boolean).join(' • '),E.siret?'SIRET : '+E.siret:'',E.tvaIntra?'N° TVA : '+E.tvaIntra:'',E.rib?'RIB : '+E.rib:''].filter(Boolean).map(x=>'<div>'+x+'</div>').join('');
+function docLegal(E,C){const legal=[E.nom,[E.statut,E.capital?'capital '+E.capital+' €':'',E.naf?'Code NAF '+E.naf:''].filter(Boolean).join(' • '),[E.adresse,E.cp,E.ville].filter(Boolean).join(' '),[E.tel?'Tél : '+E.tel:'',E.email].filter(Boolean).join(' • '),E.siret?'SIRET : '+E.siret:'',E.tvaIntra?'N° TVA : '+E.tvaIntra:'',E.assurance?'Assurance pro : '+E.assurance+(E.assuranceZone?' — couverture : '+E.assuranceZone:''):'',E.attFluides?'Attestation de capacité fluides frigorigènes n° '+E.attFluides+(E.attOrganisme?' ('+E.attOrganisme+')':''):'',E.rib?'RIB : '+E.rib:''].filter(Boolean).map(x=>'<div>'+x+'</div>').join('');
   return '<div style="margin-top:8px;font-size:9.5px;color:#555;text-align:center;border-top:2px solid '+C+';padding-top:8px">'+(legal||'<i>Renseigne tes coordonnées entreprise dans Paramètres pour le pied de page.</i>')+'</div>';}
 function printFacture(){
   formToDep();
@@ -2066,6 +2241,7 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
      </table>
    </div>
    <div style="margin-top:18px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
+   ${d.cType!=='Professionnel'&&E.mediateur?'<div style="margin-top:4px;font-size:9.5px;color:#777">Médiation de la consommation : '+E.mediateur+(E.mediateurSite?' — '+E.mediateurSite:'')+'. En cas de litige non résolu, le client consommateur peut saisir gratuitement ce médiateur.</div>':''}
    ${docLegal(E,OR)}
    </div>`;
   window.print();
@@ -2358,14 +2534,18 @@ function renderLoc(){
   if(!LOC.length){el.innerHTML='<div class="empty">Aucune location. Passe par l\'onglet 💨 Adiabatique pour dimensionner puis « Créer la location », ou bouton + Nouvelle location.</div>';return;}
   const a=[...LOC].map(l=>({...l,_c:computeLoc(l)})).sort((x,y)=>(y.created||0)-(x.created||0));
   el.innerHTML='<div class="scroll"><table><thead><tr><th class="l">N°</th><th class="l">Client</th><th class="l">Machines</th><th>Du → au</th><th>Sem.</th><th>Total HT</th><th>Statut</th><th></th></tr></thead><tbody>'+
-   a.map(l=>'<tr><td class="l"><b>'+(l.num||'—')+'</b></td>'+
-    '<td class="l">'+(l.cNom||'—')+'<div class="sub" style="font-size:10.5px">'+(l.cVille||'')+'</div></td>'+
+   a.map(l=>'<tr><td class="l"><b>'+(l.num||'—')+'</b>'+(l.fac?'<div class="sub" style="font-size:10px">'+l.fac.num+(l.fac.payeLe?' ✔ payée':' ⌛ à encaisser')+'</div>':'')+'</td>'+
+    '<td class="l">'+(l.cNom||'—')+((l.cAdr||l.cVille)?' '+mapsBtn([l.cAdr,l.cVille].filter(Boolean).join(', ')):'')+'<div class="sub" style="font-size:10.5px">'+(l.cVille||'')+'</div></td>'+
     '<td class="l">'+(l.items||[]).map(x=>x.qte+'× '+x.ref).join('<br>')+'</td>'+
     '<td>'+(l.dateDebut||'—')+'<br>→ '+(l.dateFin||'—')+'</td>'+
     '<td>'+l._c.sem+'</td><td><b>'+eur0(l._c.totalHT)+'</b></td>'+
     '<td>'+locTag(l.statut)+'</td>'+
     '<td style="white-space:nowrap"><button class="iconbtn" title="Modifier" onclick="openLoc(\''+l.id+'\')">✏️</button>'+
     '<button class="iconbtn" title="Contrat PDF" onclick="printContrat(\''+l.id+'\')">📄</button>'+
+    '<button class="iconbtn" title="Mail de confirmation" onclick="mailLoc(\''+l.id+'\')">✉️</button>'+
+    (l.statut==='rendu'&&!l.fac?'<button class="iconbtn" title="Facturer" onclick="facturerLoc(\''+l.id+'\')">🧾</button>':'')+
+    (l.fac&&!l.fac.payeLe?'<button class="iconbtn" title="Marquer payée" onclick="payerFacture(\'loc\',\''+l.id+'\',\'\')">💶</button>':'')+
+    (l.fac?'<button class="iconbtn" title="PDF facture" onclick="printFactureLoc(LOC.find(x=>x.id===\''+l.id+'\'))">🖨️</button>':'')+
     (l.statut!=='rendu'?'<button class="iconbtn" title="Étape suivante" onclick="locNext(\''+l.id+'\')">⇢</button>':'')+
     '<button class="iconbtn" title="Supprimer" onclick="delLoc(\''+l.id+'\')">🗑</button></td></tr>').join('')+'</tbody></table></div>';
 }
@@ -2447,6 +2627,678 @@ function checkBackup(){const b=document.getElementById('bkbanner');if(!b)return;
   if(last&&days<7){b.className='syncbanner';b.innerHTML='';return;}
   b.className='syncbanner warn';
   b.innerHTML='💾 <b>Sauvegarde :</b> '+(last?('dernière il y a '+days+' jours'):'jamais faite')+' — tes devis, factures et contrats ne vivent que sur cet ordinateur. <button class="btn-dark btn-sm" style="margin-left:8px" onclick="exportJSON()">⤓ Sauvegarder maintenant (JSON)</button>';}
+
+/* ============ FINANCES — facturation chantiers, encaissements, impayés, URSSAF, livre des recettes ============ */
+function askMode(){return (prompt('Mode de règlement ?\nVirement / Chèque / Espèces / CB','Virement')||'').trim()||'Virement';}
+function facturerDevis(id,which){
+  const d=DEVIS.find(x=>x.id===id);if(!d)return;
+  const c=compute(d);const today=new Date().toISOString().slice(0,10);
+  if(which==='acompte'){
+    if(d.facAcompte){toast('Acompte déjà facturé ('+d.facAcompte.num+')');return;}
+    d.facAcompte={num:nextFacNum(),date:today,montant:Math.round(c.acompte*100)/100,payeLe:null,mode:''};
+  }else{
+    if(d.facSolde){toast('Déjà facturé ('+d.facSolde.num+')');return;}
+    const m=d.facAcompte?c.solde:c.totalTTC;
+    d.facSolde={num:nextFacNum(),date:today,montant:Math.round(m*100)/100,payeLe:null,mode:''};
+  }
+  save(LS.devis,DEVIS);renderFBloc();
+  toast('🧾 Facture émise — série continue, ne pas la supprimer');
+  printFactureDevis(d,which);
+}
+function payerFacture(kind,id,which){
+  if(kind==='devis'){const d=DEVIS.find(x=>x.id===id);if(!d)return;
+    const f=which==='acompte'?d.facAcompte:d.facSolde;if(!f||f.payeLe)return;
+    f.payeLe=new Date().toISOString().slice(0,10);f.mode=askMode();
+    save(LS.devis,DEVIS);renderFBloc();
+  }else if(kind==='loc'){const l=LOC.find(x=>x.id===id);if(!l||!l.fac||l.fac.payeLe)return;
+    l.fac.payeLe=new Date().toISOString().slice(0,10);l.fac.mode=askMode();
+    save(LS.loc,LOC);if(window._curView==='loc')renderLoc();
+  }else if(kind==='dep'){const x=DEP.find(o=>o.id===id);if(!x||x.statut!=='facturee')return;
+    x.statut='payee';x.payeLe=new Date().toISOString().slice(0,10);x.modeReg=askMode();
+    save(LS.dep,DEP);if(window._curView==='dep')renderDep();
+  }else if(kind==='ctr'){const c=CTR.find(o=>o.id===id);if(!c)return;
+    const f=(c.facs||[]).find(x=>String(x.annee)===String(which));if(!f||f.payeLe)return;
+    f.payeLe=new Date().toISOString().slice(0,10);f.mode=askMode();
+    save('cp2_contrats',CTR);if(window._curView==='contrats')renderContrats();
+  }
+  updateBadges();if(window._curView==='dash')renderDash();
+  toast('💶 Encaissement enregistré — il entre au livre des recettes');
+}
+function facturerLoc(id){const l=LOC.find(x=>x.id===id);if(!l)return;
+  if(l.fac){toast('Déjà facturée ('+l.fac.num+')');return;}
+  const c=computeLoc(l);
+  l.fac={num:nextFacNum(),date:new Date().toISOString().slice(0,10),montant:Math.round(c.totalHT*100)/100,payeLe:null,mode:''};
+  save(LS.loc,LOC);renderLoc();toast('🧾 Facture '+l.fac.num+' émise');printFactureLoc(l);}
+function renderFBloc(){
+  const el=document.getElementById('fBloc');if(!el)return;
+  if(!cur||(cur.statut!=='accepte'&&!cur.facAcompte&&!cur.facSolde)){el.innerHTML='';return;}
+  const c=compute(cur);
+  const row=(f,lbl,which)=>'<div class="recap-line"><div><b>'+lbl+' — '+f.num+'</b><div class="sub2">émise le '+f.date+' · '+eur(f.montant)+(f.payeLe?' · ✔ payée le '+f.payeLe+' ('+(f.mode||'—')+')':' · ⌛ en attente de paiement')+'</div></div><div class="row-actions">'
+    +(f.payeLe?'':'<button class="btn-pri btn-sm" onclick="payerFacture(\'devis\',cur.id,\''+which+'\')">💶 Payée</button>')
+    +'<button class="iconbtn" title="PDF" onclick="printFactureDevis(cur,\''+which+'\')">🖨️</button></div></div>';
+  let h='<div class="card" style="border-top:3px solid var(--green);margin-top:14px"><h2>💰 Facturation du chantier</h2>'
+   +'<div class="sub" style="margin-bottom:8px">Série unique F-'+new Date().getFullYear()+'-XXX (commune avec les interventions). Une facture émise ne se supprime pas — elle s\'annule par avoir.</div>';
+  if(cur.acompteOn&&c.acomptePct>0){
+    h+=cur.facAcompte?row(cur.facAcompte,'Acompte '+c.acomptePct+' %','acompte')
+      :'<button class="btn-pri btn-sm" style="margin-bottom:8px" onclick="facturerDevis(cur.id,\'acompte\')">🧾 Facturer l\'acompte ('+eur(c.acompte)+')</button><br>';
+  }
+  h+=cur.facSolde?row(cur.facSolde,cur.facAcompte?'Solde':'Facture','solde')
+    :((!cur.acompteOn||!c.acomptePct||cur.facAcompte)?'<button class="btn-dark btn-sm" onclick="facturerDevis(cur.id,\'solde\')">🧾 Facturer '+(cur.facAcompte?'le solde ('+eur(c.solde)+')':'la totalité ('+eur(c.totalTTC)+')')+'</button>':'<div class="sub">Facture d\'abord l\'acompte (ou décoche « acompte » plus haut).</div>');
+  h+='<h3 style="font-size:13px;color:var(--green);margin:14px 0 6px">🏁 Réalité terrain <span class="sub" style="font-weight:400">(à remplir quand le chantier est fini — sauvegardé direct)</span></h3>'
+   +'<div class="frm">'
+   +'<label>Heures réellement passées<input type="number" step="0.5" min="0" value="'+(cur.hReel!=null?cur.hReel:'')+'" onchange="setReal(\'hReel\',this.value)"><span class="note-inline">prévu : '+fmtQ(cur.heures||0)+' h</span></label>'
+   +'<label>Total achats réels (€ TTC payés)<input type="number" step="0.01" min="0" value="'+(cur.achatReel!=null?cur.achatReel:'')+'" onchange="setReal(\'achatReel\',this.value)"><span class="note-inline">estimé au devis : '+eur(c.matAchat)+'</span></label></div>';
+  const r=realStats(cur,c);
+  if(r){
+    const dh=r.hR-(Number(cur.heures)||0);
+    h+='<div class="ad-verdict '+(r.gainHNet>=45?'ok':r.gainHNet>=30?'mid':'bad')+'" style="margin-top:4px">Gain RÉEL : <b>'+eur(r.gainH)+'/h brut · '+eur(r.gainHNet)+'/h net</b> (prévu : '+eur(c.gainH)+'/h brut)'
+     +(dh>0?' — dépassement de '+fmtQ(dh)+' h sur l\'estimation':dh<0?' — '+fmtQ(-dh)+' h gagnées sur l\'estimation':'')
+     +(r.estim?' · achats = estimation devis':'')+'. '+(r.gainHNet<45?'Sous ton objectif BP (45 €/h) : retiens-le pour tes prochains chiffrages de ce type.':'Au-dessus de ton objectif BP ✔')+'</div>';
+  }
+  h+='<div class="row-actions" style="margin-top:10px">'
+   +'<button class="btn-ghost btn-sm" onclick="printChecklist()">📋 Checklist départ chantier</button>'
+   +'<button class="btn-ghost btn-sm" onclick="openEquipFromDevis()">🏷️ Enregistrer l\'équipement posé</button>'
+   +((cur.cAdr||cur.cVille)?'<a class="btn-ghost btn-sm" style="text-decoration:none" href="'+mapsUrl([cur.cAdr,cur.cVille].filter(Boolean).join(', '))+'" target="_blank" rel="noopener">🗺️ Itinéraire</a>':'')
+   +'</div>';
+  h+='</div>';
+  el.innerHTML=h;
+}
+function printFactureDevis(d,which){
+  const c=compute(d),E=P.entreprise||{},OR='#e08a2c';
+  const f=which==='acompte'?d.facAcompte:d.facSolde;if(!f){toast('Pas encore facturé');return;}
+  const rows=[];
+  if(which==='acompte')rows.push(['Acompte de '+c.acomptePct+' % à la commande — selon devis '+d.num+' ('+d.type+')',f.montant]);
+  else if(d.facAcompte){rows.push(['Travaux réalisés selon devis '+d.num+' — '+d.type,c.totalHT]);rows.push(['Acompte déjà facturé ('+d.facAcompte.num+')',-d.facAcompte.montant]);}
+  else rows.push(['Travaux réalisés selon devis '+d.num+' — '+d.type,f.montant]);
+  const body=rows.map(r=>'<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
+  document.getElementById('devisDoc').innerHTML=`
+   <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
+   ${docTop(E,OR,'❄',new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR'))}
+   <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
+     <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
+       <div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em">Client</div>
+       <b>${d.cNom||'—'}</b><br>${d.cAdr||''}<br>${d.cVille||''}<br>${[d.cTel,d.cMail].filter(Boolean).join(' — ')}</div>
+   </div>
+   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${f.num}</span></div>
+   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">${which==='acompte'?'Facture d\'acompte':'Facture'} — référence devis ${d.num} accepté</div>
+   <table style="width:100%;border-collapse:collapse;font-size:11px">
+     <thead><tr style="background:${OR};color:#fff"><th style="text-align:left;padding:9px 12px">Désignation</th><th style="padding:9px 12px;text-align:right">Montant</th></tr></thead>
+     <tbody>${body}</tbody></table>
+   <div style="margin-top:10px;font-size:11px;font-weight:700;color:#333">TVA non applicable — article 293 B du CGI</div>
+   <div style="display:flex;justify-content:flex-end;margin-top:14px">
+     <table style="border-collapse:collapse;font-size:12px;min-width:270px">
+       <tr style="background:#fbeedd"><td style="text-align:right;padding:8px;font-weight:800">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800">${eur(f.montant)}</td></tr></table>
+   </div>
+   <div style="margin-top:14px;font-size:10px;color:#555;line-height:1.6"><b>Conditions de règlement :</b> paiement à réception de facture — virement, chèque ou espèces.<br>
+   Pas d'escompte pour paiement anticipé. Pénalités de retard : 3 fois le taux d'intérêt légal.${d.cType==='Professionnel'?' Indemnité forfaitaire de recouvrement (professionnels) : 40 €.':''}</div>
+   <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
+   ${docLegal(E,OR)}
+   </div>`;
+  window.print();
+}
+function printFactureLoc(l){
+  const c=computeLoc(l),E=P.entreprise||{},TE='#0d6e7c';
+  if(!l.fac){toast('Pas encore facturée');return;}
+  const rows=(l.items||[]).map(x=>['Location '+x.qte+' × '+x.ref+' — '+c.sem+' sem. × '+eur(x.tarif)+'/sem',x.qte*x.tarif*c.sem])
+    .concat([['Livraison, mise en service et formation'+(l.zone?' ('+l.zone+')':''),c.liv],['Reprise du matériel',c.rep]])
+    .concat(c.net>0?[['Nettoyage & désinfection au retour',c.net]]:[]);
+  const body=rows.map(r=>'<tr><td style="text-align:left;padding:10px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:10px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
+  document.getElementById('devisDoc').innerHTML=`
+   <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
+   ${docTop(E,TE,'💨',new Date(l.fac.date+'T00:00:00').toLocaleDateString('fr-FR'),' — rafraîchissement adiabatique')}
+   <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
+     <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
+       <div style="font-size:10px;color:#999;text-transform:uppercase">Client</div>
+       <b>${l.cNom||'—'}</b><br>${l.cAdr||''}<br>${l.cVille||''}<br>${[l.cTel,l.cMail].filter(Boolean).join(' — ')}</div>
+   </div>
+   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${l.fac.num}</span></div>
+   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">Location ${l.num||''} — du ${l.dateDebut||'—'} au ${l.dateFin||'—'}</div>
+   <table style="width:100%;border-collapse:collapse;font-size:11px">
+     <thead><tr style="background:${TE};color:#fff"><th style="text-align:left;padding:9px 12px">Désignation</th><th style="padding:9px 12px;text-align:right">Montant</th></tr></thead>
+     <tbody>${body}</tbody></table>
+   <div style="margin-top:10px;font-size:11px;font-weight:700;color:#333">TVA non applicable — article 293 B du CGI</div>
+   <div style="display:flex;justify-content:flex-end;margin-top:14px">
+     <table style="border-collapse:collapse;font-size:12px;min-width:270px">
+       <tr style="background:#e8f6f8"><td style="text-align:right;padding:8px;font-weight:800">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800">${eur(l.fac.montant)}</td></tr></table>
+   </div>
+   <div style="margin-top:14px;font-size:10px;color:#555;line-height:1.6"><b>Conditions de règlement :</b> paiement à réception de facture. Pénalités de retard : 3 fois le taux d'intérêt légal.${l.cType==='Professionnel'?' Indemnité forfaitaire de recouvrement : 40 €.':''}</div>
+   ${docLegal(E,TE)}
+   </div>`;
+  window.print();
+}
+function allRecettes(){
+  const out=[];
+  DEVIS.forEach(d=>{[['facAcompte','Acompte chantier'],['facSolde','Chantier']].forEach(p=>{const f=d[p[0]];
+    if(f&&f.payeLe)out.push({date:f.payeLe,client:d.cNom||'—',nature:p[1]+' '+(d.type||''),num:f.num,montant:f.montant,mode:f.mode||''});});});
+  DEP.forEach(x=>{if(x.statut==='payee'&&x.payeLe){const c=computeDep(x);
+    out.push({date:x.payeLe,client:x.cNom||'—',nature:x.itype==='mes'?'Mise en service':'Dépannage',num:x.facNum||'',montant:Math.round(c.totalHT*100)/100,mode:x.modeReg||''});}});
+  LOC.forEach(l=>{if(l.fac&&l.fac.payeLe)out.push({date:l.fac.payeLe,client:l.cNom||'—',nature:'Location adiabatique',num:l.fac.num,montant:l.fac.montant,mode:l.fac.mode||''});});
+  CTR.forEach(c=>{(c.facs||[]).forEach(f=>{if(f.payeLe)out.push({date:f.payeLe,client:c.clientNom||'—',nature:'Contrat entretien '+(c.type||''),num:f.num,montant:f.montant,mode:f.mode||''});});});
+  return out.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+}
+function allImpayes(){
+  const out=[],now=Date.now(),age=s=>s?Math.floor((now-new Date(s+'T00:00:00').getTime())/86400000):0;
+  DEVIS.forEach(d=>{[['facAcompte','acompte'],['facSolde','solde']].forEach(p=>{const f=d[p[0]];
+    if(f&&!f.payeLe)out.push({kind:'devis',id:d.id,which:p[1],client:d.cNom||'—',num:f.num,montant:f.montant,date:f.date,days:age(f.date),mail:d.cMail||''});});});
+  DEP.forEach(x=>{if(x.statut==='facturee'&&x.facNum){const c=computeDep(x);
+    out.push({kind:'dep',id:x.id,which:'',client:x.cNom||'—',num:x.facNum,montant:Math.round(c.totalHT*100)/100,date:x.facDate||'',days:age(x.facDate),mail:x.cMail||''});}});
+  LOC.forEach(l=>{if(l.fac&&!l.fac.payeLe)out.push({kind:'loc',id:l.id,which:'',client:l.cNom||'—',num:l.fac.num,montant:l.fac.montant,date:l.fac.date,days:age(l.fac.date),mail:l.cMail||''});});
+  CTR.forEach(c=>{const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(c.clientNom||'').toLowerCase())||{};
+    (c.facs||[]).forEach(f=>{if(!f.payeLe)out.push({kind:'ctr',id:c.id,which:String(f.annee),client:c.clientNom||'—',num:f.num,montant:f.montant,date:f.date,days:age(f.date),mail:cl.mail||''});});});
+  return out.sort((a,b)=>b.days-a.days);
+}
+function mailRelancePaiement(kind,id,which){
+  const f=allImpayes().find(x=>x.kind===kind&&x.id===id&&x.which===which);if(!f)return;
+  const E=P.entreprise||{};
+  buildMail(f.mail,'Rappel — facture '+f.num+' en attente de règlement',
+'Bonjour'+(f.client!=='—'?' '+f.client:'')+',\n\nSauf erreur de notre part, la facture '+f.num+' du '+(f.date||'')+' d\'un montant de '+eur(f.montant)+' reste en attente de règlement.\n\nMerci de bien vouloir procéder au paiement à réception de ce message. Si le règlement a été effectué entre-temps, merci de ne pas tenir compte de ce rappel.\n\nPour rappel, des pénalités de retard (3 fois le taux d\'intérêt légal) sont applicables conformément aux conditions de la facture.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:''));
+}
+function urssafNext(){const m=new Date().getMonth();const y=new Date().getFullYear();
+  return m<3?{q:'T1',dl:'30/04/'+y}:m<6?{q:'T2',dl:'31/07/'+y}:m<9?{q:'T3',dl:'31/10/'+y}:{q:'T4',dl:'31/01/'+(y+1)};}
+function renderRecettes(){
+  const all=allRecettes();
+  const years=[...new Set(all.map(r=>(r.date||'').slice(0,4)))].filter(Boolean).sort().reverse();
+  const sel=document.getElementById('recYear');
+  const cy=String(new Date().getFullYear());
+  if(sel&&!sel.options.length)(years.length?years:[cy]).forEach(y=>{const o=document.createElement('option');o.textContent=y;sel.appendChild(o);});
+  const y=(sel&&sel.value)||cy;
+  const rows=all.filter(r=>(r.date||'').slice(0,4)===y);
+  const tot=rows.reduce((s,r)=>s+r.montant,0);
+  const cotis=tot*(Number(P.cotisTaux)||0)/100;
+  document.getElementById('recKpis').innerHTML=
+   '<div class="kpi good"><div class="lab">Encaissé '+y+'<span>💶</span></div><div class="val">'+eur0(tot)+'</div></div>'
+   +'<div class="kpi purple"><div class="lab">Cotisations à provisionner ('+(P.cotisTaux)+' %)<span>🏦</span></div><div class="val">'+eur0(cotis)+'</div></div>'
+   +'<div class="kpi blue"><div class="lab">Encaissements<span>🧾</span></div><div class="val">'+rows.length+'</div></div>'
+   +'<div class="kpi warn"><div class="lab">Factures en attente<span>⌛</span></div><div class="val">'+eur0(allImpayes().reduce((s,f)=>s+f.montant,0))+'</div></div>';
+  document.getElementById('recTable').innerHTML=rows.length?'<div class="scroll"><table><thead><tr><th class="l">Date</th><th class="l">Client</th><th class="l">Nature</th><th class="l">N° facture</th><th class="l">Règlement</th><th>Montant</th></tr></thead><tbody>'
+   +rows.map(r=>'<tr><td class="l">'+new Date(r.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td class="l"><b>'+r.client+'</b></td><td class="l">'+r.nature+'</td><td class="l">'+r.num+'</td><td class="l">'+r.mode+'</td><td><b>'+eur(r.montant)+'</b></td></tr>').join('')
+   +'<tr style="background:var(--green-soft)"><td colspan="5" class="l" style="font-weight:800">TOTAL '+y+'</td><td style="font-weight:800">'+eur(tot)+'</td></tr></tbody></table></div>'
+   :'<div class="empty">Aucun encaissement en '+y+' — marque tes factures « 💶 Payée » et elles apparaissent ici.</div>';
+}
+function exportCSVRecettes(){
+  const y=(document.getElementById('recYear')||{}).value||String(new Date().getFullYear());
+  const rows=allRecettes().filter(r=>(r.date||'').slice(0,4)===y);
+  if(!rows.length){toast('Aucun encaissement à exporter');return;}
+  const nf=n=>String((Math.round((Number(n)||0)*100)/100)).replace('.',',');
+  const esc2=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
+  const csv='﻿'+[['Date','Client','Nature','N° facture','Mode de règlement','Montant HT']].concat(rows.map(r=>[r.date,r.client,r.nature,r.num,r.mode,nf(r.montant)])).map(r=>r.map(esc2).join(';')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ClimPilot_livre_recettes_'+y+'.csv';a.click();
+  toast('📗 Livre des recettes '+y+' exporté');
+}
+function printRecettes(){
+  const y=(document.getElementById('recYear')||{}).value||String(new Date().getFullYear());
+  const rows=allRecettes().filter(r=>(r.date||'').slice(0,4)===y);
+  const tot=rows.reduce((s,r)=>s+r.montant,0);const E=P.entreprise||{};
+  document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,sans-serif;color:#222;max-width:780px;font-size:11px">'
+   +'<div style="text-align:center;margin-bottom:4px"><b style="font-size:17px">LIVRE DES RECETTES — '+y+'</b></div>'
+   +'<div style="text-align:center;font-size:11px;color:#555;margin-bottom:14px">'+(E.nom||'')+(E.siret?' — SIRET '+E.siret:'')+' — micro-entreprise, recettes encaissées</div>'
+   +'<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#eee"><th style="text-align:left;padding:7px;border:1px solid #ccc">Date</th><th style="text-align:left;padding:7px;border:1px solid #ccc">Client</th><th style="text-align:left;padding:7px;border:1px solid #ccc">Nature</th><th style="text-align:left;padding:7px;border:1px solid #ccc">Référence</th><th style="text-align:left;padding:7px;border:1px solid #ccc">Règlement</th><th style="text-align:right;padding:7px;border:1px solid #ccc">Montant</th></tr></thead><tbody>'
+   +rows.map(r=>'<tr><td style="padding:6px;border:1px solid #ddd">'+new Date(r.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td style="padding:6px;border:1px solid #ddd">'+r.client+'</td><td style="padding:6px;border:1px solid #ddd">'+r.nature+'</td><td style="padding:6px;border:1px solid #ddd">'+r.num+'</td><td style="padding:6px;border:1px solid #ddd">'+r.mode+'</td><td style="padding:6px;border:1px solid #ddd;text-align:right">'+eur(r.montant)+'</td></tr>').join('')
+   +'<tr><td colspan="5" style="padding:8px;border:1px solid #ccc;font-weight:800;text-align:right">TOTAL</td><td style="padding:8px;border:1px solid #ccc;font-weight:800;text-align:right">'+eur(tot)+'</td></tr></tbody></table>'
+   +'<div style="margin-top:10px;font-size:9.5px;color:#777">Registre généré par ClimPilot le '+new Date().toLocaleDateString('fr-FR')+' — TVA non applicable, art. 293 B du CGI.</div></div>';
+  window.print();
+}
+
+/* ============ PARC INSTALLÉ (équipements) ============ */
+function eqSet(id,v){const e=document.getElementById(id);if(e)e.value=v;}
+function openEquip(id,preClient,preDevis){
+  const e=id?EQUIP.find(x=>x.id===id):null;
+  eqSet('eq_id',e?e.id:'');eqSet('eq_devis',e?e.devisNum||'':preDevis||'');
+  eqSet('eq_client',e?e.client:preClient||'');
+  eqSet('eq_type',e?e.type:'Monosplit');eqSet('eq_marque',e?e.marque:'');eqSet('eq_modele',e?e.modele:'');
+  eqSet('eq_serie',e?e.serie:'');eqSet('eq_fluide',e?e.fluide:'R32');eqSet('eq_charge',e?e.charge:0);
+  eqSet('eq_date',e?e.datePose:new Date().toISOString().slice(0,10));eqSet('eq_gar',e?e.garantie:24);
+  eqSet('eq_notes',e?e.notes:'');
+  fillSelects&&fillSelects();
+  openModal('mEquip');
+}
+function openEquipFromDevis(){
+  const m=(cur.machines||[])[0]||{};
+  openEquip(null,cur.cNom,cur.num);
+  eqSet('eq_type',TYPEUNITS[cur.type]!=null?cur.type:'Autre');
+  eqSet('eq_marque',m.marque||'');eqSet('eq_modele',m.ref||'');
+  if(cur.type==='Adiabatique'){eqSet('eq_type','Rafraîchisseur adiabatique');eqSet('eq_fluide','Sans');}
+}
+function saveEquip(){
+  const g=id=>document.getElementById(id).value;
+  if(!g('eq_client').trim()){toast('⚠ Renseigne le client');return;}
+  const o={id:g('eq_id')||uid(),client:g('eq_client').trim(),devisNum:g('eq_devis'),type:g('eq_type'),marque:g('eq_marque'),modele:g('eq_modele'),serie:g('eq_serie'),fluide:g('eq_fluide'),charge:Number(g('eq_charge'))||0,datePose:g('eq_date'),garantie:Number(g('eq_gar'))||0,notes:g('eq_notes')};
+  const i=EQUIP.findIndex(x=>x.id===o.id);if(i>=0)EQUIP[i]=o;else EQUIP.push(o);
+  save('cp2_equip',EQUIP);closeModal('mEquip');
+  if(window._curView==='client360')renderClient360();if(window._curView==='contrats')renderContrats();
+  toast('🏷️ Équipement enregistré au parc');
+}
+function delEquip(id){if(!confirm('Retirer cet équipement du parc ?'))return;
+  EQUIP=EQUIP.filter(x=>x.id!==id);save('cp2_equip',EQUIP);
+  if(window._curView==='client360')renderClient360();if(window._curView==='contrats')renderContrats();}
+function garInfo(e){
+  if(!e.datePose||!e.garantie)return {txt:'garantie non renseignée',cls:'sub2',soon:false,over:false};
+  const end=new Date(e.datePose+'T00:00:00');end.setMonth(end.getMonth()+Number(e.garantie));
+  const days=Math.floor((end.getTime()-Date.now())/86400000);
+  if(days<0)return {txt:'garantie expirée depuis le '+end.toLocaleDateString('fr-FR'),cls:'sub2',soon:false,over:true,end};
+  if(days<120)return {txt:'⚠ garantie expire le '+end.toLocaleDateString('fr-FR')+' ('+days+' j)',cls:'',soon:true,over:false,end};
+  return {txt:'garantie jusqu\'au '+end.toLocaleDateString('fr-FR'),cls:'sub2',soon:false,over:false,end};
+}
+/* ============ CONTRATS D'ENTRETIEN ============ */
+function hasCtrActif(client){return CTR.some(c=>c.actif!==false&&(c.clientNom||'').toLowerCase()===(client||'').toLowerCase());}
+function ctrTypeDefaults(){
+  const t=document.getElementById('ct_type').value;
+  if(t==='Adiabatique'){document.getElementById('ct_visites').value='2';
+    const y=new Date().getFullYear();const now=new Date();
+    const avr=new Date(y,3,15),oct=new Date(y,9,15);
+    document.getElementById('ct_next').value=dISO(now<avr?avr:(now<oct?oct:new Date(y+1,3,15)));
+  }else{document.getElementById('ct_visites').value='1';}
+}
+function openCtr(id,preClient){
+  const c=id?CTR.find(x=>x.id===id):null;
+  eqSet('ct_id',c?c.id:'');
+  eqSet('ct_client',c?c.clientNom:preClient||'');
+  eqSet('ct_type',c?c.type:'Climatisation');
+  eqSet('ct_prix',c?c.prix:180);
+  eqSet('ct_visites',c?String(c.visites||1):'1');
+  eqSet('ct_next',c?c.prochaineVisite||'':dISO(new Date(Date.now()+14*86400000)));
+  document.getElementById('ct_actif').checked=c?c.actif!==false:true;
+  eqSet('ct_notes',c?c.notes:'');
+  fillSelects&&fillSelects();
+  openModal('mCtr');
+}
+function saveCtr(){
+  const g=id=>document.getElementById(id).value;
+  if(!g('ct_client').trim()){toast('⚠ Renseigne le client');return;}
+  const o={id:g('ct_id')||uid(),clientNom:g('ct_client').trim(),type:g('ct_type'),prix:Number(g('ct_prix'))||0,visites:Number(g('ct_visites'))||1,prochaineVisite:g('ct_next'),actif:document.getElementById('ct_actif').checked,notes:g('ct_notes'),facs:(g('ct_id')&&(CTR.find(x=>x.id===g('ct_id'))||{}).facs)||[]};
+  const i=CTR.findIndex(x=>x.id===o.id);if(i>=0)CTR[i]=o;else CTR.push(o);
+  save('cp2_contrats',CTR);closeModal('mCtr');renderContrats();updateBadges();
+  toast('🤝 Contrat enregistré — visite au planning');
+}
+function delCtr(id){if(!confirm('Supprimer ce contrat ? (ses factures émises restent dans les recettes)'))return;
+  CTR=CTR.filter(x=>x.id!==id);save('cp2_contrats',CTR);renderContrats();updateBadges();}
+function visiteFaite(id){const c=CTR.find(x=>x.id===id);if(!c||!c.prochaineVisite)return;
+  const d=new Date(c.prochaineVisite+'T00:00:00');
+  d.setMonth(d.getMonth()+(Number(c.visites)===2?6:12));
+  c.prochaineVisite=dISO(d);save('cp2_contrats',CTR);renderContrats();updateBadges();
+  toast('✅ Visite faite — prochaine le '+d.toLocaleDateString('fr-FR'));}
+function facturerContrat(id){const c=CTR.find(x=>x.id===id);if(!c)return;
+  const y=new Date().getFullYear();
+  c.facs=c.facs||[];
+  if(c.facs.some(f=>f.annee===y)){toast('Année '+y+' déjà facturée ('+c.facs.find(f=>f.annee===y).num+')');return;}
+  const f={annee:y,num:nextFacNum(),date:new Date().toISOString().slice(0,10),montant:Math.round((c.prix||0)*100)/100,payeLe:null,mode:''};
+  c.facs.push(f);save('cp2_contrats',CTR);renderContrats();
+  toast('🧾 Facture '+f.num+' émise');printFactureCtr(c,f);}
+function printFactureCtr(c,f){
+  const E=P.entreprise||{},OR='#189a58';
+  const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(c.clientNom||'').toLowerCase())||{};
+  document.getElementById('devisDoc').innerHTML=`
+   <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
+   ${docTop(E,OR,'🤝',new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR'))}
+   <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
+     <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
+       <div style="font-size:10px;color:#999;text-transform:uppercase">Client</div>
+       <b>${c.clientNom}</b><br>${cl.adr||''}<br>${cl.ville||''}<br>${[cl.tel,cl.mail].filter(Boolean).join(' — ')}</div>
+   </div>
+   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${f.num}</span></div>
+   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">Contrat d'entretien ${c.type||''} — année ${f.annee}</div>
+   <table style="width:100%;border-collapse:collapse;font-size:11px">
+     <thead><tr style="background:${OR};color:#fff"><th style="text-align:left;padding:9px 12px">Désignation</th><th style="padding:9px 12px;text-align:right">Montant</th></tr></thead>
+     <tbody><tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">Contrat d'entretien ${c.type||''} — ${c.visites||1} visite${(c.visites||1)>1?'s':''}/an${c.notes?'<div style="font-size:9.5px;color:#777">'+c.notes+'</div>':''}</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">${eur(f.montant)}</td></tr></tbody></table>
+   <div style="margin-top:10px;font-size:11px;font-weight:700;color:#333">TVA non applicable — article 293 B du CGI</div>
+   <div style="display:flex;justify-content:flex-end;margin-top:14px">
+     <table style="border-collapse:collapse;font-size:12px;min-width:270px">
+       <tr style="background:#e4f6ec"><td style="text-align:right;padding:8px;font-weight:800">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800">${eur(f.montant)}</td></tr></table></div>
+   <div style="margin-top:14px;font-size:10px;color:#555;line-height:1.6"><b>Conditions de règlement :</b> paiement à réception. Pénalités de retard : 3 fois le taux d'intérêt légal.</div>
+   ${docLegal(E,OR)}
+   </div>`;
+  window.print();
+}
+function mailEntretien(id){const c=CTR.find(x=>x.id===id);if(!c)return;
+  const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(c.clientNom||'').toLowerCase())||{};
+  const E=P.entreprise||{};
+  buildMail(cl.mail||'','Entretien '+(c.type||'')+' — planifions votre visite',
+'Bonjour '+c.clientNom+',\n\nDans le cadre de votre contrat d\'entretien '+(c.type||'')+', il est temps de planifier votre visite'+(Number(c.visites)===2?' (mise en route / hivernage selon la saison)':' annuelle')+'.\n\nJe vous propose de me communiquer vos disponibilités — l\'intervention dure environ 1 h à 1 h 30.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:''));}
+function mailProposeCtr(eqId){const e=EQUIP.find(x=>x.id===eqId);if(!e)return;
+  const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(e.client||'').toLowerCase())||{};
+  const g=garInfo(e);const E=P.entreprise||{};
+  buildMail(cl.mail||'','Votre '+(e.type||'équipement')+' — entretien & fin de garantie',
+'Bonjour '+e.client+',\n\nVotre '+(e.type||'équipement')+(e.marque?' '+e.marque:'')+(e.modele?' '+e.modele:'')+' installé le '+(e.datePose?new Date(e.datePose+'T00:00:00').toLocaleDateString('fr-FR'):'')+(g.end?' arrive en fin de garantie ('+g.end.toLocaleDateString('fr-FR')+')':'')+'.\n\nUn entretien régulier prolonge sa durée de vie, maintient ses performances (et sa consommation !) et permet de détecter les problèmes avant la panne. Je vous propose un contrat d\'entretien annuel — je peux vous faire une offre en fonction de votre équipement.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:''));}
+function renderContrats(){
+  const el=document.getElementById('ctrTable');if(!el)return;
+  const y=new Date().getFullYear(),today=dISO(new Date());
+  el.innerHTML=CTR.length?'<div class="scroll"><table><thead><tr><th class="l">Client</th><th class="l">Type</th><th>Prix/an</th><th>Visites</th><th>Prochaine visite</th><th class="l">Facture '+y+'</th><th></th></tr></thead><tbody>'
+   +[...CTR].sort((a,b)=>(a.prochaineVisite||'9')<(b.prochaineVisite||'9')?-1:1).map(c=>{
+     const f=(c.facs||[]).find(x=>x.annee===y);
+     const late=c.actif!==false&&c.prochaineVisite&&c.prochaineVisite<today;
+     return '<tr style="'+(c.actif===false?'opacity:.45':'')+'">'
+      +'<td class="l" style="cursor:pointer" onclick="openClient360FromName(\''+String(c.clientNom).replace(/'/g,"\\'")+'\')"><b>'+c.clientNom+'</b></td>'
+      +'<td class="l">'+(c.type||'')+'</td><td>'+eur0(c.prix||0)+'</td><td>'+(c.visites||1)+'/an</td>'
+      +'<td'+(late?' style="color:var(--red);font-weight:700"':'')+'>'+(c.prochaineVisite?new Date(c.prochaineVisite+'T00:00:00').toLocaleDateString('fr-FR'):'—')+(late?' ⚠ en retard':'')+'</td>'
+      +'<td class="l">'+(f?(f.num+(f.payeLe?' ✔ payée':' ⌛'))+'':'<span class="sub2">à émettre</span>')+'</td>'
+      +'<td style="white-space:nowrap">'
+      +'<button class="iconbtn" title="Visite faite" onclick="visiteFaite(\''+c.id+'\')">✅</button>'
+      +'<button class="iconbtn" title="Mail au client" onclick="mailEntretien(\''+c.id+'\')">✉️</button>'
+      +(!f?'<button class="iconbtn" title="Facturer l\'année" onclick="facturerContrat(\''+c.id+'\')">🧾</button>':'')
+      +(f&&!f.payeLe?'<button class="iconbtn" title="Marquer payée" onclick="payerFacture(\'ctr\',\''+c.id+'\',\''+y+'\')">💶</button>':'')
+      +(f?'<button class="iconbtn" title="PDF" onclick="printFactureCtr(CTR.find(x=>x.id===\''+c.id+'\'),CTR.find(x=>x.id===\''+c.id+'\').facs.find(x=>x.annee==='+y+'))">🖨️</button>':'')
+      +'<button class="iconbtn" onclick="openCtr(\''+c.id+'\')">✏️</button>'
+      +'<button class="iconbtn d" onclick="delCtr(\''+c.id+'\')">🗑</button></td></tr>';}).join('')
+   +'</tbody></table></div><div class="sub" style="margin-top:8px">CA récurrent potentiel : <b>'+eur0(CTR.filter(c=>c.actif!==false).reduce((s,c)=>s+(c.prix||0),0))+'/an</b> — c\'est lui qui lisse ta saison.</div>'
+   :'<div class="empty">Aucun contrat. Crée-en depuis un client (fiche 360°) ou avec + Nouveau contrat — l\'adia et la clim en méritent tous les deux.</div>';
+  const gt=document.getElementById('garTable');
+  const gar=EQUIP.map(e=>({e,g:garInfo(e)})).filter(x=>(x.g.soon||x.g.over)&&!hasCtrActif(x.e.client));
+  gt.innerHTML=gar.length?gar.map(x=>'<div class="recap-line"><div><b>'+x.e.client+'</b> — '+(x.e.type||'')+' '+(x.e.marque||'')+' '+(x.e.modele||'')+'<div class="sub2">'+x.g.txt+' · posé le '+(x.e.datePose?new Date(x.e.datePose+'T00:00:00').toLocaleDateString('fr-FR'):'—')+'</div></div>'
+    +'<div class="row-actions"><button class="btn-pri btn-sm" onclick="openCtr(null,\''+String(x.e.client).replace(/'/g,"\\'")+'\')">🤝 Proposer un contrat</button><button class="iconbtn" title="Mail de proposition" onclick="mailProposeCtr(\''+x.e.id+'\')">✉️</button></div></div>').join('')
+   :'<div class="empty">Rien à signaler — aucun équipement sans contrat n\'arrive en fin de garantie.</div>';
+}
+/* ============ REGISTRE FLUIDES (modèle Cerfa 15497*04, forme électronique — R.543-83) ============ */
+function nextFluNum(){const y=new Date().getFullYear();let sq=load('cp2_fluseq',{year:y,seq:0});
+  if(sq.year!==y)sq={year:y,seq:0};sq.seq++;save('cp2_fluseq',sq);return 'FF-'+y+'-'+String(sq.seq).padStart(3,'0');}
+const FLU_NAT={mes:'Mise en service',entretien:'Entretien / maintenance',depannage:'Dépannage / réparation',etancheite:'Contrôle d\'étanchéité périodique',demantelement:'Démantèlement / récupération finale'};
+const FLU_CTRL={na:'Non requis',ok:'Réalisé — pas de fuite détectée',fuite_rep:'Fuite détectée et réparée',fuite_nonrep:'⚠ Fuite détectée NON réparée'};
+function fluEquipList(){
+  const nom=(document.getElementById('fl_client').value||'').trim().toLowerCase();
+  const sel=document.getElementById('fl_equip');
+  sel.innerHTML='<option value="">— saisie libre —</option>'+EQUIP.filter(e=>(e.client||'').toLowerCase()===nom).map(e=>'<option value="'+e.id+'">'+[e.type,e.marque,e.modele].filter(Boolean).join(' ')+'</option>').join('');
+}
+function fluEquipPick(){
+  const id=document.getElementById('fl_equip').value;const e=EQUIP.find(x=>x.id===id);if(!e)return;
+  document.getElementById('fl_desc').value=[e.type,e.marque,e.modele,e.serie?'SN '+e.serie:''].filter(Boolean).join(' — ');
+  if(e.fluide&&e.fluide!=='Sans')document.getElementById('fl_fluide').value=e.fluide;
+  document.getElementById('fl_charge').value=e.charge||0;
+}
+function openFlu(id,pre){
+  const f=id?FLU.find(x=>x.id===id):null;
+  eqSet('fl_id',f?f.id:'');
+  eqSet('fl_date',f?f.date:(pre&&pre.date)||new Date().toISOString().slice(0,10));
+  eqSet('fl_nature',f?f.nature:(pre&&pre.nature)||'entretien');
+  eqSet('fl_client',f?f.client:(pre&&pre.client)||'');
+  fluEquipList();
+  eqSet('fl_desc',f?f.desc:'');eqSet('fl_fluide',f?f.fluide:'R32');eqSet('fl_charge',f?f.charge:0);
+  eqSet('fl_ctrl',f?f.ctrl:'na');
+  eqSet('fl_qv',f?f.qv:0);eqSet('fl_qrec',f?f.qrec:0);eqSet('fl_qreg',f?f.qreg:0);
+  eqSet('fl_qrt',f?f.qrt:0);eqSet('fl_qru',f?f.qru:0);eqSet('fl_bout',f?f.bout:'');
+  eqSet('fl_obs',f?f.obs:'');
+  fillSelects&&fillSelects();
+  openModal('mFlu');
+}
+function saveFlu(printAfter){
+  const g=id=>document.getElementById(id).value;const n=id=>Number(g(id))||0;
+  if(!g('fl_client').trim()){toast('⚠ Renseigne le client (détenteur)');return;}
+  if(!g('fl_desc').trim()){toast('⚠ Décris l\'équipement');return;}
+  const o={id:g('fl_id')||uid(),num:'',date:g('fl_date'),nature:g('fl_nature'),client:g('fl_client').trim(),
+    desc:g('fl_desc'),fluide:g('fl_fluide'),charge:n('fl_charge'),ctrl:g('fl_ctrl'),
+    qv:n('fl_qv'),qrec:n('fl_qrec'),qreg:n('fl_qreg'),qrt:n('fl_qrt'),qru:n('fl_qru'),bout:g('fl_bout'),obs:g('fl_obs')};
+  const old=FLU.find(x=>x.id===o.id);o.num=old&&old.num?old.num:nextFluNum();
+  const i=FLU.findIndex(x=>x.id===o.id);if(i>=0)FLU[i]=o;else FLU.push(o);
+  save('cp2_fluides',FLU);closeModal('mFlu');
+  if(window._curView==='fluides')renderFluides();
+  toast('🧪 Fiche '+o.num+' enregistrée — à conserver 5 ans');
+  if(printAfter)printFicheFlu(o.id);
+}
+function delFlu(id){const f=FLU.find(x=>x.id===id);
+  if(!confirm('Supprimer la fiche '+(f&&f.num||'')+' ? Rappel : conservation obligatoire 5 ans — ne supprime que les erreurs de saisie.'))return;
+  FLU=FLU.filter(x=>x.id!==id);save('cp2_fluides',FLU);renderFluides();}
+function printFicheFlu(id){
+  const f=FLU.find(x=>x.id===id);if(!f)return;
+  const E=P.entreprise||{};
+  const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(f.client||'').toLowerCase())||{};
+  const B='#2f6bff';
+  const cell='padding:7px 10px;border:1px solid #bbb;font-size:10.5px';
+  const sec=t=>'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">'+t+'</div>';
+  const chTot=f.qv+f.qrec+f.qreg,reTot=f.qrt+f.qru;
+  document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px;font-size:11px">'
+   +'<div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:15px">FICHE D\'INTERVENTION — FLUIDES FRIGORIGÈNES</b><span style="font-family:monospace;font-weight:700">'+f.num+'</span></div>'
+   +'<div style="font-size:9.5px;color:#555;margin-bottom:6px">Établie conformément au modèle Cerfa n° 15497*04 (art. R.543-82 et R.543-83 du code de l\'environnement) — à conserver 5 ans par l\'opérateur ET le détenteur.</div>'
+   +sec('1 — Opérateur')
+   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>'+(E.nom||'—')+'</b><br>'+[E.adresse,E.cp,E.ville].filter(Boolean).join(' ')+'<br>SIRET : '+(E.siret||'—')+'</td>'
+   +'<td style="'+cell+'">Attestation de capacité n° : <b>'+(E.attFluides||'⚠ À RENSEIGNER (Paramètres)')+'</b><br>Délivrée par : '+(E.attOrganisme||'—')+'</td></tr></table>'
+   +sec('2 — Détenteur de l\'équipement')
+   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>'+f.client+'</b><br>'+[cl.adr,cl.ville].filter(Boolean).join(', ')+'</td><td style="'+cell+'">'+[cl.tel,cl.mail].filter(Boolean).join(' — ')+'</td></tr></table>'
+   +sec('3 — Équipement')
+   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'">'+f.desc+'</td><td style="'+cell+';width:130px">Fluide : <b>'+f.fluide+'</b></td><td style="'+cell+';width:150px">Charge nominale : <b>'+fmtQ(f.charge)+' kg</b></td></tr></table>'
+   +sec('4 — Intervention du '+new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR'))
+   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'">Nature : <b>'+(FLU_NAT[f.nature]||f.nature)+'</b></td><td style="'+cell+'">Contrôle d\'étanchéité : <b>'+(FLU_CTRL[f.ctrl]||'—')+'</b></td></tr></table>'
+   +sec('5 — Fluide manipulé (kg)')
+   +'<table style="width:100%;border-collapse:collapse"><tr>'
+   +'<td style="'+cell+'">Chargé — vierge : <b>'+fmtQ(f.qv)+'</b></td><td style="'+cell+'">recyclé : <b>'+fmtQ(f.qrec)+'</b></td><td style="'+cell+'">régénéré : <b>'+fmtQ(f.qreg)+'</b></td><td style="'+cell+'">TOTAL chargé : <b>'+fmtQ(chTot)+'</b></td></tr>'
+   +'<tr><td style="'+cell+'">Récupéré — pour traitement : <b>'+fmtQ(f.qrt)+'</b></td><td style="'+cell+'">pour réutilisation : <b>'+fmtQ(f.qru)+'</b></td><td style="'+cell+'">TOTAL récupéré : <b>'+fmtQ(reTot)+'</b></td><td style="'+cell+'">Contenants : '+(f.bout||'—')+'</td></tr></table>'
+   +(f.qrt>0?'<div style="font-size:9.5px;color:#a35a00;margin-top:4px">⚠ Fluide destiné au traitement : remise à un point de collecte avec bordereau de suivi de déchets (Trackdéchets).</div>':'')
+   +(f.obs?sec('Observations')+'<div style="'+cell+';border:1px solid #bbb">'+f.obs+'</div>':'')
+   +'<table style="width:100%;border-collapse:collapse;margin-top:16px"><tr>'
+   +'<td style="width:50%;border:1px solid #bbb;padding:8px;height:80px;vertical-align:top;font-size:10px">L\'opérateur — nom, date, signature<br><b>'+(E.nom||'')+'</b></td>'
+   +'<td style="width:50%;border:1px solid #bbb;padding:8px;vertical-align:top;font-size:10px">Le détenteur — nom, date, signature<br><b>'+f.client+'</b></td></tr></table>'
+   +'</div>';
+  window.print();
+}
+function renderFluides(){
+  const el=document.getElementById('fluTable');if(!el)return;
+  const years=[...new Set(FLU.map(f=>(f.date||'').slice(0,4)))].filter(Boolean).sort().reverse();
+  const sel=document.getElementById('fluYear');const cy=String(new Date().getFullYear());
+  if(sel&&!sel.options.length)(years.length?years:[cy]).forEach(y=>{const o=document.createElement('option');o.textContent=y;sel.appendChild(o);});
+  const y=(sel&&sel.value)||cy;
+  const rows=FLU.filter(f=>(f.date||'').slice(0,4)===y).sort((a,b)=>a.date<b.date?-1:1);
+  const byF={};rows.forEach(f=>{if(!byF[f.fluide])byF[f.fluide]={ch:0,re:0};byF[f.fluide].ch+=f.qv+f.qrec+f.qreg;byF[f.fluide].re+=f.qrt+f.qru;});
+  document.getElementById('fluKpis').innerHTML=
+   '<div class="kpi blue"><div class="lab">Fiches '+y+'<span>🧪</span></div><div class="val">'+rows.length+'</div></div>'
+   +Object.entries(byF).map(([k,v])=>'<div class="kpi"><div class="lab">'+k+' chargé / récupéré<span>⚖️</span></div><div class="val" style="font-size:17px">'+fmtQ(Math.round(v.ch*100)/100)+' / '+fmtQ(Math.round(v.re*100)/100)+' kg</div></div>').join('')
+   +((P.entreprise||{}).attFluides?'':'<div class="kpi warn"><div class="lab">Attestation de capacité<span>⚠</span></div><div class="val" style="font-size:14px">à renseigner (Paramètres)</div></div>');
+  el.innerHTML=rows.length?'<div class="scroll"><table><thead><tr><th class="l">N°</th><th class="l">Date</th><th class="l">Client</th><th class="l">Équipement</th><th class="l">Nature</th><th>Chargé</th><th>Récupéré</th><th class="l">Étanchéité</th><th></th></tr></thead><tbody>'
+   +rows.map(f=>'<tr'+(f.ctrl==='fuite_nonrep'?' style="background:var(--red-soft)"':'')+'><td class="l"><b>'+f.num+'</b></td><td class="l">'+new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td class="l">'+f.client+'</td><td class="l">'+f.desc+'</td><td class="l">'+(FLU_NAT[f.nature]||'')+'</td>'
+    +'<td>'+fmtQ(Math.round((f.qv+f.qrec+f.qreg)*100)/100)+' kg</td><td>'+fmtQ(Math.round((f.qrt+f.qru)*100)/100)+' kg</td><td class="l">'+(FLU_CTRL[f.ctrl]||'')+'</td>'
+    +'<td style="white-space:nowrap"><button class="iconbtn" title="Fiche PDF" onclick="printFicheFlu(\''+f.id+'\')">🖨️</button><button class="iconbtn" onclick="openFlu(\''+f.id+'\')">✏️</button><button class="iconbtn d" onclick="delFlu(\''+f.id+'\')">🗑</button></td></tr>').join('')
+   +'</tbody></table></div>'
+   :'<div class="empty">Aucune fiche en '+y+'. Crée-en une à chaque manipulation de fluide (charge, récupération, contrôle) — bouton + Nouvelle fiche, ou 🧪 depuis une intervention.</div>';
+}
+function exportCSVFlu(){
+  const y=(document.getElementById('fluYear')||{}).value||String(new Date().getFullYear());
+  const rows=FLU.filter(f=>(f.date||'').slice(0,4)===y);
+  if(!rows.length){toast('Aucune fiche à exporter');return;}
+  const nf=n=>String((Math.round((Number(n)||0)*100)/100)).replace('.',',');
+  const esc2=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
+  const csv='﻿'+[['N° fiche','Date','Client','Équipement','Fluide','Charge nominale kg','Nature','Étanchéité','Vierge kg','Recyclé kg','Régénéré kg','Récup. traitement kg','Récup. réutilisation kg','Contenants','Observations']]
+   .concat(rows.map(f=>[f.num,f.date,f.client,f.desc,f.fluide,nf(f.charge),FLU_NAT[f.nature]||'',FLU_CTRL[f.ctrl]||'',nf(f.qv),nf(f.qrec),nf(f.qreg),nf(f.qrt),nf(f.qru),f.bout||'',f.obs||''])).map(r=>r.map(esc2).join(';')).join('\r\n');
+  const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ClimPilot_registre_fluides_'+y+'.csv';a.click();
+  toast('🧪 Registre fluides '+y+' exporté — à archiver 5 ans');
+}
+/* ============ PV DE MISE EN SERVICE ============ */
+function printPV(){
+  formToDep();const d=curDep;
+  if(!d){toast('Ouvre une intervention');return;}
+  if(d.itype!=='mes'){toast('Le PV concerne les mises en service (type 🧊)');return;}
+  const E=P.entreprise||{},B='#0891b2';
+  const cell='padding:8px 10px;border:1px solid #bbb;font-size:10.5px';
+  const done=[];
+  if(d.mesMode!=='carte')done.push('Forfait mise en service '+(d.mesType||''));
+  if(d.optRoute||d.mesMode!=='carte')done.push('Mise en route, réglages et contrôles de fonctionnement');
+  if(d.optRaccords&&Number(d.nbRaccords)>0)done.push('Confection de '+d.nbRaccords+' raccord(s) dudgeon serré(s) au couple');
+  if(d.optVide)done.push('Tirage au vide');
+  if(d.optAzote)done.push('Test azote (mise en pression)');
+  if(d.optEtanch)done.push('Contrôle d\'étanchéité');
+  if(d.optAppoint)done.push('Appoint de fluide (pesée) — voir fiche fluides');
+  const blank='<span style="display:inline-block;border-bottom:1px dotted #999;min-width:110px">&nbsp;</span>';
+  document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px;font-size:11px">'
+   +docTop(E,B,'🧊',new Date().toLocaleDateString('fr-FR'))
+   +'<div style="text-align:center;margin:6px 0 12px"><b style="font-size:16px">PROCÈS-VERBAL DE MISE EN SERVICE</b><div style="font-size:11px;color:#555">Intervention du '+(d.date?new Date(d.date+'T00:00:00').toLocaleDateString('fr-FR'):'—')+(d.facNum?' — réf. '+d.facNum:'')+'</div></div>'
+   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>Client :</b> '+(d.cNom||'—')+'<br>'+[d.cAdr,d.cVille].filter(Boolean).join(', ')+'</td><td style="'+cell+'"><b>Installation :</b> '+(d.desc||'—')+'</td></tr></table>'
+   +'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">Opérations réalisées</div>'
+   +'<div style="border:1px solid #bbb;padding:8px 12px">'+(done.length?done.map(x=>'☑ '+x).join('<br>'):'—')+'</div>'
+   +'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">Mesures relevées à la mise en service</div>'
+   +'<table style="width:100%;border-collapse:collapse"><tr>'
+   +'<td style="'+cell+'">Pression / t° condensation : '+blank+'</td><td style="'+cell+'">Pression / t° évaporation : '+blank+'</td></tr>'
+   +'<tr><td style="'+cell+'">T° soufflage : '+blank+'</td><td style="'+cell+'">T° reprise : '+blank+'</td></tr>'
+   +'<tr><td style="'+cell+'">Intensité absorbée : '+blank+'</td><td style="'+cell+'">Surchauffe / sous-refroidissement : '+blank+'</td></tr></table>'
+   +'<div style="margin-top:10px;font-size:10px;color:#555;line-height:1.5">L\'installation fonctionne conformément aux prescriptions du constructeur à la date de mise en service. Le client a été informé du fonctionnement, des consignes d\'entretien courant (nettoyage des filtres) et de l\'intérêt d\'un entretien annuel.</div>'
+   +'<table style="width:100%;border-collapse:collapse;margin-top:14px"><tr>'
+   +'<td style="width:50%;border:1px solid #bbb;padding:8px;height:80px;vertical-align:top;font-size:10px">L\'installateur — date et signature<br><b>'+(E.nom||'')+'</b></td>'
+   +'<td style="width:50%;border:1px solid #bbb;padding:8px;vertical-align:top;font-size:10px">Le client — « bon pour réception », date et signature<br><b>'+(d.cNom||'')+'</b></td></tr></table>'
+   +docLegal(E,B)+'</div>';
+  window.print();
+}
+
+/* ============ TERRAIN — itinéraires, réel vs prévu, checklist ============ */
+function mapsUrl(adr){return 'https://www.google.com/maps/dir/?api=1&destination='+encodeURIComponent(adr);}
+function mapsBtn(adr,style){if(!adr||!String(adr).trim())return '';
+  return '<a href="'+mapsUrl(adr)+'" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Itinéraire Google Maps" style="text-decoration:none;'+(style||'')+'">🗺️</a>';}
+function setReal(field,val){
+  cur[field]=val;
+  const i=DEVIS.findIndex(d=>d.id===cur.id);
+  if(i>=0){DEVIS[i][field]=val;save(LS.devis,DEVIS);}
+  renderFBloc();
+}
+function realStats(d,c){
+  const hasH=d.hReel!=null&&d.hReel!=='',hasA=d.achatReel!=null&&d.achatReel!=='';
+  if(!hasH&&!hasA)return null;
+  const hR=hasH?Number(d.hReel):(Number(d.heures)||0);
+  const achat=hasA?Number(d.achatReel):c.matAchat;
+  const benef=c.totalHT-achat-hR*(Number(P.coutInterne)||0);
+  const cotis=c.totalHT*(Number(P.cotisTaux)||0)/100;
+  return {hR,achat,benef,net:benef-cotis,gainH:hR>0?benef/hR:0,gainHNet:hR>0?(benef-cotis)/hR:0,estim:!hasA};
+}
+const TOOLKIT_BASE=['EPI : gants, lunettes, chaussures de sécurité','Perceuse / visseuse + forets béton & métal','Niveau, mètre, crayon, cordeau','Échelle / escabeau','Bâche de protection + aspirateur','Consommables : chevilles, visserie, colliers, mastic, scotch'];
+const TOOLKIT_FROID=['Dudgeonnière + coupe-tube + ébavureur','Cintreuse à cuivre','Pompe à vide + vacuomètre','Manifold (manomètres)','Balance de charge','Clés dynamométriques','Détecteur de fuite (électronique ou bulle)','Bouteille azote + détendeur','Carotteuse Ø65-80 + scie cloche'];
+function toolkitFor(type){
+  const T={'Gainable':TOOLKIT_FROID.concat(['Scie à gaine, scotch alu, colliers de gaine']),
+   'PAC air-eau':['Pince à sertir multicouche + coupe-tube','Clés de plombier, filasse / téflon','Pompe de remplissage / rinçage','Multimètre'].concat(TOOLKIT_FROID),
+   'Ballon thermodynamique':['Pince à sertir multicouche','Clés de plombier, téflon','Multimètre','Niveau à bulle long'],
+   'Chambre froide':TOOLKIT_FROID.concat(['Visseuse longue + embouts panneaux','Silicone alimentaire','Rivets / profils de finition']),
+   'Adiabatique':['Harnais + ligne de vie (toiture)','Scie cloche / grignoteuse (bardage)','Clés de plombier, téflon','Multimètre','Pince à sertir ou raccords laiton']};
+  return T[type]||TOOLKIT_FROID;
+}
+function printChecklist(){
+  formToDevis();const d=cur,c=compute(d);
+  const B='#0e1c36';
+  const box=x=>'<div style="padding:4px 0;font-size:11px">☐ '+x+'</div>';
+  const sec=t=>'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">'+t+'</div>';
+  document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">'
+   +'<div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:16px">📋 CHECKLIST DÉPART CHANTIER</b><span style="font-family:monospace">'+d.num+'</span></div>'
+   +'<div style="font-size:11px;color:#555;margin-bottom:4px"><b>'+devisName(d)+'</b> — '+[d.cAdr,d.cVille].filter(Boolean).join(', ')+(d.cTel?' · '+d.cTel:'')+(d.datePlanif?' · prévu le '+new Date(d.datePlanif+'T00:00:00').toLocaleDateString('fr-FR'):'')+' · '+fmtQ(d.heures||0)+' h prévues</div>'
+   +sec('1 — Matériel à charger (du devis)')
+   +'<div style="columns:2;column-gap:24px">'+(c.mat.length?c.mat.map(m=>box(fmtQ(m.qte)+' '+m.unite+' — '+m.nom)).join(''):box('(aucun matériel chiffré)'))+'</div>'
+   +sec('2 — Outillage ('+d.type+')')
+   +'<div style="columns:2;column-gap:24px">'+toolkitFor(d.type).concat(TOOLKIT_BASE).map(box).join('')+'</div>'
+   +sec('3 — Documents & fin de chantier')
+   +box('Devis signé / bon pour accord')+box('Facture d\'acompte réglée (si acompte)')
+   +(d.type!=='Adiabatique'?box('Fiche fluides frigorigènes (si manipulation) — à faire signer'):box('Contrôle : l\'air soufflé peut s\'évacuer (portes / extraction)'))
+   +box('PV de mise en service à faire signer')+box('Photos avant / après')+box('Noter les heures réelles et les achats réels dans ClimPilot')
+   +'</div>';
+  window.print();
+}
+
+/* ============ FICHE CLIENT 360° ============ */
+function openClient360(id){window._cliId=id;go('client360');}
+function openClient360FromName(nom){const c=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(nom||'').toLowerCase());if(c)openClient360(c.id);}
+function renderClient360(){
+  const el=document.getElementById('c360');if(!el)return;
+  const c=CLIENTS.find(x=>x.id===window._cliId);
+  if(!c){el.innerHTML='<div class="empty">Client introuvable — retourne à la liste.</div>';return;}
+  const nom=(c.nom||'').toLowerCase();
+  const devis=DEVIS.filter(d=>(d.cNom||'').toLowerCase()===nom).map(d=>({...d,_c:compute(d)}));
+  const deps=DEP.filter(x=>(x.cNom||'').toLowerCase()===nom).map(x=>({...x,_c:computeDep(x)}));
+  const locs=LOC.filter(l=>(l.cNom||'').toLowerCase()===nom).map(l=>({...l,_c:computeLoc(l)}));
+  const eqs=EQUIP.filter(e=>(e.client||'').toLowerCase()===nom);
+  const ctrs=CTR.filter(x=>(x.clientNom||'').toLowerCase()===nom);
+  const rec=allRecettes().filter(r=>(r.client||'').toLowerCase()===nom);
+  const enc=rec.reduce((s,r)=>s+r.montant,0);
+  const imp=allImpayes().filter(f=>(f.client||'').toLowerCase()===nom).reduce((s,f)=>s+f.montant,0);
+  const marge=devis.filter(d=>d.statut==='accepte').reduce((s,d)=>s+d._c.benefice,0);
+  const st=s=>({brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'✅ Accepté',refuse:'Refusé'})[s]||s;
+  el.innerHTML=
+   '<div class="flexhead"><div><h2 style="font-size:22px">'+c.nom+' <span class="tag '+(c.type==='Professionnel'?'pro':'part')+'">'+(c.type||'Particulier')+'</span></h2>'
+   +'<div class="sub">'+[c.adr,c.ville].filter(Boolean).join(', ')+((c.adr||c.ville)?' '+mapsBtn([c.adr,c.ville].filter(Boolean).join(', ')):'')+(c.tel?' · 📞 '+c.tel:'')+(c.mail?' · ✉️ '+c.mail:'')+(c.lastZone?' · zone '+c.lastZone:'')+'</div></div>'
+   +'<div class="row-actions"><button class="btn-ghost btn-sm" onclick="go(\'clients\')">‹ Clients</button><button class="btn-ghost btn-sm" onclick="editClient(\''+c.id+'\')">✏️ Modifier</button>'
+   +'<button class="btn-pri btn-sm" onclick="go(\'wizard\');newDevis();document.getElementById(\'f_cNom\').value=\''+String(c.nom).replace(/'/g,"\\'")+'\';autofillClient();updateWizName();">📝 Nouveau devis</button></div></div>'
+   +'<div class="kpis">'
+   +'<div class="kpi good"><div class="lab">Encaissé (total)<span>💶</span></div><div class="val">'+eur0(enc)+'</div></div>'
+   +'<div class="kpi warn"><div class="lab">En attente de paiement<span>⌛</span></div><div class="val">'+eur0(imp)+'</div></div>'
+   +'<div class="kpi blue"><div class="lab">Marge brute cumulée<span>📈</span></div><div class="val">'+eur0(marge)+'</div></div>'
+   +'<div class="kpi purple"><div class="lab">Devis / Interv. / Loc.<span>🗂️</span></div><div class="val">'+devis.length+' / '+deps.length+' / '+locs.length+'</div></div></div>'
+   +'<div class="grid2"><div class="card"><h2>📝 Devis</h2>'+(devis.length?devis.map(d=>'<div class="recap-line" style="cursor:pointer" onclick="openDevis(\''+d.id+'\')"><div><b>'+d.type+'</b><div class="sub2">'+d.num+' · '+st(d.statut)+(d.facSolde?' · '+d.facSolde.num+(d.facSolde.payeLe?' ✔':' ⌛'):'')+'</div></div><b>'+eur0(d._c.totalHT)+'</b></div>').join(''):'<div class="empty">Aucun devis.</div>')+'</div>'
+   +'<div class="card"><h2>🔧 Interventions</h2>'+(deps.length?deps.map(x=>'<div class="recap-line" style="cursor:pointer" onclick="openDep(\''+x.id+'\')"><div><b>'+(x.itype==='mes'?'Mise en service':'Dépannage')+'</b><div class="sub2">'+(x.date||'')+' · '+(x.facNum||'non facturée')+(x.statut==='payee'?' ✔':'')+'</div></div><b>'+eur0(x._c.totalHT)+'</b></div>').join(''):'<div class="empty">Aucune intervention.</div>')+'</div></div>'
+   +'<div class="grid2"><div class="card"><h2>💨 Locations</h2>'+(locs.length?locs.map(l=>'<div class="recap-line" style="cursor:pointer" onclick="go(\'loc\');openLoc(\''+l.id+'\')"><div><b>'+(l.num||'—')+'</b><div class="sub2">'+(l.dateDebut||'')+' → '+(l.dateFin||'')+' · '+locTag(l.statut).replace(/<[^>]*>/g,'')+'</div></div><b>'+eur0(l._c.totalHT)+'</b></div>').join(''):'<div class="empty">Aucune location.</div>')+'</div>'
+   +'<div class="card"><h2>🤝 Contrats d\'entretien</h2>'+(ctrs.length?ctrs.map(x=>'<div class="recap-line"><div><b>'+(x.type||'')+' — '+eur0(x.prix||0)+'/an</b><div class="sub2">prochaine visite : '+(x.prochaineVisite?new Date(x.prochaineVisite+'T00:00:00').toLocaleDateString('fr-FR'):'—')+(x.actif===false?' · inactif':'')+'</div></div><button class="iconbtn" onclick="openCtr(\''+x.id+'\')">✏️</button></div>').join(''):'<div class="empty">Aucun contrat — c\'est le moment d\'en proposer un.</div>')
+   +'<div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" onclick="openCtr(null,\''+String(c.nom).replace(/'/g,"\\'")+'\')">+ Contrat</button></div></div></div>'
+   +'<div class="card"><h2>🏷️ Équipements installés (parc SAV)</h2>'
+   +(eqs.length?'<div class="scroll"><table><thead><tr><th class="l">Type</th><th class="l">Marque / modèle</th><th class="l">N° série</th><th class="l">Fluide</th><th class="l">Posé le</th><th class="l">Garantie</th><th></th></tr></thead><tbody>'
+     +eqs.map(e=>{const g=garInfo(e);return '<tr><td class="l"><b>'+(e.type||'')+'</b></td><td class="l">'+[e.marque,e.modele].filter(Boolean).join(' ')+'</td><td class="l">'+(e.serie||'—')+'</td><td class="l">'+(e.fluide||'')+(e.charge?' · '+e.charge+' kg':'')+'</td><td class="l">'+(e.datePose?new Date(e.datePose+'T00:00:00').toLocaleDateString('fr-FR'):'—')+'</td><td class="l'+(g.soon?'" style="color:var(--orange);font-weight:700':'')+'">'+g.txt+'</td>'
+       +'<td><button class="iconbtn" onclick="openEquip(\''+e.id+'\')">✏️</button><button class="iconbtn d" onclick="delEquip(\''+e.id+'\')">🗑</button></td></tr>';}).join('')+'</tbody></table></div>':'<div class="empty">Aucun équipement enregistré — utilise « 🏷️ Enregistrer l\'équipement posé » depuis un devis accepté, ou :</div>')
+   +'<div class="row-actions" style="margin-top:8px"><button class="btn-ghost btn-sm" onclick="openEquip(null,\''+String(c.nom).replace(/'/g,"\\'")+'\')">+ Équipement</button></div></div>'
+   +'<div class="card"><h2>🗒️ Notes client</h2><textarea id="c360notes" style="width:100%;min-height:70px">'+(c.notes||'')+'</textarea>'
+   +'<div class="row-actions" style="margin-top:8px"><button class="btn-dark btn-sm" onclick="saveC360Notes(\''+c.id+'\')">💾 Enregistrer les notes</button></div></div>';
+}
+function saveC360Notes(id){const c=CLIENTS.find(x=>x.id===id);if(!c)return;
+  c.notes=document.getElementById('c360notes').value;save(LS.clients,CLIENTS);toast('🗒️ Notes enregistrées');}
+
+/* ============ PLANNING ============ */
+let planOff=0;
+function planShift(d){planOff=(d===0)?0:planOff+d;renderPlanning();}
+function weekStart(off){const n=new Date();n.setHours(0,0,0,0);const dow=(n.getDay()+6)%7;n.setDate(n.getDate()-dow+off*7);return n;}
+function dISO(dt){return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0');}
+function planEvents(off){
+  const ws=weekStart(off),ev=[];
+  for(let i=0;i<7;i++){
+    const day=new Date(ws);day.setDate(ws.getDate()+i);const iso=dISO(day);
+    const ad=(a,b)=>[a,b].filter(Boolean).join(', ');
+    DEVIS.forEach(d=>{if(d.statut==='accepte'&&d.datePlanif===iso)ev.push({i,ic:'🛠️',lbl:devisName(d),sub:fmtQ(d.heures||0)+' h · '+(d.cVille||''),h:Number(d.heures)||0,adr:ad(d.cAdr,d.cVille),click:"openDevis('"+d.id+"')"});});
+    DEP.forEach(x=>{if(x.date===iso)ev.push({i,ic:x.itype==='mes'?'🧊':'🔧',lbl:(x.itype==='mes'?'MES — ':'Dép. — ')+(x.cNom||'?'),sub:fmtQ(x.heures||0)+' h · '+(x.cVille||''),h:Number(x.heures)||0,adr:ad(x.cAdr,x.cVille),click:"openDep('"+x.id+"')"});});
+    LOC.forEach(l=>{
+      if(l.dateDebut===iso&&l.statut!=='rendu')ev.push({i,ic:'🚚',lbl:'Livraison — '+(l.cNom||'?'),sub:(l.items||[]).map(x=>x.qte+'× '+x.ref).join(', '),h:1,adr:ad(l.cAdr,l.cVille),click:"openLoc('"+l.id+"')"});
+      if(l.dateFin===iso&&l.statut!=='rendu')ev.push({i,ic:'↩️',lbl:'Reprise — '+(l.cNom||'?'),sub:(l.items||[]).map(x=>x.qte+'× '+x.ref).join(', '),h:1,adr:ad(l.cAdr,l.cVille),click:"openLoc('"+l.id+"')"});
+    });
+    CTR.forEach(ct=>{if(ct.actif!==false&&ct.prochaineVisite===iso){const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(ct.clientNom||'').toLowerCase())||{};
+      ev.push({i,ic:'🤝',lbl:'Entretien — '+(ct.clientNom||'?'),sub:(ct.type||'')+' · '+eur0(ct.prix||0)+'/an',h:1.5,adr:ad(cl.adr,cl.ville),click:"go('contrats')"});}});
+  }
+  return {ws,ev};
+}
+function planifDevis(id,val){const d=DEVIS.find(x=>x.id===id);if(!d)return;
+  d.datePlanif=val||'';save(LS.devis,DEVIS);renderPlanning();updateBadges();
+  toast(val?('📅 Planifié le '+new Date(val+'T00:00:00').toLocaleDateString('fr-FR')):'Date retirée');}
+function renderPlanning(){
+  const r=planEvents(planOff),ws=r.ws,ev=r.ev;
+  const we=new Date(ws);we.setDate(ws.getDate()+6);
+  document.getElementById('planTitle').textContent='📅 Du '+ws.toLocaleDateString('fr-FR')+' au '+we.toLocaleDateString('fr-FR')+(planOff===0?' — semaine courante':'');
+  const hTot=ev.reduce((s,e)=>s+(e.h||0),0),cap=30;
+  document.getElementById('planCharge').innerHTML='<b style="font-size:20px;color:'+(hTot>cap?'var(--red)':'var(--green)')+'">'+fmtQ(hTot)+' h</b><div class="sub">charge / ~'+cap+' h facturables (6 h × 5 j — repère BP)</div>';
+  const names=['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+  const today=dISO(new Date());
+  document.getElementById('planGrid').innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px">'
+   +names.map((nm,i)=>{
+    const day=new Date(ws);day.setDate(ws.getDate()+i);const iso=dISO(day);
+    const evs=ev.filter(e=>e.i===i);
+    return '<div style="border:1px solid var(--line);border-radius:10px;padding:8px;background:'+(iso===today?'var(--blue-soft)':'var(--bg)')+';min-height:92px">'
+      +'<div style="font-size:11px;font-weight:700;color:'+(iso===today?'var(--blue)':'var(--muted)')+'">'+nm+' '+day.getDate()+'</div>'
+      +(evs.length?evs.map(e=>'<div onclick="'+e.click+'" style="cursor:pointer;background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:6px 7px;margin-top:6px;font-size:11.5px;line-height:1.3"><b>'+e.ic+' '+e.lbl+'</b>'+(e.adr?' '+mapsBtn(e.adr,'float:right'):'')+'<div class="sub2" style="font-size:10px">'+e.sub+'</div></div>').join(''):'<div class="sub2" style="margin-top:8px;font-size:10.5px">—</div>')
+      +'</div>';}).join('')+'</div>';
+  const todo=DEVIS.filter(d=>d.statut==='accepte'&&!d.datePlanif);
+  document.getElementById('planTodo').innerHTML=todo.length?todo.map(d=>{const c=compute(d);
+    return '<div class="recap-line"><div><b>'+devisName(d)+'</b><div class="sub2">'+d.num+' · '+fmtQ(d.heures||0)+' h prévues · '+eur0(c.totalHT)+' · '+(d.cVille||'')+'</div></div>'
+     +'<div class="row-actions"><input type="date" onchange="planifDevis(\''+d.id+'\',this.value)" style="max-width:170px"><button class="iconbtn" title="Ouvrir" onclick="openDevis(\''+d.id+'\')">✏️</button></div></div>';}).join('')
+   :'<div class="empty">Rien à planifier — tous tes chantiers signés ont une date (ou aucun signé pour l\'instant).</div>';
+}
+/* ============ MAILS AUTOMATIQUES ============ */
+function buildMail(to,subject,body){
+  try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(body);}catch(e){}
+  const a=document.createElement('a');
+  a.href='mailto:'+encodeURIComponent(to||'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  toast('✉️ Brouillon ouvert dans ta messagerie — texte aussi copié');
+}
+function mailDevis(){formToDevis();const c=compute(cur);const E=P.entreprise||{};
+  buildMail(cur.cMail,'Devis '+cur.num+' — '+(E.nom||'GL Froid & Clim'),
+'Bonjour'+(cur.cNom?' '+cur.cNom:'')+',\n\nSuite à notre échange, voici notre devis '+cur.num+' ('+cur.type+') pour un montant de '+eur(c.totalHT)+' HT — TVA non applicable, art. 293 B du CGI.\n\nIl est valable '+(P.validiteJours||30)+' jours. Je reste disponible pour toute question ou ajustement.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:'')+'\n\n(Pense à joindre le PDF généré par « Aperçu / PDF »)');}
+function mailRelance(id){const d=DEVIS.find(x=>x.id===id);if(!d)return;const c=compute(d);const E=P.entreprise||{};
+  buildMail(d.cMail,'Suivi de notre devis '+d.num,
+'Bonjour'+(d.cNom?' '+d.cNom:'')+',\n\nJe me permets de revenir vers vous au sujet du devis '+d.num+' ('+eur(c.totalHT)+' HT) transmis le '+(d.sentAt?new Date(d.sentAt).toLocaleDateString('fr-FR'):'récemment')+'.\n\nAvez-vous pu l\'étudier ? Je reste à votre disposition pour en discuter ou l\'ajuster si besoin.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:''));}
+function mailDemandePrix(){
+  const acc=DEVIS.filter(d=>d.statut==='accepte');const agg={};
+  acc.forEach(d=>{compute(d).mat.forEach(m=>{const k=m.nom+'|'+m.unite;if(!agg[k])agg[k]={nom:m.nom,unite:m.unite,qte:0};agg[k].qte+=m.qte;});});
+  const items=Object.values(agg).filter(x=>!CMD[x.nom]&&x.qte-(STOCK[x.nom]||0)>0);
+  if(!items.length){toast('Rien à demander — tout est commandé ou couvert par le stock');return;}
+  const E=P.entreprise||{};
+  buildMail('','Demande de prix — '+(E.nom||'GL Froid & Clim'),
+'Bonjour,\n\nPourriez-vous me communiquer vos prix et disponibilités pour :\n\n'+items.map(x=>'- '+x.nom+' : '+fmtQ(Math.ceil((x.qte-(STOCK[x.nom]||0))*100)/100)+' '+x.unite).join('\n')+'\n\nMerci de préciser les délais de livraison ou de retrait.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:'')+(E.email?'\n'+E.email:''));}
+function mailLoc(id){const l=LOC.find(x=>x.id===id);if(!l)return;const c=computeLoc(l);const E=P.entreprise||{};
+  buildMail(l.cMail,'Confirmation de location '+(l.num||''),
+'Bonjour'+(l.cNom?' '+l.cNom:'')+',\n\nJe vous confirme la location suivante :\n\n'+(l.items||[]).map(x=>'- '+x.qte+' × '+x.ref+' à '+eur(x.tarif)+'/semaine').join('\n')+'\nPériode : du '+(l.dateDebut||'—')+' au '+(l.dateFin||'—')+' ('+c.sem+' semaine'+(c.sem>1?'s':'')+')\nLivraison + mise en service : '+eur(c.liv)+' · Reprise : '+eur(c.rep)+(c.net>0?' · Nettoyage retour : '+eur(c.net):'')+'\nTotal : '+eur(c.totalHT)+' HT (TVA non applicable, art. 293 B) · Caution : '+eur(c.caution)+' (chèque non encaissé)\n\nL\'entretien courant est inclus pendant la location. Merci de prévoir une arrivée d\'eau, une alimentation électrique et une bonne ventilation du local (l\'air soufflé doit pouvoir s\'évacuer).\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:''));}
+function setStock(nom,v){STOCK[nom]=Math.max(0,Number(String(v).replace(',','.'))||0);save('cp2_stock',STOCK);renderCommander();}
 
 /* ============ WEB : PRIX EMBARQUÉS (copie Notion du 02/07/2026, modifiables dans Base de prix) ============ */
 const WEB_TARIF={"Nom":"Tarif standard 2026 – prix marché 07/2026 (à valider)","Prix à vérifier":"__YES__",
