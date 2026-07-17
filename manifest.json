@@ -1,6 +1,6 @@
 {
-  "name": "ClimPilot — GL Froid & Clim",
-  "short_name": "ClimPilot",
+  "name": "ClimPilot Next — GL Froid & Clim",
+  "short_name": "ClimPilot Next",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

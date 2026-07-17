@@ -142,6 +142,7 @@ tbody tr:hover{background:#f7f9fd}
 @media print{body *{visibility:hidden}#devisDoc,#devisDoc *{visibility:visible}#devisDoc{display:block;position:absolute;inset:0;padding:34px;font-size:12px;color:#000}.side,.topbar{display:none}}
 @media(max-width:860px){.grid2{grid-template-columns:1fr}.side{flex-basis:62px;width:62px}.brand small,.nav a .txt,.nav .badge,.side .foot{display:none}.brand{justify-content:center}.nav a{justify-content:center;padding:12px}}
 </style>
+<link rel="stylesheet" href="next-theme.css">
 </head>
 <body>
 <div class="app">
@@ -1565,6 +1566,9 @@ function renderGoulottes(){
 function delGoulotte(i){formToDevis();cur.goulottes.splice(i,1);renderGoulottes();}
 /* --- matériel complémentaire (base Matériel v2) + kits --- */
 const KITS={
+ 'Protection clim 16A — selon notice':[['Disjoncteur 16A',1]],
+ 'Protection clim 20A — selon notice':[['Disjoncteur 20A',1]],
+ 'Protection clim 32A — selon notice':[['Disjoncteur 32A',1]],
  'Kit hydraulique PAC air-eau':[['Kit hydraulique PAC (vannes + raccords)',1],['Multicouche Ø26',10],['Raccord à sertir Ø26',8],['Isolant tuyau 19 mm',10],['Pot à boue magnétique (désemboueur)',1],['Flexibles inox DN25 (paire)',1],['Support sol PAC anti-vibratile (paire)',1],['Sonde extérieure / câble bus',1]],
  'Kit ballon thermodynamique':[['Groupe de sécurité inox 3/4"',1],['Siphon groupe de sécurité',1],['Réducteur de pression 3/4"',1],['Vase expansion sanitaire 8L',1],['Raccord diélectrique (paire)',1],['Flexibles sanitaire (paire)',1],['Multicouche Ø20',6],['Raccord à sertir Ø20',6],['Gaine semi-rigide Ø160 (ballon)',4],['Chapeau de toiture / grille Ø160',2]],
  'Kit chambre froide positive':[['Panneau sandwich 60 mm',30],['Profils + visserie + mastic alimentaire (forfait)',1],['Porte pivotante froid positif',1],['Groupe monobloc positif (≤8 m³)',1],['Éclairage LED étanche chambre froide',1],['Rideau à lanières',1]],
@@ -3408,5 +3412,6 @@ initCloud();
 if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
 
 </script>
+<script src="next-addons.js"></script>
 </body>
 </html>
