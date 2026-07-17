@@ -1197,6 +1197,7 @@ function go(v){
   document.getElementById('v-'+(LISTV.includes(v)?'list':v)).classList.add('active');
   document.getElementById('ttl').textContent=TITLES[v][0];
   document.getElementById('sub').textContent=TITLES[v][1];
+  if(v==='wizard'&&!cur)newDevis(); /* fix : le lien du menu ouvrait le formulaire sans créer de devis → TypeError nbMach */
   if(v==='dash')renderDash();
   if(LISTV.includes(v)){window._listFilter=v;renderList();}
   if(v==='commander')renderCommander();
@@ -1497,7 +1498,9 @@ function formToDevis(){
 }
 function updateSplitNote(){const t=document.getElementById('f_type').value;const n=document.getElementById('splitAutoNote');
   n.textContent=TYPEUNITS[t]?`auto: ${TYPEUNITS[t][1]} unité(s) pour ${t}`:'';}
-function onTypeChange(){const t=document.getElementById('f_type').value;formToDevis();
+function onTypeChange(){const t=document.getElementById('f_type').value;
+  if(!cur){newDevis();const e=document.getElementById('f_type');if(e)e.value=t;} /* ceinture : garde le type choisi */
+  formToDevis();
   if(TYPEUNITS[t]){cur.nbMach=TYPEUNITS[t][0];cur.nbSplit=TYPEUNITS[t][1];
     document.getElementById('f_nbMach').value=cur.nbMach;document.getElementById('f_nbSplit').value=cur.nbSplit;
     fitArray('machines',cur.nbMach,()=>({marque:'',ref:'',achat:0,marge:35}));
@@ -1511,14 +1514,14 @@ function onTypeChange(){const t=document.getElementById('f_type').value;formToDe
     if(td.rateCustom!=null){cur.rateCustom=td.rateCustom;const e=document.getElementById('f_rateCustom');if(e)e.value=td.rateCustom;}
     const rc=document.getElementById('f_rateCustom');if(rc)rc.style.display=(cur.rateChoice==='custom')?'block':'none';}
   updateSplitNote();recalc();}
-function fitArray(key,n,mk){while(cur[key].length<n)cur[key].push(mk());if(cur[key].length>n)cur[key]=cur[key].slice(0,n);}
+function fitArray(key,n,mk){if(!cur||!cur[key])return;while(cur[key].length<n)cur[key].push(mk());if(cur[key].length>n)cur[key]=cur[key].slice(0,n);}
 function syncMachines(){const n=Math.max(0,+document.getElementById('f_nbMach').value||0);formToDevis();fitArray('machines',n,()=>({marque:'',ref:'',achat:0,marge:35}));renderMachines();}
 function syncSplits(){const n=Math.max(0,+document.getElementById('f_nbSplit').value||0);formToDevis();fitArray('splits',n,()=>({puiss:3.5,liaison:'Liaison 1/4 - 3/8',long:5,cableInter:'Câble 5G1,5'}));renderSplits();}
 function addMachine(){formToDevis();cur.machines.push({marque:'',ref:'',achat:0,marge:35});document.getElementById('f_nbMach').value=cur.machines.length;renderMachines();}
 function addSplit(){formToDevis();cur.splits.push({puiss:3.5,liaison:'Liaison 1/4 - 3/8',long:5,cableInter:'Câble 5G1,5'});document.getElementById('f_nbSplit').value=cur.splits.length;renderSplits();}
 function addGoulotte(){formToDevis();cur.goulottes.push({type:'Goulotte 80x60',long:0});renderGoulottes();}
 /* --- machines + bibliothèque --- */
-function renderMachines(){
+function renderMachines(){if(!cur)return;
   const libOpts=MACHLIB.map((m,j)=>`<option value="${j}">${m.marque} ${m.ref} — ${eur(m.achat)}</option>`).join('');
   document.getElementById('machineList').innerHTML=(cur.machines||[]).map((m,i)=>`
    <div class="subcard"><h3>Machine ${i+1} <span style="float:right">
@@ -1541,7 +1544,7 @@ function memMachine(i){const c=document.querySelectorAll('#machineList .subcard'
   if(j>=0)MACHLIB[j]=m;else MACHLIB.push(m);
   save(LS.machlib,MACHLIB);formToDevis();renderMachines();toast('☆ Machine mémorisée');}
 function applyLib(i,j){if(j==='')return;const m=MACHLIB[+j];if(!m)return;formToDevis();cur.machines[i]={...m};renderMachines();toast('Machine chargée : '+(m.marque+' '+m.ref).trim());}
-function renderSplits(){
+function renderSplits(){if(!cur)return;
   const liais=PRIX.filter(p=>p.cat==='Cuivre').map(p=>p.nom);
   document.getElementById('splitList').innerHTML=(cur.splits||[]).map((s,i)=>`
    <div class="subcard"><h3>Split ${i+1} ${cur.splits.length>1?`<button class="iconbtn d" style="float:right" onclick="delSplit(${i})">🗑</button>`:''}</h3>
@@ -1554,7 +1557,7 @@ function renderSplits(){
 }
 function onPuissChange(i){const c=document.querySelectorAll('#splitList .subcard')[i];const kw=+c.querySelector('.s-puiss').value;c.querySelector('.s-liaison').value=liaisonForPower(kw);}
 function delSplit(i){formToDevis();cur.splits.splice(i,1);document.getElementById('f_nbSplit').value=cur.splits.length;renderSplits();}
-function renderGoulottes(){
+function renderGoulottes(){if(!cur)return;
   const types=PRIX.filter(p=>p.cat==='Goulotte'&&p.unite==='m').map(p=>p.nom);
   document.getElementById('goulList').innerHTML=(cur.goulottes||[]).map((gx,i)=>`
    <div class="grow frm" style="margin-bottom:8px;align-items:end">
@@ -1575,7 +1578,7 @@ const KITS={
  'Kit chambre froide négative':[['Panneau sandwich 100 mm',30],['Profils + visserie + mastic alimentaire (forfait)',1],['Porte pivotante froid négatif',1],['Groupe monobloc négatif (≤6 m³)',1],['Résistance de cordon de porte (négatif)',1],['Éclairage LED étanche chambre froide',1],['Rideau à lanières',1]],
  'Kit gainable (4 bouches)':[['Gaine isolée Ø160',12],['Gaine isolée Ø200',8],['Plénum soufflage grille linéaire',4],['Plénum de reprise',1],['Grille soufflage linéaire',4],['Grille de reprise linéaire',1],['Registre de réglage « Dumper »',4],['Culotte Y galva',2],['Réducteur galva',2],['Scotch alu 50 m',1],['Colliers de serrage (x10)',2]]
 };
-function renderExtras(){
+function renderExtras(){if(!cur)return;
   document.getElementById('kitBar').innerHTML=Object.keys(KITS).map(k=>`<span class="tag pret" style="cursor:pointer;padding:6px 12px" onclick="applyKit('${k.replace(/'/g,"\\'")}')">⚡ ${k}</span>`).join('');
   const dl='<datalist id="extraDL">'+PRIX.map(p=>'<option value="'+p.nom.replace(/"/g,'&quot;')+'">').join('')+'</datalist>';
   document.getElementById('extraList').innerHTML=dl+((cur.extras||[]).map((x,i)=>{
