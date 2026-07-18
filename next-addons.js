@@ -5,7 +5,7 @@
 (function(){
   'use strict';
 
-  const NX_VERSION='Next 1.0.1 stable';
+  const NX_VERSION='Next 1.1.0 navigation & scan';
   const NX_KEYS={
     tasks:'cpnext_tasks',trash:'cpnext_trash',templates:'cpnext_templates',
     history:'cpnext_history',settings:'cpnext_settings',notified:'cpnext_notified',
@@ -32,6 +32,7 @@
   let nxSettings=Object.assign({season:[6,6,7,8,10,13,14,12,8,6,5,5],notifications:false},nxLoad(NX_KEYS.settings,{}));
   let nxSearchItems=[];
   let nxOcrParsed={};
+  let nxScanContext={target:'equip'};
 
   NX_SYNC.forEach(k=>{try{if(Array.isArray(SYNC_KEYS)&&SYNC_KEYS.indexOf(k)<0)SYNC_KEYS.push(k);}catch(e){}});
 
@@ -49,6 +50,9 @@
   function nxInjectShell(){
     const top=document.querySelector('.topbar');
     const actions=top&&top.querySelector('.row-actions');
+    if(top&&!document.getElementById('nxNavToggle')){
+      top.insertAdjacentHTML('afterbegin','<button class="nx-nav-mobile-toggle" id="nxNavToggle" type="button" onclick="nxToggleNav()" aria-label="Ouvrir le menu" aria-expanded="false">☰</button>');
+    }
     if(top&&actions&&!document.getElementById('nxSearch')){
       actions.insertAdjacentHTML('beforebegin',`<div class="next-command"><span class="next-search-ico">⌕</span><input id="nxSearch" autocomplete="off" placeholder="Rechercher client, devis, facture, ville…"><kbd>Ctrl K</kbd><div class="next-command-results" id="nxSearchResults"></div></div>`);
     }
@@ -61,6 +65,7 @@
         <a data-v="nx_tasks"><span class="ico">🔔</span><span class="txt">À faire</span><span class="badge" id="nxTaskBadge">0</span></a>
         <a data-v="nx_templates"><span class="ico">⚡</span><span class="txt">Modèles</span></a>
         <a data-v="nx_scan"><span class="ico">📷</span><span class="txt">Scanner</span></a>
+        <a data-v="nx_docs"><span class="ico">📁</span><span class="txt">Registre des documents</span></a>
         <a data-v="nx_tools"><span class="ico">🛡️</span><span class="txt">Sécurité & corbeille</span></a>
         <a data-v="nx_help"><span class="ico">❔</span><span class="txt">Mode d'emploi</span></a>`);
     }
@@ -72,6 +77,7 @@
         <section class="view" id="v-nx_tasks"><div id="nxTasks"></div></section>
         <section class="view" id="v-nx_templates"><div id="nxTemplates"></div></section>
         <section class="view" id="v-nx_scan"><div id="nxScan"></div></section>
+        <section class="view" id="v-nx_docs"><div id="nxDocs"></div></section>
         <section class="view" id="v-nx_tools"><div id="nxTools"></div></section>
         <section class="view" id="v-nx_help"><div id="nxHelp"></div></section>`);
     }
@@ -82,6 +88,7 @@
     TITLES.nx_scan=['Scanner une photo','Lis une plaque signalétique ou une fiche avec l’appareil photo.'];
     TITLES.nx_tools=['Sécurité & corbeille','Restaure une suppression ou une version antérieure de tes données.'];
     TITLES.nx_help=['Mode d’emploi','Toutes les fonctions de ClimPilot expliquées simplement.'];
+    TITLES.nx_docs=['Registre des documents','Tous tes numéros — devis, factures, contrats, fiches fluides — classés et contrôlés.'];
 
     const dash=document.getElementById('v-dash');
     if(dash&&!document.getElementById('nxDashStrip'))dash.insertAdjacentHTML('afterbegin','<div id="nxDashStrip"></div>');
@@ -90,7 +97,15 @@
     const planActions=document.querySelector('#v-plan .flexhead .row-actions')||document.querySelector('#v-plan .row-actions');
     if(planActions&&!document.getElementById('nxIcsBtn'))planActions.insertAdjacentHTML('beforeend','<button class="btn-ghost btn-sm" id="nxIcsBtn" onclick="nxExportICS()">📅 Calendrier iPhone</button>');
 
+    const equipActions=document.querySelector('#mEquip .navbtns');
+    if(equipActions&&!document.getElementById('nxScanEquipBtn'))equipActions.insertAdjacentHTML('afterbegin','<button class="btn-ghost" id="nxScanEquipBtn" type="button" onclick="nxOpenScanner(\'equip\')">📷 Scanner la plaque</button>');
+    const fluActions=document.querySelector('#mFlu .navbtns');
+    if(fluActions&&!document.getElementById('nxScanFluBtn'))fluActions.insertAdjacentHTML('afterbegin','<button class="btn-ghost" id="nxScanFluBtn" type="button" onclick="nxOpenScanner(\'fluide\')">📷 Scanner la plaque équipement</button>');
+    const depFluBtn=Array.from(document.querySelectorAll('#v-dep button')).find(b=>(b.getAttribute('onclick')||'').includes('openFlu'));
+    if(depFluBtn&&!document.getElementById('nxScanDepBtn'))depFluBtn.insertAdjacentHTML('beforebegin','<button class="btn-ghost btn-sm" id="nxScanDepBtn" type="button" onclick="nxOpenScannerForIntervention()">📷 Scanner / créer équipement</button>');
+
     document.body.insertAdjacentHTML('beforeend',`
+      <div class="nx-nav-overlay" id="nxNavOverlay" onclick="nxCloseNav()"></div>
       <div class="next-modal" id="nxTaskModal"><div class="next-modal-box"><div class="next-modal-h"><h3>Nouvelle tâche</h3><button class="iconbtn" onclick="nxCloseModal('nxTaskModal')">✕</button></div><div class="next-modal-b"><div class="next-form">
         <label class="full">À faire *<input id="nxTaskTitle" placeholder="Ex : rappeler le fournisseur pour la PAC"></label>
         <label>Échéance<input type="date" id="nxTaskDue"></label><label>Priorité<select id="nxTaskPriority"><option value="high">Haute</option><option value="medium" selected>Moyenne</option><option value="low">Basse</option></select></label>
@@ -100,12 +115,88 @@
       <div class="next-modal" id="nxTemplateModal"><div class="next-modal-box"><div class="next-modal-h"><h3>Enregistrer comme modèle</h3><button class="iconbtn" onclick="nxCloseModal('nxTemplateModal')">✕</button></div><div class="next-modal-b"><div class="next-form">
         <label class="full">Nom du modèle *<input id="nxTplName" placeholder="Ex : Monosplit Samsung standard 5 m"></label>
         <label class="full">Description<input id="nxTplDesc" placeholder="Ex : pose simple, support mural, MES incluse"></label>
-      </div><div class="row-actions" style="margin-top:16px"><button class="btn-ghost" onclick="nxCloseModal('nxTemplateModal')">Annuler</button><button class="btn-pri" onclick="nxConfirmTemplate()">Créer le modèle</button></div></div></div></div>`);
+      </div><div class="row-actions" style="margin-top:16px"><button class="btn-ghost" onclick="nxCloseModal('nxTemplateModal')">Annuler</button><button class="btn-pri" onclick="nxConfirmTemplate()">Créer le modèle</button></div></div></div></div>
+      <div class="next-modal nx-scan-modal" id="nxContextScanner"><div class="next-modal-box"><div class="next-modal-h"><div><h3 id="nxCtxScanTitle">Scanner une plaque</h3><div class="sub" id="nxCtxScanSub">Les informations détectées doivent être vérifiées.</div></div><button class="iconbtn" onclick="nxCloseContextScanner()">✕</button></div><div class="next-modal-b">
+        <div class="next-grid"><div class="next-card next-col-6"><h3>1. Photographier la plaque</h3><label class="next-drop" id="nxCtxDrop"><input type="file" id="nxCtxOcrFile" accept="image/*" capture="environment"><b>📸 Prendre ou choisir une photo</b><div class="sub">Cadre uniquement la plaque, évite les reflets et garde le texte droit.</div><img id="nxCtxOcrPreview" style="display:none"></label><div class="row-actions" style="margin-top:12px"><button class="btn-pri" type="button" onclick="nxRunContextOCR()">Lire la plaque</button></div><div id="nxCtxOcrProgress" class="sub" style="margin-top:10px"></div></div>
+        <div class="next-card next-col-6"><h3>2. Contrôler avant d’utiliser</h3><div id="nxCtxOcrFound"><div class="next-empty">Les champs reconnus apparaîtront ici et resteront modifiables.</div></div></div></div>
+      </div></div></div>`);
   }
+
+  /* ===== REGISTRE DES DOCUMENTS (Claude) — tous les numéros classés + contrôle d'intégrité des séries ===== */
+  function nxAllDocs(){
+    const docs=[];const st={brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'Accepté',refuse:'Refusé'};
+    (DEVIS||[]).forEach(d=>{let m=0;try{m=Math.round(compute(d).totalHT*100)/100;}catch(e){}
+      docs.push({num:d.num||'',type:'Devis',date:d.created?new Date(d.created).toISOString().slice(0,10):'',client:d.cNom||'—',montant:m,statut:st[d.statut]||d.statut,open:"openDevis('"+d.id+"')"});
+      [['facAcompte','Facture (acompte)'],['facSolde','Facture']].forEach(p=>{const f=d[p[0]];
+        if(f)docs.push({num:f.num,type:'Facture',stype:p[1],date:f.date||'',client:d.cNom||'—',montant:f.montant,statut:f.payeLe?'✔ Payée':'⌛ À encaisser',open:"openDevis('"+d.id+"')"});});});
+    (DEP||[]).forEach(x=>{if(x.facNum){let m=0;try{m=Math.round(computeDep(x).totalHT*100)/100;}catch(e){}
+      docs.push({num:x.facNum,type:'Facture',stype:x.itype==='mes'?'Facture (MES)':'Facture (dépannage)',date:x.facDate||x.date||'',client:x.cNom||'—',montant:m,statut:x.statut==='payee'?'✔ Payée':'⌛ À encaisser',open:"openDep('"+x.id+"')"});}});
+    (LOC||[]).forEach(l=>{let m=0;try{m=Math.round(computeLoc(l).totalHT*100)/100;}catch(e){}
+      if(l.num)docs.push({num:l.num,type:'Contrat location',date:l.dateDebut||'',client:l.cNom||'—',montant:m,statut:({reserve:'Réservé',encours:'En cours',rendu:'Rendue'})[l.statut]||l.statut,open:"go('loc')"});
+      if(l.fac)docs.push({num:l.fac.num,type:'Facture',stype:'Facture (location)',date:l.fac.date||'',client:l.cNom||'—',montant:l.fac.montant,statut:l.fac.payeLe?'✔ Payée':'⌛ À encaisser',open:"go('loc')"});});
+    (CTR||[]).forEach(c=>{(c.facs||[]).forEach(f=>{docs.push({num:f.num,type:'Facture',stype:'Facture (entretien '+f.annee+')',date:f.date||'',client:c.clientNom||'—',montant:f.montant,statut:f.payeLe?'✔ Payée':'⌛ À encaisser',open:"go('contrats')"});});});
+    (typeof FLU!=='undefined'?FLU:[]).forEach(f=>docs.push({num:f.num||'',type:'Fiche fluides',date:f.date||'',client:f.client||'—',montant:null,statut:'',open:"go('fluides')"}));
+    return docs;
+  }
+  function nxSerieCheck(nums){
+    const by={},dups=[],seen={};
+    nums.forEach(n=>{const m=String(n).match(/^([A-Z]+)-(\d{4})-(\d+)$/);if(!m)return;
+      if(seen[n])dups.push(n);seen[n]=1;
+      const key=m[1]+'-'+m[2];(by[key]=by[key]||[]).push(parseInt(m[3],10));});
+    const gaps=[];
+    Object.entries(by).forEach(([key,arr])=>{const set=new Set(arr);const max=Math.max.apply(null,arr);
+      for(let i=1;i<=max;i++){if(!set.has(i))gaps.push(key+'-'+String(i).padStart(3,'0'));}});
+    return {gaps,dups};
+  }
+  function nxRenderDocs(){
+    const box=document.getElementById('nxDocs');if(!box)return;
+    const docs=nxAllDocs();
+    const years=[...new Set(docs.map(d=>(d.date||'').slice(0,4)).filter(Boolean))].sort().reverse();
+    const y=(document.getElementById('nxDocsYear')||{}).value||years[0]||String(new Date().getFullYear());
+    const ty=(document.getElementById('nxDocsType')||{}).value||'';
+    const tri=(document.getElementById('nxDocsTri')||{}).value||'num';
+    let rows=docs.filter(d=>(!y||(d.date||'').slice(0,4)===y)&&(!ty||d.type===ty));
+    rows.sort((a,b)=>tri==='date'?((b.date||'')<(a.date||'')?-1:1):tri==='montant'?((b.montant||0)-(a.montant||0)):String(a.num).localeCompare(String(b.num),undefined,{numeric:true}));
+    const chk=nxSerieCheck(docs.filter(d=>d.type==='Facture').map(d=>d.num));
+    const chkL=nxSerieCheck(docs.filter(d=>d.type==='Contrat location').map(d=>d.num));
+    const nFac=docs.filter(d=>d.type==='Facture'&&(d.date||'').slice(0,4)===y);
+    const att=nFac.filter(d=>d.statut.indexOf('encaisser')>=0);
+    box.innerHTML=
+     '<div class="next-hero"><h2>📁 Registre des documents</h2><p>Chaque numéro à sa place : devis DV-, factures F- (série continue commune : chantiers, interventions, locations, entretien), contrats L-, fiches fluides FF-. Le registre contrôle la continuité tout seul.</p></div>'
+     +(chk.gaps.length?'<div class="warnbox" style="border-color:var(--red);color:var(--red)">🚨 <b>Trous dans la série de factures :</b> '+chk.gaps.join(', ')+'. Une série de factures doit être CONTINUE (obligation comptable). Une facture ratée ne se supprime pas : elle s\'annule par un avoir et garde son numéro. Vérifie la corbeille (Sécurité & corbeille) pour restaurer.</div>':'')
+     +(chk.dups.length?'<div class="warnbox" style="border-color:var(--red);color:var(--red)">🚨 <b>Numéros de facture en DOUBLE :</b> '+chk.dups.join(', ')+' — à corriger immédiatement.</div>':'')
+     +(chkL.dups.length?'<div class="warnbox">⚠ Contrats de location en double : '+chkL.dups.join(', ')+'</div>':'')
+     +(!chk.gaps.length&&!chk.dups.length?'<div class="warnbox" style="background:var(--green-soft);border-color:#b7e3c6;color:#0f6b39">✅ Séries de numéros propres : aucune facture manquante, aucun doublon.</div>':'')
+     +'<div class="kpis">'
+     +'<div class="kpi blue"><div class="lab">Documents '+(y||'—')+'<span>📁</span></div><div class="val">'+rows.length+'</div></div>'
+     +'<div class="kpi good"><div class="lab">Factures '+(y||'—')+'<span>🧾</span></div><div class="val">'+nFac.length+'</div></div>'
+     +'<div class="kpi warn"><div class="lab">À encaisser<span>⌛</span></div><div class="val">'+att.length+' ('+eur0(att.reduce((s,d)=>s+(d.montant||0),0))+')</div></div></div>'
+     +'<div class="card"><div class="row-actions" style="margin-bottom:10px">'
+     +'<select id="nxDocsYear" style="max-width:110px" onchange="nxRenderDocs()">'+years.map(x=>'<option'+(x===y?' selected':'')+'>'+x+'</option>').join('')+'</select>'
+     +'<select id="nxDocsType" style="max-width:170px" onchange="nxRenderDocs()"><option value=""'+(ty===''?' selected':'')+'>Tous les types</option>'+['Devis','Facture','Contrat location','Fiche fluides'].map(t=>'<option'+(t===ty?' selected':'')+'>'+t+'</option>').join('')+'</select>'
+     +'<select id="nxDocsTri" style="max-width:150px" onchange="nxRenderDocs()"><option value="num"'+(tri==='num'?' selected':'')+'>Tri : n° croissant</option><option value="date"'+(tri==='date'?' selected':'')+'>Tri : plus récents</option><option value="montant"'+(tri==='montant'?' selected':'')+'>Tri : montant ↓</option></select>'
+     +'<button class="btn-ghost btn-sm" onclick="nxExportDocsCSV()">📊 Export CSV du registre</button></div>'
+     +(rows.length?'<div class="scroll"><table><thead><tr><th class="l">N°</th><th class="l">Type</th><th class="l">Date</th><th class="l">Client</th><th>Montant HT</th><th class="l">Statut</th></tr></thead><tbody>'
+       +rows.map(d=>'<tr style="cursor:pointer" onclick="'+d.open+'"><td class="l"><b>'+nxEsc(d.num||'—')+'</b></td><td class="l">'+nxEsc(d.stype||d.type)+'</td><td class="l">'+(d.date?nxDate(d.date):'—')+'</td><td class="l">'+nxEsc(d.client)+'</td><td>'+(d.montant!=null?eur(d.montant):'—')+'</td><td class="l">'+nxEsc(d.statut)+'</td></tr>').join('')
+       +'</tbody></table></div><div class="sub" style="margin-top:8px">Clique une ligne pour ouvrir le document. Astuce classement PC : enregistre chaque PDF sous « N°_Client.pdf » (ex. F-2026-012_GarageMartin.pdf) dans le dossier GL_Entreprise correspondant.</div>'
+       :'<div class="next-empty">Aucun document pour ce filtre.</div>')+'</div>';
+  }
+  function nxExportDocsCSV(){
+    const docs=nxAllDocs();if(!docs.length){nxToast('Aucun document');return;}
+    const nf=n=>n==null?'':String(Math.round(n*100)/100).replace('.',',');
+    const esc2=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+    const csv='﻿'+[['N°','Type','Date','Client','Montant HT','Statut']].concat(
+      docs.sort((a,b)=>String(a.num).localeCompare(String(b.num),undefined,{numeric:true}))
+        .map(d=>[d.num,d.stype||d.type,d.date,d.client,nf(d.montant),d.statut])).map(r=>r.map(esc2).join(';')).join('\r\n');
+    const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+    const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ClimPilot_registre_documents_'+nxToday()+'.csv';a.click();
+    nxToast('📁 Registre exporté — archive-le avec ta compta','ok');
+  }
+  Object.assign(window,{nxRenderDocs,nxExportDocsCSV});
 
   const nxRenderers={
     nx_cockpit:nxRenderCockpit,nx_tasks:nxRenderTasks,nx_templates:nxRenderTemplates,
-    nx_scan:nxRenderScan,nx_tools:nxRenderTools,nx_help:nxRenderHelp
+    nx_scan:nxRenderScan,nx_tools:nxRenderTools,nx_help:nxRenderHelp,nx_docs:nxRenderDocs
   };
 
   function nxPatchNavigation(){
@@ -114,6 +205,8 @@
       original(v);
       if(nxRenderers[v])nxRenderers[v]();
       if(v==='dash')nxRenderDashStrip();
+      nxRevealNavForView(v);
+      nxCloseNav();
     };
   }
 
@@ -166,7 +259,7 @@
     try{monthCA=(allRecettes()||[]).filter(r=>{const d=new Date(r.date);return d.getFullYear()===year&&d.getMonth()===month;}).reduce((x,r)=>x+Number(r.montant||0),0);}catch(e){}
     const origins={};(CLIENTS||[]).forEach(c=>{const k=c.source||'Non renseignée';origins[k]=(origins[k]||0)+1;});
     box.innerHTML=`
-      <div class="next-hero"><h2>✨ ClimPilot Next</h2><p>Ton copilote de dirigeant : il surveille les oublis, sécurise les données et te montre où agir aujourd’hui.</p><div class="next-actions"><button onclick="go('nx_tasks')">🔔 ${tasks.length} action(s)</button><button onclick="nxOpenTaskModal()">＋ Ajouter une tâche</button><button onclick="go('nx_scan')">📷 Scanner une plaque</button><button onclick="nxExportICS()">📅 Export iPhone</button></div></div>
+      <div class="next-hero"><h2>✨ ClimPilot Next</h2><p>Ton copilote de dirigeant : il surveille les oublis, sécurise les données et te montre où agir aujourd’hui.</p><div class="next-actions"><button onclick="go('nx_tasks')">🔔 ${tasks.length} action(s)</button><button onclick="nxOpenTaskModal()">＋ Ajouter une tâche</button><button onclick="nxOpenScanner('equip')">📷 Scanner une plaque</button><button onclick="nxExportICS()">📅 Export iPhone</button></div></div>
       <div class="next-stat-row">
         <div class="next-stat"><small>Encaissé</small><strong>${eur0(s.encaissed)}</strong></div>
         <div class="next-stat"><small>Conversion devis</small><strong>${fmtQ(s.conv)} %</strong><span class="sub">${s.accepted}/${s.sent} décisions</span></div>
@@ -234,7 +327,7 @@
       {type:'Action',ico:'🔧',title:'Nouvelle intervention',sub:'Dépannage ou mise en service',terms:['dépannage intervention mes'],run:()=>newDep('dep')},
       {type:'Action',ico:'💨',title:'Nouvelle location adia',sub:'Contrat et réservation',terms:['location adiabatique'],run:()=>newLoc()},
       {type:'Action',ico:'🤝',title:'Nouveau contrat d’entretien',sub:'Assistant guidé',terms:['contrat entretien maintenance'],run:()=>nxOpenContractWizard()},
-      {type:'Action',ico:'📷',title:'Scanner une photo',sub:'Plaque signalétique ou document',terms:['scan photo ocr plaque'],run:()=>go('nx_scan')}
+      {type:'Action',ico:'📷',title:'Scanner une plaque',sub:'Préremplir un équipement sans quitter le formulaire',terms:['scan photo ocr plaque équipement'],run:()=>nxOpenScanner('equip')}
     );
     nxSearchItems=items;return items;
   }
@@ -409,6 +502,46 @@
   function nxApplyOcrFluide(){openFlu();const m={client:'fl_client',fluide:'fl_fluide',charge:'fl_charge',qv:'fl_qv',qrt:'fl_qrt',date:'fl_date'};Object.entries(m).forEach(([k,id])=>{if(nxOcrParsed[k]!=null&&document.getElementById(id))document.getElementById(id).value=nxOcrParsed[k];});if(nxOcrParsed.modele||nxOcrParsed.serie)document.getElementById('fl_desc').value=[nxOcrParsed.marque,nxOcrParsed.modele,nxOcrParsed.serie].filter(Boolean).join(' — ');nxToast('Fiche préremplie — contrôle obligatoire avant enregistrement','ok');}
   Object.assign(window,{nxRunOCR,nxApplyOcrEquip,nxApplyOcrFluide});
 
+  /* ---------- Scanner contextuel : conserve le formulaire métier ouvert ---------- */
+  const NX_CTX_FIELDS={
+    equip:[['marque','Marque'],['modele','Modèle / référence'],['serie','N° de série'],['fluide','Fluide'],['charge','Charge usine (kg)']],
+    fluide:[['marque','Marque'],['modele','Modèle / référence'],['serie','N° de série'],['fluide','Fluide'],['charge','Charge nominale (kg)']]
+  };
+  function nxContextPreview(file){const img=document.getElementById('nxCtxOcrPreview');if(!img)return;if(img.dataset.url)URL.revokeObjectURL(img.dataset.url);if(!file){img.style.display='none';img.removeAttribute('src');img.dataset.url='';return;}const url=URL.createObjectURL(file);img.dataset.url=url;img.src=url;img.style.display='block';}
+  function nxOpenScanner(target){
+    target=target==='fluide'?'fluide':'equip';nxScanContext={target};nxOcrFile=null;nxOcrParsed={};
+    const parentId=target==='fluide'?'mFlu':'mEquip',parent=document.getElementById(parentId);
+    if(!parent||!parent.classList.contains('on')){if(target==='fluide')openFlu();else openEquip();}
+    const title=document.getElementById('nxCtxScanTitle'),sub=document.getElementById('nxCtxScanSub'),input=document.getElementById('nxCtxOcrFile'),progress=document.getElementById('nxCtxOcrProgress'),found=document.getElementById('nxCtxOcrFound');
+    if(title)title.textContent=target==='fluide'?'Scanner la plaque pour la fiche Cerfa':'Scanner la plaque de l’équipement';
+    if(sub)sub.textContent=target==='fluide'?'La fiche reste ouverte derrière : client, nature et quantités ne seront pas effacés.':'Le formulaire équipement reste ouvert derrière et conserve les informations déjà saisies.';
+    if(input){input.value='';input.onchange=()=>{nxOcrFile=input.files&&input.files[0]||null;nxContextPreview(nxOcrFile);};}
+    if(progress)progress.textContent='';if(found)found.innerHTML='<div class="next-empty">Les champs reconnus apparaîtront ici et resteront modifiables.</div>';nxContextPreview(null);
+    const drop=document.getElementById('nxCtxDrop');if(drop){drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag');};drop.ondragleave=()=>drop.classList.remove('drag');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');nxOcrFile=e.dataTransfer.files&&e.dataTransfer.files[0]||null;nxContextPreview(nxOcrFile);};}
+    document.getElementById('nxContextScanner').classList.add('on');
+  }
+  function nxOpenScannerForIntervention(){const client=(document.getElementById('dp_cNom')||{}).value||'';openEquip(null,client);nxOpenScanner('equip');}
+  function nxCloseContextScanner(){const m=document.getElementById('nxContextScanner');if(m)m.classList.remove('on');nxContextPreview(null);nxOcrFile=null;}
+  function nxRenderContextOcr(){
+    const box=document.getElementById('nxCtxOcrFound'),fields=NX_CTX_FIELDS[nxScanContext.target]||NX_CTX_FIELDS.equip;if(!box)return;
+    box.innerHTML='<div class="nx-ocr-review">'+fields.map(([key,label])=>'<label>'+label+'<input data-nx-ocr-field="'+key+'" value="'+nxEsc(nxOcrParsed[key]??'')+'"></label>').join('')+'</div><div class="warnbox" style="margin:12px 0 0">⚠️ Compare chaque valeur avec la plaque. Le scanner propose, il ne certifie pas.</div><button class="btn-next-accent" style="width:100%;margin-top:12px" type="button" onclick="nxApplyContextOCR()">Utiliser ces informations</button>';
+  }
+  async function nxRunContextOCR(){
+    const progress=document.getElementById('nxCtxOcrProgress');if(!nxOcrFile){nxToast('Prends ou choisis une photo','warn');return;}if(progress)progress.textContent='Chargement du moteur OCR…';
+    try{const T=await nxLoadTesseract();const r=await T.recognize(nxOcrFile,'fra+eng',{logger:m=>{if(!progress)return;progress.textContent=m.status==='recognizing text'?'Lecture : '+Math.round((m.progress||0)*100)+' %':m.status||'Analyse…';}});nxOcrParsed=nxParseOCR(r.data.text||'','equip');nxRenderContextOcr();if(progress)progress.textContent='Lecture terminée — vérification obligatoire.';}catch(e){if(progress)progress.textContent='Échec : '+(e.message||e);nxToast('OCR impossible. Vérifie la connexion et la netteté de la photo.','err');}
+  }
+  function nxApplyContextOCR(){
+    const values={};document.querySelectorAll('#nxCtxOcrFound [data-nx-ocr-field]').forEach(e=>values[e.dataset.nxOcrField]=e.value.trim());
+    if(nxScanContext.target==='equip'){
+      const map={marque:'eq_marque',modele:'eq_modele',serie:'eq_serie',fluide:'eq_fluide',charge:'eq_charge'};Object.entries(map).forEach(([k,id])=>{const e=document.getElementById(id);if(e&&values[k]!=='')e.value=values[k];});
+    }else{
+      const desc=[values.marque,values.modele,values.serie&&'SN '+values.serie].filter(Boolean).join(' — '),d=document.getElementById('fl_desc'),fluid=document.getElementById('fl_fluide'),charge=document.getElementById('fl_charge');if(d&&desc)d.value=desc;if(fluid&&values.fluide)fluid.value=values.fluide.toUpperCase();if(charge&&values.charge!=='')charge.value=String(values.charge).replace(',','.');
+      const sel=document.getElementById('fl_equip');if(sel)sel.value='';
+    }
+    nxCloseContextScanner();nxToast('Plaque préremplie — contrôle obligatoire avant enregistrement','ok');
+  }
+  Object.assign(window,{nxOpenScanner,nxOpenScannerForIntervention,nxCloseContextScanner,nxRunContextOCR,nxApplyContextOCR});
+
   /* ---------- Devis assisté : protections électriques, automatismes et interface métier ---------- */
   const NX_BREAKERS=['Disjoncteur 16A','Disjoncteur 20A','Disjoncteur 32A'];
   function nxEnsureQuote(d){
@@ -526,22 +659,47 @@
     const progress=wizard.querySelector('.progress'),steps=Array.from(wizard.querySelectorAll(':scope > .step'));if(!progress||!steps.length)return;
     const layout=document.createElement('div');layout.id='nxQuoteLayout';layout.className='nx-quote-layout';layout.innerHTML='<main class="nx-quote-main"></main><aside class="nx-quote-assist" id="nxQuoteAssist"></aside>';progress.insertAdjacentElement('afterend',layout);const main=layout.querySelector('.nx-quote-main');steps.forEach(s=>main.appendChild(s));
   }
-  function nxOrganizeNavigation(){
-    const nav=document.getElementById('nav');if(!nav||nav.querySelector('.nx-nav-group'))return;
-    const groups=[
-      ['Pilotage',['nx_cockpit','dash','nx_tasks','plan']],
-      ['Vente & clients',['wizard','verifier','pret','envoye','accepte','tous','clients','nx_templates']],
-      ['Terrain',['dep','adia','loc','contrats','fluides','dim']],
-      ['Gestion',['commander','recettes','prix','params','nx_scan','nx_tools','nx_help']]
-    ];
-    const links={};nav.querySelectorAll('a[data-v]').forEach(a=>links[a.dataset.v]=a);nav.innerHTML='';
-    groups.forEach(([label,views])=>{const g=document.createElement('div');g.className='nx-nav-group';g.innerHTML='<div class="nx-nav-label">'+label+'</div>';views.forEach(v=>{if(links[v])g.appendChild(links[v]);});nav.appendChild(g);});
+  const NX_NAV_SECTIONS=[
+    {id:'home',label:'Accueil',ico:'⌂',items:[['nx_cockpit','Cockpit'],['dash','Activité & rentabilité'],['nx_tasks','À faire'],['plan','Planning']]},
+    {id:'sales',label:'Commercial',ico:'◇',sub:[{id:'quotes',label:'Devis',ico:'📝',views:['wizard','verifier','pret','envoye','accepte','tous','nx_templates']}],items:[['clients','Clients']]},
+    {id:'field',label:'Terrain',ico:'⚒',items:[['dep','Interventions'],['contrats','Contrats d’entretien'],['fluides','Fluides & Cerfa'],['dim','Dimensionnement']]},
+    {id:'adia',label:'Adiabatique',ico:'◌',items:[['adia','Étude & installation'],['loc','Locations']]},
+    {id:'supply',label:'Achats & stock',ico:'▣',items:[['commander','Besoins, stock & commandes'],['prix','Base de prix']]},
+    {id:'manage',label:'Gestion',ico:'€',items:[['recettes','Factures & recettes'],['nx_docs','Registre des documents']]},
+    {id:'settings',label:'Réglages',ico:'⚙',items:[['params','Paramètres'],['nx_tools','Sécurité & corbeille'],['nx_help','Mode d’emploi']]}
+  ];
+  function nxNavViews(section){return (section.items||[]).map(x=>x[0]).concat(...(section.sub||[]).map(x=>x.views||[]));}
+  function nxSetNavSection(id,persist){
+    document.querySelectorAll('.nx-nav-section').forEach(s=>{const open=s.dataset.section===id;s.classList.toggle('open',open);const b=s.querySelector(':scope > .nx-nav-toggle');if(b)b.setAttribute('aria-expanded',open?'true':'false');});
+    if(persist!==false)try{localStorage.setItem('cpnext_nav_section',id);}catch(e){}
   }
+  function nxRevealNavForView(v){
+    const section=NX_NAV_SECTIONS.find(s=>nxNavViews(s).includes(v));if(!section)return;nxSetNavSection(section.id,false);
+    const link=document.querySelector('#nav a[data-v="'+v+'"]');const sub=link&&link.closest('details.nx-nav-subgroup');if(sub)sub.open=true;
+  }
+  function nxToggleNavSection(id){const section=document.querySelector('.nx-nav-section[data-section="'+id+'"]');nxSetNavSection(section&&section.classList.contains('open')?'':id,true);}
+  function nxToggleNav(){document.body.classList.toggle('nx-nav-open');const b=document.getElementById('nxNavToggle');if(b)b.setAttribute('aria-expanded',document.body.classList.contains('nx-nav-open')?'true':'false');}
+  function nxCloseNav(){document.body.classList.remove('nx-nav-open');const b=document.getElementById('nxNavToggle');if(b)b.setAttribute('aria-expanded','false');}
+  function nxOrganizeNavigation(){
+    const nav=document.getElementById('nav');if(!nav||nav.querySelector('.nx-nav-section'))return;
+    const links={};nav.querySelectorAll('a[data-v]').forEach(a=>links[a.dataset.v]=a);nav.innerHTML='';
+    const addLink=(parent,view,label)=>{const a=links[view];if(!a)return;if(label){const txt=a.querySelector('.txt');if(txt)txt.textContent=label;}parent.appendChild(a);};
+    NX_NAV_SECTIONS.forEach(section=>{
+      const wrap=document.createElement('section');wrap.className='nx-nav-section';wrap.dataset.section=section.id;
+      wrap.innerHTML='<button type="button" class="nx-nav-toggle" onclick="nxToggleNavSection(\''+section.id+'\')" aria-expanded="false"><span class="nx-nav-section-ico">'+section.ico+'</span><span>'+section.label+'</span><span class="nx-nav-chevron">⌄</span></button><div class="nx-nav-body"></div>';
+      const body=wrap.querySelector('.nx-nav-body');
+      (section.sub||[]).forEach(group=>{const details=document.createElement('details');details.className='nx-nav-subgroup';details.open=true;details.innerHTML='<summary><span>'+group.ico+'</span><span>'+group.label+'</span><span class="nx-nav-sub-chevron">›</span></summary><div class="nx-nav-subbody"></div>';const subbody=details.querySelector('.nx-nav-subbody');group.views.forEach(v=>addLink(subbody,v));body.appendChild(details);});
+      (section.items||[]).forEach(([v,label])=>addLink(body,v,label));nav.appendChild(wrap);
+    });
+    const active=document.querySelector('#nav a.active');const view=active&&active.dataset.v;const initial=NX_NAV_SECTIONS.find(s=>nxNavViews(s).includes(view))||NX_NAV_SECTIONS.find(s=>s.id===(localStorage.getItem('cpnext_nav_section')||''))||NX_NAV_SECTIONS[0];nxSetNavSection(initial.id,false);
+  }
+  Object.assign(window,{nxToggleNavSection,nxToggleNav,nxCloseNav});
   function nxOrganizeTopbar(){
     const actions=document.querySelector('.topbar > .row-actions');if(!actions||actions.classList.contains('nx-top-actions'))return;
     const nodes=Array.from(actions.children);actions.classList.add('nx-top-actions');actions.innerHTML='<details class="nx-menu" id="nxCreateMenu"><summary>＋ Créer</summary><div class="nx-menu-panel nx-create-panel"></div></details><details class="nx-menu nx-menu-tools"><summary>••• Outils</summary><div class="nx-menu-panel nx-tools-panel"></div></details>';
     const create=actions.querySelector('.nx-create-panel'),tools=actions.querySelector('.nx-tools-panel');
     nodes.forEach(n=>{const txt=(n.textContent||'').toLowerCase(),onclick=(n.getAttribute&&n.getAttribute('onclick'))||'';if(txt.includes('nouveau devis')||txt.includes('dépannage')||txt.includes('mise en service')||txt.includes('location adia')||onclick.includes("newDevis")||onclick.includes('newDep')||onclick.includes('newLoc'))create.appendChild(n);else tools.appendChild(n);});
+    tools.insertAdjacentHTML('afterbegin','<button type="button" onclick="nxOpenScanner(\'equip\')">📷 Scanner une plaque</button>');
     actions.addEventListener('click',e=>{if(e.target.closest('button'))actions.querySelectorAll('details[open]').forEach(d=>d.removeAttribute('open'));});
   }
   function nxSaveQuoteDefaults(){
@@ -577,7 +735,7 @@
     {id:'planning',ico:'📅',title:'Planning et iPhone',intro:'Organiser le terrain.',steps:['Un devis accepté sans date apparaît automatiquement dans À faire.','Dans Planning, affecte une date au chantier. Les dépannages, locations et entretiens remontent automatiquement.','Clique sur la carte pour ouvrir l’itinéraire Google Maps.','Clique « Calendrier iPhone » puis ouvre le fichier .ics sur l’iPhone/iPad et choisis « Ajouter tout ».','L’export .ics est une photo du planning : refais-le après les changements importants.']},
     {id:'money',ico:'💶',title:'Factures et encaissements',intro:'Suivre l’argent réellement reçu.',steps:['Un devis accepté peut produire une facture totale ou acompte + solde dans la série F-AAAA-XXX.','Ne marque « Payée » qu’après réception réelle de l’argent et indique le mode de règlement.','Le livre des recettes se remplit depuis les encaissements, pas depuis les devis acceptés.','Le dashboard calcule la provision URSSAF sur l’encaissé.','Les factures de plus de 30 jours non payées deviennent une priorité rouge avec mail de relance.']},
     {id:'clients',ico:'👤',title:'Clients, parc et contrats',intro:'Construire le fonds de commerce.',steps:['Clique sur un client pour ouvrir sa fiche 360° : historique, CA, parc, contrats et notes.','Après une pose, enregistre l’équipement : modèle, série, fluide, charge, date et garantie.','Entretien → Créer un contrat guidé. Clim : 1 visite/an ; adiabatique : 2 visites/an par défaut.','La prochaine visite apparaît au planning. Après intervention, clique « Visite faite » pour calculer la suivante.','La fin de garantie est une occasion de proposer un contrat avant que le client ne parte ailleurs.']},
-    {id:'fluides',ico:'🧪',title:'Fluides et documents terrain',intro:'Traçabilité métier.',steps:['Crée une fiche fluide pour chaque manipulation concernée et vérifie les données réglementaires.','Le parc installé préremplit la marque, le modèle, la série, le fluide et la charge.','Le scan photo peut lire une plaque ou proposer des champs, mais tu restes responsable de leur contrôle.','Imprime la fiche, fais signer les parties et conserve-la selon les obligations applicables.','Le registre annuel récapitule les quantités chargées et récupérées par fluide.']},
+    {id:'fluides',ico:'🧪',title:'Fluides et documents terrain',intro:'Traçabilité métier.',steps:['Crée une fiche fluide pour chaque manipulation concernée et vérifie les données réglementaires.','Le parc installé préremplit la marque, le modèle, la série, le fluide et la charge.','Dans la fiche Cerfa, clique « Scanner la plaque équipement » : le client, la nature et les quantités déjà saisis restent en place.','Contrôle chaque champ proposé avec la plaque originale avant d’enregistrer.','Imprime la fiche, fais signer les parties et conserve-la selon les obligations applicables.','Le registre annuel récapitule les quantités chargées et récupérées par fluide.']},
     {id:'adia',ico:'💨',title:'Adiabatique et locations',intro:'Dimensionner, vendre et louer.',steps:['Dimensionne avec température et humidité réalistes ; ne promets jamais une consigne.','Vérifie obligatoirement la sortie d’air du local.','Le devis adia reprend arrivée d’eau, vidange, électricité, pose, accès et entretien.','En location, sépare livraison, mise en route, reprise, nettoyage et caution.','Les chevauchements de dates d’une même machine sont contrôlés avant l’enregistrement.']},
     {id:'security',ico:'🛡️',title:'Sécurité et sauvegardes',intro:'Éviter la perte de données.',steps:['Le PIN protège des regards, pas d’un pirate ayant accès à l’appareil.','Vérifie l’état du cloud et synchronise avant de changer d’appareil.','Télécharge une sauvegarde JSON au moins chaque semaine.','La corbeille conserve les suppressions pendant 30 jours.','L’historique Next garde 10 points de restauration. Avant une grosse modification, crée un point manuel.']},
     {id:'trouble',ico:'🧰',title:'En cas de problème',intro:'Les vérifications simples.',steps:['Recharge complètement la page. Sur iPhone : ferme l’app puis rouvre-la.','Vérifie que le bandeau cloud indique « synchronisé ».','Si les menus sont vides sur un nouvel appareil, importe une sauvegarde JSON puis synchronise.','Si une ancienne version reste affichée, vide le cache du site ou réinstalle l’icône d’accueil.','Ne recrée pas les données au hasard : consulte d’abord l’historique et la corbeille.']}
@@ -603,6 +761,9 @@
       check('Recherche globale présente',!!document.getElementById('nxSearch'));
       check('Six vues Next présentes',['nx_cockpit','nx_tasks','nx_templates','nx_scan','nx_tools','nx_help'].every(v=>!!document.getElementById('v-'+v)));
       check('Navigation Next présente',!!document.querySelector('[data-v="nx_tasks"]'));
+      check('Navigation en catégories',document.querySelectorAll('.nx-nav-section').length===7);
+      check('Sous-catégorie Devis',!!document.querySelector('.nx-nav-subgroup [data-v="verifier"]'));
+      check('Scanner contextuel présent',!!document.getElementById('nxContextScanner')&&!!document.getElementById('nxScanEquipBtn')&&!!document.getElementById('nxScanFluBtn'));
       go('nx_tasks');check('Navigation vers À faire',document.getElementById('v-nx_tasks').classList.contains('active'));
       go('wizard');newDevis();
       check('Assistant devis initialisé',!!cur&&cur.type==='Monosplit');
@@ -636,7 +797,10 @@
       document.documentElement.dataset.climpilotNext=NX_VERSION;
       const brand=document.querySelector('.brand small');if(brand)brand.textContent='ClimPilot '+NX_VERSION;
       setTimeout(()=>nxSnapshot('Ouverture de ClimPilot Next'),1200);
-      if(new URLSearchParams(location.search).get('nxselftest')==='1')setTimeout(nxSelfTest,700);
+      const wantsTest=new URLSearchParams(location.search).get('nxselftest')==='1';
+      const localTest=location.protocol==='file:'||location.hostname==='localhost'||location.hostname==='127.0.0.1'||location.hostname==='[::1]';
+      if(wantsTest&&localTest)setTimeout(nxSelfTest,700);
+      else if(wantsTest)console.warn('ClimPilot : auto-test refusé hors environnement local');
     }catch(e){console.error('ClimPilot Next init',e);nxToast('ClimPilot Next : '+(e.message||'erreur de démarrage'),'err');}
   }
 

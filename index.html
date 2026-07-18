@@ -3018,6 +3018,7 @@ function openFlu(id,pre){
   eqSet('fl_nature',f?f.nature:(pre&&pre.nature)||'entretien');
   eqSet('fl_client',f?f.client:(pre&&pre.client)||'');
   fluEquipList();
+  eqSet('fl_equip',f?f.equipId||'':(pre&&pre.equipId)||'');
   eqSet('fl_desc',f?f.desc:'');eqSet('fl_fluide',f?f.fluide:'R32');eqSet('fl_charge',f?f.charge:0);
   eqSet('fl_ctrl',f?f.ctrl:'na');
   eqSet('fl_qv',f?f.qv:0);eqSet('fl_qrec',f?f.qrec:0);eqSet('fl_qreg',f?f.qreg:0);
@@ -3031,7 +3032,7 @@ function saveFlu(printAfter){
   if(!g('fl_client').trim()){toast('⚠ Renseigne le client (détenteur)');return;}
   if(!g('fl_desc').trim()){toast('⚠ Décris l\'équipement');return;}
   const o={id:g('fl_id')||uid(),num:'',date:g('fl_date'),nature:g('fl_nature'),client:g('fl_client').trim(),
-    desc:g('fl_desc'),fluide:g('fl_fluide'),charge:n('fl_charge'),ctrl:g('fl_ctrl'),
+    equipId:g('fl_equip'),desc:g('fl_desc'),fluide:g('fl_fluide'),charge:n('fl_charge'),ctrl:g('fl_ctrl'),
     qv:n('fl_qv'),qrec:n('fl_qrec'),qreg:n('fl_qreg'),qrt:n('fl_qrt'),qru:n('fl_qru'),bout:g('fl_bout'),obs:g('fl_obs')};
   const old=FLU.find(x=>x.id===o.id);o.num=old&&old.num?old.num:nextFluNum();
   const i=FLU.findIndex(x=>x.id===o.id);if(i>=0)FLU[i]=o;else FLU.push(o);
