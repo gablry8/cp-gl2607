@@ -574,6 +574,7 @@
     return items;
   }
   function nxQuoteForCompute(d){
+    if(!d)return d;/* garde Claude : compute(undefined) ne doit pas planter via le wrapper */
     nxEnsureQuote(d);const copy=Object.assign({},d,{extras:(d.extras||[]).map(x=>Object.assign({},x))});
     nxElectricalItems(d).forEach(item=>{if(!copy.extras.some(x=>x.nom===item.nom))copy.extras.push(item);});
     return copy;
@@ -638,7 +639,12 @@
       {ok:Number(c&&c.totalHT)>0,label:'Chiffrage calculé',step:6}
     ];return checks;
   }
-  function nxRenderQuoteAside(){
+  /* Correctif perf Claude 2026-07-18 : recalc/showStep/onPuissChange déclenchent chacun un rendu de
+     l'assistant (avec un compute complet) à chaque frappe — on regroupe via requestAnimationFrame :
+     1 seul rendu par frame quel que soit le nombre d'appels. Aucun changement de comportement visible. */
+  let nxAsideRaf=0;
+  function nxRenderQuoteAside(){if(nxAsideRaf)return;nxAsideRaf=requestAnimationFrame(()=>{nxAsideRaf=0;nxRenderQuoteAsideNow();});}
+  function nxRenderQuoteAsideNow(){
     const box=document.getElementById('nxQuoteAssist');if(!box||!cur)return;nxEnsureQuote(cur);
     let c;try{c=compute(cur);}catch(e){return;}const checks=nxCompleteness(cur,c),done=checks.filter(x=>x.ok).length,pctDone=Math.round(done/checks.length*100),items=nxElectricalItems(cur);
     box.innerHTML=`<div class="nx-assist-title"><span>✨</span><div><b>Assistant devis</b><small>${pctDone}% complété</small></div></div><div class="next-progress"><i style="width:${pctDone}%"></i></div>
@@ -793,7 +799,7 @@
   }
   function nxInit(){
     try{
-      nxInjectShell();nxInjectOrigin();nxPatchNavigation();nxPatchOrigins();nxOrganizeNavigation();nxOrganizeTopbar();nxPatchDeletes();nxPatchCloudHistory();nxPatchContracts();nxPatchCoreRenders();nxBindSearch();nxCleanTrash();nxRenderDashStrip();nxUpdateTaskBadge();nxNotifyUrgent();
+      nxInjectShell();nxInjectOrigin();nxPatchNavigation();nxPatchOrigins();nxOrganizeNavigation();nxOrganizeTopbar();nxPatchDeletes();nxPatchCloudHistory();nxPatchContracts();nxPatchCoreRenders();nxPatchQuoteAutomation();/* Correctif Claude 2026-07-18 : cette fonction était définie mais jamais appelée — tout le module assistant devis + protection électrique restait mort */nxBindSearch();nxCleanTrash();nxRenderDashStrip();nxUpdateTaskBadge();nxNotifyUrgent();
       document.documentElement.dataset.climpilotNext=NX_VERSION;
       const brand=document.querySelector('.brand small');if(brand)brand.textContent='ClimPilot '+NX_VERSION;
       setTimeout(()=>nxSnapshot('Ouverture de ClimPilot Next'),1200);
