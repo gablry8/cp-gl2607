@@ -256,14 +256,14 @@ tbody tr:hover{background:#f7f9fd}
         <div class="step" data-step="1"><div class="card"><h2>👤 Client</h2>
           <div class="warnbox" style="background:var(--blue-soft);border-color:#bcd3ff;color:#1d4fd0">💡 Tape le nom : si le client existe déjà, ses coordonnées se remplissent toutes seules. Sinon il sera enregistré automatiquement à la sauvegarde.</div>
           <div class="frm">
-            <label class="full">Client professionnel ? Rechercher l'entreprise <span class="note-inline">nom ou SIRET — remplit nom, SIREN et adresse automatiquement</span><input id="f_cSearch" autocomplete="off" oninput="climSirenSearch(this.value,'f')" placeholder="Ex : Boulangerie Martin, ou 12345678900012"><div id="f_cSearchRes" class="clim-siren-res"></div></label>
+            <label class="full" data-proonly="f">Rechercher l'entreprise <span class="note-inline">nom ou SIRET — remplit nom, SIREN et adresse automatiquement</span><input id="f_cSearch" autocomplete="off" oninput="climSirenSearch(this.value,'f')" placeholder="Ex : Boulangerie Martin, ou 12345678900012"><div id="f_cSearchRes" class="clim-siren-res"></div></label>
             <label>Nom client * (recherche)<input id="f_cNom" list="clientDL" onchange="autofillClient()" oninput="updateWizName()"><datalist id="clientDL"></datalist></label>
             <label>Téléphone<input id="f_cTel"></label>
             <label>Email<input id="f_cMail"></label>
-            <label>Type<select id="f_cType"><option>Particulier</option><option>Professionnel</option></select></label>
+            <label>Type<select id="f_cType" onchange="climProToggle('f')"><option>Particulier</option><option>Professionnel</option></select></label>
             <label class="full">Adresse chantier *<input id="f_cAdr"></label>
             <label>Ville<input id="f_cVille"></label>
-            <label>SIREN <span class="note-inline">client pro (facture élec.)</span><input id="f_cSiren" placeholder="9 chiffres"></label>
+            <label data-proonly="f">SIREN <span class="note-inline">client pro (facture élec.)</span><input id="f_cSiren" placeholder="9 chiffres"></label>
           </div></div>
           <div class="navbtns"><button class="btn-ghost" onclick="step(0)">‹ Précédent</button><button class="btn-pri" onclick="step(2)">Suivant ›</button></div>
         </div>
@@ -674,15 +674,15 @@ tbody tr:hover{background:#f7f9fd}
         </div>
         <div class="card"><h2>👤 Client & intervention</h2>
           <div class="frm">
-            <label class="full">Client professionnel ? Rechercher l'entreprise <span class="note-inline">nom ou SIRET — remplit nom, SIREN et adresse automatiquement</span><input id="dp_cSearch" autocomplete="off" oninput="climSirenSearch(this.value,'dp')" placeholder="Ex : Boulangerie Martin, ou 12345678900012"><div id="dp_cSearchRes" class="clim-siren-res"></div></label>
+            <label class="full" data-proonly="dp">Rechercher l'entreprise <span class="note-inline">nom ou SIRET — remplit nom, SIREN et adresse automatiquement</span><input id="dp_cSearch" autocomplete="off" oninput="climSirenSearch(this.value,'dp')" placeholder="Ex : Boulangerie Martin, ou 12345678900012"><div id="dp_cSearchRes" class="clim-siren-res"></div></label>
             <label>Nom client * (recherche)<input id="dp_cNom" list="clientDLdep" onchange="autofillClientDep()"><datalist id="clientDLdep"></datalist></label>
             <label>Téléphone<input id="dp_cTel"></label>
-            <label>Type<select id="dp_cType"><option>Particulier</option><option>Professionnel</option></select></label>
+            <label>Type<select id="dp_cType" onchange="climProToggle('dp')"><option>Particulier</option><option>Professionnel</option></select></label>
             <label>Date intervention<input type="date" id="dp_date" onchange="recalcDep()"></label>
             <label class="full">Adresse<input id="dp_cAdr"></label>
             <label>Ville<input id="dp_cVille"></label>
             <label>Email<input id="dp_cMail"></label>
-            <label>SIREN <span class="note-inline">client pro (facture élec.)</span><input id="dp_cSiren" placeholder="9 chiffres"></label>
+            <label data-proonly="dp">SIREN <span class="note-inline">client pro (facture élec.)</span><input id="dp_cSiren" placeholder="9 chiffres"></label>
             <label class="full">Panne constatée / travaux réalisés (imprimé sur la facture)<textarea id="dp_desc" placeholder="Ex : clim ne refroidit plus — nettoyage condenseur, contrôle des pressions, resserrage connexions."></textarea></label>
           </div></div>
         <div class="card"><h2>⏱️ Chiffrage</h2>
@@ -1480,6 +1480,7 @@ function loadDevisToForm(){
   const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v;};
   set('f_type',cur.type);set('f_nbMach',cur.nbMach);set('f_nbSplit',cur.nbSplit);
   set('f_cNom',cur.cNom);set('f_cTel',cur.cTel);set('f_cMail',cur.cMail);set('f_cType',cur.cType);set('f_cAdr',cur.cAdr);set('f_cVille',cur.cVille);set('f_cSiren',cur.cSiren||'');
+  if(window.climProToggle)climProToggle('f');
   set('f_groupCable',cur.groupCable);set('f_groupLong',cur.groupLong);
   set('f_condLong',cur.condLong);set('f_support',cur.support);set('f_pompeType',cur.pompeType);set('f_pompeQte',cur.pompeQte);set('f_taille',cur.taille||'auto');
   set('f_heures',cur.heures);set('f_moMode',cur.moMode);set('f_acces',cur.acces);set('f_zone',cur.zone);set('f_mes',cur.mes);set('f_brasure',cur.brasure);set('f_supp',cur.supp);set('f_tests',cur.tests);
@@ -2024,6 +2025,7 @@ function loadDepForm(){
   document.getElementById('depNum').textContent=d.facNum||'— (attribué à la facturation)';
   document.getElementById('depStatus').innerHTML=depTag(d.statut);
   set('dp_cNom',d.cNom);set('dp_cTel',d.cTel);set('dp_cMail',d.cMail);set('dp_cType',d.cType);set('dp_cAdr',d.cAdr);set('dp_cVille',d.cVille);set('dp_cSiren',d.cSiren||'');
+  if(window.climProToggle)climProToggle('dp');
   set('dp_date',d.date);set('dp_desc',d.desc);set('dp_notes',d.notes);
   set('dp_itype',d.itype||'dep');set('dp_mode',d.mode);set('dp_panne',d.panne);set('dp_heures',d.heures);set('dp_zone',d.zone);set('dp_maj',d.maj);
   set('dp_rate',d.rateChoice);set('dp_rateCustom',d.rateCustom);

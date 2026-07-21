@@ -14,6 +14,20 @@
     dp: { nom:"dp_cNom", siren:"dp_cSiren", adr:"dp_cAdr", ville:"dp_cVille", type:"dp_cType" }
   };
   function el(id){ return document.getElementById(id); }
+
+  /* Affiche les champs « pro » (recherche entreprise + SIREN) seulement si le
+     client est un Professionnel. prefix = 'f' (devis) ou 'dp' (dépannage). */
+  window.climProToggle = function (prefix) {
+    var t = el(prefix + "_cType");
+    var pro = !!(t && t.value === "Professionnel");
+    var nodes = document.querySelectorAll('[data-proonly="' + prefix + '"]');
+    for (var i = 0; i < nodes.length; i++) nodes[i].style.display = pro ? "" : "none";
+    if (!pro) {
+      var s = el(prefix + "_cSiren"); if (s) s.value = "";
+      var q = el(prefix + "_cSearch"); if (q) q.value = "";
+      var box = el(prefix + "_cSearchRes"); if (box) { box.innerHTML = ""; box.classList.remove("on"); }
+    }
+  };
   function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
   function close(prefix){ var b=el(prefix+"_cSearchRes"); if(b){ b.innerHTML=""; b.classList.remove("on"); } }
 
@@ -53,6 +67,7 @@
     var t = el(m.type); if (t) t.value = "Professionnel";
     var sr = el(prefix + "_cSearch"); if (sr) sr.value = "";
     close(prefix);
+    if (window.climProToggle) window.climProToggle(prefix);
     if (m.after) m.after();
   };
 
@@ -62,4 +77,7 @@
       if (box && box.classList.contains("on") && e.target !== inp && !box.contains(e.target)) close(p);
     });
   });
+
+  /* État initial : champs pro masqués tant que le type n'est pas « Professionnel » */
+  try { ["f", "dp"].forEach(function (p) { if (el(p + "_cType")) window.climProToggle(p); }); } catch (e) {}
 })();
