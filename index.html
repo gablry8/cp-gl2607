@@ -256,12 +256,14 @@ tbody tr:hover{background:#f7f9fd}
         <div class="step" data-step="1"><div class="card"><h2>👤 Client</h2>
           <div class="warnbox" style="background:var(--blue-soft);border-color:#bcd3ff;color:#1d4fd0">💡 Tape le nom : si le client existe déjà, ses coordonnées se remplissent toutes seules. Sinon il sera enregistré automatiquement à la sauvegarde.</div>
           <div class="frm">
+            <label class="full">Client professionnel ? Rechercher l'entreprise <span class="note-inline">nom ou SIRET — remplit nom, SIREN et adresse automatiquement</span><input id="f_cSearch" autocomplete="off" oninput="climSirenSearch(this.value,'f')" placeholder="Ex : Boulangerie Martin, ou 12345678900012"><div id="f_cSearchRes" class="clim-siren-res"></div></label>
             <label>Nom client * (recherche)<input id="f_cNom" list="clientDL" onchange="autofillClient()" oninput="updateWizName()"><datalist id="clientDL"></datalist></label>
             <label>Téléphone<input id="f_cTel"></label>
             <label>Email<input id="f_cMail"></label>
             <label>Type<select id="f_cType"><option>Particulier</option><option>Professionnel</option></select></label>
             <label class="full">Adresse chantier *<input id="f_cAdr"></label>
             <label>Ville<input id="f_cVille"></label>
+            <label>SIREN <span class="note-inline">client pro (facture élec.)</span><input id="f_cSiren" placeholder="9 chiffres"></label>
           </div></div>
           <div class="navbtns"><button class="btn-ghost" onclick="step(0)">‹ Précédent</button><button class="btn-pri" onclick="step(2)">Suivant ›</button></div>
         </div>
@@ -338,6 +340,9 @@ tbody tr:hover{background:#f7f9fd}
               <label>TVA applicable<select id="f_tvaRate" onchange="recalc()"><option value="20">20 % (neuf / standard)</option><option value="10">10 % (rénovation logement &gt;2 ans)</option><option value="5.5">5,5 % (rénovation énergétique éligible)</option></select><span class="note-inline">à vérifier selon le chantier</span></label>
               <label style="flex-direction:row;align-items:center;gap:8px;text-transform:none">Demander un acompte <input type="checkbox" id="f_acompteOn" style="width:auto" onchange="recalc()"></label>
               <label>Acompte (% du TTC)<input type="number" id="f_acomptePct" min="0" max="100" value="30" onchange="recalc()"></label>
+              <label class="full" style="flex-direction:row;align-items:center;gap:8px;text-transform:none;background:#eef2f7;border:1px solid #d6dde8;border-radius:9px;padding:9px 11px">
+                <input type="checkbox" id="f_estim" style="width:auto" onchange="recalc()">
+                <span><b>Estimation indicative</b> — PDF simplifié (3-4 postes, sans détail), pour donner un ordre de prix sans engagement. Le bouton « Aperçu / PDF » sort alors une estimation au lieu du devis complet.</span></label>
               <label class="full">Notes internes / SAV potentiel<textarea id="f_notes" placeholder="Ex : accès combles étroit, client sensible au bruit, prévoir retour contrôle condensats… (jamais imprimé sur le devis client)"></textarea></label>
             </div></div>
           <div class="card"><h2>📦 Liste du matériel à commander</h2><div id="recapMat"></div></div>
@@ -669,6 +674,7 @@ tbody tr:hover{background:#f7f9fd}
         </div>
         <div class="card"><h2>👤 Client & intervention</h2>
           <div class="frm">
+            <label class="full">Client professionnel ? Rechercher l'entreprise <span class="note-inline">nom ou SIRET — remplit nom, SIREN et adresse automatiquement</span><input id="dp_cSearch" autocomplete="off" oninput="climSirenSearch(this.value,'dp')" placeholder="Ex : Boulangerie Martin, ou 12345678900012"><div id="dp_cSearchRes" class="clim-siren-res"></div></label>
             <label>Nom client * (recherche)<input id="dp_cNom" list="clientDLdep" onchange="autofillClientDep()"><datalist id="clientDLdep"></datalist></label>
             <label>Téléphone<input id="dp_cTel"></label>
             <label>Type<select id="dp_cType"><option>Particulier</option><option>Professionnel</option></select></label>
@@ -676,6 +682,7 @@ tbody tr:hover{background:#f7f9fd}
             <label class="full">Adresse<input id="dp_cAdr"></label>
             <label>Ville<input id="dp_cVille"></label>
             <label>Email<input id="dp_cMail"></label>
+            <label>SIREN <span class="note-inline">client pro (facture élec.)</span><input id="dp_cSiren" placeholder="9 chiffres"></label>
             <label class="full">Panne constatée / travaux réalisés (imprimé sur la facture)<textarea id="dp_desc" placeholder="Ex : clim ne refroidit plus — nettoyage condenseur, contrôle des pressions, resserrage connexions."></textarea></label>
           </div></div>
         <div class="card"><h2>⏱️ Chiffrage</h2>
@@ -824,6 +831,7 @@ tbody tr:hover{background:#f7f9fd}
     <label>Email<input id="mc_mail"></label>
     <label class="full">Adresse<input id="mc_adr"></label>
     <label>Ville<input id="mc_ville"></label>
+    <label>SIREN <span class="note-inline">client pro (facture élec.)</span><input id="mc_siren" placeholder="9 chiffres"></label>
     <label class="full">Notes<textarea id="mc_notes"></textarea></label>
   </div><div class="navbtns"><button class="btn-ghost" onclick="closeModal('mClient')">Annuler</button><button class="btn-pri" onclick="saveClient()">Enregistrer</button></div></div>
 </div></div>
@@ -1461,7 +1469,7 @@ function fillSelects(){
 function onRateChange(){document.getElementById('f_rateCustom').style.display=document.getElementById('f_rateChoice').value==='custom'?'block':'none';recalc();}
 function updateWizName(){document.getElementById('wizTitle').textContent=(document.getElementById('f_cNom').value||'Sans nom');}
 function autofillClient(){const nom=document.getElementById('f_cNom').value.trim().toLowerCase();const c=CLIENTS.find(x=>(x.nom||'').toLowerCase()===nom);if(!c)return;
-  document.getElementById('f_cTel').value=c.tel||'';document.getElementById('f_cMail').value=c.mail||'';document.getElementById('f_cType').value=c.type||'Particulier';document.getElementById('f_cAdr').value=c.adr||'';document.getElementById('f_cVille').value=c.ville||'';
+  document.getElementById('f_cTel').value=c.tel||'';document.getElementById('f_cMail').value=c.mail||'';document.getElementById('f_cType').value=c.type||'Particulier';document.getElementById('f_cAdr').value=c.adr||'';document.getElementById('f_cVille').value=c.ville||'';document.getElementById('f_cSiren').value=c.siren||'';
   if(c.lastZone&&P.zone[c.lastZone]!=null){const z=document.getElementById('f_zone');if(z){z.value=c.lastZone;}}
   recalc();toast('Client « '+c.nom+' » chargé'+(c.lastZone?' · zone '+c.lastZone:''));}
 function loadDevisToForm(){
@@ -1471,13 +1479,14 @@ function loadDevisToForm(){
   document.getElementById('wizStatus').innerHTML=statusTag(cur.statut);
   const set=(id,v)=>{const e=document.getElementById(id);if(e)e.value=v;};
   set('f_type',cur.type);set('f_nbMach',cur.nbMach);set('f_nbSplit',cur.nbSplit);
-  set('f_cNom',cur.cNom);set('f_cTel',cur.cTel);set('f_cMail',cur.cMail);set('f_cType',cur.cType);set('f_cAdr',cur.cAdr);set('f_cVille',cur.cVille);
+  set('f_cNom',cur.cNom);set('f_cTel',cur.cTel);set('f_cMail',cur.cMail);set('f_cType',cur.cType);set('f_cAdr',cur.cAdr);set('f_cVille',cur.cVille);set('f_cSiren',cur.cSiren||'');
   set('f_groupCable',cur.groupCable);set('f_groupLong',cur.groupLong);
   set('f_condLong',cur.condLong);set('f_support',cur.support);set('f_pompeType',cur.pompeType);set('f_pompeQte',cur.pompeQte);set('f_taille',cur.taille||'auto');
   set('f_heures',cur.heures);set('f_moMode',cur.moMode);set('f_acces',cur.acces);set('f_zone',cur.zone);set('f_mes',cur.mes);set('f_brasure',cur.brasure);set('f_supp',cur.supp);set('f_tests',cur.tests);
   set('f_rateChoice',cur.rateChoice||String(P.defaultRate));set('f_rateCustom',cur.rateCustom||P.defaultRate);
   document.getElementById('f_rateCustom').style.display=(cur.rateChoice==='custom')?'block':'none';
   set('f_tvaRate',String(cur.tvaRate!=null?cur.tvaRate:P.tva));document.getElementById('f_acompteOn').checked=!!cur.acompteOn;set('f_acomptePct',cur.acomptePct!=null?cur.acomptePct:P.acomptePctDefaut);
+  {const ef=document.getElementById('f_estim');if(ef)ef.checked=!!cur.estim;}
   set('f_notes',cur.notes||'');
   set('f_statut',cur.statut);
   renderMachines();renderSplits();renderGoulottes();renderExtras();updateSplitNote();renderFBloc();
@@ -1486,12 +1495,13 @@ function formToDevis(){
   if(!cur)return;
   const g=id=>document.getElementById(id)?document.getElementById(id).value:'';
   cur.type=g('f_type');cur.nbMach=+g('f_nbMach');cur.nbSplit=+g('f_nbSplit');
-  cur.cNom=g('f_cNom');cur.cTel=g('f_cTel');cur.cMail=g('f_cMail');cur.cType=g('f_cType');cur.cAdr=g('f_cAdr');cur.cVille=g('f_cVille');
+  cur.cNom=g('f_cNom');cur.cTel=g('f_cTel');cur.cMail=g('f_cMail');cur.cType=g('f_cType');cur.cAdr=g('f_cAdr');cur.cVille=g('f_cVille');cur.cSiren=g('f_cSiren');
   cur.groupCable=g('f_groupCable');cur.groupLong=+g('f_groupLong');
   cur.condLong=+g('f_condLong');cur.support=g('f_support');cur.pompeType=g('f_pompeType');cur.pompeQte=+g('f_pompeQte');cur.taille=g('f_taille');
   cur.heures=+g('f_heures');cur.moMode=g('f_moMode');cur.acces=g('f_acces');cur.zone=g('f_zone');cur.mes=g('f_mes');cur.brasure=g('f_brasure');cur.supp=+g('f_supp');cur.tests=g('f_tests');
   cur.rateChoice=g('f_rateChoice');cur.rateCustom=+g('f_rateCustom');cur.statut=g('f_statut');
   cur.tvaRate=g('f_tvaRate');const ao=document.getElementById('f_acompteOn');cur.acompteOn=ao?ao.checked:false;cur.acomptePct=+g('f_acomptePct');cur.notes=g('f_notes');
+  const es=document.getElementById('f_estim');cur.estim=es?es.checked:false;
   cur.machines=[...document.querySelectorAll('#machineList .subcard')].map(c=>({marque:c.querySelector('.m-marque').value,ref:c.querySelector('.m-ref').value,achat:+c.querySelector('.m-achat').value,marge:+c.querySelector('.m-marge').value}));
   cur.splits=[...document.querySelectorAll('#splitList .subcard')].map(c=>({puiss:+c.querySelector('.s-puiss').value,long:+c.querySelector('.s-long').value,liaison:c.querySelector('.s-liaison').value,cableInter:c.querySelector('.s-cable').value}));
   cur.goulottes=[...document.querySelectorAll('#goulList .grow')].map(r=>({type:r.querySelector('.g-type').value,long:+r.querySelector('.g-long').value}));
@@ -1632,7 +1642,7 @@ function recalc(){formToDevis();const c=compute(cur);
 }
 function cancelWizard(){if(confirm('Abandonner ce devis sans enregistrer ?')){cur=null;go('dash');}}
 function upsertClient(){if(!cur.cNom)return;const i=CLIENTS.findIndex(c=>(c.nom||'').toLowerCase()===cur.cNom.toLowerCase());
-  const o={nom:cur.cNom,type:cur.cType,tel:cur.cTel,mail:cur.cMail,adr:cur.cAdr,ville:cur.cVille,lastZone:cur.zone||''};
+  const o={nom:cur.cNom,type:cur.cType,tel:cur.cTel,mail:cur.cMail,adr:cur.cAdr,ville:cur.cVille,siren:cur.cSiren||'',lastZone:cur.zone||''};
   if(i>=0){CLIENTS[i]={...CLIENTS[i],...o};}else{CLIENTS.push({id:uid(),notes:'',...o});}save(LS.clients,CLIENTS);}
 function saveDevis(){formToDevis();if(!cur.cNom){if(!confirm('Nom client vide. Enregistrer quand même ?')){step(1);return;}}
   if(cur.statut==='envoye'&&!cur.sentAt)cur.sentAt=Date.now();
@@ -1726,9 +1736,9 @@ function renderClients(){
 }
 function editClient(id){const c=id?CLIENTS.find(x=>x.id===id):{};document.getElementById('mcTitle').textContent=id?'Modifier client':'Nouveau client';
   document.getElementById('mc_id').value=c.id||'';document.getElementById('mc_nom').value=c.nom||'';document.getElementById('mc_type').value=c.type||'Particulier';
-  document.getElementById('mc_tel').value=c.tel||'';document.getElementById('mc_mail').value=c.mail||'';document.getElementById('mc_adr').value=c.adr||'';document.getElementById('mc_ville').value=c.ville||'';document.getElementById('mc_notes').value=c.notes||'';
+  document.getElementById('mc_tel').value=c.tel||'';document.getElementById('mc_mail').value=c.mail||'';document.getElementById('mc_adr').value=c.adr||'';document.getElementById('mc_ville').value=c.ville||'';document.getElementById('mc_siren').value=c.siren||'';document.getElementById('mc_notes').value=c.notes||'';
   openModal('mClient');}
-function saveClient(){const id=document.getElementById('mc_id').value;const o={id:id||uid(),nom:document.getElementById('mc_nom').value.trim(),type:document.getElementById('mc_type').value,tel:document.getElementById('mc_tel').value,mail:document.getElementById('mc_mail').value,adr:document.getElementById('mc_adr').value,ville:document.getElementById('mc_ville').value,notes:document.getElementById('mc_notes').value};
+function saveClient(){const id=document.getElementById('mc_id').value;const o={id:id||uid(),nom:document.getElementById('mc_nom').value.trim(),type:document.getElementById('mc_type').value,tel:document.getElementById('mc_tel').value,mail:document.getElementById('mc_mail').value,adr:document.getElementById('mc_adr').value,ville:document.getElementById('mc_ville').value,siren:document.getElementById('mc_siren').value.trim(),notes:document.getElementById('mc_notes').value};
   if(!o.nom){alert('Le nom est obligatoire.');return;}
   const i=CLIENTS.findIndex(c=>c.id===o.id);if(i>=0)CLIENTS[i]=o;else CLIENTS.push(o);save(LS.clients,CLIENTS);closeModal('mClient');renderClients();toast('Client enregistré');}
 function delClient(id){if(!confirm('Supprimer ce client ?'))return;CLIENTS=CLIENTS.filter(c=>c.id!==id);save(LS.clients,CLIENTS);renderClients();}
@@ -1788,6 +1798,7 @@ function renderParams(){
     txtRow('N° attestation de capacité fluides','pe_attflu',E.attFluides)+txtRow('Organisme (attestation fluides)','pe_attorg',E.attOrganisme)+
     txtRow('Médiateur de la consommation (nom)','pe_medi',E.mediateur)+txtRow('Médiateur — site web','pe_medisite',E.mediateurSite)+
     txtRow('Assurance pro (assureur + n° contrat)','pe_assur',E.assurance)+txtRow('Assurance — couverture géographique','pe_assurzone',E.assuranceZone)+
+    txtRow('Validité du devis','pe_validite',E.validiteDevis||'3 mois')+
     txtRow('Note bas de devis','pe_pied',E.piedNote,true);
   document.getElementById('paramGen').innerHTML=
     `<label class="full">Régime TVA<select id="pg_regime"><option value="franchise" ${P.regimeTVA!=='assujetti'?'selected':''}>Franchise en base (micro — je ne facture pas la TVA)</option><option value="assujetti" ${P.regimeTVA==='assujetti'?'selected':''}>Assujetti à la TVA (je facture et récupère)</option></select><span class="note-inline">franchise = mention « 293 B » sur le devis + matériel compté en TTC pour ta marge réelle</span></label>`+
@@ -1827,7 +1838,7 @@ function renderParams(){
 function saveParams(){const g=id=>+document.getElementById(id).value;const t=id=>document.getElementById(id)?document.getElementById(id).value:'';
   const cand=JSON.parse(JSON.stringify(P));
   cand.entreprise={...P.entreprise,nom:t('pe_nom'),activite:t('pe_act'),adresse:t('pe_adr'),cp:t('pe_cp'),ville:t('pe_ville'),tel:t('pe_tel'),email:t('pe_email'),statut:t('pe_statut'),capital:t('pe_capital'),naf:t('pe_naf'),siret:t('pe_siret'),tvaIntra:t('pe_tvaintra'),rib:t('pe_rib'),
-    attFluides:t('pe_attflu'),attOrganisme:t('pe_attorg'),mediateur:t('pe_medi'),mediateurSite:t('pe_medisite'),assurance:t('pe_assur'),assuranceZone:t('pe_assurzone'),piedNote:t('pe_pied')};
+    attFluides:t('pe_attflu'),attOrganisme:t('pe_attorg'),mediateur:t('pe_medi'),mediateurSite:t('pe_medisite'),assurance:t('pe_assur'),assuranceZone:t('pe_assurzone'),validiteDevis:t('pe_validite')||'3 mois',piedNote:t('pe_pied')};
   cand.acomptePctDefaut=g('pg_acpt');cand.objectifCA=g('pg_obj');cand.regimeTVA=t('pg_regime')||'franchise';cand.achatTVA=g('pg_achattva');
   cand.defaultRate=g('pg_taux');cand.tauxHoraire=cand.defaultRate;cand.coutInterne=g('pg_cout');cand.cotisTaux=g('pg_cotis');cand.tva=g('pg_tva');cand.fraisAdmin=g('pg_fadm');cand.fraisCommande=g('pg_fcmd');
   cand.accGoulParM=g('pg_accg');cand.conso={petit:g('pg_cp'),moyen:g('pg_cm'),gros:g('pg_cg')};
@@ -2002,7 +2013,7 @@ function applyItypeVis(){
 function onItypeChange(){formToDep();applyItypeVis();recalcDep();}
 function onMesMode(){formToDep();applyItypeVis();recalcDep();}
 function autofillClientDep(){const nom=document.getElementById('dp_cNom').value.trim().toLowerCase();const c=CLIENTS.find(x=>(x.nom||'').toLowerCase()===nom);if(!c)return;
-  document.getElementById('dp_cTel').value=c.tel||'';document.getElementById('dp_cMail').value=c.mail||'';document.getElementById('dp_cType').value=c.type||'Particulier';document.getElementById('dp_cAdr').value=c.adr||'';document.getElementById('dp_cVille').value=c.ville||'';
+  document.getElementById('dp_cTel').value=c.tel||'';document.getElementById('dp_cMail').value=c.mail||'';document.getElementById('dp_cType').value=c.type||'Particulier';document.getElementById('dp_cAdr').value=c.adr||'';document.getElementById('dp_cVille').value=c.ville||'';document.getElementById('dp_cSiren').value=c.siren||'';
   if(c.lastZone&&P.zone[c.lastZone]!=null){const z=document.getElementById('dp_zone');if(z){z.value=c.lastZone;recalcDep();}}
   toast('Client « '+c.nom+' » chargé'+(c.lastZone?' · zone '+c.lastZone:''));}
 function loadDepForm(){
@@ -2012,7 +2023,7 @@ function loadDepForm(){
   document.getElementById('depTitle').textContent=d.cNom?(lblT+d.cNom):'Nouvelle intervention'+(d.itype==='mes'?' (mise en service)':'');
   document.getElementById('depNum').textContent=d.facNum||'— (attribué à la facturation)';
   document.getElementById('depStatus').innerHTML=depTag(d.statut);
-  set('dp_cNom',d.cNom);set('dp_cTel',d.cTel);set('dp_cMail',d.cMail);set('dp_cType',d.cType);set('dp_cAdr',d.cAdr);set('dp_cVille',d.cVille);
+  set('dp_cNom',d.cNom);set('dp_cTel',d.cTel);set('dp_cMail',d.cMail);set('dp_cType',d.cType);set('dp_cAdr',d.cAdr);set('dp_cVille',d.cVille);set('dp_cSiren',d.cSiren||'');
   set('dp_date',d.date);set('dp_desc',d.desc);set('dp_notes',d.notes);
   set('dp_itype',d.itype||'dep');set('dp_mode',d.mode);set('dp_panne',d.panne);set('dp_heures',d.heures);set('dp_zone',d.zone);set('dp_maj',d.maj);
   set('dp_rate',d.rateChoice);set('dp_rateCustom',d.rateCustom);
@@ -2027,7 +2038,7 @@ function formToDep(){
   if(!curDep)return;
   const g=id=>document.getElementById(id)?document.getElementById(id).value:'';
   const d=curDep;
-  d.cNom=g('dp_cNom');d.cTel=g('dp_cTel');d.cMail=g('dp_cMail');d.cType=g('dp_cType');d.cAdr=g('dp_cAdr');d.cVille=g('dp_cVille');
+  d.cNom=g('dp_cNom');d.cTel=g('dp_cTel');d.cMail=g('dp_cMail');d.cType=g('dp_cType');d.cAdr=g('dp_cAdr');d.cVille=g('dp_cVille');d.cSiren=g('dp_cSiren');
   d.date=g('dp_date');d.desc=g('dp_desc');d.notes=g('dp_notes');
   d.mode=g('dp_mode');d.panne=g('dp_panne');d.heures=+g('dp_heures');d.zone=g('dp_zone');d.maj=g('dp_maj');
   d.rateChoice=g('dp_rate');d.rateCustom=+g('dp_rateCustom');
@@ -2080,7 +2091,7 @@ function recalcDep(){
 function saveDep(){formToDep();
   if(!curDep.cNom){if(!confirm('Nom client vide. Enregistrer quand même ?'))return;}
   if(curDep.cNom){const i=CLIENTS.findIndex(c=>(c.nom||'').toLowerCase()===curDep.cNom.toLowerCase());
-    const o={nom:curDep.cNom,type:curDep.cType,tel:curDep.cTel,mail:curDep.cMail,adr:curDep.cAdr,ville:curDep.cVille};
+    const o={nom:curDep.cNom,type:curDep.cType,tel:curDep.cTel,mail:curDep.cMail,adr:curDep.cAdr,ville:curDep.cVille,siren:curDep.cSiren||''};
     if(i>=0){CLIENTS[i]={...CLIENTS[i],...o};}else{CLIENTS.push({id:uid(),notes:'',...o});}save(LS.clients,CLIENTS);}
   const i=DEP.findIndex(x=>x.id===curDep.id);if(i>=0)DEP[i]=curDep;else DEP.push(curDep);
   save(LS.dep,DEP);updateBadges();toast('💾 Intervention enregistrée');
@@ -2152,11 +2163,29 @@ function exportCSVDep(){
 function docTop(E,C,ic,dateStr,sub){return '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px"><div style="display:flex;gap:12px;align-items:center"><div style="width:54px;height:54px;border-radius:12px;background:'+C+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px">'+ic+'</div><div><div style="font-size:19px;font-weight:800">'+(E.nom||'—')+'</div><div style="font-size:10.5px;color:#666">'+((E.activite||'')+(sub||''))+'</div><div style="font-size:10.5px;color:#666">'+[E.adresse,E.cp,E.ville].filter(Boolean).join(' ')+'</div><div style="font-size:10.5px;color:#666">'+[E.tel?'Tél : '+E.tel:'',E.email].filter(Boolean).join(' — ')+'</div></div></div><div style="font-size:10.5px;color:#666;text-align:right">'+(E.ville?'À '+E.ville+', le ':'Le ')+dateStr+'<br>Page 1/1</div></div>';}
 function docLegal(E,C){const legal=[E.nom,[E.statut,E.capital?'capital '+E.capital+' €':'',E.naf?'Code NAF '+E.naf:''].filter(Boolean).join(' • '),[E.adresse,E.cp,E.ville].filter(Boolean).join(' '),[E.tel?'Tél : '+E.tel:'',E.email].filter(Boolean).join(' • '),E.siret?'SIRET : '+E.siret:'',E.tvaIntra?'N° TVA : '+E.tvaIntra:'',E.assurance?'Assurance pro : '+E.assurance+(E.assuranceZone?' — couverture : '+E.assuranceZone:''):'',E.attFluides?'Attestation de capacité fluides frigorigènes n° '+E.attFluides+(E.attOrganisme?' ('+E.attOrganisme+')':''):'',E.rib?'RIB : '+E.rib:''].filter(Boolean).map(x=>'<div>'+x+'</div>').join('');
   return '<div style="margin-top:8px;font-size:9.5px;color:#555;text-align:center;border-top:2px solid '+C+';padding-top:8px">'+(legal||'<i>Renseigne tes coordonnées entreprise dans Paramètres pour le pied de page.</i>')+'</div>';}
+/* Nouvelles mentions facturation électronique (obligatoires au 1er sept. 2026).
+   « Catégorie de l'opération » affichée dès maintenant (inoffensif) ; les 3 autres
+   restent en attente et n'apparaissent que lorsqu'elles concernent vraiment Gabriel :
+   SIREN client (B2B, si renseigné), adresse de livraison si différente, option TVA débits. */
+function facMentions(nature,cli,E){
+  const L=['<b>Nature de l\'opération :</b> '+nature+'.'];
+  const siren=cli&&(cli.siren||cli.cSiren);
+  if(siren)L.push('N° SIREN du client : '+siren+'.');
+  const livr=cli&&(cli.livrAdr||cli.cLivrAdr), fact=cli&&(cli.factAdr||cli.cAdr||'');
+  if(livr&&String(livr).trim()&&livr!==fact)L.push('Adresse de livraison / de réalisation : '+livr+'.');
+  if(E&&E.tvaDebits)L.push('Option pour le paiement de la taxe d\'après les débits.');
+  return '<div style="margin-top:10px;font-size:9.5px;color:#666;line-height:1.6;border-top:1px solid #eef1f5;padding-top:7px">'+L.join('<br>')+'</div>';
+}
+/* Icônes SVG blanches pour les en-têtes de documents (rendu propre au PDF, sans emoji) */
+const IC_SNOW='<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/></svg>';
+const IC_WIND='<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><path d="M3 8h11a3 3 0 100-6M3 14h15a3 3 0 110 6M3 11h9"/></svg>';
+const IC_HAND='<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l4-3 5 3 5-3 4 3M7 13l3 3 2-1M17 13l-3 3M3 10v4l4 4M21 10v4l-4 4"/></svg>';
+const IC_CUBE='<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/></svg>';
 function printFacture(){
   formToDep();
   if(!curDep.facNum){if(confirm('Pas encore de n° de facture. En attribuer un maintenant ? (numérotation continue F-'+new Date().getFullYear()+'-XXX)')){factureDep();}else{return;}}
   const d=curDep,c=computeDep(d),E=P.entreprise||{};
-  const OR='#e08a2c';
+  const OR='#1f4e79';
   const today=new Date().toLocaleDateString('fr-FR');
   const facD=d.facDate?new Date(d.facDate+'T00:00:00').toLocaleDateString('fr-FR'):today;
   const dInt=d.date?new Date(d.date+'T00:00:00').toLocaleDateString('fr-FR'):today;
@@ -2168,7 +2197,7 @@ function printFacture(){
   const body=rows.map(r=>'<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
-   ${docTop(E,OR,'❄',facD)}
+   ${docTop(E,OR,IC_SNOW,facD)}
    <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
      <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
        <div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em">Client</div>
@@ -2185,13 +2214,14 @@ function printFacture(){
    <div style="margin-top:10px;font-size:11px;font-weight:700;color:#333">TVA non applicable — article 293 B du CGI</div>
    <div style="display:flex;justify-content:flex-end;margin-top:14px;font-size:11.5px">
      <table style="border-collapse:collapse;font-size:12px;min-width:270px">
-       <tr style="background:#fbeedd"><td style="text-align:right;padding:8px;font-weight:800">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800">${eur(c.totalHT)}</td></tr>
+       <tr style="background:#eef2f7"><td style="text-align:right;padding:8px;font-weight:800;color:#1f4e79">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800;color:#1f4e79">${eur(c.totalHT)}</td></tr>
      </table>
    </div>
    <div style="margin-top:14px;font-size:10px;color:#555;line-height:1.6">
      <b>Conditions de règlement :</b> paiement à réception de facture — virement, chèque ou espèces.<br>
      Pas d'escompte pour paiement anticipé. Pénalités de retard : 3 fois le taux d'intérêt légal.${d.cType==='Professionnel'?' Indemnité forfaitaire de recouvrement (professionnels) : 40 €.':''}
    </div>
+   ${facMentions((c.pieces&&c.pieces.length)?'Prestation de services et livraison de biens':'Prestation de services',d,E)}
    <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
    ${docLegal(E,OR)}
    </div>`;
@@ -2200,60 +2230,154 @@ function printFacture(){
 
 /* ============ PRINT / PDF ============ */
 function fmtQ(n){return (Math.round((Number(n)||0)*100)/100).toLocaleString('fr-FR');}
+/* Validité par défaut du devis (choix commercial, modifiable en Paramètres → entreprise.validiteDevis) */
+function devisValidite(E){return (E&&E.validiteDevis)||'3 mois';}
 function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.entreprise||{};
-  const OR='#e08a2c';
+  const NV='#1f4e79', TINT='#eef2f7';          // accent bleu marine + fond clair
   const today=new Date().toLocaleDateString('fr-FR');
   const fr=c.franchise;
-  const gsum=g=>c.lines.filter(l=>l.group===g).reduce((s,l)=>s+l.ht,0);
   const machineList=(d.machines||[]).filter(m=>m.marque||m.ref).map(m=>`${m.marque||''} ${m.ref||''}`.trim()).join(', ');
-  const rows=[
-    ['Fourniture du matériel'+(machineList?` <span style="font-size:9.5px;color:#888">— ${machineList}</span>`:''), gsum('Matériel')],
-    ['Pose, raccordement et installation', gsum('Pose & main-d’œuvre')+gsum('Frais & divers')],
-    ['Mise en service et déplacement', gsum('Mise en service & déplacement')]
-  ].filter(r=>r[1]>0.005);
-  const body=rows.map(r=>`<tr>
-      <td style="text-align:left;padding:11px 12px;border:1px solid #eee">${r[0]}</td>
-      ${fr?'':`<td style="text-align:center;padding:11px 12px;border:1px solid #eee">${c.tvaRate} %</td>`}
-      <td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">${eur(r[1])}</td></tr>`).join('');
+  const SNOW='<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"><path d="M12 2v20M2 12h20M5 5l14 14M19 5L5 19"/></svg>';
+  /* ======= MODE ESTIMATION INDICATIVE : PDF simplifié, 4 postes, sans détail ======= */
+  if(d.estim){
+    const sumBy=fn=>c.lines.filter(fn).reduce((s,l)=>s+l.ht,0);
+    const erows=[
+      ['Fourniture des équipements et du matériel', sumBy(l=>l.group==='Matériel'||l.group==='Frais & divers')],
+      ['Pose et installation', sumBy(l=>l.group==='Pose & main-d’œuvre')],
+      ['Mise en service et contrôles', sumBy(l=>l.group==='Mise en service & déplacement'&&l.label!=='Déplacement')],
+      ['Déplacement', sumBy(l=>l.label==='Déplacement')]
+    ].filter(r=>r[1]>0.005);
+    const ebody=erows.map(r=>`<tr><td style="padding:11px 12px;border-top:1px solid #e6ebf2;color:#333">${r[0]}</td><td style="padding:11px 12px;border-top:1px solid #e6ebf2;text-align:right;font-weight:600;color:#1f2732">${eur(r[1])}</td></tr>`).join('');
+    const montantAff = fr ? `${eur(c.totalHT)}` : `${eur(c.totalTTC)} TTC`;
+    document.getElementById('devisDoc').innerHTML=`
+     <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
+     ${docTop(E,NV,SNOW,today)}
+     <div style="margin:10px 0 4px"><span style="font-size:20px;font-weight:800;color:${NV}">Estimation indicative</span></div>
+     <div style="font-size:11px;color:#555;margin-bottom:12px"><b>Objet :</b> ${d.type} — ${(d.splits||[]).length} unité(s) intérieure(s), ${(d.machines||[]).length} groupe(s) extérieur(s)${d.cNom?` &nbsp;·&nbsp; Pour : <b>${d.cNom}</b>`:''}</div>
+     <div style="background:#fff7e6;border:1px solid #f0dcae;border-radius:8px;padding:10px 13px;font-size:11px;color:#7a5a12;margin-bottom:12px">
+       <b>Document non contractuel.</b> Montant donné à titre indicatif pour information — il ne vaut pas devis. Un devis détaillé et définitif sera établi après visite technique.
+     </div>
+     <table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #dce3ec">
+       <thead><tr style="background:${NV};color:#fff"><th style="text-align:left;padding:9px 12px">Poste</th><th style="text-align:right;padding:9px 12px">Montant estimé HT</th></tr></thead>
+       <tbody>${ebody}</tbody>
+     </table>
+     <div style="display:flex;justify-content:flex-end;margin-top:14px">
+       <table style="border-collapse:collapse;font-size:12px;min-width:280px">
+         <tr><td style="text-align:right;padding:6px 8px">Estimation HT</td><td style="text-align:right;padding:6px 8px;font-weight:700">${eur(c.totalHT)}</td></tr>
+         ${fr?`<tr><td style="text-align:right;padding:6px 8px;color:#888">TVA</td><td style="text-align:right;padding:6px 8px;color:#888">non applicable (293 B)</td></tr>`:`<tr><td style="text-align:right;padding:6px 8px">TVA (${c.tvaRate} %)</td><td style="text-align:right;padding:6px 8px">${eur(c.tva)}</td></tr>`}
+         <tr style="background:${TINT}"><td style="text-align:right;padding:9px 8px;font-weight:800;color:${NV}">Montant estimé ≈</td><td style="text-align:right;padding:9px 8px;font-weight:800;color:${NV}">${montantAff}</td></tr>
+       </table>
+     </div>
+     <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
+     ${docLegal(E,NV)}
+     </div>`;
+    window.print();
+    return;
+  }
+  /* ---- Regroupement des lignes en catégories lisibles pour le client ---- */
+  const catOf=l=>{
+    if(l.group==='Matériel') return /^Machine/.test(l.label)?'equip':'posemat';
+    if(l.group==='Pose & main-d’œuvre') return 'mo';
+    if(l.group==='Mise en service & déplacement') return l.label==='Déplacement'?'depl':'mes';
+    return 'divers';
+  };
+  const CATS=[
+    ['equip','Équipements — unités intérieures et extérieures'],
+    ['posemat','Liaisons frigorifiques, câbles, évacuation et supports'],
+    ['mo','Main-d’œuvre — pose et installation'],
+    ['mes','Mise en service et contrôles'],
+    ['depl','Déplacement'],
+    ['divers','Consommables']
+  ];
+  /* détail client : quantité × prix unitaire HT, jamais d'achat ni de marge */
+  const subDetail=l=>{
+    if(catOf(l)==='equip') return machineDetailFor(d,l);
+    if(l.unite&&l.unite!=='forfait'&&Number(l.qte)>0&&(Number(l.qte)!==1||l.unite==='m')) return `${fmtQ(l.qte)} ${l.unite} × ${eur(l.pu)} HT`;
+    return '';
+  };
+  let catHTML='';
+  CATS.forEach(([key,titre])=>{
+    const ls=c.lines.filter(l=>catOf(l)===key && l.ht>0.005);
+    if(!ls.length) return;
+    const sub=ls.reduce((s,l)=>s+l.ht,0);
+    let sublines;
+    if(key==='divers'){ // on agrège en une seule ligne neutre (pas de « marge sécurité » visible)
+      sublines=`<tr><td style="padding:6px 12px;color:#444;font-size:10.5px">Consommables (visserie, colliers, mastic, ruban…)</td><td style="padding:6px 12px;text-align:right;color:#444;font-size:10.5px">${eur(sub)}</td></tr>`;
+    } else {
+      sublines=ls.map(l=>{const det=subDetail(l);
+        return `<tr><td style="padding:6px 12px;color:#333;font-size:10.5px">${clientLabel(l)}${det?` <span style="color:#8a93a0">— ${det}</span>`:''}</td><td style="padding:6px 12px;text-align:right;color:#333;font-size:10.5px">${eur(l.ht)}</td></tr>`;
+      }).join('');
+    }
+    catHTML+=`<tr style="background:${TINT}"><td style="padding:9px 12px;font-weight:700;color:${NV};border-top:1px solid #dce3ec">${titre}</td><td style="padding:9px 12px;text-align:right;font-weight:700;color:${NV};border-top:1px solid #dce3ec">${eur(sub)}</td></tr>${sublines}`;
+  });
+  const regl = c.acomptePct>0
+    ? `acompte de ${eur(c.acompte)} (${c.acomptePct}%) à la commande, solde de ${eur(c.solde)} à la fin des travaux`
+    : `à la fin des travaux`;
   const acompteBlock=c.acomptePct>0?`
-    <tr><td style="text-align:right;padding:6px 8px">Acompte à la commande (${c.acomptePct}%)</td><td style="text-align:right;padding:6px 8px;color:${OR};font-weight:700">${eur(c.acompte)}</td></tr>
+    <tr><td style="text-align:right;padding:6px 8px">Acompte à la commande (${c.acomptePct}%)</td><td style="text-align:right;padding:6px 8px;color:${NV};font-weight:700">${eur(c.acompte)}</td></tr>
     <tr><td style="text-align:right;padding:6px 8px">Solde à la fin des travaux</td><td style="text-align:right;padding:6px 8px">${eur(c.solde)}</td></tr>`:'';
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
-   ${docTop(E,OR,'❄',today)}
-   <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
-     <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
-       <div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em">Client</div>
+   ${docTop(E,NV,SNOW,today)}
+   <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin:8px 0 14px">
+     <div style="font-size:11px;color:#555;line-height:1.5;max-width:330px">
+       <div style="font-size:20px;font-weight:800;color:${NV};letter-spacing:-.01em">Devis N° ${d.num}</div>
+       <div style="margin-top:2px"><b>Objet :</b> ${d.type} — ${(d.splits||[]).length} unité(s) intérieure(s), ${(d.machines||[]).length} groupe(s) extérieur(s)${machineList?`<br><span style="color:#777">Équipements : ${machineList}</span>`:''}</div>
+     </div>
+     <div style="border:1px solid #cfd6e0;border-radius:6px;padding:10px 14px;font-size:12px;min-width:230px">
+       <div style="font-size:10px;color:${NV};text-transform:uppercase;letter-spacing:.05em;font-weight:700">Client</div>
        <b>${d.cNom||'—'}</b><br>${d.cAdr||''}<br>${[d.cVille].filter(Boolean).join(' ')}<br>${[d.cTel,d.cMail].filter(Boolean).join(' — ')}</div>
    </div>
-   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">Devis N° ${d.num}</span></div>
-   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">${devisName(d)} — ${d.type} · ${(d.splits||[]).length} unité(s) int. / ${(d.machines||[]).length} groupe(s)</div>
-   <table style="width:100%;border-collapse:collapse;font-size:11px">
-     <thead><tr style="background:${OR};color:#fff">
-       <th style="text-align:left;padding:9px 12px">Désignation</th>
-       ${fr?'':'<th style="padding:9px 12px;text-align:center">TVA</th>'}
-       <th style="padding:9px 12px;text-align:right">Total HT</th></tr></thead>
-     <tbody>${body}</tbody>
+   <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #dce3ec;border-radius:6px;overflow:hidden">
+     <thead><tr style="background:${NV};color:#fff">
+       <th style="text-align:left;padding:9px 12px">Prestations et fournitures</th>
+       <th style="padding:9px 12px;text-align:right">Montant HT</th></tr></thead>
+     <tbody>${catHTML}</tbody>
    </table>
-   ${fr?`<div style="margin-top:10px;font-size:11px;font-weight:700;color:#333">TVA non applicable — article 293 B du CGI</div>`:''}
-   <div style="display:flex;justify-content:flex-end;margin-top:14px;font-size:11.5px">
-     <table style="border-collapse:collapse;font-size:12px;min-width:270px">
+   ${fr?`<div style="margin-top:8px;font-size:10.5px;font-weight:700;color:#333">TVA non applicable — article 293 B du CGI (franchise en base).</div>`:''}
+   <div style="display:flex;justify-content:flex-end;margin-top:14px">
+     <table style="border-collapse:collapse;font-size:12px;min-width:280px">
        ${fr?`
        <tr><td style="text-align:right;padding:6px 8px">Total HT</td><td style="text-align:right;padding:6px 8px;font-weight:700">${eur(c.totalHT)}</td></tr>
        <tr><td style="text-align:right;padding:6px 8px;color:#888">TVA</td><td style="text-align:right;padding:6px 8px;color:#888">non applicable (293 B)</td></tr>
-       <tr style="background:#fbeedd"><td style="text-align:right;padding:8px;font-weight:800">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800">${eur(c.totalHT)}</td></tr>`:`
+       <tr style="background:${TINT}"><td style="text-align:right;padding:9px 8px;font-weight:800;color:${NV}">Net à payer</td><td style="text-align:right;padding:9px 8px;font-weight:800;color:${NV}">${eur(c.totalHT)}</td></tr>`:`
        <tr><td style="text-align:right;padding:6px 8px">Total HT</td><td style="text-align:right;padding:6px 8px;font-weight:700">${eur(c.totalHT)}</td></tr>
-       <tr><td style="text-align:right;padding:6px 8px">Total TVA (${c.tvaRate}%)</td><td style="text-align:right;padding:6px 8px">${eur(c.tva)}</td></tr>
-       <tr style="background:#fbeedd"><td style="text-align:right;padding:8px;font-weight:800">Total TTC</td><td style="text-align:right;padding:8px;font-weight:800">${eur(c.totalTTC)}</td></tr>`}
+       <tr><td style="text-align:right;padding:6px 8px">TVA (${c.tvaRate} %)</td><td style="text-align:right;padding:6px 8px">${eur(c.tva)}</td></tr>
+       <tr style="background:${TINT}"><td style="text-align:right;padding:9px 8px;font-weight:800;color:${NV}">Total TTC</td><td style="text-align:right;padding:9px 8px;font-weight:800;color:${NV}">${eur(c.totalTTC)}</td></tr>`}
        ${acompteBlock}
      </table>
    </div>
-   <div style="margin-top:18px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
+   <div style="margin-top:16px;font-size:10px;color:#555;line-height:1.7;border:1px solid #e3e8ef;border-radius:6px;padding:11px 13px">
+     <b style="color:${NV}">Conditions</b><br>
+     Devis gratuit, valable ${devisValidite(E)} à compter de sa date d'émission.<br>
+     Délai d'exécution des travaux : à convenir ensemble à la commande.<br>
+     Règlement : ${regl} — virement, chèque ou espèces.<br>
+     Matériel garanti selon la garantie constructeur ; installation réalisée dans les règles de l'art et couverte par nos assurances (voir bas de page).
+   </div>
+   <div style="display:flex;gap:14px;margin-top:14px">
+     <div style="flex:1;border:1px solid #cfd6e0;border-radius:6px;padding:10px 12px">
+       <div style="font-weight:700;color:${NV};font-size:11px">Bon pour accord — le client</div>
+       <div style="font-size:9.5px;color:#666;margin-top:2px">Date et signature, précédées de la mention manuscrite « Bon pour accord ».</div>
+       <div style="height:54px"></div>
+     </div>
+     <div style="flex:1;border:1px solid #cfd6e0;border-radius:6px;padding:10px 12px">
+       <div style="font-weight:700;color:${NV};font-size:11px">L'entreprise</div>
+       <div style="font-size:9.5px;color:#666;margin-top:2px">${E.nom||'—'}${E.ville?' — '+E.ville:''}, le ${today}</div>
+       <div style="height:54px"></div>
+     </div>
+   </div>
+   <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
    ${d.cType!=='Professionnel'&&E.mediateur?'<div style="margin-top:4px;font-size:9.5px;color:#777">Médiation de la consommation : '+E.mediateur+(E.mediateurSite?' — '+E.mediateurSite:'')+'. En cas de litige non résolu, le client consommateur peut saisir gratuitement ce médiateur.</div>':''}
-   ${docLegal(E,OR)}
+   ${docLegal(E,NV)}
    </div>`;
   window.print();
 }
+/* libellé client épuré (retire les n° internes « Machine 1 — ») */
+function clientLabel(l){
+  if(/^Machine\s*\d+/.test(l.label)){const m=l.label.replace(/^Machine\s*\d+\s*/,'').replace(/^—\s*/,'').trim();return m?('Unité '+m):'Unité de climatisation';}
+  return l.label;
+}
+function machineDetailFor(d,l){const m=(l.label.match(/^Machine\s*(\d+)/)||[])[1];return '1 ensemble (groupe ext. + unité int.)';}
 
 /* ============ MODAL / TOAST / IO ============ */
 function openModal(id){document.getElementById(id).classList.add('on');}
@@ -2560,13 +2684,13 @@ function renderLoc(){
 function printContrat(id){
   const l=LOC.find(x=>x.id===id);if(!l)return;
   const c=computeLoc(l),E=P.entreprise||{};
-  const TE='#0d6e7c';
+  const TE='#1f4e79';
   const fdate=s=>s?new Date(s+'T00:00:00').toLocaleDateString('fr-FR'):'—';
   const TD='padding:10px 12px;border:1px solid #eee;text-align:',TR='padding:8px 12px;border:1px solid #eee;text-align:right';
   const rows=c.items.map(x=>'<tr><td style="'+TD+'left">'+x.ref+' — rafraîchisseur adiabatique mobile</td><td style="'+TD+'center">'+x.qte+'</td><td style="'+TD+'right">'+eur(x.tarif)+'/sem</td><td style="'+TD+'right;font-weight:600">'+eur(x.qte*x.tarif*c.sem)+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px;font-size:11.5px">
-   ${docTop(E,TE,'💨',new Date().toLocaleDateString('fr-FR'),' — rafraîchissement adiabatique')}
+   ${docTop(E,TE,IC_WIND,new Date().toLocaleDateString('fr-FR'),' — rafraîchissement adiabatique')}
    <div style="text-align:center;margin:10px 0 4px"><span style="font-size:17px;font-weight:800">CONTRAT DE LOCATION N° ${l.num}</span></div>
    <div style="text-align:center;font-size:11px;color:#555;margin-bottom:12px">Matériel de rafraîchissement adiabatique — entretien inclus</div>
    <table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tr>
@@ -2712,7 +2836,7 @@ function renderFBloc(){
   el.innerHTML=h;
 }
 function printFactureDevis(d,which){
-  const c=compute(d),E=P.entreprise||{},OR='#e08a2c';
+  const c=compute(d),E=P.entreprise||{},OR='#1f4e79';
   const f=which==='acompte'?d.facAcompte:d.facSolde;if(!f){toast('Pas encore facturé');return;}
   const rows=[];
   if(which==='acompte')rows.push(['Acompte de '+c.acomptePct+' % à la commande — selon devis '+d.num+' ('+d.type+')',f.montant]);
@@ -2721,7 +2845,7 @@ function printFactureDevis(d,which){
   const body=rows.map(r=>'<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
-   ${docTop(E,OR,'❄',new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR'))}
+   ${docTop(E,OR,IC_SNOW,new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR'))}
    <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
      <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
        <div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em">Client</div>
@@ -2735,17 +2859,18 @@ function printFactureDevis(d,which){
    <div style="margin-top:10px;font-size:11px;font-weight:700;color:#333">TVA non applicable — article 293 B du CGI</div>
    <div style="display:flex;justify-content:flex-end;margin-top:14px">
      <table style="border-collapse:collapse;font-size:12px;min-width:270px">
-       <tr style="background:#fbeedd"><td style="text-align:right;padding:8px;font-weight:800">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800">${eur(f.montant)}</td></tr></table>
+       <tr style="background:#eef2f7"><td style="text-align:right;padding:8px;font-weight:800;color:#1f4e79">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800;color:#1f4e79">${eur(f.montant)}</td></tr></table>
    </div>
    <div style="margin-top:14px;font-size:10px;color:#555;line-height:1.6"><b>Conditions de règlement :</b> paiement à réception de facture — virement, chèque ou espèces.<br>
    Pas d'escompte pour paiement anticipé. Pénalités de retard : 3 fois le taux d'intérêt légal.${d.cType==='Professionnel'?' Indemnité forfaitaire de recouvrement (professionnels) : 40 €.':''}</div>
+   ${facMentions('Livraison de biens et prestation de services',d,E)}
    <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
    ${docLegal(E,OR)}
    </div>`;
   window.print();
 }
 function printFactureLoc(l){
-  const c=computeLoc(l),E=P.entreprise||{},TE='#0d6e7c';
+  const c=computeLoc(l),E=P.entreprise||{},TE='#1f4e79';
   if(!l.fac){toast('Pas encore facturée');return;}
   const rows=(l.items||[]).map(x=>['Location '+x.qte+' × '+x.ref+' — '+c.sem+' sem. × '+eur(x.tarif)+'/sem',x.qte*x.tarif*c.sem])
     .concat([['Livraison, mise en service et formation'+(l.zone?' ('+l.zone+')':''),c.liv],['Reprise du matériel',c.rep]])
@@ -2753,7 +2878,7 @@ function printFactureLoc(l){
   const body=rows.map(r=>'<tr><td style="text-align:left;padding:10px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:10px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
-   ${docTop(E,TE,'💨',new Date(l.fac.date+'T00:00:00').toLocaleDateString('fr-FR'),' — rafraîchissement adiabatique')}
+   ${docTop(E,TE,IC_WIND,new Date(l.fac.date+'T00:00:00').toLocaleDateString('fr-FR'),' — rafraîchissement adiabatique')}
    <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
      <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
        <div style="font-size:10px;color:#999;text-transform:uppercase">Client</div>
@@ -2767,9 +2892,10 @@ function printFactureLoc(l){
    <div style="margin-top:10px;font-size:11px;font-weight:700;color:#333">TVA non applicable — article 293 B du CGI</div>
    <div style="display:flex;justify-content:flex-end;margin-top:14px">
      <table style="border-collapse:collapse;font-size:12px;min-width:270px">
-       <tr style="background:#e8f6f8"><td style="text-align:right;padding:8px;font-weight:800">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800">${eur(l.fac.montant)}</td></tr></table>
+       <tr style="background:#eef2f7"><td style="text-align:right;padding:8px;font-weight:800;color:#1f4e79">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800;color:#1f4e79">${eur(l.fac.montant)}</td></tr></table>
    </div>
    <div style="margin-top:14px;font-size:10px;color:#555;line-height:1.6"><b>Conditions de règlement :</b> paiement à réception de facture. Pénalités de retard : 3 fois le taux d'intérêt légal.${l.cType==='Professionnel'?' Indemnité forfaitaire de recouvrement : 40 €.':''}</div>
+   ${facMentions('Prestation de services (location de matériel)',l,E)}
    ${docLegal(E,TE)}
    </div>`;
   window.print();
@@ -2934,11 +3060,11 @@ function facturerContrat(id){const c=CTR.find(x=>x.id===id);if(!c)return;
   c.facs.push(f);save('cp2_contrats',CTR);renderContrats();
   toast('🧾 Facture '+f.num+' émise');printFactureCtr(c,f);}
 function printFactureCtr(c,f){
-  const E=P.entreprise||{},OR='#189a58';
+  const E=P.entreprise||{},OR='#1f4e79';
   const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(c.clientNom||'').toLowerCase())||{};
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
-   ${docTop(E,OR,'🤝',new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR'))}
+   ${docTop(E,OR,IC_HAND,new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR'))}
    <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
      <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
        <div style="font-size:10px;color:#999;text-transform:uppercase">Client</div>
@@ -2952,8 +3078,9 @@ function printFactureCtr(c,f){
    <div style="margin-top:10px;font-size:11px;font-weight:700;color:#333">TVA non applicable — article 293 B du CGI</div>
    <div style="display:flex;justify-content:flex-end;margin-top:14px">
      <table style="border-collapse:collapse;font-size:12px;min-width:270px">
-       <tr style="background:#e4f6ec"><td style="text-align:right;padding:8px;font-weight:800">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800">${eur(f.montant)}</td></tr></table></div>
+       <tr style="background:#eef2f7"><td style="text-align:right;padding:8px;font-weight:800;color:#1f4e79">Net à payer</td><td style="text-align:right;padding:8px;font-weight:800;color:#1f4e79">${eur(f.montant)}</td></tr></table></div>
    <div style="margin-top:14px;font-size:10px;color:#555;line-height:1.6"><b>Conditions de règlement :</b> paiement à réception. Pénalités de retard : 3 fois le taux d'intérêt légal.</div>
+   ${facMentions('Prestation de services (entretien)',{cAdr:cl.adr,siren:cl.siren,livrAdr:cl.livrAdr},E)}
    ${docLegal(E,OR)}
    </div>`;
   window.print();
@@ -3049,7 +3176,7 @@ function printFicheFlu(id){
   const f=FLU.find(x=>x.id===id);if(!f)return;
   const E=P.entreprise||{};
   const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(f.client||'').toLowerCase())||{};
-  const B='#2f6bff';
+  const B='#1f4e79';
   const cell='padding:7px 10px;border:1px solid #bbb;font-size:10.5px';
   const sec=t=>'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">'+t+'</div>';
   const chTot=f.qv+f.qrec+f.qreg,reTot=f.qrt+f.qru;
@@ -3113,7 +3240,7 @@ function printPV(){
   formToDep();const d=curDep;
   if(!d){toast('Ouvre une intervention');return;}
   if(d.itype!=='mes'){toast('Le PV concerne les mises en service (type 🧊)');return;}
-  const E=P.entreprise||{},B='#0891b2';
+  const E=P.entreprise||{},B='#1f4e79';
   const cell='padding:8px 10px;border:1px solid #bbb;font-size:10.5px';
   const done=[];
   if(d.mesMode!=='carte')done.push('Forfait mise en service '+(d.mesType||''));
@@ -3125,7 +3252,7 @@ function printPV(){
   if(d.optAppoint)done.push('Appoint de fluide (pesée) — voir fiche fluides');
   const blank='<span style="display:inline-block;border-bottom:1px dotted #999;min-width:110px">&nbsp;</span>';
   document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px;font-size:11px">'
-   +docTop(E,B,'🧊',new Date().toLocaleDateString('fr-FR'))
+   +docTop(E,B,IC_CUBE,new Date().toLocaleDateString('fr-FR'))
    +'<div style="text-align:center;margin:6px 0 12px"><b style="font-size:16px">PROCÈS-VERBAL DE MISE EN SERVICE</b><div style="font-size:11px;color:#555">Intervention du '+(d.date?new Date(d.date+'T00:00:00').toLocaleDateString('fr-FR'):'—')+(d.facNum?' — réf. '+d.facNum:'')+'</div></div>'
    +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>Client :</b> '+(d.cNom||'—')+'<br>'+[d.cAdr,d.cVille].filter(Boolean).join(', ')+'</td><td style="'+cell+'"><b>Installation :</b> '+(d.desc||'—')+'</td></tr></table>'
    +'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">Opérations réalisées</div>'
@@ -3174,7 +3301,7 @@ function toolkitFor(type){
 }
 function printChecklist(){
   formToDevis();const d=cur,c=compute(d);
-  const B='#0e1c36';
+  const B='#1f4e79';
   const box=x=>'<div style="padding:4px 0;font-size:11px">☐ '+x+'</div>';
   const sec=t=>'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">'+t+'</div>';
   document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">'
@@ -3419,6 +3546,7 @@ if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}
 </script>
 <script src="next-addons.js"></script>
 <script src="next-regime.js"></script>
+<script src="next-siren.js"></script>
 <script src="next-icons.js"></script>
 </body>
 </html>
