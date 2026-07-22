@@ -120,6 +120,7 @@
     window.renderList = function(){
       var r = _renderList.apply(this, arguments);
       try{ nxDecorateList(); }catch(e){}
+      try{ nxSyncChips(); }catch(e){}
       return r;
     };
   }
@@ -186,6 +187,67 @@
     };
   }
 
+  /* ---------- 5b. cases de filtre dans « Tous les devis » ---------- */
+  var FILTERS = [ ['tous','Tous'], ['brouillon','Brouillons'], ['envoye','Envoyés'],
+                  ['accepte','Acceptés'], ['refuse','Refusés'] ];
+
+  window.nxSetFilter = function(f){
+    window._listFilter = f;
+    try{ if(typeof renderList==='function') renderList(); }catch(e){}
+    nxMarkTousActive();
+  };
+
+  function nxMarkTousActive(){
+    var nav = document.getElementById('nav'); if(!nav) return;
+    Array.prototype.forEach.call(nav.querySelectorAll('a'), function(a){ a.classList.remove('active'); });
+    var t = nav.querySelector('a[data-v="tous"]'); if(t) t.classList.add('active');
+  }
+
+  function nxCount(f){
+    try{
+      if(f==='tous') return DEVIS.length;
+      return DEVIS.filter(function(d){ return norm(d.statut)===f; }).length;
+    }catch(e){ return 0; }
+  }
+
+  function nxSyncChips(){
+    var bar = document.getElementById('nx-filterbar'); if(!bar) return;
+    var cur = window._listFilter || 'tous';
+    Array.prototype.forEach.call(bar.querySelectorAll('.nx-chip'), function(c){
+      var f = c.getAttribute('data-f');
+      c.classList.toggle('on', f===cur);
+      var b = c.querySelector('.nx-chipn'); if(b) b.textContent = nxCount(f);
+    });
+  }
+
+  function buildFilterBar(){
+    var view = document.getElementById('v-list'); if(!view) return;
+    if(document.getElementById('nx-filterbar')) return;
+    var sb = view.querySelector('.searchbar');
+    var bar = document.createElement('div');
+    bar.id = 'nx-filterbar';
+    bar.className = 'nx-filterbar';
+    bar.innerHTML = FILTERS.map(function(d){
+      return '<button type="button" class="nx-chip" data-f="'+d[0]+'" onclick="nxSetFilter(\''+d[0]+'\')">' +
+             d[1] + ' <span class="nx-chipn">0</span></button>';
+    }).join('');
+    if(sb && sb.parentNode) sb.parentNode.insertBefore(bar, sb.nextSibling);
+    else view.insertBefore(bar, view.firstChild);
+    nxSyncChips();
+  }
+
+  /* garde « Tous les devis » surligné + cases à jour quand on entre dans la liste */
+  if(typeof window.go==='function'){
+    var _go = window.go;
+    window.go = function(v){
+      var r = _go.apply(this, arguments);
+      try{
+        if(typeof LISTV!=='undefined' && LISTV.indexOf(v)>=0){ nxMarkTousActive(); nxSyncChips(); }
+      }catch(e){}
+      return r;
+    };
+  }
+
   /* ---------- 6. auto-mail : « Mail au client » -> Envoyé ---------- */
   if(typeof window.mailDevis==='function'){
     var _mailDevis = window.mailDevis;
@@ -223,6 +285,11 @@
       }
       var ap = nav.querySelector('a[data-v="pret"]');
       if(ap) ap.style.display='none';
+      /* regroupé : une seule entrée « Tous les devis », le filtre se fait dans la liste */
+      ['brouillon','envoye','accepte'].forEach(function(v){
+        var a = nav.querySelector('a[data-v="'+v+'"]'); if(a) a.style.display='none';
+      });
+      var at = nav.querySelector('a[data-v="tous"] .txt'); if(at) at.textContent='Tous les devis';
     }
     /* bouton rapide du tableau de bord */
     Array.prototype.forEach.call(document.querySelectorAll('.qbtn'), function(b){
@@ -294,7 +361,13 @@
       '.nx-seg button.on{background:var(--blue);color:#fff}' +
       '.nx-seg button.on:hover{background:var(--blue);color:#fff}' +
       '.nx-seg button.on.acc{background:var(--green)}' +
-      '.nx-seg button.on.ref{background:var(--red)}';
+      '.nx-seg button.on.ref{background:var(--red)}' +
+      '.nx-filterbar{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}' +
+      '.nx-chip{font:inherit;font-size:12.5px;font-weight:600;padding:7px 14px;border-radius:20px;border:1px solid var(--line2);background:#fff;color:var(--muted);cursor:pointer;text-transform:none;letter-spacing:0;display:inline-flex;align-items:center;gap:7px}' +
+      '.nx-chip:hover{border-color:var(--blue);color:var(--blue)}' +
+      '.nx-chip .nx-chipn{font-size:11px;font-weight:700;background:var(--line);color:var(--muted);border-radius:11px;padding:1px 7px;min-width:18px;text-align:center}' +
+      '.nx-chip.on{background:var(--blue);border-color:var(--blue);color:#fff}' +
+      '.nx-chip.on .nx-chipn{background:rgba(255,255,255,.25);color:#fff}';
     var st = document.createElement('style');
     st.id = 'nx-statut-css';
     st.textContent = css;
@@ -307,6 +380,7 @@
     migrateAll();
     tweakNav();
     buildSeg();
+    buildFilterBar();
     refreshViews();
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', function(){ setTimeout(boot, 0); });
