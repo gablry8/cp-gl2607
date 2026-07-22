@@ -122,6 +122,7 @@
     var p = node.parentNode;
     while (p && p.nodeType === 1) {
       if (SKIP[p.tagName]) return true;
+      if (p.id === "devisDoc") return true;   // ne jamais toucher au document PDF
       if (p.isContentEditable) return true;
       if (p.classList && (p.classList.contains("ci") || p.classList.contains("ci-e"))) return true;
       p = p.parentNode;
