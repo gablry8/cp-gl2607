@@ -886,12 +886,30 @@ tbody tr:hover{background:#f7f9fd}
   <div style="background:#fff;border-radius:16px;padding:30px 34px;text-align:center;max-width:340px;width:92%;box-shadow:0 20px 60px rgba(0,0,0,.4)">
     <div style="font-size:34px">🌬️</div>
     <h3 style="margin:0 0 4px;font-size:18px">ClimPilot</h3>
-    <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Connecte-toi pour retrouver tes données sur tous tes appareils</div>
-    <input id="logEmail" type="email" autocomplete="username" placeholder="Email" style="width:100%;padding:11px;border:2px solid var(--line2);border-radius:10px;font-size:14px;margin-bottom:8px">
-    <input id="logPass" type="password" autocomplete="current-password" placeholder="Mot de passe" style="width:100%;padding:11px;border:2px solid var(--line2);border-radius:10px;font-size:14px" onkeydown="if(event.key==='Enter')doLogin()">
+    <div id="logIntro" style="font-size:12px;color:var(--muted);margin-bottom:14px">Connecte-toi pour retrouver tes données sur tous tes appareils</div>
+
+    <div id="logFormMain">
+      <input id="logEmail" type="email" autocomplete="username" placeholder="Email" style="width:100%;padding:11px;border:2px solid var(--line2);border-radius:10px;font-size:14px;margin-bottom:8px">
+      <input id="logPass" type="password" autocomplete="current-password" placeholder="Mot de passe" style="width:100%;padding:11px;border:2px solid var(--line2);border-radius:10px;font-size:14px" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+
+    <div id="logFormReset" style="display:none">
+      <input id="logNew1" type="password" autocomplete="new-password" placeholder="Nouveau mot de passe" style="width:100%;padding:11px;border:2px solid var(--line2);border-radius:10px;font-size:14px;margin-bottom:8px">
+      <input id="logNew2" type="password" autocomplete="new-password" placeholder="Confirme le nouveau mot de passe" style="width:100%;padding:11px;border:2px solid var(--line2);border-radius:10px;font-size:14px" onkeydown="if(event.key==='Enter')doNewPass()">
+    </div>
+
     <div id="logMsg" style="color:var(--red);font-size:12px;font-weight:700;min-height:16px;margin-top:8px"></div>
-    <button onclick="doLogin()" style="width:100%;margin-top:6px;padding:12px;border:none;border-radius:10px;background:#0d6e7c;color:#fff;font-weight:700;font-size:14px;cursor:pointer">Se connecter</button>
-    <div style="margin-top:12px;font-size:10.5px;color:var(--muted);line-height:1.5">Compte créé dans Supabase (Authentication → Users).<br>Mot de passe oublié : réinitialise-le au même endroit.</div>
+    <div id="logHint" style="color:var(--muted);font-size:11px;line-height:1.5;margin-top:2px"></div>
+
+    <button id="logBtn" onclick="doLogin()" style="width:100%;margin-top:6px;padding:12px;border:none;border-radius:10px;background:#0d6e7c;color:#fff;font-weight:700;font-size:14px;cursor:pointer">Se connecter</button>
+    <button id="logRetry" onclick="initCloud()" style="display:none;width:100%;margin-top:8px;padding:12px;border:2px solid #0d6e7c;border-radius:10px;background:#fff;color:#0d6e7c;font-weight:700;font-size:14px;cursor:pointer">↻ Réessayer la connexion au serveur</button>
+
+    <div id="logLinks" style="margin-top:12px;font-size:11.5px;line-height:1.8">
+      <a id="logForgot" onclick="doReset()" style="color:#0d6e7c;font-weight:700;cursor:pointer">Mot de passe oublié ?</a>
+      <span style="color:var(--line2)"> · </span>
+      <a id="logDiagBtn" onclick="doDiag()" style="color:var(--muted);cursor:pointer">Diagnostic</a>
+    </div>
+    <pre id="logDiag" style="display:none;margin-top:10px;padding:10px;background:#f3f5f9;border-radius:8px;text-align:left;font:11px/1.6 monospace;white-space:pre-wrap;word-break:break-word;color:var(--ink)"></pre>
   </div>
 </div>
 
@@ -3504,34 +3522,144 @@ async function pushState(manual){
   }catch(e){cloudLbl('⚠ échec synchro — nouvel essai auto','err');if(manual)toast('⚠ Échec synchro : '+(e.message||'réseau'));
     clearTimeout(_pushT);_pushT=setTimeout(()=>pushState(),30000);}
 }
-function showLogin(){const L=document.getElementById('loginScreen');L.style.display='flex';setTimeout(()=>{try{document.getElementById('logEmail').focus();}catch(e){}},80);}
-async function doLogin(){
-  const em=document.getElementById('logEmail').value.trim(),pw=document.getElementById('logPass').value;
-  const msg=document.getElementById('logMsg');if(!em||!pw){msg.textContent='Remplis email et mot de passe';return;}
-  msg.textContent='Connexion…';
-  try{
-    const {data,error}=await sb.auth.signInWithPassword({email:em,password:pw});
-    if(error){msg.textContent='Identifiants incorrects';return;}
-    SESS=data.session;document.getElementById('loginScreen').style.display='none';
-    afterLogin();
-  }catch(e){msg.textContent='Erreur réseau — réessaie';}
+function logEl(id){return document.getElementById(id);}
+/* Affiche un message sur l'écran de connexion. tone : 'err' (défaut), 'info', 'ok'. */
+function logSay(text,hint,tone){
+  const m=logEl('logMsg');if(m){m.textContent=text||'';m.style.color=tone==='ok'?'var(--green)':tone==='info'?'var(--muted)':'var(--red)';}
+  const h=logEl('logHint');if(h)h.textContent=hint||'';
 }
+/* Traduit l'erreur Supabase en message honnête. signInWithPassword RETOURNE son erreur
+   (réseau, projet en veille, quota…) au lieu de la lever : tout afficher comme
+   « identifiants incorrects » faisait croire à un mot de passe cassé. */
+function authErrMsg(e){
+  if(!e)return 'Échec de connexion.';
+  const code=e.code||'',st=Number(e.status||0),nm=e.name||'',txt=String(e.message||'');
+  if(code==='invalid_credentials')return 'Email ou mot de passe incorrect.';
+  if(code==='email_not_confirmed')return 'Email pas encore confirmé — ouvre le lien reçu par email.';
+  if(code==='over_request_rate_limit'||code==='over_email_send_rate_limit')return 'Trop de tentatives. Attends quelques minutes avant de réessayer.';
+  if(code==='user_banned')return 'Ce compte est suspendu.';
+  if(code==='weak_password')return 'Mot de passe trop simple (6 caractères minimum).';
+  if(nm==='AuthRetryableFetchError'||st===0||/Failed to fetch|NetworkError|Load failed/i.test(txt))
+    return 'Serveur injoignable — vérifie ta connexion, puis réessaie.';
+  if(st===429)return 'Trop de tentatives. Attends quelques minutes avant de réessayer.';
+  if(st===400||st===422)return 'Email ou mot de passe incorrect.';
+  if(st===401||st===403)return 'Cloud ClimPilot indisponible (projet en veille ou clé refusée). Tes données locales sont intactes.';
+  if(st===500||st===502||st===503||st===504)return 'Cloud ClimPilot indisponible (serveur en panne ou projet en veille). Tes données locales sont intactes.';
+  return 'Échec de connexion : '+(txt||'erreur inconnue');
+}
+function showLogin(){const L=logEl('loginScreen');L.style.display='flex';setTimeout(()=>{try{logEl('logEmail').focus();}catch(e){}},80);}
+async function doLogin(){
+  const em=logEl('logEmail').value.trim().toLowerCase(),pw=logEl('logPass').value;
+  if(!em||!pw){logSay('Remplis email et mot de passe');return;}
+  if(!sb){logSay('Cloud non chargé — impossible de se connecter.','Touche « Diagnostic » ci-dessous.');return;}
+  if(!navigator.onLine){logSay('Serveur injoignable — vérifie ta connexion, puis réessaie.','Ton appareil est hors ligne. Tes données locales restent accessibles.');return;}
+  logSay('Connexion…','','info');
+  let data=null,error=null;
+  try{const r=await sb.auth.signInWithPassword({email:em,password:pw});data=r.data;error=r.error;}
+  catch(e){error=e;}
+  if(error){
+    const m=authErrMsg(error);let hint='';
+    if(/incorrect/.test(m)&&pw!==pw.trim())hint='Ton mot de passe commence ou finit par un espace — vérifie le copier-coller.';
+    else if(/injoignable|indisponible/.test(m))hint='Touche « Diagnostic » ci-dessous pour savoir si le serveur répond — ton mot de passe n\'est peut-être pas en cause.';
+    logSay(m,hint);return;
+  }
+  SESS=data.session;logEl('loginScreen').style.display='none';
+  afterLogin();
+}
+/* Envoie l'email de réinitialisation. Le lien revient sur cette page et déclenche
+   PASSWORD_RECOVERY → showNewPassForm(). */
+async function doReset(){
+  const em=logEl('logEmail').value.trim().toLowerCase();
+  if(!em){logSay('Entre d\'abord ton email, puis retouche « Mot de passe oublié ? ».');try{logEl('logEmail').focus();}catch(e){}return;}
+  if(!sb){logSay('Cloud non chargé — impossible d\'envoyer l\'email.','Touche « Diagnostic » ci-dessous.');return;}
+  logSay('Envoi de l\'email…','','info');
+  try{
+    const {error}=await sb.auth.resetPasswordForEmail(em,{redirectTo:location.href.split('#')[0]});
+    if(error){logSay(authErrMsg(error));return;}
+    logSay('Email envoyé à '+em,'Ouvre le lien depuis cet appareil : il te ramènera ici pour choisir un nouveau mot de passe. Pense à regarder dans les spams.','ok');
+  }catch(e){logSay(authErrMsg(e));}
+}
+function showNewPassForm(){
+  const L=logEl('loginScreen');if(!L)return;L.style.display='flex';
+  logEl('logIntro').textContent='Choisis ton nouveau mot de passe';
+  logEl('logFormMain').style.display='none';
+  logEl('logFormReset').style.display='block';
+  logEl('logLinks').style.display='none';
+  logEl('logRetry').style.display='none';
+  const b=logEl('logBtn');b.textContent='Enregistrer le nouveau mot de passe';b.onclick=doNewPass;
+  logSay('');
+  setTimeout(()=>{try{logEl('logNew1').focus();}catch(e){}},80);
+}
+async function doNewPass(){
+  const n1=logEl('logNew1').value,n2=logEl('logNew2').value;
+  if(n1.length<6){logSay('6 caractères minimum.');return;}
+  if(n1!==n2){logSay('Les deux mots de passe ne correspondent pas.');return;}
+  logSay('Enregistrement…','','info');
+  try{
+    const {error}=await sb.auth.updateUser({password:n1});
+    if(error){logSay(authErrMsg(error));return;}
+    const {data:{session}}=await sb.auth.getSession();
+    SESS=session;
+    try{history.replaceState(null,'',location.href.split('#')[0]);}catch(e){}
+    logEl('loginScreen').style.display='none';
+    toast('🔐 Nouveau mot de passe enregistré');
+    afterLogin();
+  }catch(e){logSay(authErrMsg(e));}
+}
+/* Dit en clair si le serveur répond — c'est ce qui distingue « mauvais mot de passe »
+   de « projet en veille », impossible à deviner depuis l'écran de connexion. */
+async function doDiag(){
+  const box=logEl('logDiag');if(!box)return;
+  box.style.display='block';box.textContent='Diagnostic en cours…';
+  const L=[];
+  L.push('Appareil en ligne : '+(navigator.onLine?'oui':'NON'));
+  L.push('SDK cloud chargé  : '+((window.supabase&&window.supabase.createClient)?'oui':'NON'));
+  const t0=Date.now();
+  try{
+    const r=await fetch(SUPA_URL+'/auth/v1/settings',{headers:{apikey:SUPA_KEY}});
+    L.push('Serveur : HTTP '+r.status+' en '+(Date.now()-t0)+' ms');
+    L.push(r.ok?'→ Le serveur répond normalement. Si la connexion échoue, c\'est bien l\'email ou le mot de passe.'
+               :'→ Le serveur refuse (projet en veille ou clé invalide). Ce n\'est PAS ton mot de passe : réactive le projet dans Supabase.');
+  }catch(e){
+    L.push('Serveur : INJOIGNABLE ('+(e.message||e)+')');
+    L.push('→ Réseau bloqué ou projet arrêté. Ce n\'est PAS ton mot de passe.');
+  }
+  try{const ks=await caches.keys();L.push('Cache app : '+(ks.join(', ')||'aucun'));}catch(e){}
+  L.push('Date : '+new Date().toLocaleString('fr-FR'));
+  box.textContent=L.join('\n');
+}
+var _authBound=false;
 function afterLogin(){
   const ue=document.getElementById('cloudUser');if(ue&&SESS&&SESS.user)ue.textContent=SESS.user.email;
   cloudLbl('☁ connexion…');
   pullState();
+  if(_authBound)return;_authBound=true;
   window.addEventListener('online',()=>{if(localStorage.getItem('cp2_dirty'))pushState();});
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&localStorage.getItem('cp2_dirty')&&SESS)pushState();});
 }
 async function cloudLogout(){if(!confirm('Se déconnecter du cloud sur cet appareil ? (les données locales restent)'))return;
   try{await sb.auth.signOut();}catch(e){}location.reload();}
+/* Le cloud ne répond pas : afficher quand même l'écran de connexion avec un bouton
+   Réessayer, au lieu de retomber silencieusement en mode local. */
+function cloudDown(lbl){
+  cloudLbl(lbl,'err');
+  showLogin();
+  const r=logEl('logRetry');if(r)r.style.display='block';
+  logSay('Serveur injoignable','Impossible de joindre le cloud ClimPilot. Tes données locales restent accessibles — touche « Diagnostic » pour savoir pourquoi.');
+}
 async function initCloud(){
-  if(!(window.supabase&&window.supabase.createClient)){cloudLbl('⚠ cloud non chargé — mode local','err');return;}
-  sb=window.supabase.createClient(SUPA_URL,SUPA_KEY);
-  try{const {data:{session}}=await sb.auth.getSession();
-    if(!session){showLogin();cloudLbl('non connecté');return;}
-    SESS=session;afterLogin();
-  }catch(e){cloudLbl('⚠ cloud injoignable — mode local','err');}
+  const r=logEl('logRetry');if(r)r.style.display='none';
+  if(!(window.supabase&&window.supabase.createClient)){cloudDown('⚠ cloud non chargé — mode local');return;}
+  if(!sb){
+    sb=window.supabase.createClient(SUPA_URL,SUPA_KEY);
+    sb.auth.onAuthStateChange(ev=>{if(ev==='PASSWORD_RECOVERY')showNewPassForm();});
+  }
+  if(/type=recovery/.test(location.hash||'')){showNewPassForm();return;}
+  try{const {data:{session},error}=await sb.auth.getSession();
+    if(error)throw error;
+    if(!session){showLogin();cloudLbl('non connecté');logSay('');return;}
+    SESS=session;logEl('loginScreen').style.display='none';afterLogin();
+  }catch(e){cloudDown('⚠ cloud injoignable — mode local');}
 }
 
 /* ============ INIT ============ */
