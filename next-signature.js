@@ -164,6 +164,7 @@
       }).catch(function(){});
   }
   window.nxsRefresh = refresh;
+  window.nxsPendingList = function(){ return PENDING.slice(); };
 
   window.nxsCancel = function(token){
     if(!confirm('Désactiver ce lien de signature ?')) return;

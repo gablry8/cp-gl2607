@@ -310,7 +310,9 @@
   }
 
   // Exposition des actions appelées depuis le HTML injecté.
-  Object.assign(window,{nxToast,nxCloseModal,nxOpenTaskModal,nxSaveTask,nxToggleTask,nxDeleteTask,nxRunAuto,nxEnableNotifications});
+  /* modification d'une tâche (report de date, priorité…) — utilisé par l'écran « Ma journée » */
+  function nxUpdateTask(id,patch){const t=nxTasks.find(x=>x.id===id);if(!t)return false;['title','due','priority','cat','link'].forEach(k=>{if(patch&&patch[k]!==undefined)t[k]=patch[k];});nxSave(NX_KEYS.tasks,nxTasks);return true;}
+  Object.assign(window,{nxToast,nxCloseModal,nxOpenTaskModal,nxSaveTask,nxToggleTask,nxDeleteTask,nxRunAuto,nxEnableNotifications,nxUpdateTask});
 
   /* ---------- Recherche globale ---------- */
   function nxBuildSearch(){
