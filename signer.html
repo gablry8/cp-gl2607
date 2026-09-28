@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Signature de document</title>
+<style>
+  :root{--marine:#1f4e79;--ink:#16263a;--muted:#5f6f84;--line:#d6dee8;--bg:#f3f6fa;--ok:#1e7a4c;--warn:#8a5a00;--err:#b03a2e}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
+  header{background:var(--marine);color:#fff;padding:16px;padding-top:max(16px,env(safe-area-inset-top))}
+  header h1{margin:0;font-size:18px}
+  header p{margin:4px 0 0;opacity:.85;font-size:13px}
+  main{max-width:860px;margin:0 auto;padding:16px}
+  .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px}
+  .card h2{margin:0 0 8px;font-size:16px}
+  iframe{width:100%;border:0;min-height:420px;background:#fff;border-radius:8px}
+  .docwrap{padding:6px;border:1px solid var(--line);border-radius:10px;overflow:auto;max-height:70vh;background:#fff}
+  label{display:block;font-weight:600;font-size:14px;margin:12px 0 6px}
+  input[type=text],textarea{width:100%;font:inherit;padding:12px;border:2px solid var(--line);border-radius:10px}
+  input[type=text]:focus,textarea:focus{outline:none;border-color:var(--marine)}
+  .check{display:flex;gap:10px;align-items:flex-start;font-weight:500;margin-top:14px}
+  .check input{width:22px;height:22px;margin-top:2px;flex:none}
+  .pad{position:relative;border:2px dashed #9fb3c8;border-radius:12px;background:#fbfcfe;touch-action:none}
+  .pad canvas{display:block;width:100%;height:190px;border-radius:12px}
+  .pad .hint{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#9fb3c8;pointer-events:none;font-size:14px}
+  .row{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}
+  button{font:inherit;font-weight:700;border-radius:12px;padding:13px 18px;border:0;cursor:pointer}
+  .pri{background:var(--marine);color:#fff;flex:1;min-width:200px}
+  .pri[disabled]{opacity:.55;cursor:default}
+  .ghost{background:#eef2f7;color:var(--ink)}
+  .link{background:none;color:var(--muted);text-decoration:underline;padding:8px 0;font-weight:500}
+  .msg{padding:12px 14px;border-radius:10px;margin-top:12px;font-size:14px}
+  .msg.err{background:#fde8e6;color:var(--err)} .msg.ok{background:#e4f4ec;color:var(--ok)} .msg.info{background:#eef3f9;color:var(--ink)}
+  .small{font-size:12px;color:var(--muted)}
+  .hash{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;word-break:break-all;color:var(--muted)}
+  .sigimg{max-width:280px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .center{text-align:center}
+  .spinner{width:28px;height:28px;border:3px solid #cfd9e5;border-top-color:var(--marine);border-radius:50%;animation:sp 1s linear infinite;margin:30px auto}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media print{header,.noprint{display:none!important}main{padding:0}.card{border:0;padding:0}.docwrap{max-height:none;border:0}}
+</style>
+</head>
+<body>
+<header><h1 id="h1">Signature de document</h1><p id="hsub">Chargement…</p></header>
+<main id="main"><div class="spinner"></div></main>
+<script>
+(function(){
+  'use strict';
+  var FN='https://onnmomydxfoozcmmtsnz.supabase.co/functions/v1/signature';
+  var KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ubm1vbXlkeGZvb3pjbW10c256Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4MzkzMjUsImV4cCI6MjA5OTQxNTMyNX0.wfGW17EMzPTUMMG23Aegg4-iAvfE3QrBOqVlKW0uFn0';
+  var token=(location.hash.match(/t=([0-9a-f-]{36})/i)||location.search.match(/t=([0-9a-f-]{36})/i)||[])[1]||'';
+  var main=document.getElementById('main'), DOC=null, drawn=false;
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function api(body){body.t=token;return fetch(FN,{method:'POST',headers:{'Content-Type':'application/json','apikey':KEY,'Authorization':'Bearer '+KEY},body:JSON.stringify(body)}).then(function(r){return r.json().catch(function(){return {erreur:'reseau',message:'Réponse illisible.'};});}).catch(function(){return {erreur:'reseau',message:'Connexion impossible. Vérifiez votre réseau et réessayez.'};});}
+  function fmtDate(s){try{return new Date(s).toLocaleString('fr-FR',{dateStyle:'long',timeStyle:'short'});}catch(e){return s;}}
+  function euros(n){return n==null?'':Number(n).toLocaleString('fr-FR',{style:'currency',currency:'EUR'});}
+  function label(){return DOC&&DOC.doc_type==='fluide'?'la fiche d’intervention':'le devis';}
+  function head(){document.getElementById('h1').textContent=(DOC.doc_type==='fluide'?'Fiche d’intervention':'Devis')+(DOC.doc_num?' n° '+DOC.doc_num:'');
+    document.getElementById('hsub').textContent=(DOC.titre||'')+(DOC.montant_ttc!=null&&DOC.doc_type==='devis'?' — '+euros(DOC.montant_ttc):'');document.title=document.getElementById('h1').textContent;}
+  function docFrame(){return '<div class="card"><h2>Le document</h2><p class="small noprint">Lisez-le entièrement avant de signer. Vous pouvez faire défiler et zoomer.</p><div class="docwrap"><iframe id="docf" sandbox="allow-same-origin" title="Document"></iframe></div></div>';}
+  function fillFrame(){var f=document.getElementById('docf');if(!f)return;
+    f.srcdoc='<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:12px;font-family:Arial,Helvetica,sans-serif}img{max-width:100%}</style></head><body>'+(DOC.doc_html||'')+'</body></html>';
+    f.onload=function(){try{f.style.height=(f.contentDocument.documentElement.scrollHeight+20)+'px';}catch(e){}};}
+  function proof(){return '<div class="card"><h2>✅ Signé électroniquement</h2><p>Par <b>'+esc(DOC.signer_nom)+'</b> le <b>'+esc(fmtDate(DOC.signed_at))+'</b>.</p>'+(DOC.signature_png?'<img class="sigimg" alt="Signature" src="'+esc(DOC.signature_png)+'">':'')+
+    '<p class="small">Empreinte du document signé (SHA-256) :</p><p class="hash">'+esc(DOC.doc_hash)+'</p>'+
+    '<div class="row noprint"><button class="ghost" onclick="window.print()">🖨️ Imprimer / enregistrer une copie (PDF)</button></div></div>';}
+
+  function render(){
+    head();
+    var st=DOC.statut;
+    if(st==='annule'){main.innerHTML='<div class="card"><h2>Ce lien n’est plus actif</h2><p>Le document a été remplacé ou retiré. Votre installateur vous enverra un nouveau lien si nécessaire.</p></div>';return;}
+    if(st==='expire'){main.innerHTML=docFrame()+'<div class="card"><h2>Lien expiré</h2><p>Ce lien de signature a expiré. Contactez votre installateur pour en recevoir un nouveau.</p></div>';fillFrame();return;}
+    if(st==='signe'){main.innerHTML=docFrame()+proof();fillFrame();return;}
+    if(st==='refuse'){main.innerHTML='<div class="card"><h2>Réponse enregistrée</h2><p>Vous avez indiqué ne pas donner suite. Merci pour votre retour.</p></div>';return;}
+    main.innerHTML=docFrame()+
+      '<div class="card noprint" id="signcard"><h2>Votre accord</h2>'+
+      '<label for="nom">Vos nom et prénom</label><input type="text" id="nom" autocomplete="name" maxlength="100" value="'+esc(DOC.client_nom||'')+'">'+
+      '<label>Votre signature <span class="small">(avec le doigt ou la souris)</span></label>'+
+      '<div class="pad"><canvas id="cv" aria-label="Zone de signature"></canvas><div class="hint" id="hint">Signez ici</div></div>'+
+      '<div class="row" style="margin-top:8px"><button class="ghost" type="button" id="clr">Effacer</button></div>'+
+      '<label class="check"><input type="checkbox" id="acc"> <span>J’ai lu '+label()+(DOC.doc_num?' n° '+esc(DOC.doc_num):'')+' et je l’accepte sans réserve — « Bon pour accord ».</span></label>'+
+      '<div class="row"><button class="pri" id="go" disabled>Signer '+label()+'</button></div>'+
+      '<div id="m"></div>'+
+      '<p class="small" style="margin-top:14px">Signature électronique (articles 1366 et 1367 du Code civil). Sont enregistrés avec votre signature : la date et l’heure, le nom saisi, l’adresse IP, le navigateur utilisé et l’empreinte numérique du document, qui garantit qu’il n’a pas été modifié.</p>'+
+      '<button class="link" type="button" id="no">Je ne souhaite pas donner suite</button><div id="refus"></div></div>';
+    fillFrame();pad();
+  }
+
+  function pad(){
+    var cv=document.getElementById('cv'),ctx=cv.getContext('2d'),hint=document.getElementById('hint'),go=document.getElementById('go'),acc=document.getElementById('acc'),nom=document.getElementById('nom');
+    function size(){var r=cv.getBoundingClientRect(),d=window.devicePixelRatio||1;var img=drawn?cv.toDataURL():null;cv.width=Math.round(r.width*d);cv.height=Math.round(r.height*d);ctx.setTransform(d,0,0,d,0,0);ctx.lineWidth=2.4;ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#10243e';
+      if(img){var i=new Image();i.onload=function(){ctx.drawImage(i,0,0,r.width,r.height);};i.src=img;}}
+    size();window.addEventListener('resize',size);
+    var down=false,last=null,pts=0;
+    function pos(e){var r=cv.getBoundingClientRect();return {x:e.clientX-r.left,y:e.clientY-r.top};}
+    cv.addEventListener('pointerdown',function(e){e.preventDefault();down=true;last=pos(e);try{cv.setPointerCapture(e.pointerId);}catch(_){}});
+    cv.addEventListener('pointermove',function(e){if(!down)return;e.preventDefault();var p=pos(e);ctx.beginPath();ctx.moveTo(last.x,last.y);ctx.lineTo(p.x,p.y);ctx.stroke();last=p;pts++;if(pts>12){drawn=true;hint.style.display='none';upd();}});
+    ['pointerup','pointercancel','pointerleave'].forEach(function(ev){cv.addEventListener(ev,function(){down=false;});});
+    document.getElementById('clr').onclick=function(){ctx.clearRect(0,0,cv.width,cv.height);drawn=false;pts=0;hint.style.display='';upd();};
+    function upd(){go.disabled=!(drawn&&acc.checked&&nom.value.trim().length>=2);}
+    acc.onchange=upd;nom.oninput=upd;
+    go.onclick=function(){
+      go.disabled=true;go.textContent='Envoi…';
+      var out=document.createElement('canvas');out.width=500;out.height=190;var o=out.getContext('2d');o.fillStyle='#fff';o.fillRect(0,0,500,190);o.drawImage(cv,0,0,500,190);
+      api({action:'signer',nom:nom.value.trim(),accepte:acc.checked===true,signature:out.toDataURL('image/png')}).then(function(r){
+        if(r&&r.ok){DOC.statut='signe';DOC.signed_at=r.signed_at;DOC.signer_nom=nom.value.trim();DOC.signature_png=out.toDataURL('image/png');DOC.doc_hash=r.doc_hash||DOC.doc_hash;render();window.scrollTo(0,document.body.scrollHeight);}
+        else{document.getElementById('m').innerHTML='<div class="msg err">'+esc((r&&r.message)||'Erreur, réessayez.')+'</div>';go.textContent='Signer '+label();upd();}
+      });
+    };
+    document.getElementById('no').onclick=function(){
+      document.getElementById('refus').innerHTML='<label for="motif">Un mot pour expliquer ? <span class="small">(facultatif)</span></label><textarea id="motif" rows="3" maxlength="500"></textarea><div class="row"><button class="ghost" id="nogo">Confirmer que je ne donne pas suite</button></div>';
+      document.getElementById('nogo').onclick=function(){
+        if((nom.value||'').trim().length<2){document.getElementById('m').innerHTML='<div class="msg err">Indiquez vos nom et prénom ci-dessus.</div>';return;}
+        api({action:'refuser',nom:nom.value.trim(),motif:document.getElementById('motif').value}).then(function(r){if(r&&r.ok){DOC.statut='refuse';render();}else document.getElementById('m').innerHTML='<div class="msg err">'+esc((r&&r.message)||'Erreur')+'</div>';});
+      };
+    };
+  }
+
+  if(!token){document.getElementById('hsub').textContent='';main.innerHTML='<div class="card"><h2>Lien incomplet</h2><p>Ouvrez le lien exact reçu par e-mail ou SMS.</p></div>';return;}
+  api({action:'lire'}).then(function(r){
+    if(!r||r.erreur){document.getElementById('hsub').textContent='';main.innerHTML='<div class="card"><h2>Document indisponible</h2><p>'+esc((r&&r.message)||'Erreur')+'</p></div>';return;}
+    DOC=r;render();
+  });
+})();
+</script>
+</body>
+</html>

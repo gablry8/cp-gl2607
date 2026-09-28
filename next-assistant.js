@@ -353,6 +353,7 @@
       if(p.zone&&P.zone[p.zone]!=null) d.zone=p.zone;
       if(Array.isArray(p.pieces)) d.pieces=p.pieces.map(function(pc){ var f=findPrix(pc.nom); if(!f&&!pc.achat) warn.push('Prix de la pièce « '+pc.nom+' » à saisir'); return {nom:pc.nom||'',qte:+pc.qte||1,achat:+pc.achat||(f?f.achat:0)||0,vente:+pc.vente||(f?venteOf(pc.nom,f.marge):0)||0}; });
       var notes=[]; if(p.notes) notes.push(p.notes);
+      if(p.fluide && (p.fluide.nom||p.fluide.charge||p.fluide.recupere)) d._fluide=p.fluide; /* → fiche Cerfa pré-remplie à l'enregistrement */
       if(p.fluide) notes.push('Fluide : '+[p.fluide.nom, p.fluide.charge?('chargé '+p.fluide.charge+' kg'):'', p.fluide.recupere?('récupéré '+p.fluide.recupere+' kg'):''].filter(Boolean).join(' · ')+' → pense à la fiche fluide (Cerfa).');
       if(x.dictee) notes.push('— Dictée d\'origine : « '+cleanDeep(x.dictee)+' »');
       d.notes=notes.join('\n');
