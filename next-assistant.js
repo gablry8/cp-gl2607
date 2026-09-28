@@ -22,8 +22,9 @@
   var CAT_KEY = 'cp2_agent_catalog';
   var DONE_KEY = 'cpnext_inbox_done';          /* ids déjà importés (anti-doublon, local) */
   var ROWS = [], RECENT = [], STATE = 'init', LAST_ERR = '';
-  var ICO = {note:'📝',tache:'✅',rdv:'📅',devis:'📄',intervention:'🔧',message:'✉️',autre:'💡'};
-  var LBL = {note:'Note',tache:'Tâche',rdv:'Rendez-vous',devis:'Devis',intervention:'Intervention',message:'Message client',autre:'Autre'};
+  var ICO = {note:'📝',tache:'✅',rdv:'📅',devis:'📄',intervention:'🔧',message:'✉️',machine:'❄️',client:'👤',article:'🏷️',autre:'💡'};
+  var LBL = {note:'Note',tache:'Tâche',rdv:'Rendez-vous',devis:'Devis',intervention:'Intervention',message:'Message client',machine:'Machine',client:'Client',article:'Article',autre:'Autre'};
+  var DONE_LBL = {note:'ajouté à « À faire »',tache:'ajouté à « À faire »',machine:'ajoutée à la bibliothèque',client:'ajouté aux clients',article:'ajouté à la base de prix'};
 
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
   function toastX(m,t){ try{ if(window.nxToast) return window.nxToast(m,t); }catch(e){} try{ toast(m); }catch(e){} }
@@ -185,8 +186,12 @@
         if(p.priorite) o.priority=p.priorite;
         if(p.categorie) o.cat=p.categorie;
         o.title=x.titre||o.title; o.link='Assistant IA';
+        if(p.heure && !/\d\s*h/i.test(o.title)) o.title=String(p.heure).replace(':','h')+' — '+o.title;
         addTask(o);
       }
+      else if(x.kind==='machine') applyMachine(p);
+      else if(x.kind==='client') applyClient(p);
+      else if(x.kind==='article') applyArticle(p);
       /* rdv : déjà posé dans Google Agenda par l'agent → simple trace ici */
       done.push(x.id); x.statut='valide'; x.traite_at=new Date().toISOString();
       jobs.push(mark(x.id,'valide'));
@@ -194,6 +199,58 @@
     if(rows.length){ lsSet(DONE_KEY,done.slice(-500)); RECENT=rows.concat(RECENT); }
     return Promise.all(jobs);
   }
+
+  /* --- enregistrements automatiques (données internes, pas client) --- */
+  function applyMachine(p){
+    try{
+      if(!p.marque && !p.ref) return false;
+      var m={marque:String(p.marque||'').trim(), ref:String(p.ref||'').trim()+(p.puissance_kw&&String(p.ref||'').indexOf('kW')<0?' ('+p.puissance_kw+' kW)':''), achat:+p.achat||0, marge:+p.marge||35};
+      var j=MACHLIB.findIndex(function(z){ return (z.marque||'').toLowerCase()===m.marque.toLowerCase() && (z.ref||'').toLowerCase()===m.ref.toLowerCase(); });
+      if(j>=0){ if(!m.achat) m.achat=MACHLIB[j].achat; MACHLIB[j]=Object.assign({},MACHLIB[j],m); } else MACHLIB.push(m);
+      save(LS.machlib,MACHLIB); toastX('❄️ Machine enregistrée : '+(m.marque+' '+m.ref).trim(),'ok'); return true;
+    }catch(e){ return false; }
+  }
+  function applyClient(p){
+    try{
+      var nom=String(p.nom||'').trim(); if(!nom) return false;
+      var i=CLIENTS.findIndex(function(c){ return (c.nom||'').toLowerCase()===nom.toLowerCase(); });
+      var c=i>=0?CLIENTS[i]:{id:uid(),nom:nom,tel:'',mail:'',type:'Particulier',adr:'',ville:'',notes:''};
+      ['tel','mail','adr','ville','siren'].forEach(function(k){ if(p[k]) c[k]=String(p[k]); });
+      if(p.type==='Professionnel'||p.type==='Particulier') c.type=p.type;
+      if(p.notes) c.notes=(c.notes?c.notes+'\n':'')+p.notes;
+      if(i<0) CLIENTS.push(c);
+      save(LS.clients,CLIENTS); toastX('👤 Client '+(i<0?'ajouté':'mis à jour')+' : '+nom,'ok'); return true;
+    }catch(e){ return false; }
+  }
+  function applyArticle(p){
+    try{
+      var nom=String(p.nom||'').trim(); if(!nom) return false;
+      var customs=load(LS.custom,[]);
+      var o={id:uid(),nom:nom,cat:p.cat||'Divers',unite:p.unite||'unité',achat:+p.achat||0,marge:+p.marge||35,verif:true,src:'local'};
+      var i=customs.findIndex(function(z){ return z.nom===nom; });
+      if(i>=0) customs[i]=Object.assign({},customs[i],o,{id:customs[i].id}); else customs.push(o);
+      save(LS.custom,customs); try{ rebuildPrix(); }catch(e){}
+      toastX('🏷️ Article enregistré : '+nom,'ok'); return true;
+    }catch(e){ return false; }
+  }
+  window.nxaApply = {machine:applyMachine, client:applyClient, article:applyArticle};
+
+  /* --- rendez-vous → Google Agenda (lien pré-rempli) --- */
+  function gcalUrl(x){
+    var p=x.payload||{}, date=String(p.date||'').slice(0,10), h=String(p.heure||'09:00').slice(0,5);
+    var st=new Date(date+'T'+h+':00'); if(isNaN(st)) st=new Date();
+    var en=new Date(st.getTime()+(+p.duree_min||60)*60000);
+    var f=function(d){ return d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'T'+pad(d.getHours())+pad(d.getMinutes())+'00'; };
+    return 'https://calendar.google.com/calendar/render?action=TEMPLATE&text='+encodeURIComponent(x.titre||'Rendez-vous')+
+      '&dates='+f(st)+'/'+f(en)+'&ctz=Europe/Paris'+(p.lieu?'&location='+encodeURIComponent(p.lieu):'')+
+      '&details='+encodeURIComponent((p.description||x.resume||'')+'\n— ajouté depuis ClimPilot');
+  }
+  window.nxaGcalUrl = gcalUrl;
+  window.nxaGcal = function(id){
+    var x=findRow(id); if(!x) return;
+    try{ window.open(gcalUrl(x),'_blank'); }catch(e){}
+    mark(id,'valide').then(fetchInbox);
+  };
 
   window.nxaReject = function(id){
     if(!confirm('Écarter cette proposition ?')) return;
@@ -335,6 +392,7 @@
         (p.tel||p.canal==='sms'?'<button class="nx-sbtn mar" onclick="nxaMsg(\''+x.id+'\',\'sms\')">💬 SMS</button>':'')+
         '<button class="nx-sbtn" onclick="nxaMsg(\''+x.id+'\',\'copy\')">Copier</button>';
     }
+    else if(k==='rdv'){ var pr=x.payload||{}; act='<div class="nxa-sub" style="width:100%">📅 '+esc(pr.date?new Date(String(pr.date).slice(0,10)+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}):'date ?')+(pr.heure?' à '+esc(String(pr.heure).replace(':','h')):'')+(pr.lieu?' · '+esc(pr.lieu):'')+'</div><button class="nx-sbtn mar" onclick="nxaGcal(\''+x.id+'\')">📅 Ajouter à Google Agenda</button>'; }
     else act='<button class="nx-sbtn acc" onclick="nxaDone(\''+x.id+'\')">OK, traité</button>';
     return '<div class="nxa-card k-'+esc(k)+'">'+
       '<div class="nxa-h"><span class="nxa-ico">'+(ICO[k]||'💡')+'</span><div style="flex:1;min-width:0"><b>'+esc(x.titre||LBL[k]||'Proposition')+'</b>'+
@@ -343,29 +401,95 @@
       (x.dictee?'<details class="nxa-dict"><summary>Ce que tu as dit</summary>« '+esc(x.dictee)+' »</details>':'')+
       '<div class="nxa-act">'+act+'<button class="nx-sbtn ref" onclick="nxaReject(\''+x.id+'\')">Écarter</button></div></div>';
   }
+  /* ---------- Conversation avec l'assistant IA (fonction serveur) ---------- */
+  var THREAD=[], DISPLAY=[], BUSY=false, BUDGET=null;
+  function nowInfo(){ var d=new Date(); return {jour:d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}), date:dISO(d), heure:pad(d.getHours())+':'+pad(d.getMinutes())}; }
+  function callAssistant(body){
+    if(!cloudOk()) return Promise.resolve({erreur:'hors_ligne',message:'Pas connecté au cloud — connecte-toi pour parler à l\'assistant.'});
+    return sb.functions.invoke('assistant',{body:body}).then(function(r){
+      if(r && r.error){
+        var ctx=r.error.context;
+        if(ctx && typeof ctx.json==='function') return ctx.json().catch(function(){ return {erreur:'http',message:r.error.message||'Erreur'}; });
+        return {erreur:'reseau',message:'Assistant injoignable — vérifie ta connexion.'};
+      }
+      return r.data||{erreur:'vide',message:'Réponse vide'};
+    }).catch(function(e){ return {erreur:'reseau',message:'Assistant injoignable — vérifie ta connexion.'}; });
+  }
+  function setBudget(b){ if(b&&b.plafond_eur!=null) BUDGET=b; var el=document.getElementById('nxaBudget'); if(!el) return;
+    if(BUDGET==='off'){ el.textContent='IA non activée'; el.className='nxa-chip mute'; return; }
+    if(!BUDGET){ el.textContent=''; return; }
+    var r=BUDGET.depense_eur/BUDGET.plafond_eur; el.textContent='IA ce mois : '+String(BUDGET.depense_eur.toFixed(2)).replace('.',',')+' € / '+String(BUDGET.plafond_eur.toFixed(2)).replace('.',',')+' €';
+    el.className='nxa-chip'+(r>0.8?' hot':''); }
+  function refreshBudget(){ if(!cloudOk()) return; callAssistant({etat:true}).then(function(r){ if(r&&r.type==='etat') setBudget(r); else if(r&&r.erreur==='cle_absente'){ BUDGET='off'; setBudget(); } }); }
+  window.nxaRefreshBudget = refreshBudget;
+
+  function renderThread(){
+    var el=document.getElementById('nxaThread'); if(!el) return;
+    var h=DISPLAY.map(function(m){
+      var items=(m.items||[]).map(function(it){ return '<div class="nxa-it">'+(ICO[it.kind]||'💡')+' '+esc(it.titre||LBL[it.kind]||'')+' <span class="nxa-chip '+(it.statut==='a_valider'?'hot':'')+'">'+(it.statut==='a_valider'?'à valider ci-dessous':(DONE_LBL[it.kind]||'enregistré'))+'</span></div>'; }).join('');
+      return '<div class="nxa-bub '+m.who+'">'+esc(m.text).replace(/\n/g,'<br>')+items+(m.retry?'<div class="nxa-act"><button class="nx-sbtn" onclick="nxaQuickSave()">📝 Garder en note simple</button></div>':'')+'</div>';
+    }).join('');
+    if(BUSY) h+='<div class="nxa-bub ia nxa-typing"><span></span><span></span><span></span></div>';
+    el.innerHTML=h; el.style.display=h?'':'none';
+    var nb=document.getElementById('nxaNewBtn'); if(nb) nb.style.display=DISPLAY.length?'':'none';
+    var sb2=document.getElementById('nxaSendBtn'); if(sb2){ sb2.disabled=BUSY; sb2.textContent=BUSY?'…':(THREAD.length?'➤ Répondre':'➤ Envoyer à l\'assistant'); }
+    try{ el.scrollTop=el.scrollHeight; }catch(e){}
+  }
+  window.nxaNewConv = function(){ THREAD=[]; DISPLAY=[]; renderThread(); };
+  window.nxaSend = function(){
+    if(BUSY) return;
+    var ta=document.getElementById('nxaQuick'); if(!ta) return;
+    var v=ta.value.trim(); if(!v){ toastX('Dicte ou écris ta demande d\'abord','warn'); return; }
+    THREAD.push({role:'user',content:v}); DISPLAY.push({who:'me',text:v});
+    ta.value=''; quickPreview(); BUSY=true; renderThread();
+    callAssistant({messages:THREAD, now:nowInfo()}).then(function(r){
+      BUSY=false;
+      if(!r || r.erreur){
+        THREAD.pop(); ta.value=v; quickPreview();
+        var msg=(r&&r.message)||'Erreur inattendue';
+        if(r&&r.erreur==='cle_absente'){ msg='L\'assistant IA n\'est pas encore activé (clé API Claude à installer). Ta demande est remise dans le champ : tu peux la garder en note simple.'; BUDGET='off'; setBudget(); }
+        DISPLAY.push({who:'sys',text:'⚠ '+msg,retry:true});
+      } else {
+        if(r.budget) setBudget(r.budget);
+        if(r.type==='question'){ THREAD.push({role:'assistant',content:r.texte}); DISPLAY.push({who:'ia',text:r.texte}); }
+        else if(r.type==='reponse'){ THREAD.push({role:'assistant',content:r.texte}); DISPLAY.push({who:'ia',text:r.texte}); }
+        else if(r.type==='depose'){ DISPLAY.push({who:'ia',text:r.texte,items:r.elements||[]}); THREAD=[]; fetchInbox(); }
+        else DISPLAY.push({who:'sys',text:'Réponse inattendue.'});
+      }
+      renderThread();
+    });
+  };
+
   function renderAssist(){
     var host=document.getElementById('nxAssist'); if(!host) return;
-    var st='';
-    if(STATE==='offline') st='<div class="nxa-state">☁ Pas connecté au cloud — la note rapide marche, mais les propositions de l\'assistant n\'arrivent qu\'une fois connecté.</div>';
-    else if(STATE==='notable') st='<div class="nxa-state warn">La boîte de réception n\'est pas encore créée dans Supabase (étape d\'installation à faire une fois).</div>';
-    else if(STATE==='error') st='<div class="nxa-state warn">⚠ Boîte de réception injoignable : '+esc(LAST_ERR)+' <button class="nx-sbtn" onclick="nxaRefresh()">Réessayer</button></div>';
-    var html=
-      '<div class="nxa-quick card"><h2>🎙️ Note rapide</h2>'+
-        '<div class="nxa-sub" style="margin-bottom:8px">Dicte ce qui te passe par la tête : « rappeler Jean-Claude demain à 18h pour la livraison ». Ça part direct dans « À faire », avec la date.</div>'+
-        '<div class="nxa-row"><textarea id="nxaQuick" rows="2" placeholder="Touche ici puis le 🎙️ du clavier…" oninput="nxaQuickPreview()"></textarea>'+
+    if(!document.getElementById('nxaTalk')){
+      host.innerHTML=
+      '<div class="nxa-quick card" id="nxaTalk"><div class="nxa-hd"><h2 style="margin:0">🎙️ Parle à ton assistant</h2><span id="nxaBudget" class="nxa-chip mute"></span></div>'+
+        '<div class="nxa-sub" style="margin:4px 0 8px">Devis, dépannage, note, rendez-vous, message client, nouvelle machine ou nouveau client… dicte comme tu parles. S\'il manque quelque chose, il te pose la question ; puis il prépare tout ici.</div>'+
+        '<div id="nxaThread" class="nxa-thread" style="display:none"></div>'+
+        '<div class="nxa-row"><textarea id="nxaQuick" rows="3" placeholder="Touche ici puis le 🎙️ du clavier…" oninput="nxaQuickPreview()" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key===\'Enter\')nxaSend()"></textarea>'+
         '<button id="nxaMicBtn" class="nxa-mic" title="Dicter" onclick="nxaMic()">🎙️</button></div>'+
         '<div id="nxaQuickPv" class="nxa-pv"></div>'+
-        '<div class="nxa-act"><button class="btn-pri" onclick="nxaQuickSave()">Enregistrer la note</button></div></div>'+
-      st+
+        '<div class="nxa-act"><button class="btn-pri" id="nxaSendBtn" onclick="nxaSend()">➤ Envoyer à l\'assistant</button>'+
+        '<button class="nx-sbtn" onclick="nxaQuickSave()">📝 Note simple (sans IA)</button>'+
+        '<button class="nx-sbtn" id="nxaNewBtn" onclick="nxaNewConv()" style="display:none">↺ Nouvelle demande</button></div></div>'+
+      '<div id="nxaState"></div><div id="nxaLists"></div>';
+      renderThread(); setBudget();
+    }
+    var st='';
+    if(STATE==='offline') st='<div class="nxa-state">☁ Pas connecté au cloud — la note simple marche, mais l\'assistant et ses propositions demandent d\'être connecté.</div>';
+    else if(STATE==='notable') st='<div class="nxa-state warn">La boîte de réception n\'est pas encore créée dans Supabase (étape d\'installation à faire une fois).</div>';
+    else if(STATE==='error') st='<div class="nxa-state warn">⚠ Boîte de réception injoignable : '+esc(LAST_ERR)+' <button class="nx-sbtn" onclick="nxaRefresh()">Réessayer</button></div>';
+    document.getElementById('nxaState').innerHTML=st;
+    document.getElementById('nxaLists').innerHTML=
       '<div class="card"><div class="nxa-hd"><h2 style="margin:0">📥 À valider</h2><button class="nx-sbtn" onclick="nxaRefresh()">↻ Actualiser</button></div>'+
         '<div class="nxa-sub" style="margin:2px 0 6px">Proposé par ton assistant — rien n\'est créé ni envoyé sans toi.</div>'+
-        (ROWS.length?ROWS.map(card).join(''):'<div class="empty">Rien à valider. Parle à ton assistant dans l\'app Claude (projet « Gabriel Leroy — Froid & Clim ») : devis, dépannages, messages clients… ses propositions arrivent ici.</div>')+
+        (ROWS.length?ROWS.map(card).join(''):'<div class="empty">Rien à valider pour l\'instant. Dicte une demande ci-dessus, ou parle à l\'agent complet dans l\'app Claude (projet « Gabriel Leroy — Froid & Clim »).</div>')+
       '</div>'+
       (RECENT.length?'<div class="card"><h2>🕘 Traité ces 7 derniers jours</h2>'+RECENT.slice(0,25).map(function(x){
-        var s=x.statut==='rejete'?'écarté':(x.kind==='rdv'?'dans Google Agenda':(x.kind==='note'||x.kind==='tache'?'ajouté à « À faire »':'validé'));
+        var s=x.statut==='rejete'?'écarté':(x.kind==='rdv'?'dans l\'agenda':(DONE_LBL[x.kind]||'validé'));
         return '<div class="recap-line"><div style="min-width:0">'+(ICO[x.kind]||'💡')+' '+esc(x.titre||LBL[x.kind]||'')+'<div class="sub2">'+esc(fmtWhen(x.created_at))+'</div></div><span class="nxa-chip '+(x.statut==='rejete'?'mute':'')+'">'+s+'</span></div>';
       }).join('')+'</div>':'');
-    host.innerHTML=html;
   }
   window.nxaRender = renderAssist;
 
@@ -373,6 +497,43 @@
     var el=document.getElementById('nxaBadge'); if(!el) return;
     var n=ROWS.length; el.textContent=n; el.style.display=n>0?'':'none';
   }
+
+  /* ---------- Sauvegardes cloud (table climpilot_backups, alimentée par le serveur) ---------- */
+  var RAISON={quotidienne:'Automatique (quotidienne)',avant_grosse_modification:'🛡️ Avant une grosse modification',initiale:'Première sauvegarde',manuelle:'Manuelle',avant_restauration:'Avant une restauration'};
+  function currentData(){ var o={}; try{ SYNC_KEYS.forEach(function(k){ var v=localStorage.getItem(k); if(v!=null){ try{ o[k]=JSON.parse(v); }catch(e){} } }); }catch(e){} return o; }
+  function snapBackup(raison){
+    if(!cloudOk()) return Promise.resolve({error:{message:'pas connecté'}});
+    var d=currentData(), n=function(k){ return Array.isArray(d[k])?d[k].length:0; };
+    return sb.from('climpilot_backups').insert({user_id:SESS.user.id,raison:raison,data:d,taille:JSON.stringify(d).length,nb_devis:n('cp2_devis'),nb_clients:n('cp2_clients'),nb_dep:n('cp2_dep'),nb_loc:n('cp2_loc')}).then(function(r){ return r; });
+  }
+  function renderBackups(){
+    var host=document.getElementById('nxaBackups'); if(!host) return;
+    if(!cloudOk()){ host.innerHTML='<div class="card"><h2>☁️ Sauvegardes cloud</h2><div class="nxa-sub">Connecte-toi au cloud pour voir tes sauvegardes automatiques.</div></div>'; return; }
+    host.innerHTML='<div class="card"><h2>☁️ Sauvegardes cloud</h2><div class="nxa-sub">Chargement…</div></div>';
+    sb.from('climpilot_backups').select('id,created_at,raison,taille,nb_devis,nb_clients,nb_dep,nb_loc').order('created_at',{ascending:false}).limit(60).then(function(r){
+      var rows=(r&&r.data)||[];
+      var h='<div class="card"><div class="nxa-hd"><h2 style="margin:0">☁️ Sauvegardes cloud automatiques</h2><button class="nx-sbtn mar" onclick="nxaBackupNow()">Sauvegarder maintenant</button></div>'+
+        '<div class="nxa-sub" style="margin:4px 0 10px">Le serveur garde une copie <b>chaque jour</b> (45 jours, puis une par mois pendant 13 mois) et une copie <b>avant toute grosse perte</b> de données (appareil vide qui écraserait le cloud, suppression massive…). Une copie de secours part aussi chaque semaine sur ton Google Drive.</div>';
+      if(r&&r.error) h+='<div class="nxa-state warn">⚠ '+esc(r.error.message)+'</div>';
+      else if(!rows.length) h+='<div class="empty">Aucune sauvegarde pour l\'instant — la première arrive à la prochaine synchro.</div>';
+      else h+=rows.map(function(b){ return '<div class="recap-line"><div style="min-width:0"><b>'+esc(fmtWhen(b.created_at))+'</b><div class="sub2">'+esc(RAISON[b.raison]||b.raison)+' · '+(b.nb_devis||0)+' devis · '+(b.nb_clients||0)+' clients · '+(b.nb_dep||0)+' interv. · '+(b.nb_loc||0)+' loc. · '+Math.max(1,Math.round((b.taille||0)/1024))+' Ko</div></div><button class="nx-sbtn" onclick="nxaRestore('+b.id+')">Restaurer</button></div>'; }).join('');
+      host.innerHTML=h+'</div>';
+    });
+  }
+  window.nxaRenderBackups = renderBackups;
+  window.nxaBackupNow = function(){ snapBackup('manuelle').then(function(r){ if(r&&r.error) toastX('⚠ Sauvegarde impossible : '+r.error.message,'warn'); else toastX('☁️ Sauvegarde enregistrée','ok'); renderBackups(); }); };
+  window.nxaRestore = function(id){
+    if(!cloudOk()) return;
+    sb.from('climpilot_backups').select('created_at,data,nb_devis,nb_clients').eq('id',id).maybeSingle().then(function(r){
+      var b=r&&r.data; if(!b||!b.data){ toastX('Sauvegarde introuvable','warn'); return; }
+      if(!confirm('Restaurer la sauvegarde du '+fmtWhen(b.created_at)+' ?\n('+(b.nb_devis||0)+' devis, '+(b.nb_clients||0)+' clients)\n\nL\'état actuel est d\'abord sauvegardé : tu pourras revenir en arrière.')) return;
+      snapBackup('avant_restauration').then(function(r0){
+        if(r0&&r0.error){ if(!confirm('La sauvegarde de sécurité a échoué ('+r0.error.message+'). Restaurer quand même ?')) return; }
+        try{ SYNC_KEYS.forEach(function(k){ if(b.data[k]!==undefined) localStorage.setItem(k,JSON.stringify(b.data[k])); }); localStorage.setItem('cp2_dirty','1'); }catch(e){ toastX('⚠ Restauration impossible : '+e.message,'warn'); return; }
+        Promise.resolve(typeof pushState==='function'?pushState(true):null).then(function(){ toastX('✅ Sauvegarde restaurée — rechargement…','ok'); setTimeout(function(){ location.reload(); },900); });
+      });
+    });
+  };
 
   /* ---------- 7. Styles ---------- */
   var CSS=
@@ -393,6 +554,14 @@
   '.nxa-banner{position:relative;background:#eef3f9;border:1px solid #c9d8ea;border-left:4px solid #1f4e79;border-radius:10px;padding:10px 38px 10px 14px;margin:0 0 12px;font-size:13px}'+
   '.nxa-banner ul{margin:6px 0 4px;padding-left:20px;color:#7a4b00}.nxa-x{position:absolute;top:6px;right:8px;border:none;background:none;font-size:15px;cursor:pointer;color:#6b7a90}'+
   '.nxa-fab{position:fixed;right:18px;bottom:18px;z-index:9000;border:none;border-radius:28px;background:#1f4e79;color:#fff;font-weight:700;font-size:14px;padding:13px 18px;box-shadow:0 6px 20px rgba(15,35,65,.35);cursor:pointer}'+
+  '.nxa-thread{max-height:46vh;overflow:auto;margin:6px 0 10px;padding:4px 2px;display:flex;flex-direction:column;gap:8px}'+
+  '.nxa-bub{max-width:88%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.45;word-wrap:break-word}'+
+  '.nxa-bub.me{align-self:flex-end;background:#1f4e79;color:#fff;border-bottom-right-radius:4px}'+
+  '.nxa-bub.ia{align-self:flex-start;background:#eef3f9;color:#10243e;border-bottom-left-radius:4px}'+
+  '.nxa-bub.sys{align-self:stretch;max-width:100%;background:#fff6e5;color:#7a4b00;font-size:13px}'+
+  '.nxa-it{margin-top:6px;font-size:13px}.nxa-typing span{display:inline-block;width:7px;height:7px;margin:0 2px;border-radius:50%;background:#7d93ad;animation:nxaB 1s infinite}'+
+  '.nxa-typing span:nth-child(2){animation-delay:.15s}.nxa-typing span:nth-child(3){animation-delay:.3s}@keyframes nxaB{50%{transform:translateY(-4px);opacity:.5}}'+
+  '#nxaSendBtn[disabled]{opacity:.6}'+
   '@media print{.nxa-fab{display:none!important}}';
 
   /* ---------- 8. Démarrage ---------- */
@@ -415,7 +584,7 @@
         if(parent){ var sec=document.createElement('section'); sec.className='view'; sec.id='v-nx_assist'; sec.innerHTML='<div id="nxAssist"></div>'; parent.appendChild(sec); }
       }
       if(!document.getElementById('nxaFab')){
-        var b=document.createElement('button'); b.id='nxaFab'; b.className='nxa-fab'; b.innerHTML='🎙️ Note';
+        var b=document.createElement('button'); b.id='nxaFab'; b.className='nxa-fab'; b.innerHTML='🎙️ Assistant';
         b.onclick=function(){ go('nx_assist'); setTimeout(function(){ var t=document.getElementById('nxaQuick'); if(t) t.focus(); },120); };
         document.body.appendChild(b);
       }
@@ -423,9 +592,10 @@
       window.go=function(v){
         var r=_go.apply(this,arguments);
         try{
-          if(v==='nx_assist'){ renderAssist(); fetchInbox();
+          if(v==='nx_assist'){ renderAssist(); fetchInbox(); refreshBudget();
             document.querySelectorAll('.nx-nav-section').forEach(function(s){ var open=s.dataset.section==='home'; s.classList.toggle('open',open); var t=s.querySelector(':scope > .nx-nav-toggle'); if(t) t.setAttribute('aria-expanded',open?'true':'false'); });
           }
+          if(v==='nx_tools'){ var vt=document.getElementById('v-nx_tools'); if(vt&&!document.getElementById('nxaBackups')){ var bx=document.createElement('div'); bx.id='nxaBackups'; vt.insertBefore(bx,vt.firstChild); } renderBackups(); }
           var fab=document.getElementById('nxaFab'); if(fab) fab.style.display=(v==='nx_assist'||v==='wizard'||v==='depform')?'none':'';
         }catch(e){}
         return r;
