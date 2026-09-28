@@ -66,7 +66,9 @@
   /* ---------- 2. Ajout d'une tâche via le module À faire existant ---------- */
   function addTask(o){
     if(typeof window.nxOpenTaskModal!=='function' || typeof window.nxSaveTask!=='function') return false;
+    if(!String(o.title||'').trim()) return false;
     try{
+      var before=lsGet('cpnext_tasks',[]).length;
       window.nxOpenTaskModal();
       var set=function(id,v){ var e=document.getElementById(id); if(e) e.value=v; };
       set('nxTaskTitle', o.title||'');
@@ -76,7 +78,7 @@
       if(catEl){ var ok=[].some.call(catEl.options,function(op){return op.value===o.cat;}); catEl.value=ok?o.cat:'Autre'; }
       set('nxTaskLink', o.link||'');
       window.nxSaveTask();
-      return true;
+      return lsGet('cpnext_tasks',[]).length>before; /* vérifié : la tâche est bien enregistrée */
     }catch(e){ return false; }
   }
   window.nxaAddTask = addTask;
@@ -175,29 +177,54 @@
       .catch(function(){});
   }
 
+  /* Texte venant de l'IA ou d'un e-mail : on retire tout balisage HTML avant de l'injecter dans l'appli */
+  function cleanDeep(v){
+    if(typeof v==='string') return v.replace(/[<>]/g,'').replace(/javascript:/gi,'').slice(0,5000);
+    if(Array.isArray(v)) return v.slice(0,50).map(cleanDeep);
+    if(v&&typeof v==='object'){ var o={}; Object.keys(v).slice(0,60).forEach(function(k){ o[k]=cleanDeep(v[k]); }); return o; }
+    return v;
+  }
+  window.nxaClean = cleanDeep;
+  /* Réservation atomique : un seul appareil importe un élément ; s'il échoue, l'élément est remis en file */
+  function claim(id){
+    if(!cloudOk()) return Promise.resolve(false);
+    return sb.from(TABLE).update({statut:'valide',traite_at:new Date().toISOString()}).eq('id',id).eq('statut','auto').select('id')
+      .then(function(r){ return !!(r && !r.error && r.data && r.data.length); }).catch(function(){ return false; });
+  }
+  function release(id){ if(!cloudOk()) return Promise.resolve(); return sb.from(TABLE).update({statut:'auto',traite_at:null}).eq('id',id).then(function(){}).catch(function(){}); }
+  function applyAuto(x){
+    var p=cleanDeep(x.payload||{});
+    if(x.kind==='note'||x.kind==='tache'){
+      var o=parseNote(p.texte||x.titre||'');
+      if(p.echeance) o.due=String(p.echeance).slice(0,10);
+      if(p.priorite) o.priority=p.priorite;
+      if(p.categorie) o.cat=p.categorie;
+      o.title=cleanDeep(x.titre||'')||o.title; o.link='Assistant IA';
+      if(p.heure && !/\d\s*h/i.test(o.title)) o.title=String(p.heure).replace(':','h')+' — '+o.title;
+      if(!String(o.title||'').trim()) return 'invalide';
+      return addTask(o);
+    }
+    if(x.kind==='machine') return applyMachine(p);
+    if(x.kind==='client') return applyClient(p);
+    if(x.kind==='article') return applyArticle(p);
+    return true; /* rdv déjà dans l'agenda, autre : simple trace */
+  }
   function autoImport(rows){
-    var done=lsGet(DONE_KEY,[]), jobs=[];
+    var done=lsGet(DONE_KEY,[]), chain=Promise.resolve(), imported=[];
     rows.forEach(function(x){
-      if(done.indexOf(x.id)>=0){ jobs.push(mark(x.id,'valide')); return; }
-      var p=x.payload||{};
-      if(x.kind==='note'||x.kind==='tache'){
-        var o=parseNote(p.texte||x.titre||'');
-        if(p.echeance) o.due=String(p.echeance).slice(0,10);
-        if(p.priorite) o.priority=p.priorite;
-        if(p.categorie) o.cat=p.categorie;
-        o.title=x.titre||o.title; o.link='Assistant IA';
-        if(p.heure && !/\d\s*h/i.test(o.title)) o.title=String(p.heure).replace(':','h')+' — '+o.title;
-        addTask(o);
-      }
-      else if(x.kind==='machine') applyMachine(p);
-      else if(x.kind==='client') applyClient(p);
-      else if(x.kind==='article') applyArticle(p);
-      /* rdv : déjà posé dans Google Agenda par l'agent → simple trace ici */
-      done.push(x.id); x.statut='valide'; x.traite_at=new Date().toISOString();
-      jobs.push(mark(x.id,'valide'));
+      chain=chain.then(function(){
+        return claim(x.id).then(function(got){
+          if(!got) return;                                   /* déjà pris par un autre appareil */
+          if(done.indexOf(x.id)>=0){ imported.push(x); return; } /* déjà appliqué ici (reprise) */
+          var res=false; try{ res=applyAuto(x); }catch(e){ res=false; }
+          if(res==='invalide'){ return mark(x.id,'rejete'); }  /* contenu vide : écarté, pas de boucle */
+          var okApply=res!==false;
+          if(okApply){ done.push(x.id); x.statut='valide'; x.traite_at=new Date().toISOString(); imported.push(x); }
+          else return release(x.id);                         /* échec : on remet en file, rien n'est perdu */
+        });
+      });
     });
-    if(rows.length){ lsSet(DONE_KEY,done.slice(-500)); RECENT=rows.concat(RECENT); }
-    return Promise.all(jobs);
+    return chain.then(function(){ if(imported.length){ lsSet(DONE_KEY,done.slice(-500)); RECENT=imported.concat(RECENT); } });
   }
 
   /* --- enregistrements automatiques (données internes, pas client) --- */
@@ -262,7 +289,7 @@
   function inList(v,list){ return list.indexOf(v)>=0; }
   window.nxaOpenDevis = function(id){
     var x=findRow(id); if(!x) return;
-    var p=x.payload||{}, warn=[].concat(p.a_verifier||[]);
+    var p=cleanDeep(x.payload||{}), warn=[].concat(p.a_verifier||[]);
     try{
       go('wizard'); newDevis();
       var cat=buildCatalog();
@@ -301,7 +328,7 @@
       if(p.heures) cur.heures=+p.heures;
       if(Array.isArray(p.extras)) cur.extras=p.extras.filter(function(e){ var ok=!!findPrix(e.nom); if(!ok) warn.push('Article « '+e.nom+' » absent de la base de prix'); return ok; }).map(function(e){return {nom:e.nom,qte:+e.qte||1};});
       var notes=[]; if(p.notes) notes.push(p.notes);
-      if(x.dictee) notes.push('— Dictée d\'origine : « '+x.dictee+' »');
+      if(x.dictee) notes.push('— Dictée d\'origine : « '+cleanDeep(x.dictee)+' »');
       cur.notes=notes.join('\n');
       cur._inboxId=x.id;
       loadDevisToForm(); try{ recalc(); }catch(e){}
@@ -312,7 +339,7 @@
   /* --- intervention proposée → fiche pré-remplie --- */
   window.nxaOpenInter = function(id){
     var x=findRow(id); if(!x) return;
-    var p=x.payload||{}, warn=[].concat(p.a_verifier||[]);
+    var p=cleanDeep(x.payload||{}), warn=[].concat(p.a_verifier||[]);
     try{
       newDep(p.itype==='mes'?'mes':'dep');
       var d=curDep, cl=p.client||{};
@@ -327,7 +354,7 @@
       if(Array.isArray(p.pieces)) d.pieces=p.pieces.map(function(pc){ var f=findPrix(pc.nom); if(!f&&!pc.achat) warn.push('Prix de la pièce « '+pc.nom+' » à saisir'); return {nom:pc.nom||'',qte:+pc.qte||1,achat:+pc.achat||(f?f.achat:0)||0,vente:+pc.vente||(f?venteOf(pc.nom,f.marge):0)||0}; });
       var notes=[]; if(p.notes) notes.push(p.notes);
       if(p.fluide) notes.push('Fluide : '+[p.fluide.nom, p.fluide.charge?('chargé '+p.fluide.charge+' kg'):'', p.fluide.recupere?('récupéré '+p.fluide.recupere+' kg'):''].filter(Boolean).join(' · ')+' → pense à la fiche fluide (Cerfa).');
-      if(x.dictee) notes.push('— Dictée d\'origine : « '+x.dictee+' »');
+      if(x.dictee) notes.push('— Dictée d\'origine : « '+cleanDeep(x.dictee)+' »');
       d.notes=notes.join('\n');
       d._inboxId=x.id;
       loadDepForm(); try{ recalcDep(); }catch(e){}
@@ -530,7 +557,7 @@
       snapBackup('avant_restauration').then(function(r0){
         if(r0&&r0.error){ if(!confirm('La sauvegarde de sécurité a échoué ('+r0.error.message+'). Restaurer quand même ?')) return; }
         try{ SYNC_KEYS.forEach(function(k){ if(b.data[k]!==undefined) localStorage.setItem(k,JSON.stringify(b.data[k])); }); localStorage.setItem('cp2_dirty','1'); }catch(e){ toastX('⚠ Restauration impossible : '+e.message,'warn'); return; }
-        Promise.resolve(typeof pushState==='function'?pushState(true):null).then(function(){ toastX('✅ Sauvegarde restaurée — rechargement…','ok'); setTimeout(function(){ location.reload(); },900); });
+        Promise.resolve(typeof pushState==='function'?pushState(true,true):null).then(function(){ toastX('✅ Sauvegarde restaurée — rechargement…','ok'); setTimeout(function(){ location.reload(); },900); });
       });
     });
   };

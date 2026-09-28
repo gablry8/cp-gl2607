@@ -3467,6 +3467,41 @@ const WEB_MATOS=WM.map(r=>({"Nom":r[0],"Catégorie":r[1],"Unité":r[2],"Achat HT
 function cloudLbl(t,cls){const e=document.getElementById('cloudLbl');if(e){e.textContent=t;e.style.color=cls==='ok'?'#7de3a0':cls==='err'?'#ff9d9d':'#8fa3c8';}}
 function markDirty(){try{localStorage.setItem('cp2_dirty','1');}catch(e){}
   if(!SESS)return;clearTimeout(_pushT);_pushT=setTimeout(()=>pushState(),4000);cloudLbl('☁ à synchroniser…');}
+/* --- Synchro sûre multi-appareils (v2, 28/09/2026) ---
+   Écriture conditionnelle côté serveur (cp_state_push) : on n'écrase jamais une version plus récente
+   d'un autre appareil. En cas de conflit : fusion « 3 voies » par identifiant (base = dernière version
+   synchronisée, local, cloud) → rien n'est perdu ; ce qui a été supprimé d'un côté reste supprimé.
+   Pendant un formulaire (devis, intervention), la fusion attend la sortie du formulaire. */
+function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();location.reload();}
+function cpStable(v){if(Array.isArray(v))return '['+v.map(cpStable).join(',')+']';
+  if(v&&typeof v==='object')return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+cpStable(v[k])).join(',')+'}';
+  return JSON.stringify(v===undefined?null:v);}
+function cpSame(a,b){return cpStable(a)===cpStable(b);}
+function cpIdArr(a){if(!Array.isArray(a))return false;const seen={};
+  for(const x of a){if(!x||typeof x!=='object'||x.id==null||seen[x.id])return false;seen[x.id]=1;}return true;}
+function cpMergeArr(B,L,R){ /* tableaux d'objets avec id */
+  const bm={},lm={},rm={};(B||[]).forEach(x=>bm[x.id]=x);L.forEach(x=>lm[x.id]=x);R.forEach(x=>rm[x.id]=x);
+  const out=[],used={};
+  const pick=id=>{const b=bm[id],l=lm[id],r=rm[id];
+    if(l&&r){if(b&&cpSame(l,b))return r;return l;}          /* modifié des deux côtés → l'appareil actuel gagne */
+    if(l&&!r){if(b&&cpSame(l,b))return null;return l;}     /* absent du cloud : supprimé ailleurs (sauf si modifié ici) */
+    if(r&&!l){if(b&&cpSame(r,b))return null;return r;}     /* absent ici : supprimé ici (sauf si modifié ailleurs) */
+    return null;};
+  R.forEach(x=>{const v=pick(x.id);used[x.id]=1;if(v)out.push(v);});
+  L.forEach(x=>{if(used[x.id])return;const v=pick(x.id);used[x.id]=1;if(v)out.push(v);});
+  return out;}
+function cpMerge(B,L,R){ /* B peut être null (premier passage) */
+  const out={},keys={};[L,R].forEach(o=>Object.keys(o||{}).forEach(k=>keys[k]=1));
+  Object.keys(keys).forEach(k=>{const b=B?B[k]:undefined,l=L[k],r=R[k];
+    if(l===undefined){out[k]=r;return;} if(r===undefined){out[k]=l;return;}
+    if(cpIdArr(l)&&cpIdArr(r)&&(b===undefined||cpIdArr(b))){out[k]=cpMergeArr(B?b:null,l,r);return;}
+    if(B&&cpSame(l,b)){out[k]=r;return;} out[k]=l;});
+  return out;}
+function cpLocalData(){const d={};SYNC_KEYS.forEach(k=>{const v=localStorage.getItem(k);if(v!=null){try{d[k]=JSON.parse(v);}catch(e){}}});return d;}
+function cpWriteLocal(d){SYNC_KEYS.forEach(k=>{if(d&&d[k]!==undefined)localStorage.setItem(k,JSON.stringify(d[k]));});}
+function cpSetBase(d,ts){try{localStorage.setItem('cp2_sync_base',JSON.stringify(d));}catch(e){}localStorage.setItem('cp2_sync',JSON.stringify({lastRemote:ts}));}
+function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform';}
+let _cpPushing=false,_cpAgain=false,_cpPendingReload=false;
 async function pullState(){
   if(!sb||!SESS)return;
   try{
@@ -3480,30 +3515,43 @@ async function pullState(){
     }
     if(row.updated_at===meta.lastRemote){cloudLbl('✓ synchronisé','ok');if(localStorage.getItem('cp2_dirty'))pushState();return;}
     const dirty=!!localStorage.getItem('cp2_dirty');
-    if(dirty&&meta.lastRemote){
-      if(!confirm('☁️ Le cloud contient une version plus récente ('+new Date(row.updated_at).toLocaleString('fr-FR')+').\n\nOK = charger le cloud (cet appareil sera écrasé)\nAnnuler = garder cet appareil (le cloud sera écrasé)')){pushState();return;}
-    }
-    SYNC_KEYS.forEach(k=>{if(row.data&&row.data[k]!==undefined)localStorage.setItem(k,JSON.stringify(row.data[k]));});
-    localStorage.removeItem('cp2_dirty');
-    localStorage.setItem('cp2_sync',JSON.stringify({lastRemote:row.updated_at}));
-    location.reload();
+    if(dirty||!meta.lastRemote&&(DEVIS.length||CLIENTS.length||DEP.length)){await pushState();return;} /* modifs locales → écriture conditionnelle + fusion */
+    if(cpBusyForm()){_cpPendingReload=true;cloudLbl('☁ mise à jour reçue — appliquée en sortant du formulaire');return;}
+    cpWriteLocal(row.data);localStorage.removeItem('cp2_dirty');cpSetBase(row.data,row.updated_at);
+    cpReload();
   }catch(e){cloudLbl('⚠ cloud injoignable — mode local','err');}
 }
-async function pushState(manual){
+async function pushState(manual,force){
   if(!sb||!SESS){if(manual)toast('Pas connecté au cloud');return;}
   if(!navigator.onLine){cloudLbl('⌛ hors ligne — synchro à la reconnexion');return;}
+  if(_cpPushing){_cpAgain=true;return;}
+  _cpPushing=true;
   try{
-    const data={};SYNC_KEYS.forEach(k=>{const v=localStorage.getItem(k);if(v!=null){try{data[k]=JSON.parse(v);}catch(e){}}});
-    const now=new Date().toISOString();
-    const {data:row,error}=await sb.from('climpilot_state').upsert({user_id:SESS.user.id,data:data,updated_at:now}).select('updated_at').single();
-    if(error)throw error;
-    localStorage.removeItem('cp2_dirty');
-    localStorage.setItem('cp2_sync',JSON.stringify({lastRemote:row.updated_at}));
-    cloudLbl('✓ synchronisé '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),'ok');
-    if(manual)toast('☁️ Synchronisé');
+    let meta=load('cp2_sync',{}),L=cpLocalData(),merged=false;
+    for(let tour=0;tour<4;tour++){
+      const {data:res,error}=await sb.rpc('cp_state_push',{p_data:L,p_expected:meta.lastRemote||null,p_force:!!force});
+      if(error)throw error;
+      if(res&&res.ok){
+        localStorage.removeItem('cp2_dirty');cpSetBase(L,res.updated_at);
+        cloudLbl('✓ synchronisé '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),'ok');
+        if(manual)toast('☁️ Synchronisé');
+        if(merged){toast('☁️ Changements d\'un autre appareil fusionnés');cpReload();}
+        return;
+      }
+      /* conflit : un autre appareil a écrit entre-temps */
+      if(cpBusyForm()){_cpPendingReload=true;cloudLbl('☁ fusion en attente — termine ton formulaire');return;}
+      const base=(()=>{try{return JSON.parse(localStorage.getItem('cp2_sync_base')||'null');}catch(e){return null;}})();
+      L=cpMerge(base,L,(res&&res.data)||{});
+      cpWriteLocal(L);merged=true;meta={lastRemote:res.updated_at};
+    }
+    throw new Error('conflits répétés');
   }catch(e){cloudLbl('⚠ échec synchro — nouvel essai auto','err');if(manual)toast('⚠ Échec synchro : '+(e.message||'réseau'));
     clearTimeout(_pushT);_pushT=setTimeout(()=>pushState(),30000);}
+  finally{_cpPushing=false;if(_cpAgain){_cpAgain=false;setTimeout(()=>pushState(),50);}}
 }
+/* en sortant d'un formulaire : appliquer la mise à jour / fusion en attente */
+(function(){const _g=window.go;if(typeof _g!=='function')return;window.go=function(v){const r=_g.apply(this,arguments);
+  try{if(_cpPendingReload&&v!=='wizard'&&v!=='depform'){_cpPendingReload=false;setTimeout(()=>{if(localStorage.getItem('cp2_dirty'))pushState();else pullState();},30);}}catch(e){}return r;};})();
 function showLogin(){const L=document.getElementById('loginScreen');L.style.display='flex';setTimeout(()=>{try{document.getElementById('logEmail').focus();}catch(e){}},80);}
 async function doLogin(){
   const em=document.getElementById('logEmail').value.trim(),pw=document.getElementById('logPass').value;
@@ -3526,7 +3574,9 @@ function afterLogin(){
   cloudLbl('☁ connexion…');
   pullState();
   window.addEventListener('online',()=>{if(localStorage.getItem('cp2_dirty'))pushState();});
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&localStorage.getItem('cp2_dirty')&&SESS)pushState();});
+  document.addEventListener('visibilitychange',()=>{if(!SESS)return;
+    if(document.visibilityState==='hidden'&&localStorage.getItem('cp2_dirty'))pushState();
+    else if(document.visibilityState==='visible')pullState(); /* retour sur l'appli (téléphone) : récupérer les modifs des autres appareils */});
 }
 async function cloudLogout(){if(!confirm('Se déconnecter du cloud sur cet appareil ? (les données locales restent)'))return;
   try{await sb.auth.signOut();}catch(e){}location.reload();}

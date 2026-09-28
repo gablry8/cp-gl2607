@@ -413,7 +413,7 @@
     }
   }
   function nxPatchCloudHistory(){
-    const original=window.pushState;if(typeof original==='function')window.pushState=async function(manual){try{nxSnapshot(manual?'Synchronisation manuelle':'Synchronisation automatique');}catch(e){}return original(manual);};
+    const original=window.pushState;if(typeof original==='function')window.pushState=async function(manual){try{nxSnapshot(manual?'Synchronisation manuelle':'Synchronisation automatique');}catch(e){}return original.apply(this,arguments);};
   }
   function nxRestoreSnapshot(id){
     const h=nxLoad(NX_KEYS.history,[]).find(x=>x.id===id);if(!h)return;if(!confirm('Restaurer cette version ? Une sauvegarde de l’état actuel sera créée avant.'))return;
