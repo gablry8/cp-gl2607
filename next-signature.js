@@ -68,6 +68,24 @@
     document.getElementById('nxsCopy').onclick=function(){ try{ navigator.clipboard.writeText(o.url); toastX('📋 Lien copié','ok'); }catch(e){ toastX('Copie impossible','warn'); } };
   }
 
+  /* Contrat conclu à distance avec un particulier : information sur le droit de rétractation (14 jours)
+     + formulaire type (Code de la consommation, art. L221-5 et annexe de l'art. R221-1). Source : service-public.fr F10485 */
+  function retractation(d){
+    var E=(P&&P.entreprise)||{}, pro=[E.nom,[E.adresse,E.cp,E.ville].filter(Boolean).join(' '),E.email].filter(Boolean).join(' — ');
+    var st='font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#222;line-height:1.45';
+    return '<div data-retractation="1" style="'+st+';margin-top:16px;border-top:2px solid #1f4e79;padding-top:8px;page-break-before:auto">'+
+      '<b style="font-size:11px">Information sur le droit de rétractation (client particulier — contrat conclu à distance)</b><br>'+
+      'Vous disposez d\'un délai de <b>14 jours</b> à compter de la signature du présent devis pour vous rétracter, sans avoir à justifier de motif ni à payer de pénalité. '+
+      'Pour l\'exercer, notifiez votre décision par une déclaration dénuée d\'ambiguïté (courrier ou e-mail) à : '+esc(pro||'l\'entreprise')+', ou utilisez le formulaire ci-dessous. '+
+      'Si vous demandez expressément que les travaux commencent avant la fin de ce délai, vous devrez, en cas de rétractation, payer un montant proportionnel aux travaux déjà réalisés ; '+
+      'une prestation entièrement exécutée avant la fin du délai avec votre accord exprès ne peut plus faire l\'objet d\'une rétractation. '+
+      'Les travaux de réparation urgents que vous avez expressément demandés sont exclus du droit de rétractation, dans la limite des pièces et travaux strictement nécessaires.'+
+      '<div style="margin-top:8px;border:1px dashed #888;padding:8px"><b>Formulaire de rétractation</b> (à compléter et renvoyer uniquement si vous souhaitez vous rétracter)<br>'+
+      'À l\'attention de '+esc(pro||'l\'entreprise')+' :<br>Je vous notifie par la présente ma rétractation du contrat portant sur la prestation de services ci-dessous : devis n° '+esc(d.num||'')+'<br>'+
+      'Signé le : ………………… &nbsp; Nom du consommateur : ………………………………<br>Adresse du consommateur : ……………………………………………………………<br>'+
+      'Signature du consommateur (uniquement en cas de notification sur papier) : ………………… &nbsp; Date : …………………</div></div>';
+  }
+
   /* --------- devis --------- */
   window.nxsSendDevis = function(){
     try{
@@ -84,6 +102,7 @@
       save(LS.devis,DEVIS); try{ updateBadges(); }catch(e){}
       var st=document.getElementById('f_statut'); if(st) st.value=cur.statut;
       try{ document.getElementById('wizStatus').innerHTML=statusTag(cur.statut); }catch(e){}
+      if(cur.cType!=='Professionnel') html+=retractation(cur);
       var o={type:'devis',docId:cur.id,num:cur.num,client:cur.cNom,titre:cur.type+(cur.cVille?' — '+cur.cVille:''),montant:c.totalTTC,html:html,email:cur.cMail,tel:cur.cTel};
       toastX('Préparation du lien…');
       createLink(o).then(function(r){

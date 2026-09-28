@@ -82,6 +82,7 @@
       '<div class="pad"><canvas id="cv" aria-label="Zone de signature"></canvas><div class="hint" id="hint">Signez ici</div></div>'+
       '<div class="row" style="margin-top:8px"><button class="ghost" type="button" id="clr">Effacer</button></div>'+
       '<label class="check"><input type="checkbox" id="acc"> <span>J’ai lu '+label()+(DOC.doc_num?' n° '+esc(DOC.doc_num):'')+' et je l’accepte sans réserve — « Bon pour accord ».</span></label>'+
+      (/data-retractation/.test(DOC.doc_html||'')?'<label class="check"><input type="checkbox" id="anti"> <span><b>Facultatif</b> — je demande expressément que les travaux commencent avant la fin de mon délai de rétractation de 14 jours (voir les informations en fin de devis).</span></label>':'')+
       '<div class="row"><button class="pri" id="go" disabled>Signer '+label()+'</button></div>'+
       '<div id="m"></div>'+
       '<p class="small" style="margin-top:14px">Signature électronique (articles 1366 et 1367 du Code civil). Sont enregistrés avec votre signature : la date et l’heure, le nom saisi, l’adresse IP, le navigateur utilisé et l’empreinte numérique du document, qui garantit qu’il n’a pas été modifié.</p>'+
@@ -105,7 +106,8 @@
     go.onclick=function(){
       go.disabled=true;go.textContent='Envoi…';
       var out=document.createElement('canvas');out.width=500;out.height=190;var o=out.getContext('2d');o.fillStyle='#fff';o.fillRect(0,0,500,190);o.drawImage(cv,0,0,500,190);
-      api({action:'signer',nom:nom.value.trim(),accepte:acc.checked===true,signature:out.toDataURL('image/png')}).then(function(r){
+      var anti=document.getElementById('anti');
+      api({action:'signer',nom:nom.value.trim(),accepte:acc.checked===true,anticipe:!!(anti&&anti.checked),signature:out.toDataURL('image/png')}).then(function(r){
         if(r&&r.ok){DOC.statut='signe';DOC.signed_at=r.signed_at;DOC.signer_nom=nom.value.trim();DOC.signature_png=out.toDataURL('image/png');DOC.doc_hash=r.doc_hash||DOC.doc_hash;render();window.scrollTo(0,document.body.scrollHeight);}
         else{document.getElementById('m').innerHTML='<div class="msg err">'+esc((r&&r.message)||'Erreur, réessayez.')+'</div>';go.textContent='Signer '+label();upd();}
       });
