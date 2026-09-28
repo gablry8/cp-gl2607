@@ -3511,10 +3511,15 @@ async function doLogin(){
   msg.textContent='Connexion…';
   try{
     const {data,error}=await sb.auth.signInWithPassword({email:em,password:pw});
-    if(error){msg.textContent='Identifiants incorrects';return;}
+    if(error){const m=String(error.message||''),st=error.status||0;
+      if(/invalid login credentials/i.test(m))msg.textContent='Email ou mot de passe incorrect';
+      else if(/email not confirmed/i.test(m))msg.textContent='Email non confirmé — confirme-le dans Supabase (Authentication → Users)';
+      else if(!st||/fetch|network/i.test(m))msg.textContent='Serveur cloud injoignable — projet Supabase en pause ? (supabase.com/dashboard → Restore)';
+      else msg.textContent='Erreur cloud ('+st+') : '+m;
+      return;}
     SESS=data.session;document.getElementById('loginScreen').style.display='none';
     afterLogin();
-  }catch(e){msg.textContent='Erreur réseau — réessaie';}
+  }catch(e){msg.textContent='Serveur cloud injoignable — projet Supabase en pause ? (supabase.com/dashboard → Restore)';}
 }
 function afterLogin(){
   const ue=document.getElementById('cloudUser');if(ue&&SESS&&SESS.user)ue.textContent=SESS.user.email;
@@ -3555,5 +3560,6 @@ if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}
 <script src="next-activite.js"></script>
 <script src="next-relance.js"></script>
 <script src="next-commande.js"></script>
+<script src="next-assistant.js"></script>
 </body>
 </html>
