@@ -215,6 +215,7 @@
     isLegacyType:function(t){ return t==='Maintenance'; },
     remember:K.rememberUnits(UNITS_DEF), fromAssistant:fromAssistant, assistant:ASSIST,
     common:function(){ return {prepH:0,achatH:0,savPct:0}; },
+    fees:function(lot){ var d=(lot&&lot.data)||{}; return d.legacyCopy?{}:{commande:!!(d.usure&&d.usure.incluses)}; },
     _leak:leak, UNITS_DEF:UNITS_DEF, sync:syncContracts
   });
 })();

@@ -88,10 +88,13 @@
     lines=lines.concat(B.lines.filter(function(l){ return l.group!=='Matériel'; }));
     /* contrôles */
     K.machineWarn(d,warn,'Groupe'); K.legacyWarn(b2.lines,warn);
-    var ab=abaque(d), pw=num(((d.machines||[])[0]||{}).pw);
+    var ab=abaque(d), pw=num(((d.machines||[])[0]||{}).pw), bil=num(d.bilanW);
+    /* référence : ton bilan frigorifique s'il est saisi (Coolselector, calcul poste par poste), sinon le repère de l'onglet Dimensionnement */
+    var ref=bil>0?bil:ab.W, refTxt=bil>0?'ton bilan frigorifique':'le repère de ton onglet Dimensionnement';
     if(g.V<=0) warn.push('Dimensions de la chambre à renseigner');
-    else if(pw>0&&pw<ab.W*0.9) warn.push('Puissance retenue ('+A.fq(Math.round(pw))+' W) sous le repère de ton onglet Dimensionnement ('+A.fq(Math.round(ab.W))+' W) : à vérifier avec la sélection fabricant');
-    else if(!(pw>0)) warn.push('Puissance frigorifique du groupe à renseigner (sélection fabricant) — repère : '+A.fq(Math.round(ab.W))+' W');
+    else if(pw>0&&pw<ref*(bil>0?1:0.9)) warn.push('Puissance retenue ('+A.fq(Math.round(pw))+' W) sous '+refTxt+' ('+A.fq(Math.round(ref))+' W) : à vérifier avec la sélection fabricant');
+    else if(!(pw>0)) warn.push('Puissance frigorifique du groupe à renseigner (sélection fabricant) — '+(bil>0?'bilan':'repère')+' : '+A.fq(Math.round(ref))+' W');
+    if(!(bil>0)&&g.V>0) warn.push('Repère « abaque » seulement : fais le bilan frigorifique (Coolselector ou poste par poste) et saisis sa puissance');
     var p=d.per||{};
     if(!(p.alarme&&p.alarme.on)) warn.push('Sécurité (INRS) : alarme sonore et lumineuse en cas d\'enfermement non prévue');
     if(isNeg(d)&&!(p.soupape&&p.soupape.on)) warn.push('Chambre négative sans soupape d\'équilibrage de pression');
@@ -108,7 +111,8 @@
     var g=geo(d), ab=abaque(d);
     h+=K.sec('Usage','<div class="frm nxk2">'+A.fSel('Régime','data.temp',d.temp,[['pos','Positif'],['neg','Négatif']],{re:'lot',on:'cfTemp'})+A.fIn('Consigne (°C)','data.consigne',d.consigne,{t:'n',step:1,min:-40})+
       A.fIn('Produits stockés','data.usage',d.usage,{full:true,ph:'viande, crémerie, fruits et légumes…'})+A.fIn('Entrées de marchandises (kg/jour)','data.entrees',d.entrees,{t:'n',step:10})+
-      A.fSel('Usage (repère de puissance)','data.use',d.use,[['1','Standard'],['1.15','Ouvertures fréquentes (+15 %)'],['1.2','Denrées entrantes chaudes (+20 %)']],{t:'n',re:'#cfsum'+i})+'</div>');
+      A.fSel('Usage (repère de puissance)','data.use',d.use,[['1','Standard'],['1.15','Ouvertures fréquentes (+15 %)'],['1.2','Denrées entrantes chaudes (+20 %)']],{t:'n',re:'#cfsum'+i})+
+      A.fIn('Puissance du bilan frigorifique (W)','data.bilanW',d.bilanW||'',{t:'n',step:10,note:'Coolselector ou calcul poste par poste',re:'#cfsum'+i})+'</div>');
     h+=K.sec('Dimensions intérieures','<div class="frm nxk2">'+A.fIn('Longueur (m)','data.L',d.L,{t:'n',step:0.05,re:'#cfsum'+i})+A.fIn('Largeur (m)','data.l',d.l,{t:'n',step:0.05,re:'#cfsum'+i})+A.fIn('Hauteur (m)','data.h',d.h,{t:'n',step:0.05,re:'#cfsum'+i})+
       A.fSel('Sol','data.sol',d.sol,[['isole','Panneaux de sol isolés'],['existant','Sol existant (isolé par le client)']],{re:'#cfsum'+i})+'</div><div id="cfsum'+i+'">'+sumBlock(lot,i)+'</div>');
     h+=K.sec('Panneaux et porte','<div class="frm nxk2">'+A.fSel('Panneaux','data.ep',d.ep,K.none(panels()))+A.fSel('Porte','data.porte',d.porte,K.none(doors()))+A.fIn('Dimensions / sens de la porte','data.porteDim',d.porteDim,{full:true,ph:'ex. 800 × 1900, poussant droite'})+'</div>'+
@@ -127,7 +131,7 @@
   }
   function sumBlock(lot,i){ var d=lot.data, g=geo(d), ab=abaque(d), pw=num(((d.machines||[])[0]||{}).pw);
     return '<div class="nxd2-ok" style="margin-top:8px">Volume <b>'+A.fq(Math.round(g.V*10)/10)+' m³</b> · panneaux <b>'+g.m2+' m²</b> (murs '+A.fq(Math.round(g.murs*10)/10)+', plafond '+A.fq(Math.round(g.plafond*10)/10)+(g.sol?', sol '+A.fq(Math.round(g.sol*10)/10):'')+')</div>'+
-      '<div class="nxd2-hint">Repère de puissance (méthode de ton onglet Dimensionnement : '+ab.ratio+' W/m³'+(num(d.use)>1?' × '+A.fq(num(d.use)):'')+') : <b>'+A.fq(Math.round(ab.W))+' W</b>'+(pw>0?' — groupe retenu : '+A.fq(Math.round(pw))+' W':'')+'. La sélection fabricant fait foi.</div>'; }
+      '<div class="nxd2-hint">Repère de puissance (méthode de ton onglet Dimensionnement : '+ab.ratio+' W/m³'+(num(d.use)>1?' × '+A.fq(num(d.use)):'')+') : <b>'+A.fq(Math.round(ab.W))+' W</b>'+(num(d.bilanW)>0?' — ton bilan : <b>'+A.fq(Math.round(num(d.bilanW)))+' W</b> (référence)':'')+(pw>0?' — groupe retenu : '+A.fq(Math.round(pw))+' W':'')+'. La sélection fabricant fait foi.</div>'; }
   function renderPart(id,lot,i){ if(id==='cfmo'+i) return K.moBlock(lot,i,{id:'cfmo',mod:MOD,TASKS:TASKS,DEF:UNITS_DEF,forfait:'Chambre froide',hist:'Chambre froide'}); if(id==='cfsum'+i) return sumBlock(lot,i); return ''; }
   function live(lot,i){ K.liveMachines(lot,i); var s=document.getElementById('cfsum'+i); if(s) s.innerHTML=sumBlock(lot,i); var mo=document.getElementById('cfmo'+i); if(mo&&!mo.contains(document.activeElement)) mo.innerHTML=renderPart('cfmo'+i,lot,i); }
   A.hook('cfTemp',function(li,el,v){ var l=A.cur().lots[li]; if(!l) return; var d=l.data, neg=v==='neg';

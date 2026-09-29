@@ -350,7 +350,7 @@
       visite:[{k:'qui',l:'Qui a posé quoi (unités, liaisons, électricité)',t:'txt',full:true},{k:'etat',l:'État constaté (supports, liaisons, isolant, évacuations)',t:'area'},K.VIS.acces,K.VIS.notes],
       applyVisite:function(lot){ var v=lot.visite||{}, d=lot.data, m=[]; if(v.etat&&!d.etat){ d.etat=v.etat; m.push('état constaté'); } return m; },
       pdf:pdf,summary:function(lot){ return 'Mise en service '+lot.data.install; },exclusions:exclusions,
-      typeLabel:function(){ return 'Mise en service'; },isLegacyType:function(t){ return t==='Mise en service'; },fromAssistant:fromAssistant,
+      typeLabel:function(){ return 'Mise en service'; },fees:function(){ return {commande:false}; },isLegacyType:function(t){ return t==='Mise en service'; },fromAssistant:fromAssistant,
       common:function(){ return {prepH:0,achatH:0,savPct:0}; },
       assistant:{type:'Mise en service',consigne:'Devis de type "Mise en service" (matériel posé par un autre) : ajoute payload.mes = {installation (clé des forfaits de mise en service), posePar: "client"|"autre", etat, complement_kg}.'}});
   })();
@@ -392,7 +392,7 @@
       actions:K.actions({ addE:function(l){ l.data.equips.push(mkE()); }, delE:function(l,i,api,j){ l.data.equips.splice(j,1); } }),
       visite:[{k:'equip',l:'Équipements à déposer (type, fluide, charge)',t:'area'},K.VIS.acces,K.VIS.notes],applyVisite:function(){ return []; },
       pdf:pdf,summary:function(lot){ var n=(lot.data.equips||[]).length; return 'Dépose de '+n+' équipement'+(n>1?'s':''); },exclusions:function(){ return 'Reprises de peinture et de maçonnerie au-delà du rebouchage des traversées.'; },
-      typeLabel:function(){ return 'Dépose'; },isLegacyType:function(t){ return t==='Dépose'; },remember:K.rememberUnits(DEF),
+      typeLabel:function(){ return 'Dépose'; },fees:function(){ return {commande:false}; },isLegacyType:function(t){ return t==='Dépose'; },remember:K.rememberUnits(DEF),
       fromAssistant:function(g,lot){ var d=defaults(); lot.data=d; if(g&&Array.isArray(g.equipements)&&g.equipements.length) d.equips=g.equipements.slice(0,10).map(function(e){ return {type:String(e.type||''),marque:String(e.marque||''),modele:'',fluide:String(e.fluide||''),charge:num(e.charge)}; }); return []; },
       common:function(){ return {prepH:0,achatH:0,savPct:0}; },
       assistant:{type:'Dépose',consigne:'Devis de type "Dépose" : ajoute payload.depose = {equipements:[{type, marque, fluide, charge (kg)}]}.'},UNITS_DEF:DEF});
@@ -418,7 +418,7 @@
       visite:[K.VIS.horaires,K.VIS.notes],applyVisite:function(){ return []; },
       pdf:function(lot){ var d=lot.data; return '<div style="font-size:10.5px;color:#333;line-height:1.55">Travaux réalisés en sous-traitance'+(d.donneur?' pour le compte de '+esc(d.donneur):'')+(d.materiel==='do'?' ; matériel fourni par le donneur d\'ordre':'')+'.</div>'; },
       summary:function(lot){ var h=A.sum(lot.data.lignes||[],function(r){ return num(r.h); }); return 'Sous-traitance — '+A.fq(h)+' h'; },exclusions:function(){ return ''; },
-      typeLabel:function(){ return 'Sous-traitance'; },isLegacyType:function(t){ return t==='Sous-traitance'; },
+      typeLabel:function(){ return 'Sous-traitance'; },fees:function(){ return {admin:false,commande:false,secu:false}; },isLegacyType:function(t){ return t==='Sous-traitance'; },
       fromAssistant:function(g,lot){ var d=defaults(); lot.data=d; if(g&&typeof g==='object'){ if(num(g.taux)>0) d.taux=num(g.taux); if(num(g.heures)>0) d.lignes=[{l:String(g.travaux||'Pose'),h:num(g.heures)}]; if(g.donneur) d.donneur=String(g.donneur); } return []; },
       common:function(){ return {prepH:0,achatH:0,savPct:0}; },
       assistant:{type:'Sous-traitance',consigne:'Devis de type "Sous-traitance" (pour un donneur d\'ordre, ex. son patron) : ajoute payload.st = {donneur, taux (€/h si dit), heures, travaux}.'}});

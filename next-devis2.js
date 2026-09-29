@@ -118,9 +118,15 @@
     if(savPct>0&&savBase>0){ var hs=savBase*savPct/100; addC('Pose & main-d’œuvre','Provision SAV / garantie ('+fq(savPct)+' %)',fq(r2(hs))+' h × '+money(rate)+'/h',hs*rate,0,{qte:hs,unite:'h',pu:rate,mo:true}); heures+=hs; }
     var nD=Math.max(1,Math.round(num(d.nbDepl))||1), zp=zonePrice(d);
     if(zp>0) addC('Mise en service & déplacement','Déplacement',(d.zone||'')+(d.zone==='+60 km'?' ('+fq(num(d.km))+' km)':'')+(nD>1?' × '+nD+' déplacements':''),zp*nD,0,{qte:nD,unite:nD>1?'u':'forfait',pu:zp});
-    addC('Frais & divers','Frais administratifs devis','',P.fraisAdmin,P.fraisAdmin);
-    addC('Frais & divers','Frais commande matériel','',P.fraisCommande,P.fraisCommande);
-    var sub0=sum(lines,function(l){return l.ht;})+sum(common,function(l){return l.ht;});
+    /* frais de dossier, de commande et marge de sécurité : selon la nature (ex. : pas sur une sous-traitance au taux convenu,
+       pas de frais de commande sans matériel). Par défaut (ancien format, clim, gainable…) : comme avant. */
+    var feeOf=function(x){ var m=MODS[x.module], f=null; try{ f=m&&m.fees?m.fees((d.lots||[])[x.i]||{}):null; }catch(e){} return Object.assign({admin:true,commande:true,secu:true},f||{}); };
+    var fz=lots.map(feeOf), anyF=function(k){ return !lots.length||fz.some(function(f){ return f[k]; }); };
+    if(anyF('admin')) addC('Frais & divers','Frais administratifs devis','',P.fraisAdmin,P.fraisAdmin);
+    if(anyF('commande')) addC('Frais & divers','Frais commande matériel','',P.fraisCommande,P.fraisCommande);
+    var sub0=sum(lots.filter(function(x,k){ return fz[k].secu; }),function(x){ return x.ht; })+sum(common,function(l){return l.ht;});
+    if(!lots.length) sub0=sum(common,function(l){return l.ht;});
+    if(lots.length&&!anyF('secu')) sub0=0;
     var secu=sub0*((P.marges&&P.marges.securite)||0)/100;
     if(secu>0) addC('Frais & divers','Marge sécurité ('+P.marges.securite+'%)','imprévus',secu,0);
     var all=lines.concat(common);
@@ -469,6 +475,7 @@
       '<div class="row-actions" style="flex-wrap:wrap">'+st+
       '<button class="btn-ghost btn-sm" onclick="nxd2.close()">Fermer</button>'+
       '<button class="btn-ghost btn-sm" onclick="printDevis()">📄 PDF</button>'+
+      (typeof window.nxSaveCurrentTemplate==='function'?'<button class="btn-ghost btn-sm" onclick="nxSaveCurrentTemplate()" title="Enregistrer ce devis comme modèle réutilisable">⚡ Modèle</button>':'')+
       '<button class="btn-ghost btn-sm" onclick="nxd2.sign()">✍️ Signature</button>'+
       '<button class="btn-dark btn-sm" onclick="nxd2.save()">💾 Enregistrer</button></div></div>';
   }
@@ -675,13 +682,13 @@
     var tiles=NATURES.map(function(n){
       var ready=!!MODS[n.id];
       if(opt.lot&&!ready) return '<button class="nxd2-tile old" disabled style="opacity:.55"><b>'+n.ico+' '+esc(n.label)+'</b><span>'+esc(n.sub)+'</span><span class="pill">phase '+n.phase+'</span></button>';
-      return '<button class="nxd2-tile'+(ready?'':' old')+'" onclick="nxd2.pick(\''+n.id+'\')"><b>'+n.ico+' '+esc(n.label)+'</b><span>'+esc(n.sub)+'</span><span class="pill">'+(ready?'nouveau format':(n.legacy?'ancien formulaire pour l\'instant':'arrive en phase '+n.phase))+'</span></button>';
+      return '<button class="nxd2-tile'+(ready?'':' old')+'" onclick="nxd2.pick(\''+n.id+'\')"><b>'+n.ico+' '+esc(n.label)+'</b><span>'+esc(n.sub)+'</span><span class="pill">'+(ready?'DV-…-'+n.code:(n.legacy?'ancien formulaire pour l\'instant':'arrive en phase '+n.phase))+'</span></button>';
     }).join('');
     ov.innerHTML='<div class="nxd2-box"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><h2 style="margin:0;font-size:19px">'+(opt.lot?'Ajouter un lot':'Nouveau devis — quelle nature de chantier ?')+'</h2><button class="iconbtn" onclick="nxd2.closeChooser()">✕</button></div>'+
       (!opt.lot?'<label class="nxd2-chk" style="margin-top:8px"><input type="checkbox" id="nxd2Visit"> Commencer par la visite technique</label>':'')+
       (!opt.lot&&nd.length?'<div class="nxd2-banner" style="margin-top:8px"><b>Devis commencés, pas encore enregistrés :</b>'+nd.map(function(x){ return '<div style="margin-top:6px">'+esc(x.cur.cNom||'sans nom')+' — '+esc(x.cur.type||'')+' <span class="sub2">('+new Date(x.at).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+')</span> <button class="nx-sbtn mar" onclick="nxd2.resumeNewDraft(\''+x.id+'\')">Reprendre</button> <button class="nx-sbtn" onclick="nxd2.forgetDraft(\''+x.id+'\')">Jeter</button></div>'; }).join('')+'</div>':'')+
       '<div class="nxd2-grid">'+tiles+'</div>'+
-      (!opt.lot?'<div class="row-actions" style="justify-content:space-between;flex-wrap:wrap"><button class="btn-ghost btn-sm" onclick="nxd2.legacy()">Ancien formulaire (tous types)</button><span class="nxd2-hint">Les natures « ancien formulaire » passent au nouveau format au fil des phases.</span></div>':'')+
+      (!opt.lot?'<div class="nxd2-hint" style="margin-top:10px">Le code de la nature apparaît dans le numéro du devis. Tes anciens devis s\'ouvrent toujours dans l\'ancien formulaire ; il reste disponible ici : <a href="#" onclick="nxd2.legacy();return false">ancien formulaire</a>.</div>':'')+
       '</div>';
     ov.addEventListener('click',function(e){ if(e.target===ov) ov.remove(); });
     ov._opt=opt;
@@ -739,12 +746,13 @@
     CATS.forEach(function(ct){
       var ls=lines.filter(function(l){ return catOf(l)===ct[0]&&Math.abs(l.ht)>0.005; }); if(!ls.length) return;
       var subT=sum(ls,function(l){return l.ht;}), sub='';
-      if(ct[0]==='divers'){ sub=row('Consommables (visserie, colliers, mastic, ruban…), frais de dossier et de commande',subT); }
+      if(ct[0]==='divers'){ var hasA=ls.some(function(l){ return l.label==='Frais administratifs devis'; }), hasC=ls.some(function(l){ return l.label==='Frais commande matériel'; });
+        sub=row('Consommables (visserie, colliers, mastic, ruban…)'+(hasA&&hasC?', frais de dossier et de commande':hasA?' et frais de dossier':hasC?' et frais de commande':''),subT); }
       else if(ct[0]==='mo'&&!d.pdfDetailMO){
         var h=ls.filter(function(l){ return l.unite==='h'; }), o=ls.filter(function(l){ return l.unite!=='h'; });
         var hh=sum(h,function(l){return num(l.qte);}), hv=sum(h,function(l){return l.ht;});
         var pus=h.map(function(l){ return r2(l.pu); }).filter(function(v,k,a){ return a.indexOf(v)===k; });
-        if(h.length) sub+=row('Main-d’œuvre (pose, raccordements, préparation et suivi) <span style="color:#8a93a0">— '+fq(r2(hh))+' h'+(pus.length===1?' × '+money(pus[0])+' HT':'')+'</span>',hv);
+        if(h.length) sub+=row((ls.some(function(l){ return l.catLabel; })?'Main-d’œuvre (intervention, préparation et suivi)':'Main-d’œuvre (pose, raccordements, préparation et suivi)')+' <span style="color:#8a93a0">— '+fq(r2(hh))+' h'+(pus.length===1?' × '+money(pus[0])+' HT':'')+'</span>',hv);
         sub+=o.map(function(l){ var dt=lineDetail(l); return row(esc(clientLab(l))+(dt?' <span style="color:#8a93a0">— '+dt+'</span>':''),l.ht); }).join('');
       } else sub=ls.map(function(l){ var dt=l.pdf||lineDetail(l); return row(esc(clientLab(l))+(dt?' <span style="color:#8a93a0">— '+esc(dt)+'</span>':''),l.ht); }).join('');
       var head=ct[1]; for(var q=0;q<ls.length;q++){ if(ls[q].catLabel){ head=ls[q].catLabel; break; } }

@@ -5,7 +5,7 @@
 (function(){
   'use strict';
 
-  const NX_VERSION='Next 1.1.0 navigation & scan';
+  const NX_VERSION='Next 1.2.0 devis par nature';
   const NX_KEYS={
     tasks:'cpnext_tasks',trash:'cpnext_trash',templates:'cpnext_templates',
     history:'cpnext_history',settings:'cpnext_settings',notified:'cpnext_notified',
@@ -394,12 +394,21 @@
 
   /* ---------- Modèles de devis ---------- */
   const NX_TEMPLATE_FIELDS=['type','nbMach','nbSplit','machines','splits','groupCable','groupLong','goulottes','condLong','support','pompeType','pompeQte','taille','extras','heures','moMode','rateChoice','rateCustom','acces','zone','mes','brasure','supp','tests','tvaRate','acompteOn','acomptePct','notes','elecMode','breakerManual','breakerQte','differential','diffQte','proximity'];
-  function nxSaveCurrentTemplate(){if(!window.cur){nxToast('Ouvre d’abord un devis','warn');return;}document.getElementById('nxTplName').value=(cur.type||'Devis')+' standard';document.getElementById('nxTplDesc').value='';document.getElementById('nxTemplateModal').classList.add('on');}
+  /* correctif : « cur » est déclaré avec let, ce n'est pas une propriété de window (le bouton Modèle répondait toujours « Ouvre d'abord un devis ») */
+  function nxCur(){try{return (typeof cur!=='undefined'&&cur)||null;}catch(e){return null;}}
+  function nxSaveCurrentTemplate(){const c=nxCur();if(!c){nxToast('Ouvre d’abord un devis','warn');return;}document.getElementById('nxTplName').value=(c.type||'Devis')+' standard';document.getElementById('nxTplDesc').value='';document.getElementById('nxTemplateModal').classList.add('on');}
   function nxConfirmTemplate(){
     const name=document.getElementById('nxTplName').value.trim();if(!name){nxToast('Donne un nom au modèle','warn');return;}
-    const data={};NX_TEMPLATE_FIELDS.forEach(k=>data[k]=nxClone(cur[k]));nxTemplates.push({id:nxId(),name,desc:document.getElementById('nxTplDesc').value.trim(),type:cur.type,data,created:Date.now(),uses:0});nxSave(NX_KEYS.templates,nxTemplates);nxCloseModal('nxTemplateModal');nxToast('Modèle créé','ok');
+    const c=nxCur();if(!c){nxToast('Ouvre d’abord un devis','warn');return;}
+    let data={};
+    if(c.v===2){ data={v2:true,lots:nxClone(c.lots||[]).map(l=>{l.visite={};return l;}),common:nxClone(c.common||{}),rateChoice:c.rateChoice,rateCustom:c.rateCustom,acompteOn:c.acompteOn,acomptePct:c.acomptePct}; }
+    else { try{ if(window._curView==='wizard'&&typeof formToDevis==='function') formToDevis(); }catch(e){} NX_TEMPLATE_FIELDS.forEach(k=>data[k]=nxClone(c[k])); }
+    nxTemplates.push({id:nxId(),name,desc:document.getElementById('nxTplDesc').value.trim(),type:c.type,data,created:Date.now(),uses:0});nxSave(NX_KEYS.templates,nxTemplates);nxCloseModal('nxTemplateModal');nxToast('Modèle créé','ok');
   }
-  function nxUseTemplate(id){const t=nxTemplates.find(x=>x.id===id);if(!t)return;go('wizard');newDevis();const identity={id:cur.id,num:cur.num,created:cur.created};Object.assign(cur,nxClone(t.data),identity,{statut:'brouillon',cNom:'',cTel:'',cMail:'',cType:'Particulier',cAdr:'',cVille:'',source:''});t.uses=(t.uses||0)+1;nxSave(NX_KEYS.templates,nxTemplates);loadDevisToForm();curStep=0;showStep();nxToast('Modèle appliqué — renseigne le client','ok');}
+  function nxUseTemplate(id){const t=nxTemplates.find(x=>x.id===id);if(!t)return;
+    if(t.data&&t.data.v2&&window.NXD2){ const N=window.NXD2, d=N.newDevis(null,{}); d.lots=nxClone(t.data.lots||[]).map(l=>{l.id=nxId();return l;}); d.common=nxClone(t.data.common||d.common); ['rateChoice','rateCustom','acompteOn','acomptePct'].forEach(k=>{if(t.data[k]!=null)d[k]=t.data[k];}); d.num=N.numFor(d); N.derive(d);
+      t.uses=(t.uses||0)+1;nxSave(NX_KEYS.templates,nxTemplates); N.open(d,{tab:'client',dirty:true,banner:'Modèle « '+nxEsc(t.name)+' » appliqué : renseigne le client, puis vérifie les lots.'}); return; }
+    go('wizard');newDevis();const identity={id:cur.id,num:cur.num,created:cur.created};Object.assign(cur,nxClone(t.data),identity,{statut:'brouillon',cNom:'',cTel:'',cMail:'',cType:'Particulier',cAdr:'',cVille:'',source:''});t.uses=(t.uses||0)+1;nxSave(NX_KEYS.templates,nxTemplates);loadDevisToForm();curStep=0;showStep();nxToast('Modèle appliqué — renseigne le client','ok');}
   function nxDeleteTemplate(id){if(!confirm('Supprimer ce modèle ?'))return;nxTemplates=nxTemplates.filter(x=>x.id!==id);nxSave(NX_KEYS.templates,nxTemplates);nxRenderTemplates();}
   function nxRenderTemplates(){
     const box=document.getElementById('nxTemplates');if(!box)return;

@@ -27,14 +27,32 @@
       froid: {lbl:'Froid commercial',          ca:0, benef:0, n:0, marge:true},
       adia:  {lbl:'Adiabatique',               ca:0, benef:0, n:0, marge:true},
       dep:   {lbl:'Dépannage & mise en service',ca:0, benef:0, n:0, marge:true},
-      ent:   {lbl:'Entretien (contrats)',      ca:0, benef:0, n:0, marge:false}
+      ent:   {lbl:'Entretien (contrats)',      ca:0, benef:0, n:0, marge:false},
+      st:    {lbl:'Sous-traitance',            ca:0, benef:0, n:0, marge:true}
     };
+    Object.keys(b).forEach(function(k){ b[k].hp=0; b[k].hr=0; b[k].hpr=0; });
+    /* nouveau format : chaque lot compte dans son métier (un devis dépose + clim se répartit) */
+    var MODB={split:'clim',gainable:'clim',pac:'clim',ballon:'clim',chambre:'froid',froidcom:'froid',adia:'adia',depannage:'dep',mes:'dep',depose:'dep',st:'st'};
+    function addV2(d,c){
+      var tot=c.totalHT||0, hr=Number(d.hReel)||0; if(tot<=0) return;
+      (c.lots||[]).forEach(function(x){
+        var lot=(d.lots||[])[x.i]||{}, k=MODB[x.module];
+        if(x.module==='entretien'){ if(lot.data&&lot.data.format==='contrat') return; k='dep'; }   /* contrats : comptés à la facturation */
+        if(!k||!b[k]) return;
+        var ca=(x.ht||0)+(x.commonShare||0), part=ca/tot;
+        b[k].ca+=ca; b[k].benef+=c.benefice*part; b[k].n++;
+        var hp=(c.heures||0)*part; b[k].hp+=hp; if(hr>0){ b[k].hr+=hr*part; b[k].hpr+=hp; }
+      });
+    }
     try{
       DEVIS.forEach(function(d){
         if(d.statut!=='accepte') return;
         if(new Date(d.created||0).getFullYear()!==year) return;
-        var c = compute(d), k = bucketOf(d.type||'');
+        var c = compute(d);
+        if(d.v===2){ addV2(d,c); return; }
+        var k = bucketOf(d.type||'');
         b[k].ca += c.totalHT; b[k].benef += c.benefice; b[k].n++;
+        var hr=Number(d.hReel)||0; b[k].hp+=c.heures||0; if(hr>0){ b[k].hr+=hr; b[k].hpr+=c.heures||0; }
       });
     }catch(e){}
     try{
@@ -66,7 +84,7 @@
   function renderActivite(){
     var host = document.getElementById('nxact'); if(!host) return;
     var data = actData(), b = data.b;
-    var order = ['clim','froid','adia','dep','ent'];
+    var order = ['clim','froid','adia','dep','ent','st'];
     var total = order.reduce(function(s,k){ return s + b[k].ca; }, 0);
     var totBenef = order.reduce(function(s,k){ return b[k].marge ? s + b[k].benef : s; }, 0);
     var max = Math.max.apply(null, order.map(function(k){ return b[k].ca; }).concat([1]));
@@ -83,7 +101,7 @@
 
     if(total<=0){ host.innerHTML = '<div class="empty">Aucun chiffre d\'affaires enregistré cette année. Les devis acceptés, interventions facturées, locations et contrats apparaîtront ici, ventilés par métier.</div>'; return; }
 
-    var IC = {clim:'❄️',froid:'🧊',adia:'💨',dep:'🔧',ent:'🤝'};
+    var IC = {clim:'❄️',froid:'🧊',adia:'💨',dep:'🔧',ent:'🤝',st:'🤝'};
     host.innerHTML = order.map(function(k){
       var x = b[k], part = total>0 ? x.ca/total*100 : 0;
       var margePct = (x.marge && x.ca>0) ? x.benef/x.ca*100 : null;
@@ -98,10 +116,11 @@
         '<div style="height:9px;border-radius:6px;background:var(--line);margin:5px 0;overflow:hidden">' +
           '<div style="height:100%;width:'+(x.ca/max*100)+'%;background:var(--blue)"></div></div>' +
         '<div class="sub2">Marge estimée : '+margeTxt+'</div>' +
+        (x.hp>0?'<div class="sub2">Heures prévues : '+fmtQ(Math.round(x.hp*10)/10)+' h'+(x.hpr>0?' · chantiers terminés : '+fmtQ(Math.round(x.hr*10)/10)+' h réelles pour '+fmtQ(Math.round(x.hpr*10)/10)+' h prévues ('+(x.hr>x.hpr?'+':'')+pct((x.hr-x.hpr)/x.hpr*100)+')'+(x.hr>x.hpr*1.1?' — tes temps sont sous-estimés sur ce métier':''):'')+'</div>':'')+
       '</div>';
     }).join('') +
     '<div class="sub" style="margin-top:6px;border-top:1px solid var(--line);padding-top:10px">' +
-      'CA HT de l\'année en cours. Devis = acceptés · Dépannage/MES = interventions facturées · Adiabatique = devis + locations facturées · Entretien = contrats facturés. ' +
+      'CA HT de l\'année en cours. Devis = acceptés (un devis à plusieurs lots se répartit par métier) · Dépannage/MES = interventions facturées · Adiabatique = devis + locations facturées · Entretien = contrats facturés. ' +
       'La marge n\'est pas suivie sur les locations et les contrats (pas de coût matière saisi).</div>';
   }
   window.renderActivite = renderActivite;
