@@ -135,6 +135,7 @@
       c.kits=Object.keys(typeof KITS!=='undefined'?KITS:{});
       c.depPannes=Object.keys(P.depPannes||{}); c.depTaux=(P.dep&&P.dep.taux)||null;
       c.machinesConnues=(MACHLIB||[]).map(function(m){return {marque:m.marque,ref:m.ref,achat:m.achat};});
+      try{ if(window.NXD2&&NXD2.modules){ var fd={}; Object.keys(NXD2.modules).forEach(function(k){ var m=NXD2.modules[k]; if(m&&m.assistant&&m.assistant.type) fd[m.assistant.type]=m.assistant.consigne; }); if(Object.keys(fd).length) c.formatsDevis=fd; } }catch(e){}
       c.clients=(CLIENTS||[]).map(function(x){return {nom:x.nom,ville:x.ville||'',tel:x.tel||'',mail:x.mail||'',type:x.type||'',adr:x.adr||'',zone:x.lastZone||''};});
     }catch(e){ c.erreur=String(e&&e.message||e); }
     return c;
@@ -290,6 +291,7 @@
   window.nxaOpenDevis = function(id){
     var x=findRow(id); if(!x) return;
     var p=cleanDeep(x.payload||{}), warn=[].concat(p.a_verifier||[]);
+    window._nxaLastPayload={id:id,p:p};   /* champs propres à une nature (ex. : payload.gainable), lus par le nouveau format de devis */
     try{
       go('wizard'); newDevis();
       var cat=buildCatalog();

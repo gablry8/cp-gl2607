@@ -2700,7 +2700,7 @@ function printContrat(id){
    <div style="text-align:center;font-size:11px;color:#555;margin-bottom:12px">Matériel de rafraîchissement adiabatique — entretien inclus</div>
    <table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tr>
      <td style="width:50%;border:1px solid #ddd;border-radius:4px;padding:9px 12px;vertical-align:top"><div style="font-size:9.5px;color:#999;text-transform:uppercase">Le bailleur</div><b>${E.nom||'—'}</b><br>${[E.adresse,E.cp,E.ville].filter(Boolean).join(' ')||''}<br>${E.siret?'SIRET : '+E.siret:''}</td>
-     <td style="width:50%;border:1px solid #ddd;padding:9px 12px;vertical-align:top"><div style="font-size:9.5px;color:#999;text-transform:uppercase">Le locataire</div><b>${l.cNom}</b> (${l.cType})<br>${l.cAdr||''} ${l.cVille||''}<br>${[l.cTel,l.cMail].filter(Boolean).join(' — ')}</td>
+     <td style="width:50%;border:1px solid #ddd;padding:9px 12px;vertical-align:top"><div style="font-size:9.5px;color:#999;text-transform:uppercase">Le locataire</div><b>${l.cNom||''}</b>${l.cType?' ('+l.cType+')':''}<br>${l.cAdr||''} ${l.cVille||''}<br>${[l.cTel,l.cMail].filter(Boolean).join(' — ')}</td>
    </tr></table>
    <div style="font-size:11.5px;margin-bottom:8px"><b>Durée :</b> du <b>${fdate(l.dateDebut)}</b> au <b>${fdate(l.dateFin)}</b> inclus, soit <b>${c.sem} semaine${c.sem>1?'s':''}</b>. Site d'utilisation : ${[l.cAdr,l.cVille].filter(Boolean).join(', ')||'adresse du locataire'}.</div>
    <table style="width:100%;border-collapse:collapse;font-size:11px">
@@ -3619,6 +3619,7 @@ if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}
 <script src="next-journee.js"></script>
 <script src="next-devis2.js"></script>
 <script src="next-mod-split.js"></script>
+<script src="next-mod-gainable.js"></script>
 <script src="next-fiabilite.js"></script>
 </body>
 </html>
