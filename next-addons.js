@@ -22,7 +22,7 @@
   const nxEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const nxDate=s=>{if(!s)return '—';const d=new Date(String(s).length===10?s+'T00:00:00':s);return isNaN(d)?'—':d.toLocaleDateString('fr-FR');};
   const nxDays=(a,b)=>Math.ceil((new Date(b)-new Date(a))/86400000);
-  const nxToday=()=>new Date().toISOString().slice(0,10);
+  const nxToday=()=>todayISO();
   const nxClone=o=>JSON.parse(JSON.stringify(o));
   const nxGetClient=name=>(CLIENTS||[]).find(c=>(c.nom||'').trim().toLowerCase()===(name||'').trim().toLowerCase())||{};
 
@@ -126,7 +126,7 @@
   function nxAllDocs(){
     const docs=[];const st={brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'Accepté',refuse:'Refusé'};
     (DEVIS||[]).forEach(d=>{let m=0;try{m=Math.round(compute(d).totalHT*100)/100;}catch(e){}
-      docs.push({num:d.num||'',type:'Devis',date:d.created?new Date(d.created).toISOString().slice(0,10):'',client:d.cNom||'—',montant:m,statut:st[d.statut]||d.statut,open:"openDevis('"+d.id+"')"});
+      docs.push({num:d.num||'',type:'Devis',date:d.created?isoLocal(new Date(d.created)):'',client:d.cNom||'—',montant:m,statut:st[d.statut]||d.statut,open:"openDevis('"+d.id+"')"});
       [['facAcompte','Facture (acompte)'],['facSolde','Facture']].forEach(p=>{const f=d[p[0]];
         if(f)docs.push({num:f.num,type:'Facture',stype:p[1],date:f.date||'',client:d.cNom||'—',montant:f.montant,statut:f.payeLe?'✔ Payée':'⌛ À encaisser',open:"openDevis('"+d.id+"')"});});});
     (DEP||[]).forEach(x=>{if(x.facNum){let m=0;try{m=Math.round(computeDep(x).totalHT*100)/100;}catch(e){}
@@ -442,7 +442,7 @@
   function nxExportICS(){
     const events=nxCalendarEvents(),stamp=new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d{3}/,'');
     const lines=['BEGIN:VCALENDAR','VERSION:2.0','CALSCALE:GREGORIAN','METHOD:PUBLISH','PRODID:-//GL Froid Clim//ClimPilot Next//FR','X-WR-CALNAME:ClimPilot'];
-    events.forEach(e=>lines.push('BEGIN:VEVENT','UID:'+nxIcsEsc(e.uid)+'@climpilot','DTSTAMP:'+stamp,'DTSTART;VALUE=DATE:'+nxIcsDate(e.date),'DTEND;VALUE=DATE:'+nxIcsDate(new Date(new Date(e.date+'T00:00:00').getTime()+86400000).toISOString().slice(0,10)),'SUMMARY:'+nxIcsEsc(e.title),'DESCRIPTION:'+nxIcsEsc(e.desc),'LOCATION:'+nxIcsEsc(e.loc),'END:VEVENT'));
+    events.forEach(e=>lines.push('BEGIN:VEVENT','UID:'+nxIcsEsc(e.uid)+'@climpilot','DTSTAMP:'+stamp,'DTSTART;VALUE=DATE:'+nxIcsDate(e.date),'DTEND;VALUE=DATE:'+nxIcsDate(isoLocal(new Date(new Date(e.date+'T00:00:00').getTime()+86400000))),'SUMMARY:'+nxIcsEsc(e.title),'DESCRIPTION:'+nxIcsEsc(e.desc),'LOCATION:'+nxIcsEsc(e.loc),'END:VEVENT'));
     lines.push('END:VCALENDAR');nxDownload('ClimPilot-calendrier-'+nxToday()+'.ics','\ufeff'+lines.join('\r\n'),'text/calendar;charset=utf-8');nxToast(events.length+' événement(s) exporté(s). Ouvre le fichier sur l’iPhone puis “Ajouter tout”.','ok');
   }
   Object.assign(window,{nxExportICS});

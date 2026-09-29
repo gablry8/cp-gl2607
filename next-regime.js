@@ -236,7 +236,7 @@
       nxrgToast('✅ Régime assujetti TVA actif — vérifie ton n° TVA intracom dans Paramètres','ok');
     }catch(e){nxrgToast('Impossible d’appliquer (paramètres pas chargés) — réessaie dans quelques secondes','err');}
   }
-  function nxrgToday(){return new Date().toISOString().slice(0,10);}
+  function nxrgToday(){return todayISO();}
   function nxrgToast(m,t){try{var s=document.querySelector('.next-toast-stack');if(!s){s=document.createElement('div');s.className='next-toast-stack';document.body.appendChild(s);}var el=document.createElement('div');el.className='next-toast '+(t||'');el.textContent=m;s.appendChild(el);setTimeout(function(){el.remove();},4200);}catch(e){alert(m);}}
 
   /* Application automatique à la date planifiée (réessaie tant que les paramètres ne sont pas chargés) */
@@ -357,7 +357,7 @@
     var td='style="text-align:right;padding:6px 8px"';
     t.innerHTML='<tr><td '+td+'>Total HT</td><td '+td+'>'+eur(ht)+'</td></tr>'
       +'<tr><td '+td+'>TVA ('+rateLbl+' %)</td><td '+td+'>'+eur(tva)+'</td></tr>'
-      +'<tr style="background:#fbeedd"><td style="text-align:right;padding:8px;font-weight:800">Net à payer TTC</td><td style="text-align:right;padding:8px;font-weight:800">'+eur(ttc)+'</td></tr>';
+      +'<tr style="background:#f1f3f5"><td style="text-align:right;padding:8px;font-weight:800">Net à payer TTC</td><td style="text-align:right;padding:8px;font-weight:800">'+eur(ttc)+'</td></tr>';
   }
 
   /* ================== ÉTAPE 4 — PACK COMPTABLE (2026-07-20) ================== */
@@ -365,7 +365,7 @@
   function nxrgPackDefaults(){
     var now=new Date(),q=Math.floor(now.getMonth()/3);
     var from=new Date(now.getFullYear(),q*3,1),to=new Date(now.getFullYear(),q*3+3,0);
-    return{from:from.toISOString().slice(0,10),to:to.toISOString().slice(0,10)};
+    return{from:isoLocal(from),to:isoLocal(to)};
   }
   if(!rg.pack)rg.pack=nxrgPackDefaults();
 
@@ -427,7 +427,7 @@
     var now=new Date(),y=now.getFullYear(),q=Math.floor(now.getMonth()/3);
     if(which==='trim'){rg.pack=nxrgPackDefaults();}
     else if(which==='trimprec'){var pq=q-1,py=y;if(pq<0){pq=3;py--;}
-      rg.pack={from:new Date(py,pq*3,1).toISOString().slice(0,10),to:new Date(py,pq*3+3,0).toISOString().slice(0,10)};}
+      rg.pack={from:isoLocal(new Date(py,pq*3,1)),to:isoLocal(new Date(py,pq*3+3,0))};}
     else if(which==='annee'){rg.pack={from:y+'-01-01',to:y+'-12-31'};}
     rgSave();renderRegime();
   };

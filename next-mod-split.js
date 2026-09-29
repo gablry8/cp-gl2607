@@ -258,7 +258,7 @@
     var d=lot.data, dots='<span style="color:#aaa">…………</span>';
     var rows=blank?[0,1,2,3].map(function(){ return '<tr>'+'<td>'+dots+'</td>'.repeat(1)+'<td>'+dots+'</td><td>'+dots+'</td><td>'+dots+'</td><td>'+dots+'</td><td>'+dots+'</td></tr>'; }).join('')
       :(d.splits||[]).map(function(s){ return '<tr><td>'+esc(s.piece||'—')+'</td><td>'+(s.surface?A.fq(s.surface)+' m²':'')+'</td><td>'+esc(s.typeUI||'')+'</td><td>'+A.fq(s.puiss)+' kW</td><td>'+A.fq(s.long)+' m</td><td></td></tr>'; }).join('');
-    return '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:6px" border="1" cellpadding="5"><tr style="background:#eef2f7"><th>Pièce</th><th>Surface</th><th>Type d\'unité</th><th>Puissance</th><th>Liaison</th><th>Exposition / remarques</th></tr>'+rows+'</table>';
+    return '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-top:6px" border="1" cellpadding="5"><tr style="background:#f1f3f5"><th>Pièce</th><th>Surface</th><th>Type d\'unité</th><th>Puissance</th><th>Liaison</th><th>Exposition / remarques</th></tr>'+rows+'</table>';
   }
 
   /* ---------- PDF ---------- */
@@ -266,7 +266,7 @@
     var d=lot.data, sp=(d.splits||[]).filter(function(s){ return s.piece||num(s.surface); });
     var h='';
     if(sp.length){
-      h+='<table style="width:100%;border-collapse:collapse;font-size:10.5px"><tr style="color:#1f4e79"><th style="text-align:left;padding:3px 6px">Pièce</th><th style="text-align:left;padding:3px 6px">Unité intérieure</th><th style="text-align:right;padding:3px 6px">Puissance</th></tr>'+
+      h+='<table style="width:100%;border-collapse:collapse;font-size:10.5px"><tr style="color:#121417"><th style="text-align:left;padding:3px 6px">Pièce</th><th style="text-align:left;padding:3px 6px">Unité intérieure</th><th style="text-align:right;padding:3px 6px">Puissance</th></tr>'+
         (d.splits||[]).map(function(s,j){ return '<tr><td style="text-align:left;padding:3px 6px;border-top:1px solid #eef1f5">'+esc(s.piece||('Unité '+(j+1)))+(num(s.surface)?' ('+A.fq(s.surface)+' m²)':'')+'</td><td style="text-align:left;padding:3px 6px;border-top:1px solid #eef1f5">'+esc(s.typeUI||'Mural')+'</td><td style="padding:3px 6px;border-top:1px solid #eef1f5;text-align:right">'+A.fq(s.puiss)+' kW</td></tr>'; }).join('')+'</table>';
     }
     var ms=(d.machines||[]).filter(function(m){ return m.marque||m.ref; }).map(function(m){ return esc(((m.marque||'')+' '+(m.ref||'')).trim()); });

@@ -73,7 +73,7 @@
   function retractation(d){
     var E=(P&&P.entreprise)||{}, pro=[E.nom,[E.adresse,E.cp,E.ville].filter(Boolean).join(' '),E.email].filter(Boolean).join(' — ');
     var st='font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#222;line-height:1.45';
-    return '<div data-retractation="1" style="'+st+';margin-top:16px;border-top:2px solid #1f4e79;padding-top:8px;page-break-before:auto">'+
+    return '<div data-retractation="1" style="'+st+';margin-top:16px;border-top:2px solid #121417;padding-top:8px;page-break-before:auto">'+
       '<b style="font-size:11px">Information sur le droit de rétractation (client particulier — contrat conclu à distance)</b><br>'+
       'Vous disposez d\'un délai de <b>14 jours</b> à compter de la signature du présent devis pour vous rétracter, sans avoir à justifier de motif ni à payer de pénalité. '+
       'Pour l\'exercer, notifiez votre décision par une déclaration dénuée d\'ambiguïté (courrier ou e-mail) à : '+esc(pro||'l\'entreprise')+', ou utilisez le formulaire ci-dessous. '+

@@ -1,0 +1,102 @@
+/* ===================================================================
+   ClimPilot — Direction artistique « Atelier » (29/09/2026)
+   Noir + bleu givre, rouge réservé (logo, alertes, pastilles).
+   Couche 100 % additive chargée après next-pro.css : aucune fonction
+   touchée. Pour revenir à l'ancien habillage, retirer le lien vers ce
+   fichier dans index.html.
+   =================================================================== */
+/* ===== socle commun des trois directions (structure, typographie, en-tête mobile) ===== */
+@font-face{font-family:'Plex';src:url(fonts/ibm-plex-sans-latin-400-normal.woff2) format('woff2');font-weight:400;font-style:normal;font-display:swap}
+@font-face{font-family:'Plex';src:url(fonts/ibm-plex-sans-latin-500-normal.woff2) format('woff2');font-weight:500;font-style:normal;font-display:swap}
+@font-face{font-family:'Plex';src:url(fonts/ibm-plex-sans-latin-600-normal.woff2) format('woff2');font-weight:600;font-style:normal;font-display:swap}
+@font-face{font-family:'Plex';src:url(fonts/ibm-plex-sans-latin-700-normal.woff2) format('woff2');font-weight:700 800;font-style:normal;font-display:swap}
+
+:root{--da-font:'Plex',-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;--da-title:var(--da-font);--da-r:10px}
+body,button,input,select,textarea{font-family:var(--da-font)!important}
+h1,h2,.card h2,#ttl,.kpi .val,.next-stat strong,.nxd2-head h2,.nxj-hero b,.nxj-hero h2{font-family:var(--da-title)!important;letter-spacing:-.005em}
+.kpi .val,.recap-line div:last-child,td,.nxd2-bar .t{font-variant-numeric:tabular-nums}
+.card,.next-card,.kpi,.next-stat,.subcard,.nxd2-lot{border-radius:var(--da-r)!important}
+button,.btn-pri,.btn-dark,.btn-ghost,.qbtn,input,select,textarea{border-radius:8px!important}
+.kpi::after{display:none!important}
+.kpi .lab{letter-spacing:.06em}
+
+/* en-tête compact sur téléphone : titre + actions sur une ligne, recherche dessous, sous-titre masqué */
+@media(max-width:860px){
+  .topbar{grid-template-columns:40px minmax(0,1fr) auto!important;grid-template-areas:"menu title actions" "search search search";gap:8px 10px!important;padding:10px 12px!important;align-items:center!important}
+  .topbar>#nxNavToggle,.topbar>.nx-nav-mobile-toggle{grid-area:menu;width:40px;height:40px;min-height:40px}
+  .topbar>div:first-of-type{grid-area:title}
+  .topbar .sub{display:none!important}
+  .topbar h1{font-size:18px!important;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .topbar .row-actions{grid-area:actions;display:flex!important;gap:6px!important;width:auto!important}
+  .topbar .row-actions .nx-menu>summary{width:auto!important;padding:8px 11px!important;font-size:12.5px!important;white-space:nowrap!important;min-height:38px}
+  .topbar .next-command{grid-area:search;max-width:none!important;min-width:0!important}
+  .topbar .next-command input{height:38px}
+  .grid2{grid-template-columns:1fr!important}
+  #v-adia table{display:block;overflow-x:auto;max-width:100%}
+}
+
+/* ===== DA « Atelier » : clair, sobre, noir + bleu givre, rouge réservé ===== */
+:root{
+  --ink:#121417;--muted:#5d6570;--line:#e6e8eb;--line2:#d4d8dd;--bg:#f4f5f6;--panel:#fff;--card:#fff;
+  --blue:#2a6885;--blue-d:#1d4f67;--blue-soft:#e8f3f8;
+  --red:#c8102e;--red-soft:#fbe9ec;--green:#2f6b4f;--green-soft:#e9f2ed;--orange:#8a6420;--orange-soft:#f7f0e2;--purple:#3d4550;--purple-soft:#eef0f2;
+  --side:#0c0e11;--side2:#0c0e11;--side-ink:#9ba3ad;
+  --next-bg:#f4f5f6;--next-navy:#0c0e11;--next-blue:#121417;--next-cyan:#2a6885;
+  --frost:#a9d4e6;--frost-soft:#e8f3f8;--da-accent:#121417;
+  --sh:0 1px 2px rgba(12,14,17,.05),0 4px 14px -10px rgba(12,14,17,.18);
+}
+body{background:var(--bg)!important;color:var(--ink)}
+.side{background:#0c0e11!important;border-right:1px solid #000}
+.brand .logo{background:var(--red)!important;color:#fff;border-radius:8px!important}
+.nav a.active,.nx-nav-body>a.active{background:rgba(169,212,230,.10)!important;color:#fff!important;box-shadow:inset 3px 0 0 var(--frost)}
+.nav a.active .badge,.nav .badge{background:var(--red)!important;color:#fff}
+.nx-nav-toggle:hover,.nx-nav-section.open>.nx-nav-toggle{background:rgba(255,255,255,.06)!important}
+.topbar{background:rgba(255,255,255,.92)!important;border-bottom:1px solid var(--line)!important}
+.btn-pri,.btn-next-accent,#nxCreateMenu>summary,.row-actions .btn-pri,.topbar .btn-pri{background:#121417!important;color:#fff!important;border:0!important}
+.btn-pri:hover,.btn-next-accent:hover,#nxCreateMenu>summary:hover{background:#2b3038!important}
+.btn-dark{background:#121417!important}
+.btn-ghost:hover,.qbtn:hover{border-color:#121417!important;color:#121417!important}
+.qbtn span{color:#121417!important}
+.tab.on,.nxd2-tabs button.on{background:#121417!important;border-color:#121417!important;color:#fff!important;box-shadow:none!important}
+.kpi:before{background:var(--frost)!important;width:3px!important}
+.next-hero{border-left-color:var(--red)!important}
+.progress>i,.next-progress>i{background:#121417!important}
+.nxj-hero{background:#121417!important;color:#fff}
+.nxj-hero [class*="seg"],.nxj-hero .nxj-mode{background:rgba(255,255,255,.10)!important}
+.nxa-fab{background:#121417!important;box-shadow:0 6px 18px rgba(0,0,0,.28)!important}
+.nxa-fab::first-letter{color:var(--red)}
+input:focus,select:focus,textarea:focus{border-color:var(--blue)!important;box-shadow:0 0 0 3px var(--frost-soft)!important}
+.nxd2-lothd{background:var(--frost-soft)!important}
+.nxd2-lothd .nat,.nxd2-sec>h3,.card h2 .ci,.subcard h3{color:var(--ink)!important}
+.nxd2-sec>h3{border-left:3px solid var(--red);padding-left:8px}
+.tag.refuse{background:var(--red-soft);color:var(--red)}
+[style*="background:#1f4e79"]{background:#121417!important}
+[style*="color:#1f4e79"]{color:#121417!important}
+
+/* états actifs et actions secondaires : noir (le bleu givre reste pour les repères) */
+.nx-chip.on,.nx-sbtn.mar,.nx-seg button.on,.nx-seg button.on:hover,.nx-assist-title>span{background:#121417!important;border-color:#121417!important;color:#fff!important}
+.ad-hero{background:#121417!important;color:#fff}
+.kpi.blue:before,.kpi.good:before,.kpi.warn:before,.kpi.purple:before{background:var(--frost)!important}
+.kpi.red:before{background:var(--red)!important}
+.brand .logo{box-shadow:none!important}
+.side .foot a{color:var(--frost)!important}
+a{color:var(--blue)}
+.nxj-chip b{color:#121417!important}
+
+/* liste des devis sur téléphone : une carte par devis (nom, montant, marge, statut, actions) au lieu d'un tableau à faire défiler */
+@media(max-width:860px){
+  #listTable .scroll{overflow:visible!important}
+  #listTable table,#listTable tbody{display:block;width:100%}
+  #listTable thead{display:none}
+  #listTable tr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:10px}
+  #listTable td{display:block;border:0!important;padding:0!important;text-align:left!important;white-space:normal!important;min-width:0}
+  #listTable td:nth-child(1){grid-column:1;grid-row:1}
+  #listTable td:nth-child(2){grid-column:1;grid-row:2;font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+  #listTable td:nth-child(3){grid-column:2;grid-row:1;text-align:right!important;font-weight:700}
+  #listTable td:nth-child(4){display:none}
+  #listTable td:nth-child(5){grid-column:2;grid-row:2;text-align:right!important;font-size:12.5px}
+  #listTable td:nth-child(5)::before{content:"marge ";font-weight:400;color:var(--muted)}
+  #listTable td:nth-child(6){grid-column:1;grid-row:3;margin-top:8px}
+  #listTable td:nth-child(7){grid-column:2;grid-row:3;margin-top:8px;align-self:end;text-align:right!important;white-space:nowrap!important}
+  #listTable tbody tr:hover{background:var(--panel)}
+}

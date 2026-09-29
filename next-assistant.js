@@ -568,7 +568,7 @@
 
   /* ---------- 7. Styles ---------- */
   var CSS=
-  '.nxa-card{border:1px solid var(--line,#e3e8ef);border-left:4px solid #1f4e79;border-radius:12px;padding:12px 14px;margin:10px 0;background:#fff}'+
+  '.nxa-card{border:1px solid var(--line,#e3e8ef);border-left:4px solid #121417;border-radius:12px;padding:12px 14px;margin:10px 0;background:#fff}'+
   '.nxa-card.k-message{border-left-color:#0d6e7c}.nxa-card.k-intervention{border-left-color:#c77700}'+
   '.nxa-hd{display:flex;justify-content:space-between;align-items:center;gap:10px}.nxa-h{display:flex;gap:10px;align-items:flex-start}.nxa-ico{font-size:20px;line-height:1.2}'+
   '.nxa-sub{font-size:12px;color:var(--muted,#6b7a90)}.nxa-body{margin:8px 0 4px;font-size:13.5px;line-height:1.45}'+
@@ -577,17 +577,17 @@
   '.nxa-msg{width:100%}.nxa-msg textarea{width:100%;box-sizing:border-box;border:1px solid var(--line2,#cfd8e3);border-radius:10px;padding:10px;font:inherit;font-size:13.5px;line-height:1.45;margin:6px 0}'+
   '.nxa-dict{font-size:12px;color:var(--muted,#6b7a90);margin-top:6px}.nxa-dict summary{cursor:pointer}'+
   '.nxa-row{display:flex;gap:8px;align-items:stretch}.nxa-row textarea{flex:1;border:2px solid var(--line2,#cfd8e3);border-radius:10px;padding:10px;font:inherit;font-size:15px;min-height:52px}'+
-  '.nxa-mic{border:none;border-radius:12px;background:#1f4e79;color:#fff;font-size:22px;width:56px;cursor:pointer}.nxa-mic.on{background:#c0392b;animation:nxaP 1s infinite}'+
+  '.nxa-mic{border:none;border-radius:12px;background:#121417;color:#fff;font-size:22px;width:56px;cursor:pointer}.nxa-mic.on{background:#c0392b;animation:nxaP 1s infinite}'+
   '@keyframes nxaP{50%{opacity:.6}}'+
-  '.nxa-pv{margin-top:6px;min-height:22px}.nxa-chip{display:inline-block;font-size:11.5px;padding:3px 9px;border-radius:20px;background:#e8eef6;color:#1f4e79;margin:2px 4px 2px 0;white-space:nowrap}'+
+  '.nxa-pv{margin-top:6px;min-height:22px}.nxa-chip{display:inline-block;font-size:11.5px;padding:3px 9px;border-radius:20px;background:#e8eef6;color:#121417;margin:2px 4px 2px 0;white-space:nowrap}'+
   '.nxa-chip.mute{background:#f0f2f5;color:#8a96a8}.nxa-chip.hot{background:#fde2df;color:#b03a2e}'+
   '.nxa-state{padding:10px 14px;border-radius:10px;background:#eef3f9;margin:10px 0;font-size:13px}.nxa-state.warn{background:#fff6e5;color:#7a4b00}'+
-  '.nxa-banner{position:relative;background:#eef3f9;border:1px solid #c9d8ea;border-left:4px solid #1f4e79;border-radius:10px;padding:10px 38px 10px 14px;margin:0 0 12px;font-size:13px}'+
+  '.nxa-banner{position:relative;background:#eef3f9;border:1px solid #c9d8ea;border-left:4px solid #121417;border-radius:10px;padding:10px 38px 10px 14px;margin:0 0 12px;font-size:13px}'+
   '.nxa-banner ul{margin:6px 0 4px;padding-left:20px;color:#7a4b00}.nxa-x{position:absolute;top:6px;right:8px;border:none;background:none;font-size:15px;cursor:pointer;color:#6b7a90}'+
-  '.nxa-fab{position:fixed;right:18px;bottom:18px;z-index:9000;border:none;border-radius:28px;background:#1f4e79;color:#fff;font-weight:700;font-size:14px;padding:13px 18px;box-shadow:0 6px 20px rgba(15,35,65,.35);cursor:pointer}'+
+  '.nxa-fab{position:fixed;right:18px;bottom:18px;z-index:9000;border:none;border-radius:28px;background:#121417;color:#fff;font-weight:700;font-size:14px;padding:13px 18px;box-shadow:0 6px 20px rgba(15,35,65,.35);cursor:pointer}'+
   '.nxa-thread{max-height:46vh;overflow:auto;margin:6px 0 10px;padding:4px 2px;display:flex;flex-direction:column;gap:8px}'+
   '.nxa-bub{max-width:88%;padding:9px 12px;border-radius:14px;font-size:14px;line-height:1.45;word-wrap:break-word}'+
-  '.nxa-bub.me{align-self:flex-end;background:#1f4e79;color:#fff;border-bottom-right-radius:4px}'+
+  '.nxa-bub.me{align-self:flex-end;background:#121417;color:#fff;border-bottom-right-radius:4px}'+
   '.nxa-bub.ia{align-self:flex-start;background:#eef3f9;color:#10243e;border-bottom-left-radius:4px}'+
   '.nxa-bub.sys{align-self:stretch;max-width:100%;background:#fff6e5;color:#7a4b00;font-size:13px}'+
   '.nxa-it{margin-top:6px;font-size:13px}.nxa-typing span{display:inline-block;width:7px;height:7px;margin:0 2px;border-radius:50%;background:#7d93ad;animation:nxaB 1s infinite}'+

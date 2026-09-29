@@ -41,9 +41,9 @@
     var fourn = '';
     try{ fourn = (window.prompt ? (prompt('Nom du fournisseur (facultatif) :','') || '') : ''); }catch(e){}
     var E = (typeof P!=='undefined' && P.entreprise) || {};
-    var NV = '#1f4e79';
+    var NV = '#121417';
     var today = new Date().toLocaleDateString('fr-FR');
-    var ref = 'BC-' + new Date().toISOString().slice(0,10).replace(/-/g,'');
+    var ref = 'BC-' + todayISO().replace(/-/g,'');
     var totalHT = toOrder.reduce(function(s,r){ return s + r.aCmd*r.achatU; }, 0);
     var CUBE = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"><path d="M21 16V8l-9-5-9 5v8l9 5 9-5z"/><path d="M3.3 7L12 12l8.7-5M12 12v9"/></svg>';
     var head = (typeof docTop==='function') ? docTop(E, NV, CUBE, today, ' — bon de commande')
@@ -64,7 +64,7 @@
       '<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #dce3ec">' +
         '<thead><tr style="background:'+NV+';color:#fff"><th style="text-align:left;padding:9px 10px">Article</th><th style="padding:9px 10px">Qté à commander</th><th style="text-align:right;padding:9px 10px">PU HT</th><th style="text-align:right;padding:9px 10px">Total HT</th></tr></thead>' +
         '<tbody>'+body+'</tbody>' +
-        '<tfoot><tr style="background:#eef2f7"><td colspan="3" style="text-align:right;padding:9px 10px;font-weight:800;color:'+NV+'">Total HT à commander</td><td style="text-align:right;padding:9px 10px;font-weight:800;color:'+NV+'">'+eur(totalHT)+'</td></tr></tfoot>' +
+        '<tfoot><tr style="background:#f1f3f5"><td colspan="3" style="text-align:right;padding:9px 10px;font-weight:800;color:'+NV+'">Total HT à commander</td><td style="text-align:right;padding:9px 10px;font-weight:800;color:'+NV+'">'+eur(totalHT)+'</td></tr></tfoot>' +
       '</table>' +
       '<div style="margin-top:10px;font-size:10.5px;color:#777">Prix d\'achat indicatifs issus de ta base de prix — à confirmer avec le fournisseur. Document interne de commande, non contractuel.</div>' +
       ((typeof docLegal==='function') ? docLegal(E, NV) : '') +
