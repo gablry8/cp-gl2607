@@ -135,7 +135,7 @@
       c.kits=Object.keys(typeof KITS!=='undefined'?KITS:{});
       c.depPannes=Object.keys(P.depPannes||{}); c.depTaux=(P.dep&&P.dep.taux)||null;
       c.machinesConnues=(MACHLIB||[]).map(function(m){return {marque:m.marque,ref:m.ref,achat:m.achat};});
-      try{ if(window.NXD2&&NXD2.modules){ var fd={}; Object.keys(NXD2.modules).forEach(function(k){ var m=NXD2.modules[k]; if(m&&m.assistant&&m.assistant.type) fd[m.assistant.type]=m.assistant.consigne; }); if(Object.keys(fd).length) c.formatsDevis=fd; } }catch(e){}
+      try{ if(window.NXD2&&NXD2.modules){ var fd={}; Object.keys(NXD2.modules).forEach(function(k){ var m=NXD2.modules[k]; if(m&&m.assistant&&m.assistant.type) fd[m.assistant.type]=m.assistant.consigne; }); if(Object.keys(fd).length){ c.formatsDevis=fd; c.types=(c.types||[]).concat(Object.keys(fd).filter(function(t){ return (c.types||[]).indexOf(t)<0; })); } } }catch(e){}
       c.clients=(CLIENTS||[]).map(function(x){return {nom:x.nom,ville:x.ville||'',tel:x.tel||'',mail:x.mail||'',type:x.type||'',adr:x.adr||'',zone:x.lastZone||''};});
     }catch(e){ c.erreur=String(e&&e.message||e); }
     return c;

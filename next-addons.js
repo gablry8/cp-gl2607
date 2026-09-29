@@ -336,7 +336,9 @@
   // Exposition des actions appelées depuis le HTML injecté.
   /* modification d'une tâche (report de date, priorité…) — utilisé par l'écran « Ma journée » */
   function nxUpdateTask(id,patch){const t=nxTasks.find(x=>x.id===id);if(!t)return false;['title','due','priority','cat','link'].forEach(k=>{if(patch&&patch[k]!==undefined)t[k]=patch[k];});nxSave(NX_KEYS.tasks,nxTasks);return true;}
-  Object.assign(window,{nxToast,nxCloseModal,nxOpenTaskModal,nxSaveTask,nxToggleTask,nxDeleteTask,nxRunAuto,nxEnableNotifications,nxUpdateTask});
+  /* ajout d'une tâche par un module (ex. : rappel d'échéance d'un contrat) ; ref évite les doublons */
+  function nxAddTask(t){ if(!t||!t.title) return null; if(t.ref&&nxTasks.some(x=>x.ref===t.ref)) return null; const o={id:nxId(),title:String(t.title),due:t.due||'',priority:t.priority||'medium',cat:t.cat||'Autre',link:t.link||'',ref:t.ref||'',done:false,created:Date.now()}; nxTasks.push(o); nxSave(NX_KEYS.tasks,nxTasks); try{ nxUpdateTaskBadge(); }catch(e){} return o; }
+  Object.assign(window,{nxToast,nxCloseModal,nxOpenTaskModal,nxSaveTask,nxToggleTask,nxDeleteTask,nxRunAuto,nxEnableNotifications,nxUpdateTask,nxAddTask});
 
   /* ---------- Recherche globale ---------- */
   function nxBuildSearch(){

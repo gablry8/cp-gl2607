@@ -261,6 +261,8 @@
       tvaRate:P.tva,acompteOn:false,acomptePct:P.acomptePctDefaut,estim:false,notes:'',
       common:defaultsCommon(),visite:{date:'',contact:'',notes:''},lots:[]};
     if(modId) d.lots.push(newLot(modId,opts));
+    try{ if(modId&&MODS[modId]&&MODS[modId].common) Object.assign(d.common,MODS[modId].common()); }catch(e){}
+    try{ if(modId&&MODS[modId]&&MODS[modId].onNewDevis) MODS[modId].onNewDevis(d); }catch(e){}
     if(opts.client) applyClient(d,opts.client);
     d.num=numFor(d);
     return derive(d);
@@ -553,7 +555,8 @@
     if(!m) return '<div class="nxd2-warn red">Ce lot utilise un module que cet appareil ne connaît pas. Mets ClimPilot à jour (rechargement) avant de le modifier.</div>';
     var fr=franchise();
     var tvaSel=fr?'':'<div class="frm">'+fSel('TVA du lot','tva',lot.tva||String(P.tva),[['20','20 %'],['10','10 %'],['5.5','5,5 %'],['mixte','20 % matériel / 10 % pose']])+'</div>';
-    return m.render(lot,i,api)+
+    var mh=''; try{ mh=m.render(lot,i,api); }catch(e){ mh='<div class="nxd2-warn red">Affichage de ce lot impossible ('+esc(e&&e.message||e)+'). Tes données sont intactes : enregistre, recharge ClimPilot et préviens-moi si ça continue.</div>'; }
+    return mh+
       '<div class="nxd2-sec"><h3>Travaux non compris (imprimé sur le devis)</h3><div class="frm">'+fArea('','exclusions',lot.exclusions,{rows:2})+'</div></div>'+tvaSel;
   }
   function tabLots(){
@@ -723,7 +726,7 @@
     if(l.group==='Mise en service & déplacement') return l.label==='Déplacement'?'depl':'mes';
     return 'divers';
   }
-  var CATS=[['equip','Équipements'],['reseau','Réseau aéraulique — plénums, gaines, grilles'],['regul','Régulation et zonage'],['posemat','Liaisons, câbles, évacuation, supports et accessoires'],['mo','Main-d’œuvre — pose et installation'],['st','Travaux sous-traités'],['mes','Mise en service et contrôles'],['depl','Déplacement'],['divers','Consommables et frais de chantier']];
+  var CATS=[['equip','Équipements'],['cf','Chambre : panneaux, porte et finitions'],['pieces','Pièces détachées'],['reseau','Réseau aéraulique — plénums, gaines, grilles'],['regul','Régulation et zonage'],['hydro','Hydraulique et raccordements'],['posemat','Liaisons, câbles, évacuation, supports et accessoires'],['fluide','Fluide frigorigène'],['entr','Entretien des équipements'],['mo','Main-d’œuvre — pose et installation'],['st','Travaux sous-traités'],['mes','Mise en service et contrôles'],['depl','Déplacement'],['divers','Consommables et frais de chantier'],['deduc','Déductions']];
   var CATKEYS={}; CATS.forEach(function(c){ CATKEYS[c[0]]=1; });
   function row(label,ht,o){ o=o||{}; return '<tr'+(o.bg?' style="background:'+o.bg+'"':'')+'><td style="padding:'+(o.head?'9px':'6px')+' 12px;'+(o.head?'font-weight:700;color:'+NV+';border-top:1px solid #dce3ec':'color:#333;font-size:10.5px')+'">'+label+'</td><td style="padding:'+(o.head?'9px':'6px')+' 12px;text-align:right;'+(o.head?'font-weight:700;color:'+NV+';border-top:1px solid #dce3ec':'color:#333;font-size:10.5px')+'">'+(ht==null?'':money(ht))+'</td></tr>'; }
   function lineDetail(l){
@@ -734,7 +737,7 @@
   function catsHTML(lines,d){
     var out='';
     CATS.forEach(function(ct){
-      var ls=lines.filter(function(l){ return catOf(l)===ct[0]&&l.ht>0.005; }); if(!ls.length) return;
+      var ls=lines.filter(function(l){ return catOf(l)===ct[0]&&Math.abs(l.ht)>0.005; }); if(!ls.length) return;
       var subT=sum(ls,function(l){return l.ht;}), sub='';
       if(ct[0]==='divers'){ sub=row('Consommables (visserie, colliers, mastic, ruban…), frais de dossier et de commande',subT); }
       else if(ct[0]==='mo'&&!d.pdfDetailMO){
@@ -744,7 +747,8 @@
         if(h.length) sub+=row('Main-d’œuvre (pose, raccordements, préparation et suivi) <span style="color:#8a93a0">— '+fq(r2(hh))+' h'+(pus.length===1?' × '+money(pus[0])+' HT':'')+'</span>',hv);
         sub+=o.map(function(l){ var dt=lineDetail(l); return row(esc(clientLab(l))+(dt?' <span style="color:#8a93a0">— '+dt+'</span>':''),l.ht); }).join('');
       } else sub=ls.map(function(l){ var dt=l.pdf||lineDetail(l); return row(esc(clientLab(l))+(dt?' <span style="color:#8a93a0">— '+esc(dt)+'</span>':''),l.ht); }).join('');
-      out+=row(ct[1],subT,{head:true,bg:TINT})+sub;
+      var head=ct[1]; for(var q=0;q<ls.length;q++){ if(ls[q].catLabel){ head=ls[q].catLabel; break; } }
+      out+=row(head,subT,{head:true,bg:TINT})+sub;
     });
     return out;
   }
@@ -807,7 +811,7 @@
       '<div style="margin-top:12px;font-size:10px;color:#555;line-height:1.7;border:1px solid #e3e8ef;border-radius:6px;padding:11px 13px"><b style="color:'+NV+'">Conditions</b><br>'+
       'Devis gratuit, valable '+esc(valid)+' à compter de sa date d\'émission.<br>Délai d\'exécution des travaux : à convenir ensemble à la commande.<br>Règlement : '+esc(regl)+' — virement, chèque ou espèces.<br>'+
       'Matériel garanti selon la garantie constructeur ; installation réalisée dans les règles de l\'art et couverte par nos assurances (voir bas de page).'+
-      (reduit?'<br>Taux réduit de TVA appliqué sous réserve des conditions d\'éligibilité en vigueur (logement achevé depuis plus de deux ans, équipement éligible).':'')+'</div>'+
+      (reduit?'<br>Taux réduit de TVA appliqué sous réserve des conditions d\'éligibilité en vigueur (logement achevé depuis plus de deux ans, équipement éligible).':'')+(!fr&&c.tvaBreak.some(function(t){ return t.rate===5.5; })?'<br>TVA à 5,5 % (art. 278-0 bis A du CGI) : le client certifie que le logement est à usage d\'habitation et achevé depuis plus de deux ans ; l\'entreprise certifie que les travaux et équipements remplissent les conditions d\'application de ce taux.':'')+'</div>'+
       '<div style="display:flex;gap:14px;margin-top:14px"><div style="flex:1;border:1px solid #cfd6e0;border-radius:6px;padding:10px 12px"><div style="font-weight:700;color:'+NV+';font-size:11px">Bon pour accord — le client</div><div style="font-size:9.5px;color:#666;margin-top:2px">Date et signature, précédées de la mention « Bon pour accord ».'+(c.options.length?' Cochez les options retenues.':'')+'</div><div style="height:54px"></div></div>'+
       '<div style="flex:1;border:1px solid #cfd6e0;border-radius:6px;padding:10px 12px"><div style="font-weight:700;color:'+NV+';font-size:11px">L\'entreprise</div><div style="font-size:9.5px;color:#666;margin-top:2px">'+esc(E.nom||'—')+(E.ville?' — '+esc(E.ville):'')+', le '+today+'</div><div style="height:54px"></div></div></div>'+
       '<div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">'+esc(E.piedNote||'')+'</div>'+
@@ -863,6 +867,8 @@
     addLot:function(){ chooser({lot:true}); },
     delLot:function(i){ if(!cur.lots[i]) return; if(!confirm('Supprimer le lot '+(i+1)+' ('+natureOf(cur.lots[i].module).label+') ?')) return; cur.lots.splice(i,1); markDirty(); render(); },
     dupLot:function(i){ var l=clone(cur.lots[i]); l.id=newId(); l.titre=(l.titre?l.titre+' ':'')+'(copie)'; cur.lots.splice(i+1,0,l); markDirty(); render(); },
+    addLotMod:function(mod,asOption,titre){ if(!MODS[mod]) return null; var l=newLot(mod); l.option=!!asOption; if(titre) l.titre=titre; cur.lots.push(l); markDirty(); return l; },
+    altLot:function(i,titre){ var l=clone(cur.lots[i]); if(!l) return; l.id=newId(); l.option=true; l.titre=titre||'Solution alternative'; cur.lots.splice(i+1,0,l); markDirty(); render(); say('Solution alternative ajoutée en option : modifie-la'); },
     moveLot:function(i,dir){ var j=i+dir; if(j<0||j>=cur.lots.length) return; var t=cur.lots[i]; cur.lots[i]=cur.lots[j]; cur.lots[j]=t; markDirty(); render(); },
     act:function(name,i){ var lot=cur.lots[i], m=lot&&MODS[lot.module]; if(!m||!m.actions||!m.actions[name]) return; var args=[].slice.call(arguments,2); var r=m.actions[name].apply(null,[lot,i,api].concat(args)); markDirty(); if(r!==false) rerender('lot',i); refreshLive(); },
     applyVisite:function(i){ var lot=cur.lots[i], m=lot&&MODS[lot.module]; if(!m||!m.applyVisite) return; var msgs=m.applyVisite(lot,api)||[]; markDirty(); say(msgs.length?('Reporté au devis : '+msgs.join(' · ')):'Rien à reporter automatiquement'); renderBody(); refreshLive(); },
@@ -900,12 +906,15 @@
     window.nxaOpenDevis=function(id){
       var r=_nxaOpen.apply(this,arguments);
       try{
-        if(flagOn()&&cur&&cur.v!==2&&legacyMod(cur.type)){
-          var inbox=cur._inboxId, ban=document.getElementById('nxaBanner'), d=NXD2.fromLegacyDevis(clone(cur));
+        /* la nature dictée peut être inconnue de l'ancien formulaire (froid commercial, dépose…) : on la reprend de la dictée */
+        var pl0=window._nxaLastPayload, pt=(pl0&&pl0.id===id&&pl0.p)?pl0.p.type:null;
+        if(flagOn()&&cur&&cur.v!==2&&(legacyMod(cur.type)||legacyMod(pt))){
+          var src0=clone(cur); if(!legacyMod(src0.type)) src0.type=pt;
+          var inbox=cur._inboxId, ban=document.getElementById('nxaBanner'), d=NXD2.fromLegacyDevis(src0);
           d.common={prepH:CFG().prepH,achatH:CFG().achatH,savPct:CFG().savPct};
           d.lots[0].data.moMode='detail';
           /* champs propres à la nature dictés (ex. : pièces et bouches d'un gainable) */
-          try{ var pl=window._nxaLastPayload, lm=MODS[d.lots[0].module]; if(lm&&lm.fromAssistant){ var gm=lm.fromAssistant((pl&&pl.id===id&&pl.p)?(pl.p[d.lots[0].module]||null):null,d.lots[0])||[]; if(gm.length&&ban&&ban.querySelector){ var ul=ban.querySelector('ul'); if(ul) gm.forEach(function(t){ var li=document.createElement('li'); li.textContent=t; ul.appendChild(li); }); } } }catch(e){}
+          try{ var pl=window._nxaLastPayload, lm=MODS[d.lots[0].module]; if(lm&&lm.fromAssistant){ var gm=lm.fromAssistant((pl&&pl.id===id&&pl.p)?(pl.p[d.lots[0].module]||null):null,d.lots[0])||[]; try{ if(lm.onNewDevis) lm.onNewDevis(d); if(lm.common) Object.assign(d.common,lm.common()); }catch(e){} if(gm.length&&ban&&ban.querySelector){ var ul=ban.querySelector('ul'); if(ul) gm.forEach(function(t){ var li=document.createElement('li'); li.textContent=t; ul.appendChild(li); }); } } }catch(e){}
           if(inbox) d._inboxId=inbox;
           cur=null; openEditor(d,{tab:'lots',dirty:true,banner:ban||null});
         }
