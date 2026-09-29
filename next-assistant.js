@@ -393,6 +393,9 @@
     };
   }
 
+  /* validation d'une proposition depuis le devis au nouveau format (next-devis2.js) */
+  window.nxaInboxValidated = function(id){ try{ mark(id,'valide').then(fetchInbox); var b=document.getElementById('nxaBanner'); if(b) b.remove(); toastX('✅ Proposition de l\'assistant validée','ok'); }catch(e){} };
+
   /* --- message client --- */
   window.nxaMsg = function(id, how){
     var x=findRow(id); if(!x) return;

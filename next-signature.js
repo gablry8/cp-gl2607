@@ -103,12 +103,14 @@
       var st=document.getElementById('f_statut'); if(st) st.value=cur.statut;
       try{ document.getElementById('wizStatus').innerHTML=statusTag(cur.statut); }catch(e){}
       if(cur.cType!=='Professionnel') html+=retractation(cur);
+      var docId=cur.id;
       var o={type:'devis',docId:cur.id,num:cur.num,client:cur.cNom,titre:cur.type+(cur.cVille?' — '+cur.cVille:''),montant:c.totalTTC,html:html,email:cur.cMail,tel:cur.cTel};
       toastX('Préparation du lien…');
       createLink(o).then(function(r){
         if(!r || r.error || !r.data){ toastX('⚠ '+((r&&r.error&&r.error.message)||'Lien impossible'),'warn'); return; }
-        cur.signLink={token:r.data.token,at:Date.now(),hash:r.data.doc_hash};
-        var j=DEVIS.findIndex(function(d){ return d.id===cur.id; }); if(j>=0){ DEVIS[j].signLink=cur.signLink; save(LS.devis,DEVIS); }
+        var link={token:r.data.token,at:Date.now(),hash:r.data.doc_hash};
+        if(typeof cur!=='undefined' && cur && cur.id===docId) cur.signLink=link;   /* le devis ouvert a pu changer pendant l'envoi */
+        var j=DEVIS.findIndex(function(d){ return d.id===docId; }); if(j>=0){ DEVIS[j].signLink=link; save(LS.devis,DEVIS); }
         o.url=BASE+'#t='+r.data.token; showShare(o); refresh();
       });
     }catch(e){ toastX('⚠ '+(e.message||e),'warn'); }
