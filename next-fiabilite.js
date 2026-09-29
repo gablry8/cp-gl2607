@@ -76,7 +76,7 @@
     }; w._nxf=true; window[fn]=w;
   }
   /* 5. dupliquer un devis ne recopie ni ses factures, ni sa signature, ni son suivi */
-  var RESET=['facAcompte','facSolde','signature','signLink','sentAt','relances','datePlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet'];
+  var RESET=['facAcompte','facSolde','signature','signLink','sentAt','relances','datePlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits'];
   function guardDup(){
     var o=window.dupDevis; if(typeof o!=='function'||o._nxf) return;
     var w=function(id){
@@ -91,8 +91,32 @@
       return r;
     }; w._nxf=true; window.dupDevis=w;
   }
+  /* 6. numéro de facture : jamais en dessous du plus grand numéro déjà émis.
+        Deux appareils (téléphone + PC) ont chacun leur compteur ; après une synchro, celui d'un appareil peut être en retard
+        sur les factures reçues de l'autre → il redonnerait un numéro déjà pris. On repart donc du plus grand numéro existant. */
+  function facNumsAll(){
+    var a=[];
+    try{ (DEVIS||[]).forEach(function(d){ [d.facAcompte,d.facSolde].forEach(function(f){ if(f&&f.num) a.push(f.num); }); }); }catch(e){}
+    try{ (DEP||[]).forEach(function(x){ if(x&&x.facNum) a.push(x.facNum); }); }catch(e){}
+    try{ (LOC||[]).forEach(function(l){ if(l&&l.fac&&l.fac.num) a.push(l.fac.num); }); }catch(e){}
+    try{ (CTR||[]).forEach(function(c){ ((c&&c.facs)||[]).forEach(function(f){ if(f&&f.num) a.push(f.num); }); }); }catch(e){}
+    return a;
+  }
+  window.nxFacNumsAll=facNumsAll;
+  function guardFacNum(){
+    var o=window.nextFacNum; if(typeof o!=='function'||o._nxf) return;
+    var w=function(){
+      try{
+        var y=new Date().getFullYear(), mx=0, re=new RegExp('^F-'+y+'-(\\d+)$');
+        facNumsAll().forEach(function(n){ var m=String(n).match(re); if(m) mx=Math.max(mx,parseInt(m[1],10)); });
+        var sq=load(LS.facseq,{year:y,seq:0}); if(!sq||sq.year!==y) sq={year:y,seq:0};
+        if(mx>(Number(sq.seq)||0)){ sq.seq=mx; save(LS.facseq,sq); }
+      }catch(e){}
+      return o.apply(this,arguments);
+    }; w._nxf=true; window.nextFacNum=w;
+  }
   function boot(){ try{ normalize(); window.checkBackup&&window.checkBackup();
-    guardDel('delDevis','devis','Devis'); guardDel('delDep','dep','Intervention'); guardDel('delLoc','loc','Location'); guardDel('delCtr','ctr','Contrat'); guardDup(); }catch(e){} }
+    guardDel('delDevis','devis','Devis'); guardDel('delDep','dep','Intervention'); guardDel('delLoc','loc','Location'); guardDel('delCtr','ctr','Contrat'); guardDup(); guardFacNum(); }catch(e){} }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,0); }); else setTimeout(boot,0);
   /* la session cloud arrive un peu après le démarrage */
   var tries=0, iv=setInterval(function(){ tries++; if(cloudOn()||tries>30){ clearInterval(iv); try{ window.checkBackup&&window.checkBackup(); }catch(e){} } },1000);

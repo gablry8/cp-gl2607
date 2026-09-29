@@ -21,7 +21,7 @@
   var MOD='gainable';
 
   /* ---------- articles ajoutés à la base (prix d'achat HT relevés sur internet le 29/09/2026) ---------- */
-  var SEED_VER=1, WEB_DATE='29/09/2026';
+  var SEED_VER=2, WEB_DATE='29/09/2026';   /* 2 : prix de la passerelle machine trouvé (article resté à 0 mis à jour) */
   var N={
     plenum:'Plénum de soufflage isolé (3 à 6 piquages)', plenumMot:'Plénum motorisé de zonage (kit fabricant)',
     registre:'Registre motorisé circulaire Ø160/Ø200 (12 V)', centrale:'Centrale de zonage (carte système)',
@@ -34,10 +34,10 @@
   };
   var SEED=[
     [N.plenum,'unité',191.67,'mygainable.com — plénum universel isolé 3 sorties Ø160/200, 230 € (TTC supposé)'],
-    [N.plenumMot,'unité',0,'prix selon le nombre de sorties : tarif du pack à demander à ton distributeur'],
+    [N.plenumMot,'unité',0,'prix selon le nombre de sorties, à saisir d\'après ton pack. Repère : clim-planete.com, pack Airzone taille M 4 sorties pour Daikin FBA60/71 AVEC 4 thermostats, 2 207,50 € HT (thermostats inclus : ne les compte pas en plus)'],
     [N.registre,'unité',131.97,'aircco.fr — Airzone CPCC200MTE, 131,97 € HT'],
     [N.centrale,'unité',283.47,'leroymerlin.es — Airzone Flexa 4.0 (CE8), 343 € TTC Espagne, TVA 21 % déduite'],
-    [N.passerelle,'unité',0,'aucun prix neuf fiable relevé : à demander (référence selon la marque de l\'unité)'],
+    [N.passerelle,'unité',316.00,'climfactory.com — passerelle Airzone pour gainable Daikin ou Mitsubishi (fonction QAI), 379,20 € TTC soit 316,00 € HT ; autre marque : référence et prix à vérifier'],
     [N.thF,'unité',141.11,'aircco.fr — Airzone Lite filaire, 141,11 € HT'],
     [N.thR,'unité',172.54,'aircco.fr — Airzone Lite radio, 172,54 € HT'],
     [N.wifi,'unité',212.66,'aircco.fr — Webserver Airzone Cloud, 212,66 € HT'],
@@ -51,16 +51,24 @@
     [N.secu,'unité',0,'aucun prix générique fiable relevé : à saisir']
   ];
   function slug(s){ return String(s).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''); }
-  function seeded(){ var g=(A.DEFS()||{})[MOD]; return !!(g&&num(g.seeded)>=SEED_VER); }
-  /* ajout à la base de prix, une seule fois (repère synchronisé entre appareils) ; un article déjà présent n'est jamais touché */
+  function seededV(){ var g=(A.DEFS()||{})[MOD]; return g?num(g.seeded):0; }
+  function seeded(){ return seededV()>=SEED_VER; }
+  /* ajout à la base de prix, une seule fois (repère synchronisé entre appareils) ; un article déjà présent n'est jamais touché,
+     sauf un article ajouté par ClimPilot et resté à 0 € (jamais renseigné) : il reçoit le prix indicatif trouvé depuis */
   function seed(){
     try{
-      if(seeded()) return 0;
-      var customs=load(LS.custom,[]), names={}, n=0;
+      var v0=seededV(); if(v0>=SEED_VER) return 0;
+      var customs=load(LS.custom,[]), names={}, n=0, up=0;
       (PRIX||[]).forEach(function(p){ names[p.nom]=1; }); customs.forEach(function(p){ names[p.nom]=1; });
-      SEED.forEach(function(s){ if(names[s[0]]) return;
-        customs.push({id:'gai_'+slug(s[0]),nom:s[0],cat:'Gainable',unite:s[1],achat:s[2],marge:35,verif:true,src:'local',web:s[3]+' — relevé le '+WEB_DATE}); n++; });
-      if(n){ save(LS.custom,customs); try{ rebuildPrix(); }catch(e){} }
+      SEED.forEach(function(s){
+        var web=s[3]+' — relevé le '+WEB_DATE;
+        if(v0>=1){ /* mise à jour : on n'ajoute rien (un article supprimé reste supprimé) */
+          var e=customs.find(function(p){ return p.id==='gai_'+slug(s[0]); });
+          if(e&&!(num(e.achat)>0)&&(s[2]>0||e.web!==web)){ e.achat=s[2]; e.web=web; e.verif=true; up++; }
+          return; }
+        if(names[s[0]]) return;
+        customs.push({id:'gai_'+slug(s[0]),nom:s[0],cat:'Gainable',unite:s[1],achat:s[2],marge:35,verif:true,src:'local',web:web}); n++; });
+      if(n||up){ save(LS.custom,customs); try{ rebuildPrix(); }catch(e){} }
       var all=A.DEFS(); all[MOD]=Object.assign(all[MOD]||{},{seeded:SEED_VER}); save('cpnext_d2_defaults',all);
       return n;
     }catch(e){ return 0; }

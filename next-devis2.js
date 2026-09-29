@@ -202,6 +202,8 @@
         if(c[k]==null||c[k]==='') c[k]=clone(e[k]);
       });
       if(e.signature && !c.signature) c.signature=clone(e.signature);
+      /* contrats déjà créés depuis ce devis (module Entretien) : l'éditeur ne doit jamais les « oublier » */
+      if(Array.isArray(e.ctrFaits)){ var cf=Array.isArray(c.ctrFaits)?c.ctrFaits.slice():[]; e.ctrFaits.forEach(function(k){ if(cf.indexOf(k)<0) cf.push(k); }); c.ctrFaits=cf; }
       ['refus','acceptedAt'].forEach(function(k){ if(e[k]!=null&&c[k]==null) c[k]=clone(e[k]); });
       /* un statut posé ailleurs (signature, liste, mail, relance) ne recule jamais, sauf changement fait exprès dans l'éditeur */
       var RK={brouillon:0,verifier:0,pret:0,envoye:1,accepte:2,refuse:2};

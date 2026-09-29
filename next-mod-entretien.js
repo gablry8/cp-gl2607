@@ -170,31 +170,50 @@
   /* ---------- contrat signé → onglet Contrats ---------- */
   var CTYPE={clim:'Climatisation',pac:'PAC',adia:'Adiabatique',frc:'Froid commercial',chf:'Froid commercial',autre:'Climatisation'};
   function addMonths(iso,m){ var d=new Date(iso+'T00:00:00'); d.setMonth(d.getMonth()+m); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  /* Fiabilité (2 appareils + contrat supprimé) :
+     - l'identifiant du contrat se déduit du devis et du lot : si le téléphone et le PC relèvent la même signature
+       en même temps, ils créent LE MÊME contrat et la synchro n'en garde qu'un ;
+     - le devis retient les contrats déjà créés (ctrFaits) : un contrat que Gabriel supprime ne revient pas tout seul. */
+  function ctrKey(dv,l){ return String(dv.id)+':'+String(l.id); }
+  function ctrIdOf(dv,l){ return 'CTR-'+String(dv.id).replace(/[^\w-]/g,'')+'-'+String(l.id).replace(/[^\w-]/g,''); }
+  function markDone(dv,k){
+    if(!Array.isArray(dv.ctrFaits)) dv.ctrFaits=[];
+    if(dv.ctrFaits.indexOf(k)<0) dv.ctrFaits.push(k);
+    try{ if(typeof cur!=='undefined'&&cur&&cur.id===dv.id){ if(!Array.isArray(cur.ctrFaits)) cur.ctrFaits=[]; if(cur.ctrFaits.indexOf(k)<0) cur.ctrFaits.push(k); } }catch(e){}
+  }
   function syncContracts(){
-    var made=0;
+    var made=0, flagged=0, news=[];
     try{
       (DEVIS||[]).forEach(function(dv){
         if(!dv||dv.v!==2||dv.statut!=='accepte') return;
         var c=null;
         (dv.lots||[]).forEach(function(l){
           if(l.module!==MOD||l.option||!l.data||l.data.legacyCopy||l.data.format!=='contrat') return;
-          if((CTR||[]).some(function(x){ return x.devisId===dv.id&&x.lotId===l.id; })) return;
+          var k=ctrKey(dv,l), cid=ctrIdOf(dv,l);
+          if(Array.isArray(dv.ctrFaits)&&dv.ctrFaits.indexOf(k)>=0) return;
+          if((CTR||[]).some(function(x){ return x.id===cid||(x.devisId===dv.id&&x.lotId===l.id); })){ markDone(dv,k); flagged++; return; }
           if(!c) c=NXD2.compute(JSON.parse(JSON.stringify(dv)));
           var e=(c.lots||[]).find(function(x){ return x.id===l.id; }); if(!e) return;
           var d=l.data, today=(typeof todayISO==='function'?todayISO():isoPlus(0)), debut=dv.acceptedAt?(function(t){ var q=new Date(t); return q.getFullYear()+'-'+String(q.getMonth()+1).padStart(2,'0')+'-'+String(q.getDate()).padStart(2,'0'); })(dv.acceptedAt):today;
           var fin=addMonths(debut,Math.max(1,num(d.duree)||12)), first=/^\d{4}-\d{2}-\d{2}$/.test(d.premiere||'')?d.premiere:isoPlus(30);
           var t0=(d.equips||[])[0]?d.equips[0].type:'clim', part=dv.cType!=='Professionnel';
-          var o={id:(function(){ try{ return uid(); }catch(err){ return 'C'+Date.now(); } })(),clientNom:dv.cNom||'',type:CTYPE[t0]||'Climatisation',prix:Math.round(((e.ht||0)+(e.commonShare||0))*100)/100,
+          var o={id:cid,clientNom:dv.cNom||'',type:CTYPE[t0]||'Climatisation',prix:Math.round(((e.ht||0)+(e.commonShare||0))*100)/100,
             visites:Math.max(1,Math.round(num(d.visites))||1),prochaineVisite:first,actif:true,facs:[],devisId:dv.id,lotId:l.id,debut:debut,fin:fin,reconduction:!!d.reconduction,particulier:part,
             notes:'Contrat issu du devis n° '+(dv.num||'')+' — '+(d.equips||[]).map(function(q){ return [TLAB[q.type],q.marque,q.modele].filter(Boolean).join(' '); }).join(' ; ')};
           CTR.push(o); made++;
-          if(part&&d.reconduction&&typeof window.nxAddTask==='function'){
-            window.nxAddTask({title:'Contrat d\'entretien '+(dv.cNom||'')+' : informer par écrit de la possibilité de ne pas reconduire (échéance '+new Date(fin+'T00:00:00').toLocaleDateString('fr-FR')+', art. L215-1)',
-              due:addMonths(fin,-2),priority:'high',cat:'Client',ref:'L2151-'+o.id});
-          }
+          news.push({dv:dv,k:k,o:o,task:(part&&d.reconduction)?{title:'Contrat d\'entretien '+(dv.cNom||'')+' : informer par écrit de la possibilité de ne pas reconduire (échéance '+new Date(fin+'T00:00:00').toLocaleDateString('fr-FR')+', art. L215-1)',
+              due:addMonths(fin,-2),priority:'high',cat:'Client',ref:'L2151-'+o.id}:null});
         });
       });
-      if(made){ save('cp2_contrats',CTR); try{ if(window._curView==='contrats') renderContrats(); updateBadges(); }catch(e){} try{ toast('🤝 '+made+' contrat(s) d\'entretien signé(s) ajouté(s) à l\'onglet Contrats'); }catch(e){} }
+      if(made){
+        /* le contrat d'abord : si l'enregistrement échoue (stockage plein), rien n'est marqué « fait » et on réessaiera */
+        try{ save('cp2_contrats',CTR); }
+        catch(err){ news.forEach(function(n){ var i=CTR.indexOf(n.o); if(i>=0) CTR.splice(i,1); }); made=0; news=[]; }
+        news.forEach(function(n){ markDone(n.dv,n.k); flagged++;
+          if(n.task&&typeof window.nxAddTask==='function'){ try{ window.nxAddTask(n.task); }catch(e){} } });
+      }
+      if(flagged){ try{ save((typeof LS!=='undefined'&&LS&&LS.devis)||'cp2_devis',DEVIS); }catch(e){} }
+      if(made){ try{ if(window._curView==='contrats') renderContrats(); updateBadges(); }catch(e){} try{ toast('🤝 '+made+' contrat(s) d\'entretien signé(s) ajouté(s) à l\'onglet Contrats'); }catch(e){} }
     }catch(e){}
     return made;
   }

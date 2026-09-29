@@ -5,7 +5,7 @@
 (function(){
   'use strict';
 
-  const NX_VERSION='Next 1.2.0 devis par nature';
+  const NX_VERSION='Next 1.2.1 fiabilité contrats et factures';
   const NX_KEYS={
     tasks:'cpnext_tasks',trash:'cpnext_trash',templates:'cpnext_templates',
     history:'cpnext_history',settings:'cpnext_settings',notified:'cpnext_notified',
@@ -330,14 +330,20 @@
 
   function nxSecuritySummary(){
     const hist=nxLoad(NX_KEYS.history,[]),dirty=!!localStorage.getItem('cp2_dirty'),last=Number(localStorage.getItem('cp2_lastbackup')||0);
-    return `<div style="display:grid;gap:9px"><div>Cloud <span class="next-pill ${dirty?'red':'green'}">${dirty?'à synchroniser':'synchronisé'}</span></div><div>Sauvegarde ${(typeof SESS!=='undefined'&&SESS)?'<span class="next-pill green">automatique (serveur)</span>':`JSON <span class="next-pill ${!last||Date.now()-last>7*86400000?'amber':'green'}">${last?nxDate(last):'jamais'}</span>`}</div><div>Historique <span class="next-pill blue">${hist.length}/10 versions</span></div><div>Corbeille <span class="next-pill blue">${nxTrash.length} élément(s)</span></div><button class="btn-ghost" onclick="go('nx_tools')">Ouvrir les protections</button></div>`;
+    /* factures : un numéro en double (ex. deux appareils hors ligne) doit se voir sans ouvrir le registre */
+    let fac='';try{const ck=nxSerieCheck(typeof window.nxFacNumsAll==='function'?window.nxFacNumsAll():[]);
+      fac=ck.dups.length?`<div>Factures <span class="next-pill red">${ck.dups.length} numéro(s) en double : ${nxEsc(ck.dups.join(', '))}</span> <a href="#" onclick="go('nx_docs');return false">voir le registre</a></div>`
+        :ck.gaps.length?`<div>Factures <span class="next-pill amber">série incomplète (${ck.gaps.length} numéro(s) manquant(s))</span> <a href="#" onclick="go('nx_docs');return false">voir le registre</a></div>`
+        :`<div>Factures <span class="next-pill green">numérotation continue</span></div>`;}catch(e){}
+    return `<div style="display:grid;gap:9px">${fac}<div>Cloud <span class="next-pill ${dirty?'red':'green'}">${dirty?'à synchroniser':'synchronisé'}</span></div><div>Sauvegarde ${(typeof SESS!=='undefined'&&SESS)?'<span class="next-pill green">automatique (serveur)</span>':`JSON <span class="next-pill ${!last||Date.now()-last>7*86400000?'amber':'green'}">${last?nxDate(last):'jamais'}</span>`}</div><div>Historique <span class="next-pill blue">${hist.length}/10 versions</span></div><div>Corbeille <span class="next-pill blue">${nxTrash.length} élément(s)</span></div><button class="btn-ghost" onclick="go('nx_tools')">Ouvrir les protections</button></div>`;
   }
 
   // Exposition des actions appelées depuis le HTML injecté.
   /* modification d'une tâche (report de date, priorité…) — utilisé par l'écran « Ma journée » */
   function nxUpdateTask(id,patch){const t=nxTasks.find(x=>x.id===id);if(!t)return false;['title','due','priority','cat','link'].forEach(k=>{if(patch&&patch[k]!==undefined)t[k]=patch[k];});nxSave(NX_KEYS.tasks,nxTasks);return true;}
   /* ajout d'une tâche par un module (ex. : rappel d'échéance d'un contrat) ; ref évite les doublons */
-  function nxAddTask(t){ if(!t||!t.title) return null; if(t.ref&&nxTasks.some(x=>x.ref===t.ref)) return null; const o={id:nxId(),title:String(t.title),due:t.due||'',priority:t.priority||'medium',cat:t.cat||'Autre',link:t.link||'',ref:t.ref||'',done:false,created:Date.now()}; nxTasks.push(o); nxSave(NX_KEYS.tasks,nxTasks); try{ nxUpdateTaskBadge(); }catch(e){} return o; }
+  /* id déduit de ref : deux appareils qui créent le même rappel créent la même tâche, la synchro n'en garde qu'une */
+  function nxAddTask(t){ if(!t||!t.title) return null; const rid=t.ref?'T-'+String(t.ref).replace(/[^\w-]/g,''):''; if(t.ref&&nxTasks.some(x=>x.ref===t.ref||x.id===rid)) return null; const o={id:rid||nxId(),title:String(t.title),due:t.due||'',priority:t.priority||'medium',cat:t.cat||'Autre',link:t.link||'',ref:t.ref||'',done:false,created:Date.now()}; nxTasks.push(o); nxSave(NX_KEYS.tasks,nxTasks); try{ nxUpdateTaskBadge(); }catch(e){} return o; }
   Object.assign(window,{nxToast,nxCloseModal,nxOpenTaskModal,nxSaveTask,nxToggleTask,nxDeleteTask,nxRunAuto,nxEnableNotifications,nxUpdateTask,nxAddTask});
 
   /* ---------- Recherche globale ---------- */
