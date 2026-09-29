@@ -92,6 +92,7 @@
 
     const dash=document.getElementById('v-dash');
     if(dash&&!document.getElementById('nxDashStrip'))dash.insertAdjacentHTML('afterbegin','<div id="nxDashStrip"></div>');
+    if(dash&&!document.getElementById('nxDashPilot'))dash.insertAdjacentHTML('beforeend','<div id="nxDashPilot" style="margin-top:16px"></div>');
     const wizBtns=document.querySelector('#v-wizard .flexhead .row-actions');
     if(wizBtns&&!document.getElementById('nxSaveTemplate'))wizBtns.insertAdjacentHTML('afterbegin','<button class="btn-ghost btn-sm" id="nxSaveTemplate" onclick="nxSaveCurrentTemplate()">⚡ Modèle</button>');
     const planActions=document.querySelector('#v-plan .flexhead .row-actions')||document.querySelector('#v-plan .row-actions');
@@ -202,9 +203,10 @@
   function nxPatchNavigation(){
     const original=go;
     window.go=function(v){
+      if(v==='nx_cockpit')v='dash'; /* le Cockpit est fondu dans le tableau de bord */
       original(v);
       if(nxRenderers[v])nxRenderers[v]();
-      if(v==='dash')nxRenderDashStrip();
+      if(v==='dash'){nxRenderDashStrip();nxRenderDashPilot();}
       nxRevealNavForView(v);
       nxCloseNav();
     };
@@ -238,7 +240,7 @@
     const all=nxPending(),urgent=all.filter(t=>t.priority==='high').length;
     const unpaid=(()=>{try{return allImpayes().filter(x=>(Date.now()-new Date(x.date).getTime())>=30*86400000).length;}catch(e){return 0;}})();
     const unplanned=(DEVIS||[]).filter(d=>d.statut==='accepte'&&!d.datePlanif).length;
-    box.innerHTML=`<div class="next-card" style="margin-bottom:14px;padding:13px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-left:4px solid ${urgent?'var(--next-rose)':'var(--next-mint)'}"><div style="font-size:22px">${urgent?'🚨':'✅'}</div><div style="flex:1"><b>${urgent?urgent+' priorité(s) urgente(s)':'Aucune urgence détectée'}</b><div class="sub">${all.length} action(s) ouvertes · ${unpaid} impayé(s) ancien(s) · ${unplanned} chantier(s) à planifier</div></div><button class="btn-next-accent" onclick="go('nx_tasks')">Voir ce qu’il faut faire</button><button class="btn-ghost" onclick="go('nx_cockpit')">Cockpit Next</button></div>`;
+    box.innerHTML=`<div class="next-card" style="margin-bottom:14px;padding:13px 16px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;border-left:4px solid ${urgent?'var(--next-rose)':'var(--next-mint)'}"><div style="font-size:22px">${urgent?'🚨':'✅'}</div><div style="flex:1"><b>${urgent?urgent+' priorité(s) urgente(s)':'Aucune urgence détectée'}</b><div class="sub">${all.length} action(s) ouvertes · ${unpaid} impayé(s) ancien(s) · ${unplanned} chantier(s) à planifier</div></div><button class="btn-next-accent" onclick="go('nx_tasks')">Voir ce qu’il faut faire</button><button class="btn-ghost" onclick="go('nx_journee')">Ma journée</button></div>`;
   }
 
   function nxStats(){
@@ -274,6 +276,28 @@
       </div>`;
   }
 
+  /* ce qui était propre au Cockpit, désormais en bas du tableau de bord */
+  function nxRenderDashPilot(){
+    const box=document.getElementById('nxDashPilot');if(!box)return;
+    try{
+      const s=nxStats(),m=new Date().getMonth(),obj=Number((P&&P.objectifCA)||74450),mObj=obj*(Number(nxSettings.season[m]||0)/100);
+      const year=new Date().getFullYear();let monthCA=0;
+      try{monthCA=(allRecettes()||[]).filter(r=>{const d=new Date(r.date);return d.getFullYear()===year&&d.getMonth()===m;}).reduce((x,r)=>x+Number(r.montant||0),0);}catch(e){}
+      const origins={};(CLIENTS||[]).forEach(c=>{const k=c.source||'Non renseignée';origins[k]=(origins[k]||0)+1;});
+      box.innerHTML=`<div class="next-card-h" style="margin:4px 0 10px"><h3 style="margin:0">🧭 Pilotage</h3><div class="row-actions" style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn-ghost btn-sm" onclick="nxOpenScanner('equip')">📷 Scanner une plaque</button><button class="btn-ghost btn-sm" onclick="nxExportICS()">📅 Calendrier iPhone</button></div></div>
+      <div class="next-stat-row">
+        <div class="next-stat"><small>Objectif du mois — ${new Date().toLocaleDateString('fr-FR',{month:'long'})}</small><strong>${eur0(monthCA)}</strong><span class="sub">encaissé sur ${eur0(mObj)} (${nxSettings.season[m]} % de l’objectif annuel, saison clim/adia)</span><div class="next-progress" style="margin-top:8px"><i style="width:${Math.min(100,mObj?monthCA/mObj*100:0)}%"></i></div></div>
+        <div class="next-stat"><small>Conversion devis</small><strong>${Math.round(s.conv)} %</strong><span class="sub">${s.accepted} accepté(s) sur ${s.sent} décision(s)</span></div>
+        <div class="next-stat"><small>CA récurrent annuel</small><strong>${eur0(s.recurring)}</strong><span class="sub">contrats d’entretien actifs</span></div>
+        <div class="next-stat"><small>Parc suivi</small><strong>${s.eq}</strong><span class="sub">équipement(s) chez tes clients</span></div>
+      </div>
+      <div class="next-grid">
+        <div class="next-card next-col-6"><h3>📣 Origine des clients</h3>${Object.keys(origins).length?Object.entries(origins).sort((a,b)=>b[1]-a[1]).map(([k,v])=>`<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--line)"><span>${nxEsc(k)}</span><b>${v}</b></div>`).join(''):'<div class="next-empty">Renseigne l’origine dans les fiches clients.</div>'}</div>
+        <div class="next-card next-col-6"><h3>🛡️ Données</h3>${nxSecuritySummary()}</div>
+      </div>`;
+    }catch(e){box.innerHTML='';}
+  }
+
   function nxTaskHtml(t){
     const pri=t.priority==='high'?'red':t.priority==='medium'?'amber':'blue';
     return `<div class="next-task ${t.priority==='high'?'overdue':''}">${t.auto?'<span>⚙️</span>':`<input type="checkbox" ${t.done?'checked':''} onchange="nxToggleTask('${t.id}')">`}<div><b>${nxEsc(t.title)}</b><small>${nxEsc(t.cat||'')} ${t.detail?'· '+nxEsc(t.detail):''}${t.due?' · '+nxDate(t.due):''}</small></div><div class="next-task-actions"><span class="next-pill ${pri}">${t.priority==='high'?'Urgent':t.priority==='medium'?'À faire':'Faible'}</span>${t.auto?`<button class="iconbtn" onclick="nxRunAuto('${t.id}')">›</button>`:`<button class="iconbtn d" onclick="nxDeleteTask('${t.id}')">🗑</button>`}</div></div>`;
@@ -306,7 +330,7 @@
 
   function nxSecuritySummary(){
     const hist=nxLoad(NX_KEYS.history,[]),dirty=!!localStorage.getItem('cp2_dirty'),last=Number(localStorage.getItem('cp2_lastbackup')||0);
-    return `<div style="display:grid;gap:9px"><div>Cloud <span class="next-pill ${dirty?'red':'green'}">${dirty?'à synchroniser':'synchronisé'}</span></div><div>Sauvegarde JSON <span class="next-pill ${!last||Date.now()-last>7*86400000?'amber':'green'}">${last?nxDate(last):'jamais'}</span></div><div>Historique <span class="next-pill blue">${hist.length}/10 versions</span></div><div>Corbeille <span class="next-pill blue">${nxTrash.length} élément(s)</span></div><button class="btn-ghost" onclick="go('nx_tools')">Ouvrir les protections</button></div>`;
+    return `<div style="display:grid;gap:9px"><div>Cloud <span class="next-pill ${dirty?'red':'green'}">${dirty?'à synchroniser':'synchronisé'}</span></div><div>Sauvegarde ${(typeof SESS!=='undefined'&&SESS)?'<span class="next-pill green">automatique (serveur)</span>':`JSON <span class="next-pill ${!last||Date.now()-last>7*86400000?'amber':'green'}">${last?nxDate(last):'jamais'}</span>`}</div><div>Historique <span class="next-pill blue">${hist.length}/10 versions</span></div><div>Corbeille <span class="next-pill blue">${nxTrash.length} élément(s)</span></div><button class="btn-ghost" onclick="go('nx_tools')">Ouvrir les protections</button></div>`;
   }
 
   // Exposition des actions appelées depuis le HTML injecté.
@@ -668,7 +692,7 @@
     const layout=document.createElement('div');layout.id='nxQuoteLayout';layout.className='nx-quote-layout';layout.innerHTML='<main class="nx-quote-main"></main><aside class="nx-quote-assist" id="nxQuoteAssist"></aside>';progress.insertAdjacentElement('afterend',layout);const main=layout.querySelector('.nx-quote-main');steps.forEach(s=>main.appendChild(s));
   }
   const NX_NAV_SECTIONS=[
-    {id:'home',label:'Accueil',ico:'⌂',items:[['nx_cockpit','Cockpit'],['dash','Activité & rentabilité'],['nx_tasks','À faire'],['plan','Planning']]},
+    {id:'home',label:'Accueil',ico:'⌂',items:[['dash','Tableau de bord'],['nx_tasks','À faire'],['plan','Planning']]},
     {id:'sales',label:'Commercial',ico:'◇',sub:[{id:'quotes',label:'Devis',ico:'📝',views:['wizard','verifier','pret','envoye','accepte','tous','nx_templates']}],items:[['clients','Clients']]},
     {id:'field',label:'Terrain',ico:'⚒',items:[['dep','Interventions'],['contrats','Contrats d’entretien'],['fluides','Fluides & Cerfa'],['dim','Dimensionnement']]},
     {id:'adia',label:'Adiabatique',ico:'◌',items:[['adia','Étude & installation'],['loc','Locations']]},
@@ -738,7 +762,7 @@
 
   /* ---------- Mode d'emploi intégré ---------- */
   const NX_GUIDE=[
-    {id:'start',ico:'🚀',title:'Bien démarrer',intro:'La routine recommandée pour ne rien oublier.',steps:['Ouvre le Cockpit Next : il résume les urgences et les opportunités.','Crée ou retrouve le client avant de chiffrer. Renseigne son origine pour mesurer ce qui apporte des clients.','Crée le devis, vérifie la marge et le gain horaire, puis enregistre-le.','Après acceptation : planifie, vérifie le stock et imprime la checklist camion.','Après le chantier : saisis les heures et achats réels, facture puis marque le paiement.']},
+    {id:'start',ico:'🚀',title:'Bien démarrer',intro:'La routine recommandée pour ne rien oublier.',steps:['Ouvre « Ma journée » le matin : rendez-vous, choses à faire et relances du jour. Le tableau de bord donne les chiffres.','Crée ou retrouve le client avant de chiffrer. Renseigne son origine pour mesurer ce qui apporte des clients.','Crée le devis, vérifie la marge et le gain horaire, puis enregistre-le.','Après acceptation : planifie, vérifie le stock et imprime la checklist camion.','Après le chantier : saisis les heures et achats réels, facture puis marque le paiement.']},
     {id:'devis',ico:'📝',title:'Devis et chiffrage',intro:'Du besoin client au PDF.',steps:['Nouveau devis → choisis le type de chantier. Les quantités et liaisons se préremplissent selon le type et la puissance.','Tape le nom d’un client existant pour récupérer ses coordonnées et sa zone.','Ajoute la machine, les longueurs réelles, les fournitures, la main-d’œuvre et le déplacement.','Dans Installation, les kits Protection clim ajoutent un disjoncteur 16 A, 20 A ou 32 A par le mécanisme natif des articles. Valide le choix avec la notice constructeur.','Le récapitulatif distingue CA, achat, marge, cotisations et gain horaire. Corrige toute alerte avant envoi.','Pour un chantier courant, clique « Modèle » : le prochain devis sera prêt en quelques secondes.']},
     {id:'planning',ico:'📅',title:'Planning et iPhone',intro:'Organiser le terrain.',steps:['Un devis accepté sans date apparaît automatiquement dans À faire.','Dans Planning, affecte une date au chantier. Les dépannages, locations et entretiens remontent automatiquement.','Clique sur la carte pour ouvrir l’itinéraire Google Maps.','Clique « Calendrier iPhone » puis ouvre le fichier .ics sur l’iPhone/iPad et choisis « Ajouter tout ».','L’export .ics est une photo du planning : refais-le après les changements importants.']},
     {id:'money',ico:'💶',title:'Factures et encaissements',intro:'Suivre l’argent réellement reçu.',steps:['Un devis accepté peut produire une facture totale ou acompte + solde dans la série F-AAAA-XXX.','Ne marque « Payée » qu’après réception réelle de l’argent et indique le mode de règlement.','Le livre des recettes se remplit depuis les encaissements, pas depuis les devis acceptés.','Le dashboard calcule la provision URSSAF sur l’encaissé.','Les factures de plus de 30 jours non payées deviennent une priorité rouge avec mail de relance.']},
@@ -758,7 +782,7 @@
 
   /* ---------- Initialisation et raccords au cœur ---------- */
   function nxPatchCoreRenders(){
-    const dash=window.renderDash;window.renderDash=function(){dash();nxRenderDashStrip();};
+    const dash=window.renderDash;window.renderDash=function(){dash();nxRenderDashStrip();nxRenderDashPilot();};
     const badges=window.updateBadges;window.updateBadges=function(){badges();nxUpdateTaskBadge();};
     const planning=window.renderPlanning;window.renderPlanning=function(){planning();const v=document.getElementById('v-plan'),head=v&&v.querySelector('.flexhead .row-actions');if(head&&!document.getElementById('nxIcsBtn'))head.insertAdjacentHTML('beforeend','<button class="btn-ghost btn-sm" id="nxIcsBtn" onclick="nxExportICS()">📅 Calendrier iPhone</button>');};
   }

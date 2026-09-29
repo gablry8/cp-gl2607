@@ -100,3 +100,49 @@ a{color:var(--blue)}
   #listTable td:nth-child(7){grid-column:2;grid-row:3;margin-top:8px;align-self:end;text-align:right!important;white-space:nowrap!important}
   #listTable tbody tr:hover{background:var(--panel)}
 }
+
+/* clients et interventions sur téléphone : même principe de cartes */
+@media(max-width:860px){
+  #clientTable .scroll,#depTable .scroll{overflow:visible!important}
+  #clientTable table,#clientTable tbody,#depTable table,#depTable tbody{display:block;width:100%}
+  #clientTable thead,#depTable thead{display:none}
+  #clientTable tr,#depTable tr{display:grid;gap:3px 12px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 13px;margin-bottom:10px}
+  #clientTable td,#depTable td{display:block;border:0!important;padding:0!important;text-align:left!important;white-space:normal!important;min-width:0}
+  #clientTable tbody tr:hover,#depTable tbody tr:hover{background:var(--panel)}
+  /* client : nom + CA / type, ville, nb devis / contact + actions */
+  #clientTable tr{grid-template-columns:auto minmax(0,1fr) auto}
+  #clientTable td:nth-child(1){grid-column:1/3;grid-row:1}
+  #clientTable td:nth-child(6){grid-column:3;grid-row:1;text-align:right!important;font-weight:700}
+  #clientTable td:nth-child(6)::before{content:"CA ";font-weight:400;color:var(--muted);font-size:12px}
+  #clientTable td:nth-child(2){grid-column:1;grid-row:2;align-self:center}
+  #clientTable td:nth-child(4){grid-column:2;grid-row:2;align-self:center;font-size:12.5px;color:var(--muted)}
+  #clientTable td:nth-child(5){grid-column:3;grid-row:2;text-align:right!important;font-size:12.5px;color:var(--muted)}
+  #clientTable td:nth-child(5)::after{content:" devis"}
+  #clientTable td:nth-child(3){grid-column:1/3;grid-row:3;font-size:12.5px;overflow-wrap:anywhere;align-self:center}
+  #clientTable td:nth-child(7){grid-column:3;grid-row:3;text-align:right!important;white-space:nowrap!important}
+  #clientTable td:nth-child(3):empty,#clientTable td:nth-child(4):empty{display:none}
+  /* intervention : client + total / date, n° + reste net / mode / statut + actions */
+  #depTable tr{grid-template-columns:minmax(0,1fr) auto}
+  #depTable td:nth-child(1){grid-column:1;grid-row:1}
+  #depTable td:nth-child(4){grid-column:2;grid-row:1;text-align:right!important}
+  #depTable td:nth-child(2){grid-column:1;grid-row:2;font-size:12.5px;color:var(--muted)}
+  #depTable td:nth-child(2) .sub2{display:inline;margin-left:6px}
+  #depTable td:nth-child(5){grid-column:2;grid-row:2;text-align:right!important;font-size:12.5px}
+  #depTable td:nth-child(5)::before{content:"reste net ";color:var(--muted)}
+  #depTable td:nth-child(3){grid-column:1/3;grid-row:3;font-size:12.5px}
+  #depTable td:nth-child(6){grid-column:1;grid-row:4;margin-top:6px;align-self:center}
+  #depTable td:nth-child(7){grid-column:2;grid-row:4;margin-top:6px;text-align:right!important;white-space:nowrap!important}
+}
+
+/* indicateurs sur téléphone : deux par ligne au lieu d'un écran entier de tuiles */
+@media(max-width:560px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+  .kpis .kpi{padding:11px 12px!important;min-width:0}
+  .kpis .kpi .lab{font-size:10px!important;letter-spacing:.04em;overflow-wrap:anywhere}
+  .kpis .kpi .val{font-size:20px!important}
+}
+@media(max-width:560px){
+  #nxDashPilot .next-stat-row{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px!important}
+  #nxDashPilot .next-stat:first-child{grid-column:1/-1}
+  #nxDashPilot .next-stat{padding:11px 12px!important;min-width:0}
+}
