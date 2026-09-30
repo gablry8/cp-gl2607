@@ -451,9 +451,16 @@
     let hist=nxLoad(NX_KEYS.history,[]);if(hist[0]&&hist[0].fingerprint===fingerprint)return;
     hist.unshift({id:nxId(),date:Date.now(),reason:reason||'Sauvegarde automatique',fingerprint,data,counts:{devis:(DEVIS||[]).length,clients:(CLIENTS||[]).length,interventions:(DEP||[]).length,locations:(LOC||[]).length}});
     /* écriture locale résiliente au quota : si le stockage est plein, on garde moins de versions plutôt que de planter */
-    for(const keep of [10,5,3,1]){
-      try{localStorage.setItem(NX_KEYS.history,JSON.stringify(hist.slice(0,keep)));return;}catch(e){}
+    /* (30/09/2026) l'historique ne doit JAMAIS prendre la place des vraies données : 10 copies complètes pouvaient remplir
+       les ~5 millions de caractères d'un iPhone et bloquer l'enregistrement des devis. Budget : ≤ 1,2 M caractères et
+       ≤ la moitié de l'espace libre ; sinon moins de versions, voire aucune (les sauvegardes cloud quotidiennes restent). */
+    let other=0;try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k!==NX_KEYS.history)other+=k.length+(localStorage.getItem(k)||'').length;}}catch(e){}
+    const budget=Math.min(1200000,Math.max(0,(4800000-other)*0.5));
+    for(const keep of [10,6,4,2,1]){
+      const str=JSON.stringify(hist.slice(0,keep));if(str.length>budget)continue;
+      try{localStorage.setItem(NX_KEYS.history,str);return;}catch(e){}
     }
+    try{localStorage.removeItem(NX_KEYS.history);}catch(e){}
   }
   function nxPatchCloudHistory(){
     const original=window.pushState;if(typeof original==='function')window.pushState=async function(manual){try{nxSnapshot(manual?'Synchronisation manuelle':'Synchronisation automatique');}catch(e){}return original.apply(this,arguments);};

@@ -32,7 +32,7 @@
   function sum(a,f){ return (a||[]).reduce(function(s,x){ return s+(f?f(x):x); },0); }
   function lsGet(k,fb){ try{ var v=localStorage.getItem(k); return v==null?fb:JSON.parse(v); }catch(e){ return fb; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
-  function persist(k,v){ try{ save(k,v); }catch(e){ lsSet(k,v); } }
+  function persist(k,v){ try{ save(k,v); return true; }catch(e){ if(e&&/quota/i.test(e.name||e.message||'')) return false; try{ localStorage.setItem(k,JSON.stringify(v)); return true; }catch(_){ return false; } } }
   function say(m){ try{ toast(m); }catch(e){} }
   function E_(){ try{ return (P&&P.entreprise)||{}; }catch(e){ return {}; } }
   function fq(n){ try{ return fmtQ(n); }catch(e){ return String(r2(n)).replace('.',','); } }
@@ -354,8 +354,9 @@
     var inbox=cur._inboxId; delete cur._inboxId;
     var copy=clone(cur), i=DEVIS.findIndex(function(x){ return x.id===cur.id; });
     delete copy._baseStatut; delete copy._statutSet; cur._baseStatut=cur.statut;
+    var prevI=i>=0?DEVIS[i]:null;
     if(i>=0) DEVIS[i]=copy; else DEVIS.push(copy);
-    persist(LS.devis,DEVIS);
+    if(!persist(LS.devis,DEVIS)){ if(prevI) DEVIS[i]=prevI; else DEVIS.pop(); say('⛔ Devis NON enregistré : stockage de l\'appareil plein (fais une sauvegarde)'); return false; }
     rememberDefaults(cur);
     dirty=false; dropDraft(cur.id);
     try{ updateBadges(); }catch(e){}
@@ -922,7 +923,11 @@
     tab:function(t){ TAB=t; renderBody(); refreshLive(); try{ window.scrollTo(0,0); }catch(e){} },
     alertes:function(){ TAB='recap'; renderBody(); refreshLive(); try{ var e=document.getElementById('nxd2Sante'); if(e) e.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){} },
     save:saveV2,
-    close:function(){ go('tous'); },
+    close:function(){
+      /* fermer un devis modifié : on propose d'enregistrer (sinon les modifications restent en brouillon) */
+      if(dirty&&cur&&cur.v===2){ if(confirm('Ce devis a des modifications non enregistrées.\n\nOK : les enregistrer maintenant\nAnnuler : fermer sans enregistrer (elles restent en brouillon)')){ if(!saveV2()) return; } }
+      go('tous'); },
+    pendingDrafts:function(){ try{ return newDrafts(); }catch(e){ return []; } },
     newDevis:function(){ chooser({}); },
     closeChooser:function(){ var o=document.getElementById('nxd2Choose'); if(o) o.remove(); },
     pick:function(id){

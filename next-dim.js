@@ -107,7 +107,8 @@
   }
   function calcFrigo(f){
     var T=REFTAB[f.fl]; if(!T) return null;
-    var te=num(f.te), tc=num(f.tc), E=interp(T.te,te), C=interp(T.tc,tc); if(!E||!C) return null;
+    var te=num(f.te), tc=num(f.tc); if(!(num(f.kw)>0)||te>15||te<-40||tc<25||tc>55||tc-te<10) return null;
+    var E=interp(T.te,te), C=interp(T.tc,tc); if(!E||!C) return null;
     var dh=E[1]-C[1]; if(!(dh>0)) return null;
     var m=num(f.kw)/dh; /* kg/s */
     var lines=[
@@ -129,7 +130,7 @@
     var h='<div class="frm">'+sel('Fluide','f.fl',f.fl,Object.keys(REFTAB).map(function(k){ return [k,k]; }))+inp('Puissance frigorifique (kW)','f.kw',f.kw,0.1)+
       inp('T° d\'évaporation (°C)','f.te',f.te,1,'−10 positif, −30 négatif')+inp('T° de condensation (°C)','f.tc',f.tc,1)+
       '<label class="nxd2-chk" style="grid-column:1/-1"><input type="checkbox" data-dm="f.riser" data-t="b"'+(f.riser?' checked':'')+'> <span>Colonne montante (évaporateur plus bas que le groupe) : vitesse mini plus élevée pour le retour d\'huile</span></label></div>';
-    if(!r) return h+'<div class="nxd2-warn">Données manquantes pour ce calcul.</div>';
+    if(!r) return h+'<div class="nxd2-warn">Calcul impossible : puissance > 0, évaporation entre −40 et +15 °C, condensation entre 25 et 55 °C, et au moins 10 K d\'écart entre les deux.</div>';
     h+='<div class="nxdm-out">'+line('Débit de fluide',fq(r.m*3600,1)+' kg/h <small>(= '+fq(num(f.kw))+' kW ÷ '+fq(r.dh,1)+' kJ/kg d\'effet frigorifique)</small>')+
       line('Pressions (absolues)','BP ≈ '+fq(r.pe,2)+' bar · HP ≈ '+fq(r.pc,2)+' bar <small>(relatives : retire ~1 bar)</small>');
     r.lines.forEach(function(L){

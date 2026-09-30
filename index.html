@@ -989,13 +989,39 @@ var SUPA_URL='https://onnmomydxfoozcmmtsnz.supabase.co';
 var SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ubm1vbXlkeGZvb3pjbW10c256Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4MzkzMjUsImV4cCI6MjA5OTQxNTMyNX0.wfGW17EMzPTUMMG23Aegg4-iAvfE3QrBOqVlKW0uFn0';
 var sb=null,SESS=null,_pushT=null;
 var SYNC_KEYS=['cp2_devis','cp2_clients','cp2_prix_custom','cp2_params_over','cp2_cmd','cp2_machlib','cp2_dep','cp2_facseq','cp2_loc','cp2_locseq','cp2_adiacat','cp2_adiasel','cp2_adiacfg','cp2_tarif_cache','cp2_tarif_cache2','cp2_typedefaults','cp2_stock','cp2_equip','cp2_contrats','cp2_fluides','cp2_fluseq'];
-const save=(k,v)=>{localStorage.setItem(k,JSON.stringify(v));if(SYNC_KEYS.indexOf(k)>=0)markDirty();};
+/* fiabilité (30/09/2026) : un nom, une adresse ou une note ne peut jamais contenir de balise HTML active
+   (texte venant d'un client via la signature en ligne, de l'assistant, d'un import…) : « < » devant une lettre devient « ‹ » */
+const NX_TXT_KEYS=['cp2_devis','cp2_clients','cp2_dep','cp2_loc','cp2_equip','cp2_contrats','cp2_fluides'];
+const NX_TAG=/<(?=[a-zA-Z\/!?])/g;
+function nxClean(v){if(typeof v==='string')return v.indexOf('<')<0?v:v.replace(NX_TAG,'‹');if(Array.isArray(v)){for(let i=0;i<v.length;i++)v[i]=nxClean(v[i]);return v;}if(v&&typeof v==='object'){for(const k in v)v[k]=nxClean(v[k]);return v;}return v;}
+const save=(k,v)=>{let s=JSON.stringify(v);if(NX_TXT_KEYS.indexOf(k)>=0&&/<[a-zA-Z\/!?]/.test(s)){nxClean(v);s=JSON.stringify(v);}
+  try{localStorage.setItem(k,s);}catch(e){nxStorageFail(k,e);throw e;}
+  if(SYNC_KEYS.indexOf(k)>=0)markDirty();};
+/* stockage de l'appareil plein : on ne laisse JAMAIS croire que c'est enregistré */
+function nxStorageFail(k,e){try{window._nxSaveFail={k,at:Date.now(),msg:String(e&&e.name||e)};
+  let b=document.getElementById('nxStoreFail');if(!b){b=document.createElement('div');b.id='nxStoreFail';b.style.cssText='position:fixed;left:8px;right:8px;top:8px;z-index:200000;background:#b42318;color:#fff;border-radius:12px;padding:12px 14px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)';document.body.appendChild(b);}
+  b.innerHTML='⛔ <b>Stockage de l\'appareil plein : ta dernière modification n\'est PAS enregistrée.</b><br>Fais tout de suite <b>⤓ Sauvegarde</b> (menu du haut), puis vide la corbeille / l\'historique dans Outils. <button onclick="this.parentNode.remove()" style="margin-left:6px;background:#fff;color:#b42318;border:0;border-radius:8px;padding:4px 10px;font-weight:700">OK</button>';}catch(_){}}
+/* listes lues de façon sûre : jamais null, jamais d'élément vide, toujours un id ; une donnée illisible est COPIÉE avant d'être remplacée */
+function nxFlag(k){window._nxCorrupt=(window._nxCorrupt||[]).concat(k);}
+function loadArr(k){const raw=localStorage.getItem(k);if(raw==null)return [];let v;
+  try{v=JSON.parse(raw);}catch(e){try{localStorage.setItem(k+'_corrompu_'+Date.now(),raw);}catch(_){}nxFlag(k);return [];}
+  if(v==null)return [];
+  if(!Array.isArray(v)){nxFlag(k);v=(typeof v==='object')?Object.values(v):[];}
+  const out=v.filter(x=>x&&typeof x==='object'&&!Array.isArray(x));
+  if(out.length!==v.length)nxFlag(k);
+  out.forEach(x=>{if(!x.id)x.id='r'+Math.random().toString(36).slice(2,10);});
+  return /<[a-zA-Z\/!?]/.test(raw)?nxClean(out):out;}
+function loadObj(k){const v=load(k,{});return (v&&typeof v==='object'&&!Array.isArray(v))?v:{};}
 function isoLocal(d){d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
 function todayISO(){return isoLocal(new Date());}
-const uid=()=>Math.random().toString(36).slice(2,8).toUpperCase();
-const eur=n=>(Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2})+' €';
-const eur0=n=>(Number(n)||0).toLocaleString('fr-FR',{maximumFractionDigits:0})+' €';
-const pct=n=>(Number(n)||0).toLocaleString('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1})+' %';
+/* identifiant court (6 caractères) garanti UNIQUE : on vérifie qu'il n'existe pas déjà (id ou fin de numéro) avant de le donner */
+function nxIdTaken(s){try{const L=[DEVIS,CLIENTS,DEP,LOC,EQUIP,CTR,FLU];for(const a of L){if(!Array.isArray(a))continue;for(const x of a){if(!x)continue;if(x.id===s)return true;if(x.num&&String(x.num).slice(-6)===s)return true;if(Array.isArray(x.lots)&&x.lots.some(l=>l&&l.id===s))return true;}}}catch(e){}return false;}
+const uid=()=>{let s='',t=0;do{s='';while(s.length<6)s+=Math.random().toString(36).slice(2);s=s.slice(0,6).toUpperCase();t++;}while(t<30&&nxIdTaken(s));return s;};
+/* formats mis en cache (créer un format à chaque montant ralentissait les grandes listes) — même affichage qu'avant */
+const NF2=new Intl.NumberFormat('fr-FR',{minimumFractionDigits:2,maximumFractionDigits:2}),NF0=new Intl.NumberFormat('fr-FR',{maximumFractionDigits:0}),NF1=new Intl.NumberFormat('fr-FR',{minimumFractionDigits:1,maximumFractionDigits:1});
+const eur=n=>NF2.format(Number(n)||0)+' €';
+const eur0=n=>NF0.format(Number(n)||0)+' €';
+const pct=n=>NF1.format(Number(n)||0)+' %';
 const slug=s=>'n_'+String(s).toLowerCase().replace(/[^a-z0-9]+/g,'_');
 
 /* ============ NOTION (base « Tarifs automatiques 2026 » UNIQUEMENT) ============ */
@@ -1157,16 +1183,16 @@ async function syncNotion(){
   }catch(e){setSync(load(LS.cache,null)?'warn':'err',e.message);}
 }
 
-let DEVIS=load(LS.devis,[]);
-let CLIENTS=load(LS.clients,[]);
-let CMD=load(LS.cmd,{});
+let DEVIS=loadArr(LS.devis);
+let CLIENTS=loadArr(LS.clients);
+let CMD=loadObj(LS.cmd);
 let MACHLIB=load(LS.machlib,[]);
-let DEP=load(LS.dep,[]);
-let LOC=load(LS.loc,[]);
-let STOCK=load('cp2_stock',{});
-let EQUIP=load('cp2_equip',[]);
-let CTR=load('cp2_contrats',[]);
-let FLU=load('cp2_fluides',[]);
+let DEP=loadArr(LS.dep);
+let LOC=loadArr(LS.loc);
+let STOCK=loadObj('cp2_stock');
+let EQUIP=loadArr('cp2_equip');
+let CTR=loadArr('cp2_contrats');
+let FLU=loadArr('cp2_fluides');
 let MATOS=load('cp2_tarif_cache2',[]);
 // Catalogue pièces dépannage : articles locaux « à vérifier », prix marché 07/2026 (Spareka, Aircco, guides recharge R32/R410A). Fluides : marge relevée pour coller au marché (R32 vendu 60-80 €/kg).
 function seedPieces(){
@@ -1671,6 +1697,8 @@ function renderList(){
   if(q)a=a.filter(d=>(d.cNom||'').toLowerCase().includes(q)||(d.num||'').toLowerCase().includes(q)||(d.cVille||'').toLowerCase().includes(q));
   const sort=document.getElementById('srchSort').value;
   a.sort((x,y)=>sort==='montant'?y._c.totalTTC-x._c.totalTTC:sort==='marge'?y._c.margePct-x._c.margePct:(y.created||0)-(x.created||0));
+  /* grandes listes : 100 devis affichés, les suivants à la demande (la recherche porte toujours sur tous) */
+  const nxTot=a.length,nxLim=window._listMax||100;if(nxTot>nxLim)a=a.slice(0,nxLim);
   document.getElementById('listTable').innerHTML=a.length?`<div class="scroll"><table>
     <thead><tr><th class="l">Devis</th><th class="l">N° / Type</th><th>Total HT</th><th>Total TTC</th><th>Marge</th><th class="l">Statut</th><th></th></tr></thead>
     <tbody>${a.map(d=>`<tr>
@@ -1680,7 +1708,7 @@ function renderList(){
       <td style="color:${d._c.margePct<20&&d._c.totalHT>0?'var(--red)':'var(--ink)'};font-weight:600">${d._c.totalHT>0?pct(d._c.margePct):'—'}</td>
       <td class="l">${statusTag(d.statut)}</td>
       <td><button class="iconbtn" onclick="openDevis('${d.id}')">✏️</button><button class="iconbtn" onclick="dupDevis('${d.id}')">⧉</button><button class="iconbtn d" onclick="delDevis('${d.id}')">🗑</button></td>
-    </tr>`).join('')}</tbody></table></div>`:'<div class="empty">Aucun devis dans cette vue.</div>';
+    </tr>`).join('')}</tbody></table></div>`+(nxTot>a.length?`<div class="row-actions" style="justify-content:center;margin:12px 0"><button class="btn-ghost" onclick="window._listMax=(window._listMax||100)+200;renderList()">Afficher plus (${nxTot-a.length} autres)</button></div>`:''):'<div class="empty">Aucun devis dans cette vue.</div>';
 }
 function dupDevis(id){const d=migrate(JSON.parse(JSON.stringify(DEVIS.find(x=>x.id===id))));d.id=uid();d.num='DV-'+todayISO().replace(/-/g,'')+'-'+uid();d.created=Date.now();d.statut='brouillon';DEVIS.push(d);save(LS.devis,DEVIS);renderList();toast('Devis dupliqué');}
 function delDevis(id){if(!confirm('Supprimer ce devis ?'))return;DEVIS=DEVIS.filter(d=>d.id!==id);save(LS.devis,DEVIS);renderList();updateBadges();}
@@ -2256,7 +2284,8 @@ function printFacture(){
 }
 
 /* ============ PRINT / PDF ============ */
-function fmtQ(n){return (Math.round((Number(n)||0)*100)/100).toLocaleString('fr-FR');}
+const NFQ=new Intl.NumberFormat('fr-FR');
+function fmtQ(n){return NFQ.format(Math.round((Number(n)||0)*100)/100);}
 /* Validité par défaut du devis (choix commercial, modifiable en Paramètres → entreprise.validiteDevis) */
 function devisValidite(E){return (E&&E.validiteDevis)||'3 mois';}
 function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.entreprise||{};
@@ -2423,20 +2452,48 @@ function exportCSV(){
   const el=document.createElement('a');el.href=URL.createObjectURL(blob);el.download='ClimPilot_devis_'+todayISO()+'.csv';el.click();
   toast('📊 Export CSV téléchargé (s\'ouvre dans Excel)');
 }
-function exportJSON(){const blob=new Blob([JSON.stringify({devis:DEVIS,clients:CLIENTS,custom:load(LS.custom,[]),over:load(LS.over,{}),cmd:CMD,machlib:MACHLIB,dep:DEP,facseq:load(LS.facseq,null),loc:LOC,locseq:load(LS.locseq,null),adiacat:ADIACAT,exported:new Date().toISOString()},null,2)],{type:'application/json'});
+/* SAUVEGARDE COMPLÈTE (30/09/2026) : TOUTES les données de ClimPilot (devis, clients, interventions, locations,
+   parc d'équipements, contrats, fiches fluides Cerfa, stock, réglages, modèles, références machines…).
+   L'ancienne sauvegarde oubliait le parc, les contrats et les fiches fluides. Anciennes sauvegardes toujours lisibles. */
+const NX_BK_SKIP=/^(cp2_pin|cp2_lastbackup|cpnext_history|cpnext_avant_import|cpnext_nav_section|cpnext_notified)$|_corrompu_/;
+function nxBackupKeys(){const out=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^(cp2_|cpnext_)/.test(k)&&!NX_BK_SKIP.test(k))out.push(k);}return out.sort();}
+function exportJSON(){
+  const all={};nxBackupKeys().forEach(k=>{try{all[k]=JSON.parse(localStorage.getItem(k));}catch(e){all[k]=localStorage.getItem(k);}});
+  const o={format:'climpilot-complet-1',exported:new Date().toISOString(),all,
+    /* champs de l'ancien format, pour relire la sauvegarde avec une ancienne version */
+    devis:DEVIS,clients:CLIENTS,custom:load(LS.custom,[]),over:load(LS.over,{}),cmd:CMD,machlib:MACHLIB,dep:DEP,facseq:load(LS.facseq,null),loc:LOC,locseq:load(LS.locseq,null),adiacat:ADIACAT,
+    equip:EQUIP,contrats:CTR,fluides:FLU,
+    compte:{devis:DEVIS.length,clients:CLIENTS.length,interventions:DEP.length,locations:LOC.length,equipements:EQUIP.length,contrats:CTR.length,fiches_fluides:FLU.length}};
+  const blob=new Blob([JSON.stringify(o)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ClimPilot_sauvegarde_'+todayISO()+'.json';a.click();
-  save(LS.lastbk,Date.now());checkBackup();toast('Sauvegarde téléchargée');}
-function importJSON(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const o=JSON.parse(r.result);
-  if(o.devis)DEVIS=o.devis;if(o.clients)CLIENTS=o.clients;if(o.cmd)CMD=o.cmd;if(o.machlib)MACHLIB=o.machlib;
-  if(o.dep)DEP=o.dep;if(o.facseq)save(LS.facseq,o.facseq);save(LS.dep,DEP);
-  if(o.loc)LOC=o.loc;if(o.locseq)save(LS.locseq,o.locseq);save(LS.loc,LOC);
-  if(o.adiacat){ADIACAT=o.adiacat;save(LS.adiacat,ADIACAT);}
-  if(o.custom)save(LS.custom,o.custom);if(o.over)save(LS.over,o.over);
-  // compat sauvegardes de l'ancienne app (ClimPilot_Devis.html)
-  if(o.prix&&!o.custom)save(LS.custom,o.prix.filter(p=>!NOTION_PRIX.some(n=>n.nom===p.nom)).map(p=>({...p,src:'local'})));
-  if(o.params&&!o.over&&o.params.entreprise)save(LS.over,{entreprise:o.params.entreprise,defaultRate:o.params.defaultRate,objectifCA:o.params.objectifCA,acomptePctDefaut:o.params.acomptePctDefaut,regimeTVA:o.params.regimeTVA,achatTVA:o.params.achatTVA});
-  save(LS.devis,DEVIS);save(LS.clients,CLIENTS);save(LS.cmd,CMD);save(LS.machlib,MACHLIB);
-  rebuildPrix();rebuildP();go('dash');toast('Données importées');}catch(e){alert('Fichier invalide.');}};r.readAsText(f);input.value='';}
+  save(LS.lastbk,Date.now());checkBackup();
+  toast('Sauvegarde complète téléchargée : '+DEVIS.length+' devis, '+CLIENTS.length+' clients, '+CTR.length+' contrats, '+FLU.length+' fiches fluides');}
+function importJSON(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{let o;
+  try{o=JSON.parse(r.result);}catch(e){alert('Fichier illisible : ce n\'est pas une sauvegarde ClimPilot.');input.value='';return;}
+  if(!o||typeof o!=='object'||!(o.all||o.devis||o.clients||o.prix)){alert('Ce fichier ne contient pas de données ClimPilot.');input.value='';return;}
+  const n=o.compte||{devis:(o.devis||[]).length,clients:(o.clients||[]).length};
+  const when=o.exported?new Date(o.exported).toLocaleString('fr-FR'):'date inconnue';
+  if(!confirm('Remplacer les données de cet appareil par la sauvegarde du '+when+' ?\n\n'+Object.entries(n).map(([k,v])=>'• '+v+' '+k.replace('_',' ')).join('\n')+'\n\nActuellement ici : '+DEVIS.length+' devis, '+CLIENTS.length+' clients.\nUne copie de l\'état actuel est gardée sur l\'appareil avant le remplacement.')){input.value='';return;}
+  /* copie de sécurité de l'état actuel */
+  try{const cur={};nxBackupKeys().forEach(k=>cur[k]=localStorage.getItem(k));localStorage.setItem('cpnext_avant_import',JSON.stringify({at:Date.now(),data:cur}));}catch(e){if(!confirm('Pas assez de place pour garder une copie de l\'état actuel. Continuer quand même ?')){input.value='';return;}}
+  try{
+    if(o.all&&typeof o.all==='object'){
+      Object.keys(o.all).forEach(k=>{if(!/^(cp2_|cpnext_)/.test(k)||NX_BK_SKIP.test(k))return;const v=o.all[k];localStorage.setItem(k,typeof v==='string'?v:JSON.stringify(v));if(SYNC_KEYS.indexOf(k)>=0)markDirty();});
+      toast('Sauvegarde complète restaurée — rechargement…');setTimeout(()=>location.reload(),700);return;
+    }
+    if(o.devis)DEVIS=o.devis;if(o.clients)CLIENTS=o.clients;if(o.cmd)CMD=o.cmd;if(o.machlib)MACHLIB=o.machlib;
+    if(o.dep)DEP=o.dep;if(o.facseq)save(LS.facseq,o.facseq);save(LS.dep,DEP);
+    if(o.loc)LOC=o.loc;if(o.locseq)save(LS.locseq,o.locseq);save(LS.loc,LOC);
+    if(o.equip){EQUIP=o.equip;save('cp2_equip',EQUIP);}if(o.contrats){CTR=o.contrats;save('cp2_contrats',CTR);}if(o.fluides){FLU=o.fluides;save('cp2_fluides',FLU);}
+    if(o.adiacat){ADIACAT=o.adiacat;save(LS.adiacat,ADIACAT);}
+    if(o.custom)save(LS.custom,o.custom);if(o.over)save(LS.over,o.over);
+    // compat sauvegardes de l'ancienne app (ClimPilot_Devis.html)
+    if(o.prix&&!o.custom)save(LS.custom,o.prix.filter(p=>!NOTION_PRIX.some(n=>n.nom===p.nom)).map(p=>({...p,src:'local'})));
+    if(o.params&&!o.over&&o.params.entreprise)save(LS.over,{entreprise:o.params.entreprise,defaultRate:o.params.defaultRate,objectifCA:o.params.objectifCA,acomptePctDefaut:o.params.acomptePctDefaut,regimeTVA:o.params.regimeTVA,achatTVA:o.params.achatTVA});
+    save(LS.devis,DEVIS);save(LS.clients,CLIENTS);save(LS.cmd,CMD);save(LS.machlib,MACHLIB);
+    rebuildPrix();rebuildP();go('dash');toast('Données importées');
+  }catch(e){alert('Import interrompu : '+(e.message||e)+'. L\'état d\'avant est gardé (cpnext_avant_import).');}
+  };r.readAsText(f);input.value='';}
 
 /* ============ ADIA — dimensionnement, catalogue, devis & locations ============ */
 const ADIA_DEF=[

@@ -45,7 +45,7 @@
     '@media(max-width:860px){.content{padding-bottom:110px!important}#nxaFab{right:12px!important;bottom:calc(12px + env(safe-area-inset-bottom,0px));padding:11px 15px!important;font-size:13px!important}'+
       '.modal .box{max-height:calc(100dvh - 24px);overflow:auto;-webkit-overflow-scrolling:touch}'+
       '.modal .navbtns{position:sticky;bottom:0;background:var(--panel,#fff);padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));z-index:2;flex-wrap:wrap;gap:8px}'+
-      'button,.btn-pri,.btn-ghost,.btn-dark,.iconbtn,a[onclick]{touch-action:manipulation}}'+
+      'button,.btn-pri,.btn-ghost,.btn-dark,.iconbtn,a[onclick]{touch-action:manipulation}.iconbtn{min-width:38px;min-height:38px}}'+
     '.nxcp-wrap{position:relative}'+
     '.nxcp-dd{position:absolute;left:0;right:0;top:100%;z-index:10050;background:var(--panel,#fff);border:1px solid var(--line2,#cfd8e3);border-radius:10px;box-shadow:0 10px 30px rgba(15,30,60,.18);margin-top:4px;max-height:280px;overflow:auto;-webkit-overflow-scrolling:touch}'+
     '.nxcp-it{display:block;width:100%;text-align:left;border:0;border-bottom:1px solid var(--line,#e3e8ef);background:none;padding:11px 12px;font:inherit;font-size:14px;color:inherit;cursor:pointer;min-height:44px;text-transform:none;letter-spacing:0}'+
@@ -55,16 +55,23 @@
   function injectCSS(){ if(document.getElementById('nxmStyle')) return; var st=document.createElement('style'); st.id='nxmStyle'; st.textContent=CSS; document.head.appendChild(st); }
 
   /* ---------- fenêtres ouvertes → cacher le bouton Assistant ---------- */
-  var OVSEL='.modal.on,.nxd2-ov,.nxs-ov,#nxCatModal,#nx-pdf-modal,#nxfgOv,#nxdmOv,#nxfoOv';
-  function visible(el){ if(!el) return false; var cs=getComputedStyle(el); if(cs.display==='none'||cs.visibility==='hidden') return false; var r=el.getBoundingClientRect(); return r.width>0&&r.height>0; }
-  var pend=false;
+  /* lecture SANS calcul de mise en page (sinon chaque changement d'écran coûtait cher) */
+  function overlayOpen(){
+    if(document.querySelector('.modal.on,.nxd2-ov,.nxs-ov,#nxfgOv,#nxdmOv,#nxfoOv')) return true;
+    var pm=document.getElementById('nx-pdf-modal'); if(pm&&pm.style.display==='flex') return true;
+    var cm=document.getElementById('nxCatModal'); if(cm&&cm.style.display!=='none') return true;
+    var sc=document.getElementById('nxContextScanner'); if(sc&&(sc.classList.contains('on')||sc.classList.contains('open')||sc.style.display==='flex'||sc.style.display==='block')) return true;
+    return false;
+  }
+  var pend=false, lastPdfW=-1;
   function syncBody(){
     pend=false;
-    var open=[].some.call(document.querySelectorAll(OVSEL),visible);
-    document.body.classList.toggle('nx-ov-open',open);
-    var d2=document.getElementById('v-nx_devis2');
-    document.body.classList.toggle('nx-d2',!!(d2&&d2.classList.contains('active')));
-    fitPdf();
+    var b=document.body, open=overlayOpen();
+    if(b.classList.contains('nx-ov-open')!==open) b.classList.toggle('nx-ov-open',open);
+    var d2=document.getElementById('v-nx_devis2'), on=!!(d2&&d2.classList.contains('active'));
+    if(b.classList.contains('nx-d2')!==on) b.classList.toggle('nx-d2',on);
+    var pm=document.getElementById('nx-pdf-modal');
+    if(pm&&pm.style.display==='flex'){ if(lastPdfW!==window.innerWidth) fitPdf(); } else lastPdfW=-1;
   }
   function schedule(){ if(pend) return; pend=true; (window.requestAnimationFrame||setTimeout)(syncBody); }
 
@@ -72,8 +79,8 @@
   function fitPdf(){
     var m=document.getElementById('nx-pdf-modal'), pg=document.getElementById('nx-pdf-page'), sc=document.getElementById('nx-pdf-scroll');
     if(!m||!pg) return;
-    var w=(sc&&sc.clientWidth)||window.innerWidth;
-    if(window.innerWidth<860&&getComputedStyle(m).display!=='none'){
+    var w=window.innerWidth; lastPdfW=window.innerWidth;
+    if(window.innerWidth<860&&m.style.display==='flex'){
       var A4=794, z=Math.min(1,(w-16)/A4);
       pg.style.width=A4+'px'; pg.style.maxWidth='none'; pg.style.padding='30px 34px'; pg.style.zoom=String(Math.round(z*1000)/1000);
       if(sc) sc.style.padding='10px 8px';
@@ -147,14 +154,74 @@
     },true);
   }
 
+  /* ---------- rapidité : un même devis n'est calculé qu'une fois par affichage ----------
+     Un écran appelait le calcul 2 à 3 fois par devis, à chaque affichage. Le résultat est gardé
+     en mémoire avec pour clé le contenu COMPLET du devis + l'empreinte de tes réglages et de ta base
+     de prix (recalculée à chaque action) : un devis ou un prix modifié est toujours recalculé ;
+     chaque appel reçoit sa propre copie du résultat. */
+  function h32(str){ var h=0x811c9dc5; for(var i=0;i<str.length;i++){ h^=str.charCodeAt(i); h=(h+((h<<1)+(h<<4)+(h<<7)+(h<<8)+(h<<24)))>>>0; } return h.toString(36)+':'+str.length; }
+  function fingerprint(){ var a='',b='',c=''; try{ a=JSON.stringify(P); }catch(e){} try{ b=JSON.stringify(PRIX); }catch(e){} try{ c=localStorage.getItem('cpnext_d2_defaults')||''; }catch(e){} return h32(a)+'|'+h32(b)+'|'+h32(c); }
+  function memoCompute(){
+    var oc=window.compute; if(typeof oc!=='function'||oc._nxm) return;
+    var cache=new Map(), MAX=6000, fp=null, sched=false;
+    var endTask=function(){ fp=null; sched=false; };
+    var cp=typeof structuredClone==='function'?function(o){ try{ return structuredClone(o); }catch(e){ return JSON.parse(JSON.stringify(o)); } }:function(o){ return JSON.parse(JSON.stringify(o)); };
+    var w=function(d){
+      if(!d||typeof d!=='object') return oc.apply(this,arguments);
+      var k; try{ k=JSON.stringify(d); }catch(e){ return oc.apply(this,arguments); }
+      /* empreinte des réglages et des prix recalculée à chaque action : un prix modifié invalide tout */
+      if(fp===null){ fp=fingerprint(); if(!sched){ sched=true; setTimeout(endTask,0); } }
+      k=fp+'\u0001'+k;
+      var hit=cache.get(k); if(hit){ cache.delete(k); cache.set(k,hit); return cp(hit); }
+      var r=oc.apply(this,arguments);
+      if(r&&typeof r==='object'){ cache.set(k,r); if(cache.size>MAX){ var it=cache.keys(); for(var i=0;i<500;i++) cache.delete(it.next().value); } return cp(r); }
+      return r;
+    };
+    Object.keys(oc).forEach(function(x){ w[x]=oc[x]; }); w._nxm=true; window.compute=w;
+    window.nxmComputeCache={size:function(){ return cache.size; },clear:function(){ cache.clear(); }};
+  }
+  window.addEventListener('load',function(){ setTimeout(memoCompute,400); });
+
   /* ---------- démarrage ---------- */
+  /* données illisibles détectées au démarrage : on prévient (une copie brute a été gardée) */
+  function corruptBanner(){
+    var k=window._nxCorrupt; if(!k||!k.length||document.getElementById('nxmCorrupt')) return;
+    var L={cp2_devis:'devis',cp2_clients:'clients',cp2_dep:'interventions',cp2_loc:'locations',cp2_equip:'équipements',cp2_contrats:'contrats',cp2_fluides:'fiches fluides'};
+    var names=Array.from(new Set(k)).map(function(x){ return L[x]||x; }).join(', ');
+    var c=document.querySelector('.content'); if(!c) return;
+    var b=document.createElement('div'); b.id='nxmCorrupt'; b.className='warnbox'; b.style.margin='0 0 12px';
+    b.innerHTML='⚠️ <b>Données abîmées réparées au démarrage</b> ('+esc(names)+') : les éléments illisibles ont été écartés et une copie brute a été gardée sur cet appareil. Vérifie tes derniers éléments ; au besoin, restaure un instantané (Outils → Historique / sauvegardes). <button type="button" class="btn-ghost btn-sm" onclick="this.parentNode.remove()">OK</button>';
+    c.insertBefore(b,c.firstChild);
+  }
+  /* devis commencés mais jamais enregistrés (app fermée, batterie à plat…) : rappel au démarrage */
+  function draftBanner(){
+    var nd=[]; try{ nd=(window.nxd2&&nxd2.pendingDrafts)?nxd2.pendingDrafts():[]; }catch(e){}
+    if(!nd.length||document.getElementById('nxmDrafts')) return;
+    var c=document.querySelector('.content'); if(!c) return;
+    var b=document.createElement('div'); b.id='nxmDrafts'; b.className='warnbox'; b.style.margin='0 0 12px';
+    b.innerHTML='📝 <b>'+(nd.length>1?nd.length+' devis commencés':'Un devis commencé')+' mais pas enregistré'+(nd.length>1?'s':'')+'</b> : '+nd.slice(0,3).map(function(x){ return '<span style="white-space:nowrap">'+esc((x.cur&&x.cur.cNom)||'sans nom')+' <button type="button" class="btn-pri btn-sm" onclick="document.getElementById(\'nxmDrafts\').remove();nxd2.resumeNewDraft(\''+esc(x.id)+'\')">Reprendre</button></span>'; }).join(' ')+
+      ' <button type="button" class="btn-ghost btn-sm" onclick="this.parentNode.remove()">Plus tard</button>';
+    c.insertBefore(b,c.firstChild);
+  }
+  /* espace de stockage de l'appareil (≈ 5 millions de caractères sur iPhone/Safari) */
+  var LIMIT=5000000;
+  function storageUse(){ var n=0; try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); n+=k.length+(localStorage.getItem(k)||'').length; } }catch(e){} return {chars:n,pct:Math.round(n/LIMIT*100)}; }
+  window.nxmStorage=storageUse;
+  function storageBanner(){
+    var u=storageUse(), c=document.querySelector('.content'); if(!c) return;
+    var old=document.getElementById('nxmStore'); if(old) old.remove();
+    if(u.pct<70) return;
+    var b=document.createElement('div'); b.id='nxmStore'; b.className='warnbox'; b.style.margin='0 0 12px';
+    b.innerHTML='💾 <b>Mémoire de l\'appareil remplie à '+u.pct+' %</b>'+(u.pct>=90?' — risque de ne plus pouvoir enregistrer !':'')+' Fais une <b>⤓ Sauvegarde</b>, puis vide la corbeille et l\'historique (Outils). Les grosses données sont surtout les signatures des devis. <button type="button" class="btn-ghost btn-sm" onclick="this.parentNode.remove()">OK</button>';
+    c.insertBefore(b,c.firstChild);
+  }
   function boot(){
-    injectCSS(); bindPicker(); dateify(document); syncBody();
+    injectCSS(); bindPicker(); dateify(document); syncBody(); setTimeout(corruptBanner,600); setTimeout(draftBanner,1500); setTimeout(storageBanner,2000);
     new MutationObserver(function(ms){
       schedule();
       ms.forEach(function(m){ [].forEach.call(m.addedNodes||[],function(n){ if(n.nodeType===1&&n.querySelector) dateify(n); }); });
     }).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style']});
-    window.addEventListener('resize',schedule);
+    window.addEventListener('resize',function(){ lastPdfW=-1; schedule(); });
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
 })();
