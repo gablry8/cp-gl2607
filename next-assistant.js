@@ -353,6 +353,7 @@
       if(p.panne){ if(P.depPannes&&P.depPannes[p.panne]!=null) d.panne=p.panne; else warn.push('Type de panne « '+p.panne+' » à choisir'); }
       if(p.heures) d.heures=+p.heures;
       if(p.zone&&P.zone[p.zone]!=null) d.zone=p.zone;
+      if(p.urgence===true||p.urgence==='oui') d.urgence=true;
       if(Array.isArray(p.pieces)) d.pieces=p.pieces.map(function(pc){ var f=findPrix(pc.nom); if(!f&&!pc.achat) warn.push('Prix de la pièce « '+pc.nom+' » à saisir'); return {nom:pc.nom||'',qte:+pc.qte||1,achat:+pc.achat||(f?f.achat:0)||0,vente:+pc.vente||(f?venteOf(pc.nom,f.marge):0)||0}; });
       var notes=[]; if(p.notes) notes.push(p.notes);
       if(p.fluide && (p.fluide.nom||p.fluide.charge||p.fluide.recupere)) d._fluide=p.fluide; /* → fiche Cerfa pré-remplie à l'enregistrement */

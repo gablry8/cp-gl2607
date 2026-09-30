@@ -121,7 +121,7 @@
         Maintenant : à l'émission, le calcul et le contenu imprimé sont figés (facFig) ; la fiche est verrouillée.
         Correction possible (facture pas encore envoyée) : bouton « Corriger », la facture est refigée et la modification tracée. */
   var BILL=['cNom','cTel','cMail','cType','cAdr','cVille','cSiren','date','desc','itype','mode','panne','heures','zone','maj','rateChoice','rateCustom',
-    'mesMode','mesType','heuresSup','nbRaccords','optRoute','optRaccords','optVide','optAzote','optEtanch','optAppoint','optConso','optPv','pieces'];
+    'mesMode','mesType','heuresSup','nbRaccords','optRoute','optRaccords','optVide','optAzote','optEtanch','optAppoint','optConso','optPv','pieces','urgence','consoMode'];
   function cl(o){ return o==null?o:JSON.parse(JSON.stringify(o)); }
   function frozen(d){ return !!(d&&d.facNum&&d.facFig&&d.facFig.num===d.facNum); }
   var _cd=null;

@@ -695,9 +695,10 @@ tbody tr:hover{background:#f7f9fd}
               </select></label>
             <label id="dp_modeWrap">Mode de facturation
               <select id="dp_mode" onchange="onDepMode()">
-                <option value="forfaitH">Forfait départ + heures (diagnostic inclut la 1ère h)</option>
-                <option value="temps">Temps passé × taux + déplacement</option>
+                <option value="forfaitH">Forfait diagnostic (1re heure incluse) + heures</option>
+                <option value="temps">Temps passé × taux (minimum de départ)</option>
                 <option value="panne">Forfait par type de panne</option>
+                <option value="rien">Déplacement sans intervention (minimum de départ)</option>
               </select></label>
             <label id="dp_panneWrap" style="display:none">Type de panne (forfait MO)<select id="dp_panne" onchange="recalcDep()"></select></label>
             <label>Temps passé sur place (h)<input type="number" id="dp_heures" min="0" step="0.25" value="1" onchange="recalcDep()"></label>
@@ -705,7 +706,9 @@ tbody tr:hover{background:#f7f9fd}
               <select id="dp_rate" onchange="onDepRate()"></select>
               <input type="number" id="dp_rateCustom" min="0" step="1" placeholder="Taux personnalisé €/h" style="display:none;margin-top:6px" onchange="recalcDep()"></label>
             <label>Zone déplacement<select id="dp_zone" onchange="recalcDep()"></select></label>
-            <label>Majoration<select id="dp_maj" onchange="recalcDep()"></select><span class="note-inline">appliquée sur la main-d'œuvre — pas sur les pièces ni le déplacement</span></label>
+            <label>Déplacement<select id="dp_urgence" onchange="recalcDep()"></select><span class="note-inline">urgent = forfait de la zone majoré (Paramètres)</span></label>
+            <label>Majoration<select id="dp_maj" onchange="recalcDep()"></select><span class="note-inline">appliquée sur le temps de travail — pas sur les pièces, le déplacement, les tests ni le rapport</span></label>
+            <label id="dp_consoWrap">Consommables<select id="dp_consoMode" onchange="recalcDep()"><option value="auto">Automatiques (dès qu'une pièce est remplacée)</option><option value="oui">Oui</option><option value="non">Non</option></select></label>
           </div>
           <div id="dp_mesBlock" style="display:none">
             <h3 style="font-size:13px;color:var(--blue);margin:16px 0 8px">🧊 Mise en service — base</h3>
@@ -1096,7 +1099,8 @@ function deriveParams(T){return {
   accGoulParM:2.5,
   marges:{Cuivre:asPct(tv(T,'Marge cuivre %',0.35)),'Câble':asPct(tv(T,'Marge câble %',0.35)),Goulotte:asPct(tv(T,'Marge goulotte %',0.4)),Condensats:asPct(tv(T,'Marge condensats %',0.4)),Supports:asPct(tv(T,'Marge supports %',0.35)),Pompe:asPct(tv(T,'Marge pompe %',0.35)),Consommables:asPct(tv(T,'Marge consommables %',0.4)),'Électricité':asPct(tv(T,'Marge électricité %',0.4)),securite:asPct(tv(T,'Marge sécurité %',0.05))},
   fraisAdmin:tv(T,'Frais administratifs devis HT',20), fraisCommande:tv(T,'Frais commande matériel HT',20),
-  dep:{taux:tv(T,'Taux horaire dépannage HT',90),diag:tv(T,'Forfait diagnostic dépannage HT',60),majSoir:asPct(tv(T,'Majoration soir/samedi %',0.5)),majDim:asPct(tv(T,'Majoration dimanche/férié %',1)),margeP:asPct(tv(T,'Marge pièces dépannage %',0.4))},
+  dep:{taux:tv(T,'Taux horaire dépannage HT',90),diag:tv(T,'Forfait diagnostic dépannage HT',60),majSoir:asPct(tv(T,'Majoration soir/samedi %',0.5)),majDim:asPct(tv(T,'Majoration dimanche/férié %',1)),margeP:asPct(tv(T,'Marge pièces dépannage %',0.4)),
+    urgDepl:asPct(tv(T,'Majoration déplacement urgent %',0.5)),minDepart:tv(T,'Minimum de départ HT',0)},
   mesOpt:{raccord:tv(T,'Prix raccord dudgeon HT',15),appoint:tv(T,'Appoint fluide MO HT',50),miseEnRoute:tv(T,'Mise en route seule HT',100),conso:tv(T,'Forfait consommables MES HT',25),pv:tv(T,'PV mise en service HT',20)},
   depPannes:{'Diagnostic seul (sans réparation)':60,'Débouchage + nettoyage condensats':120,'Recherche de fuite (test azote)':180,'Réparation de fuite (brasure)':150,'Recharge fluide — MO (fluide en pièce, au kg)':120,'Remplacement composant électrique (pièce en sus)':90,'Remplacement carte / moteur (pièce en sus)':140,'Nettoyage complet unité (entretien)':150},
   regimeTVA:'franchise', achatTVA:20, objectifCA:74450,
@@ -1827,7 +1831,9 @@ function renderParams(){
   document.getElementById('paramMarge').innerHTML=Object.entries(P.marges).map(([k,v])=>numRow(k==='securite'?'Marge sécurité':k,'pmg_'+k,v)).join('');
   document.getElementById('paramDep').innerHTML=
     numRow('Taux horaire dépannage (€/h)','pd_taux',P.dep.taux,'Notion : « Taux horaire dépannage » — 75 / 80 / ce taux / perso au choix sur chaque intervention')+
-    numRow('Forfait départ + diagnostic (€)','pd_diag',P.dep.diag,'inclut la 1ère heure sur place (mode « forfait + heures »)')+
+    numRow('Forfait diagnostic (€)','pd_diag',P.dep.diag,'main-d\'œuvre de la 1re heure sur place (mode « forfait diagnostic + heures ») — le déplacement est facturé à part, selon la zone')+
+    numRow('Déplacement urgent : majoration (%)','pd_urg',P.dep.urgDepl,'ajoutée au forfait déplacement de la zone quand l\'intervention est urgente (valeur de départ à ajuster)')+
+    numRow('Minimum de départ (€)','pd_min',depMin(),'facturé quand tu te déplaces et que rien n\'a pu être fait (client absent, dépannage impossible), en plus du déplacement ; aussi le minimum de la main-d\'œuvre « au temps passé » — par défaut ½ h au taux dépannage')+
     numRow('Majoration soir / samedi (%)','pd_majs',P.dep.majSoir,'Notion : « Majoration soir/samedi »')+
     numRow('Majoration dimanche / férié (%)','pd_majd',P.dep.majDim,'Notion : « Majoration dimanche/férié »')+
     numRow('Marge pièces (%)','pd_margep',P.dep.margeP,'marge sur prix de vente — pré-remplit la vente des pièces saisies à la main');
@@ -1836,7 +1842,7 @@ function renderParams(){
     numRow('Prix par raccord dudgeon','pms_raccord',P.mesOpt.raccord,'Notion : « Prix raccord dudgeon » — 2 raccords par liaison, 4 par monosplit en général')+
     numRow('Appoint de fluide — MO & pesée','pms_appoint',P.mesOpt.appoint,'le fluide se facture en plus, au kg (catalogue Pièces)')+
     numRow('Mise en route seule','pms_route',P.mesOpt.miseEnRoute,'utilisée en MES « à la carte »')+
-    numRow('Consommables MES (forfait)','pms_conso',P.mesOpt.conso,'bande isolante, ruban, obus, bouchons, nettoyant…')+
+    numRow('Consommables dépannage et mise en service (forfait)','pms_conso',P.mesOpt.conso,'bande isolante, ruban, obus, bouchons, nettoyant… — ajouté tout seul à un dépannage dès qu\'une pièce est remplacée, et aux devis de réparation')+
     numRow('PV / rapport de mise en service','pms_pv',P.mesOpt.pv,'document remis au client — utile pour la garantie constructeur');
 }
 function saveParams(){const g=id=>+document.getElementById(id).value;const t=id=>document.getElementById(id)?document.getElementById(id).value:'';
@@ -1852,7 +1858,8 @@ function saveParams(){const g=id=>+document.getElementById(id).value;const t=id=
   Object.keys(cand.bras).forEach(k=>cand.bras[k]=g('pb_'+k));
   cand.tests={vide:g('pt_vide'),azote:g('pt_azote'),etanch:g('pt_etanch')};cand.acces={...cand.acces,diff:g('pa_diff')};
   Object.keys(cand.marges).forEach(k=>cand.marges[k]=g('pmg_'+k));
-  cand.dep={taux:g('pd_taux'),diag:g('pd_diag'),majSoir:g('pd_majs'),majDim:g('pd_majd'),margeP:g('pd_margep')};
+  cand.dep={taux:g('pd_taux'),diag:g('pd_diag'),majSoir:g('pd_majs'),majDim:g('pd_majd'),margeP:g('pd_margep'),urgDepl:g('pd_urg'),minDepart:g('pd_min')};
+  if(Math.abs(cand.dep.minDepart-Math.round(cand.dep.taux*0.5*100)/100)<0.005&&!(Number(P.dep.minDepart)>0))cand.dep.minDepart=PDEF.dep.minDepart; /* laissé sur « ½ h » : reste automatique */
   Object.keys(cand.depPannes).forEach(k=>cand.depPannes[k]=g('pp_'+slug(k)));
   cand.mesOpt={raccord:g('pms_raccord'),appoint:g('pms_appoint'),miseEnRoute:g('pms_route'),conso:g('pms_conso'),pv:g('pms_pv')};
   // surcharge locale = uniquement ce qui diffère de la valeur Notion → tes modifs Notion continuent d'arriver
@@ -1946,32 +1953,42 @@ function nextFacNum(){
   return 'F-'+y+'-'+String(sq.seq).padStart(3,'0');
 }
 function depRate(d){return d.rateChoice==='custom'?(Number(d.rateCustom)||0):(Number(d.rateChoice)||P.dep.taux);}
+/* minimum facturé quand on se déplace (client absent, dépannage impossible) : réglage, sinon ½ h au taux dépannage */
+function depMin(){const v=Number(P.dep&&P.dep.minDepart);return v>0?v:Math.round((Number(P.dep&&P.dep.taux)||0)*0.5*100)/100;}
 function computeDep(d){
   const itype=d.itype||'dep';
   const heures=Number(d.heures)||0, rate=depRate(d);
-  const depl=(d.zone&&d.zone!=='Aucun')?(P.zone[d.zone]||0):0;
-  let moRows=[],consoV=0,consoAchat=0,moLbl='';
+  const depl0=(d.zone&&d.zone!=='Aucun')?(P.zone[d.zone]||0):0;
+  const urgPct=d.urgence?(Number(P.dep&&P.dep.urgDepl)||0):0;
+  const depl=depl0*(1+urgPct/100);
+  const deplLbl=(d.urgence?'Déplacement urgent':'Déplacement')+' ('+(d.zone||'')+(urgPct?', +'+urgPct+' %':'')+')';
+  let moRows=[],consoV=0,consoAchat=0,moLbl='',consoLbl='Consommables mise en service';
   if(itype==='mes'){
     const M=P.mesOpt||{};
     if(d.mesMode==='carte'){if(d.optRoute)moRows.push(['Mise en route + réglages + contrôles',M.miseEnRoute||0]);}
     else moRows.push(['Forfait mise en service '+(d.mesType||'Monosplit'),P.mes[d.mesType]||0]);
     const nr=Number(d.nbRaccords)||0;
     if(d.optRaccords&&nr>0)moRows.push(['Confection raccords dudgeons — '+nr+' × '+eur(M.raccord||0),nr*(M.raccord||0)]);
-    if(d.optVide)moRows.push(['Tirage au vide',P.tests.vide||0]);
-    if(d.optAzote)moRows.push(['Test azote (mise en pression)',P.tests.azote||0]);
-    if(d.optEtanch)moRows.push(['Contrôle étanchéité',P.tests.etanch||0]);
+    /* tests et rapport : prix fixes, sans majoration soir / dimanche (la majoration porte sur le temps de travail) */
+    if(d.optVide)moRows.push(['Tirage au vide',P.tests.vide||0,'nomaj']);
+    if(d.optAzote)moRows.push(['Test azote (mise en pression)',P.tests.azote||0,'nomaj']);
+    if(d.optEtanch)moRows.push(['Contrôle étanchéité',P.tests.etanch||0,'nomaj']);
     if(d.optAppoint)moRows.push(['Appoint de fluide — main-d\'œuvre & pesée',M.appoint||0]);
-    if(d.optPv)moRows.push(['PV / rapport de mise en service',M.pv||0]);
+    if(d.optPv)moRows.push(['PV / rapport de mise en service',M.pv||0,'nomaj']);
     const hs=Number(d.heuresSup)||0;
     if(hs>0)moRows.push(['Heures supplémentaires — '+fmtQ(hs)+' h × '+eur(rate)+'/h',hs*rate]);
     if(d.optConso){consoV=M.conso||0;consoAchat=consoV*0.6;}
     moLbl='Mise en service '+(d.mesMode==='carte'?'à la carte':(d.mesType||''));
-  } else if(d.mode==='temps'){const m=heures*rate;moLbl=fmtQ(heures)+' h × '+eur(rate)+'/h';moRows.push(['Main-d\'œuvre dépannage — '+moLbl,m]);}
+  } else if(d.mode==='rien'){const m=depMin();moLbl='Minimum de départ — intervention non réalisée';moRows.push([moLbl,m]);}
+  else if(d.mode==='temps'){const m0=heures*rate,mn=depMin(),m=Math.max(m0,mn);moLbl=fmtQ(heures)+' h × '+eur(rate)+'/h'+(m>m0?' (minimum de départ '+eur(mn)+')':'');moRows.push(['Main-d\'œuvre dépannage — '+moLbl,m]);}
   else if(d.mode==='panne'){const m=(P.depPannes&&P.depPannes[d.panne])||0;moLbl='Forfait « '+(d.panne||'—')+' »';moRows.push(['Main-d\'œuvre dépannage — '+moLbl,m]);}
-  else {const sup=Math.max(0,heures-1);const m=(P.dep.diag||0)+sup*rate;moLbl='Forfait départ + diagnostic '+eur(P.dep.diag||0)+' (1ère heure incluse)'+(sup>0?' + '+fmtQ(sup)+' h × '+eur(rate)+'/h':'');moRows.push(['Main-d\'œuvre dépannage — '+moLbl,m]);}
-  const mo=moRows.reduce((s,r)=>s+r[1],0);
+  else {const sup=Math.max(0,heures-1);const m=(P.dep.diag||0)+sup*rate;moLbl='Forfait diagnostic '+eur(P.dep.diag||0)+' (1re heure sur place incluse)'+(sup>0?' + '+fmtQ(sup)+' h × '+eur(rate)+'/h':'');moRows.push(['Main-d\'œuvre dépannage — '+moLbl,m]);}
+  /* consommables d'un dépannage : automatiques dès qu'une pièce est remplacée (ou forcés oui / non) — même forfait que la mise en service */
+  if(itype!=='mes'){const cm=d.consoMode||'auto',pz=(d.pieces||[]).some(p=>p.nom&&(Number(p.qte)||0)>0);
+    if(d.mode!=='rien'&&(cm==='oui'||(cm==='auto'&&pz))){consoV=(P.mesOpt&&P.mesOpt.conso)||0;consoAchat=consoV*0.6;consoLbl='Consommables (colliers, ruban, obus, nettoyant…)';}}
+  const mo=moRows.reduce((s,r)=>s+r[1],0), moMaj=moRows.filter(r=>r[2]!=='nomaj').reduce((s,r)=>s+r[1],0);
   const majPct=d.maj==='soir'?(P.dep.majSoir||0):d.maj==='dim'?(P.dep.majDim||0):0;
-  const maj=mo*majPct/100;
+  const maj=moMaj*majPct/100;
   const pieces=(d.pieces||[]).filter(p=>p.nom&&(Number(p.qte)||0)>0);
   const piecesVente=pieces.reduce((s,p)=>s+(Number(p.vente)||0)*(Number(p.qte)||0),0);
   const piecesAchat=pieces.reduce((s,p)=>s+(Number(p.achat)||0)*(Number(p.qte)||0),0);
@@ -1982,7 +1999,7 @@ function computeDep(d){
   const cotis=totalHT*(Number(P.cotisTaux)||0)/100;
   const benefNet=benefice-cotis;
   const gainHNet=heures>0?benefNet/heures:0;
-  return {itype,mo,moRows,moLbl,maj,majPct,depl,consoV,consoAchat,pieces,piecesVente,piecesAchat,totalHT,coutReel,benefice,cotis,benefNet,gainHNet,heures,rate,margePct:totalHT>0?benefice/totalHT*100:0};
+  return {itype,mo,moRows,moLbl,maj,majPct,depl,deplLbl,urgPct,consoV,consoAchat,consoLbl,pieces,piecesVente,piecesAchat,totalHT,coutReel,benefice,cotis,benefNet,gainHNet,heures,rate,margePct:totalHT>0?benefice/totalHT*100:0};
 }
 let curDep=null;
 function newDep(t){
@@ -2000,7 +2017,8 @@ function fillDepSelects(){
   document.getElementById('dp_panne').innerHTML=Object.keys(P.depPannes||{}).map(n=>'<option>'+n+'</option>').join('');
   const rates=[...new Set([75,80,Number(P.dep.taux)||90].filter(r=>r>0))].sort((a,b)=>a-b);
   document.getElementById('dp_rate').innerHTML=rates.map(r=>'<option value="'+r+'">'+r+' €/h</option>').join('')+'<option value="custom">Personnalisé…</option>';
-  document.getElementById('dp_maj').innerHTML='<option value="0">Aucune (heures ouvrées)</option><option value="soir">Soir / samedi (+'+(P.dep.majSoir||0)+' %)</option><option value="dim">Dimanche / férié / urgence (+'+(P.dep.majDim||0)+' %)</option>';
+  document.getElementById('dp_maj').innerHTML='<option value="0">Aucune (heures ouvrées)</option><option value="soir">Soir / samedi (+'+(P.dep.majSoir||0)+' %)</option><option value="dim">Dimanche / jour férié (+'+(P.dep.majDim||0)+' %)</option>';
+  document.getElementById('dp_urgence').innerHTML='<option value="">Normal</option><option value="1">Urgent (+'+(P.dep.urgDepl||0)+' %)</option>';
   document.getElementById('clientDLdep').innerHTML=CLIENTS.map(c=>'<option value="'+(c.nom||'').replace(/"/g,'&quot;')+'">').join('');
   document.getElementById('dp_margeInfo').textContent=P.dep.margeP||40;
   document.getElementById('dp_mesType').innerHTML=Object.keys(P.mes).filter(k=>k!=='Aucune').map(n=>'<option>'+n+'</option>').join('');
@@ -2010,6 +2028,7 @@ function applyItypeVis(){
   document.getElementById('dp_modeWrap').style.display=t==='mes'?'none':'flex';
   document.getElementById('dp_panneWrap').style.display=(t!=='mes'&&document.getElementById('dp_mode').value==='panne')?'flex':'none';
   document.getElementById('dp_mesBlock').style.display=t==='mes'?'block':'none';
+  const cw=document.getElementById('dp_consoWrap');if(cw)cw.style.display=t==='mes'?'none':'flex';
   const mm=document.getElementById('dp_mesMode').value;
   document.getElementById('dp_mesTypeWrap').style.display=(mm==='forfait')?'flex':'none';
   document.getElementById('dp_optRouteWrap').style.display=(mm==='carte')?'flex':'none';
@@ -2031,7 +2050,7 @@ function loadDepForm(){
   if(window.climProToggle)climProToggle('dp');
   set('dp_date',d.date);set('dp_desc',d.desc);set('dp_notes',d.notes);
   set('dp_itype',d.itype||'dep');set('dp_mode',d.mode);set('dp_panne',d.panne);set('dp_heures',d.heures);set('dp_zone',d.zone);set('dp_maj',d.maj);
-  set('dp_rate',d.rateChoice);set('dp_rateCustom',d.rateCustom);
+  set('dp_rate',d.rateChoice);set('dp_rateCustom',d.rateCustom);set('dp_urgence',d.urgence?'1':'');set('dp_consoMode',d.consoMode||'auto');
   set('dp_mesMode',d.mesMode||'forfait');set('dp_mesType',d.mesType||'Monosplit');set('dp_heuresSup',d.heuresSup||0);set('dp_nbRaccords',d.nbRaccords!=null?d.nbRaccords:4);
   const ck=(id,v)=>{const e=document.getElementById(id);if(e)e.checked=!!v;};
   ck('dp_optRoute',d.optRoute);ck('dp_optRaccords',d.optRaccords);ck('dp_optVide',d.optVide);ck('dp_optAzote',d.optAzote);ck('dp_optEtanch',d.optEtanch);ck('dp_optAppoint',d.optAppoint);ck('dp_optConso',d.optConso);ck('dp_optPv',d.optPv);
@@ -2047,6 +2066,8 @@ function formToDep(){
   d.date=g('dp_date');d.desc=g('dp_desc');d.notes=g('dp_notes');
   d.mode=g('dp_mode');d.panne=g('dp_panne');d.heures=+g('dp_heures');d.zone=g('dp_zone');d.maj=g('dp_maj');
   d.rateChoice=g('dp_rate');d.rateCustom=+g('dp_rateCustom');
+  if(document.getElementById('dp_urgence'))d.urgence=g('dp_urgence')==='1';
+  if(document.getElementById('dp_consoMode'))d.consoMode=g('dp_consoMode')||'auto';
   d.itype=g('dp_itype')||d.itype||'dep';
   d.mesMode=g('dp_mesMode')||'forfait';d.mesType=g('dp_mesType')||'Monosplit';d.heuresSup=+g('dp_heuresSup');d.nbRaccords=+g('dp_nbRaccords');
   const cb=id=>{const e=document.getElementById(id);return e?e.checked:false;};
@@ -2080,8 +2101,8 @@ function recalcDep(){
   document.getElementById('dp_recap').innerHTML='<h2>💰 Facture (franchise TVA)</h2>'+
     (c.moRows.length?c.moRows.map(r=>'<div class="recap-line"><div class="lbl">'+r[0]+'</div><div>'+eur(r[1])+'</div></div>').join(''):'<div class="sub">Rien de coché pour l\'instant.</div>')+
     (c.maj>0?'<div class="recap-line"><div class="lbl">Majoration '+(curDep.maj==='soir'?'soir/samedi':'dimanche/férié')+' (+'+c.majPct+' %)</div><div>'+eur(c.maj)+'</div></div>':'')+
-    (c.depl>0?'<div class="recap-line"><div class="lbl">Déplacement ('+curDep.zone+')</div><div>'+eur(c.depl)+'</div></div>':'')+
-    (c.consoV>0?'<div class="recap-line"><div class="lbl">Consommables mise en service</div><div>'+eur(c.consoV)+'</div></div>':'')+
+    (c.depl>0?'<div class="recap-line"><div class="lbl">'+(c.deplLbl||'Déplacement ('+curDep.zone+')')+'</div><div>'+eur(c.depl)+'</div></div>':'')+
+    (c.consoV>0?'<div class="recap-line"><div class="lbl">'+(c.consoLbl||'Consommables mise en service')+'</div><div>'+eur(c.consoV)+'</div></div>':'')+
     (c.piecesVente>0?'<div class="recap-line"><div class="lbl">Pièces / fluide ('+c.pieces.length+' ligne'+(c.pieces.length>1?'s':'')+')</div><div>'+eur(c.piecesVente)+'</div></div>':'')+
     '<div class="recap-line tot"><div class="lbl">Net à payer</div><div>'+eur(c.totalHT)+'</div></div>'+
     '<div class="sub" style="margin-top:6px">TVA non applicable — art. 293 B du CGI.</div>';
@@ -2196,8 +2217,8 @@ function printFacture(){
   const dInt=d.date?new Date(d.date+'T00:00:00').toLocaleDateString('fr-FR'):today;
   const rows=c.moRows.map(r=>[r[0],r[1]])
     .concat(c.maj>0?[['Majoration '+(d.maj==='soir'?'soir/samedi':'dimanche/férié')+' (+'+c.majPct+' %)',c.maj]]:[])
-    .concat(c.depl>0?[['Déplacement ('+d.zone+')',c.depl]]:[])
-    .concat(c.consoV>0?[['Consommables mise en service',c.consoV]]:[])
+    .concat(c.depl>0?[[c.deplLbl||('Déplacement ('+d.zone+')'),c.depl]]:[])
+    .concat(c.consoV>0?[[c.consoLbl||'Consommables mise en service',c.consoV]]:[])
     .concat(c.pieces.map(p=>['Pièce : '+p.nom+' ('+fmtQ(p.qte)+' × '+eur(p.vente)+')',p.vente*p.qte]));
   const body=rows.map(r=>'<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`

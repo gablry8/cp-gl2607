@@ -33,7 +33,7 @@
   function mkEq(o){ return Object.assign({eqId:'',type:'clim',marque:'',modele:'',fluide:'',charge:0,prp:'',lds:false,herm:false,temps:''},o||{}); }
   function isoPlus(days){ var d=new Date(Date.now()+days*864e5); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
   function defaults(){
-    return {format:'contrat',equips:[mkEq()],visites:1,degr:0,consoVisite:num((P.conso||{}).petit),usure:{incluses:false,budget:0},delai:'',duree:12,reconduction:true,
+    return {format:'contrat',equips:[mkEq()],visites:1,degr:0,consoVisite:num((P.mesOpt||{}).conso)||num((P.conso||{}).petit),usure:{incluses:false,budget:0},delai:'',duree:12,reconduction:true,
       revision:'Prix révisable à chaque date anniversaire, avec information préalable.',resiliation:'Par lettre recommandée ou courriel, au plus tard un mois avant l\'échéance.',premiere:'',
       units:K.initUnits(MOD,UNITS_DEF),custom:[]};
   }

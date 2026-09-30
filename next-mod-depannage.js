@@ -26,7 +26,7 @@
     return {equip:{eqId:'',type:'',marque:'',modele:'',serie:'',fluide:'',charge:0},symptome:'',constat:'',mesures:{},cause:'',certitude:'probable',
       pieces:[],mo:[{l:'Réparation : dépose et repose des pièces, essais',h:2}],maj:'0',
       fl:{nom:K.first(fluids(),['Fluide R32 (au kg)']),recup:0,charge:0,recherche:0,vide:false,azote:false,deshy:true},
-      diag:{deduire:false,montant:num((P.dep||{}).diag)},conso:true,garantie:'',delai:'',units:K.initUnits(MOD,UNITS_DEF),custom:[]};
+      diag:{deduire:false,montant:num((P.dep||{}).diag)},conso:true,consoDep:true,garantie:'',delai:'',units:K.initUnits(MOD,UNITS_DEF),custom:[]};
   }
   /* ancien formulaire « Dépannage » : copie à l'identique (même montant) */
   function fromLegacy(s){ var d=defaults(); d.legacyCopy=true; Object.assign(d,K.baseFromLegacy(s)); d.pieces=[]; d.mo=[]; return d; }
@@ -69,7 +69,9 @@
     var before=((ctx.d&&ctx.d.lots)||[]).slice(0,ctx.index||0).filter(function(q){ return q&&q.module===MOD&&!q.option&&q.data&&!q.data.legacyCopy; });
     var consoDone=before.some(function(q){ return q.data.conso; }), diagDone=before.some(function(q){ return q.data.diag&&q.data.diag.deduire&&num(q.data.diag.montant)>0; });
     if(d.conso&&!lot.option&&consoDone) warn.push('Consommables déjà comptés dans un lot de réparation précédent : pas comptés une 2e fois');
-    else if(d.conso){ var cv=num((P.conso||{}).petit); if(cv>0) B.raw('Frais & divers','Consommables (petit chantier)','visserie, colliers, nettoyant…',cv,cv*0.6,{},'divers'); }
+    /* consommables : forfait dépannage (colliers, ruban, obus, nettoyant) ; les imprévus sont déjà couverts par la marge de sécurité.
+       Anciens devis (sans consoDep) : ancien forfait « petit chantier », pour ne pas changer un devis déjà envoyé. */
+    else if(d.conso){ var cv=d.consoDep?num((P.mesOpt||{}).conso):num((P.conso||{}).petit); if(cv>0) B.raw('Frais & divers',d.consoDep?'Consommables':'Consommables (petit chantier)',d.consoDep?'colliers, ruban, obus, nettoyant…':'visserie, colliers, nettoyant…',cv,cv*0.6,{},'divers'); }
     if(d.diag.deduire&&num(d.diag.montant)>0){
       if(!lot.option&&diagDone) warn.push('Diagnostic déjà déduit dans un lot précédent : pas déduit une 2e fois');
       else { var fd=d.fromDep||{}; B.raw('Frais & divers','Diagnostic déjà facturé'+(fd.facNum?' ('+fd.facNum+(fd.date?' du '+new Date(fd.date+'T00:00:00').toLocaleDateString('fr-FR'):'')+')':'')+' — déduit','',-num(d.diag.montant),0,{},'deduc');
@@ -130,7 +132,7 @@
       '<div class="nxd2-hint">Taux du devis : '+A.money(rate)+'/h'+(Math.abs(rate-dep)>0.01?' — ton taux dépannage est '+A.money(dep)+'/h (onglet Client & chantier, « taux horaire »)':' (ton taux dépannage)')+'. Récupération, mise en charge et déshydrateur sont ajoutés tout seuls d\'après la partie fluide.</div>');
     var dg=d.diag||{};
     h+=K.sec('Diagnostic déjà facturé',A.fChk('Déduire le diagnostic si la réparation est acceptée','data.diag.deduire',dg.deduire,{re:'lot'})+(dg.deduire?'<div class="frm">'+A.fIn('Montant à déduire (€ HT)','data.diag.montant',dg.montant,{t:'n',step:1})+'</div>':''));
-    h+=K.sec('Conditions','<div class="frm">'+A.fIn('Garantie pièces et main-d\'œuvre (imprimée si remplie)','data.garantie',d.garantie,{full:true,ph:'ex. pièces : garantie fabricant ; main-d\'œuvre : 3 mois'})+'</div>'+A.fChk('Consommables (forfait petit chantier : '+A.money((P.conso||{}).petit)+')','data.conso',d.conso)+
+    h+=K.sec('Conditions','<div class="frm">'+A.fIn('Garantie pièces et main-d\'œuvre (imprimée si remplie)','data.garantie',d.garantie,{full:true,ph:'ex. pièces : garantie fabricant ; main-d\'œuvre : 3 mois'})+'</div>'+A.fChk('Consommables (forfait : '+A.money(d.consoDep?(P.mesOpt||{}).conso:(P.conso||{}).petit)+')','data.conso',d.conso)+
       '<div class="row-actions" style="margin-top:8px"><button type="button" class="btn-ghost btn-sm" onclick="nxd2.altLot('+i+',\'Solution 2 — remplacement\')">＋ Ajouter une 2e solution (en option)</button></div>'+
       '<div class="nxd2-hint">La 2e solution (remplacer au lieu de réparer, par exemple) est chiffrée à part, hors total ; le PDF donne le total du devis si elle est retenue. Si le client la choisit : bouton « Retenir cette solution » sur son lot (elle remplace l\'autre, jamais les deux).</div>');
     return h;
