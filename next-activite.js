@@ -37,7 +37,7 @@
       var tot=c.totalHT||0, hr=Number(d.hReel)||0; if(tot<=0) return;
       (c.lots||[]).forEach(function(x){
         var lot=(d.lots||[])[x.i]||{}, k=MODB[x.module];
-        if(x.module==='entretien'){ if(lot.data&&lot.data.format==='contrat') return; k='dep'; }   /* contrats : comptés à la facturation */
+        if(x.module==='entretien'){ if(lot.data&&lot.data.format==='contrat'&&!lot.data.legacyCopy) return; k='dep'; }   /* contrats : comptés à la facturation ; copie d'un ancien devis de maintenance : facturée sur le devis, comptée comme avant */
         if(!k||!b[k]) return;
         var ca=(x.ht||0)+(x.commonShare||0), part=ca/tot;
         b[k].ca+=ca; b[k].benef+=c.benefice*part; b[k].n++;

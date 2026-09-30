@@ -35,6 +35,18 @@
       return n;
     }catch(e){ return 0; }
   };
+  /* fluides du froid commercial : absents de la base d'origine (R32 et R410A seulement) — ajoutés à 0 €, prix à saisir */
+  K.FLUIDES=[['Fluide R449A (au kg)','Pièces dépannage','kg',0,'Prix à saisir : ton tarif fournisseur'],['Fluide R452A (au kg)','Pièces dépannage','kg',0,'Prix à saisir : ton tarif fournisseur'],
+    ['Fluide R448A (au kg)','Pièces dépannage','kg',0,'Prix à saisir : ton tarif fournisseur'],['Fluide R134a (au kg)','Pièces dépannage','kg',0,'Prix à saisir : ton tarif fournisseur'],['Fluide R290 (au kg)','Pièces dépannage','kg',0,'Prix à saisir : ton tarif fournisseur']];
+  K.seedFluides=function(){ return K.seed('fluides',1,K.FLUIDES); };
+  /* circuit frigorifique fait sur place (groupe déporté, split, centrale) : fluide, brasure et contrôles ne se comptent pas tout seuls */
+  K.circuitChecks=function(d,warn,what){
+    var fx=(d.extras||[]).filter(function(x){ return /^Fluide /i.test(x.nom||'')&&num(x.qte)>0; }), fl=fx.length>0;
+    fx.forEach(function(x){ var p=K.pr(x.nom); if(!p||!(num(p.achat)>0)) warn.push('« '+x.nom+' » : prix d\'achat à saisir dans la base de prix (compté 0 € pour l\'instant)'); });
+    if(!fl) warn.push((what||'Circuit fait sur place')+' : charge de fluide non comptée — ajoute « Fluide … (au kg) » dans les articles complémentaires');
+    if(!d.brasure||d.brasure==='Aucune') warn.push((what||'Circuit fait sur place')+' : aucune brasure comptée');
+    if(!d.tests||d.tests==='0') warn.push((what||'Circuit fait sur place')+' : aucun contrôle compté (tirage au vide, test azote)');
+  };
   K.seededOk=function(mod,ver){ var g=(A.DEFS()||{})[mod]; return !!(g&&num(g.seeded)>=ver); };
 
   /* ---------- lignes ---------- */
@@ -80,6 +92,8 @@
     (d.custom||[]).forEach(function(c,j){ var h=Math.max(0,num(c.h)); rows.push({custom:j,l:c.l||'Autre tâche',q:1,h1:h,h:h}); });
     return rows;
   };
+  /* tâches marquées hf : travaux en plus de la pose (dépose, désembouage…) — hors forfait pose */
+  K.hfRows=function(d,TASKS,DEF){ var hf=(TASKS||[]).filter(function(t){ return t.hf; }); return hf.length?K.taskRows(Object.assign({},d,{custom:[]}),hf,DEF):[]; };
   K.taskLines=function(rows,rate,catLabel){
     return rows.filter(function(r){ return r.h>0; }).map(function(r){
       var l=A.mkLine('Pose & main-d’œuvre',r.l,A.fq(A.r2(r.h))+' h'+(r.custom==null?' ('+A.fq(r.q)+' × '+A.fq(r.h1)+' h '+r.u+')':'')+' × '+A.money(rate)+'/h',r.h*rate,0,{qte:r.h,unite:'h',pu:rate,mo:true});
@@ -108,8 +122,12 @@
       (K.savedUnits(cfg.mod)?'':'<div class="nxd2-hint">Temps unitaires : <b>valeurs de départ proposées</b>, pas encore les tiennes. Ajuste-les ; ClimPilot les retient à l\'enregistrement.</div>');
       if(forf!=null&&forf>0&&tot*rate<forf*0.85) h+='<div class="nxd2-warn">Le détail donne '+A.money(tot*rate)+', soit moins que ton forfait pose ('+A.money(forf)+'). Vérifie tes temps : ce devis pourrait être sous-facturé.</div>';
     } else {
-      h+='<div class="frm">'+A.fIn(mode==='forfait'?'Heures estimées (pour le gain horaire et le planning)':'Heures totales du lot','data.heures',d.heures,{t:'n',step:0.5,re:'#'+pid})+'</div>';
+      h+='<div class="frm">'+A.fIn(mode==='forfait'?'Heures estimées pour la pose (gain horaire et planning)':'Heures totales du lot','data.heures',d.heures,{t:'n',step:0.5,re:'#'+pid})+'</div>';
       if(mode==='forfait'&&forf!=null) h+='<div class="nxd2-hint">Forfait pose : '+A.money(forf)+(rate>0?' (≈ '+A.fq(A.r2(forf/rate))+' h à '+A.money(rate)+'/h)':'')+'.</div>';
+      var hr=K.hfRows(d,cfg.TASKS,cfg.DEF);
+      if(hr.length&&mode==='forfait') h+='<div class="nxd2-hint" style="margin-top:6px"><b>Comptés en plus du forfait pose</b> (le forfait ne couvre que la pose) :</div>'+hr.map(function(r){
+          return '<div class="nxd2-task"><div class="l">'+esc(r.l)+' <span class="sub2">· '+A.fq(A.r2(r.q))+' '+esc(r.u)+'</span></div><div class="v"><input type="number" step="0.05" min="0" inputmode="decimal" data-k="data.units.'+r.k+'" data-t="n" data-re="#'+pid+'" value="'+r.h1+'"> h/u = <b>'+A.fq(A.r2(r.h))+' h · '+A.money(r.h*rate)+'</b></div></div>'; }).join('');
+      else if(hr.length) h+='<div class="nxd2-warn">À inclure dans tes heures (pas compté à part) : '+hr.map(function(r){ return esc(r.l)+' (≈ '+A.fq(A.r2(r.h))+' h)'; }).join(', ')+'.</div>';
     }
     if(hist) h+='<div class="nxd2-hint">Repère — tes '+hist.n+' devis « '+esc(cfg.hist)+' » précédents : '+A.fq(A.r2(hist.avg))+' h en moyenne (de '+A.fq(hist.min)+' à '+A.fq(hist.max)+' h).</div>';
     return h;
@@ -244,6 +262,23 @@
     amiante:{k:'amiante',l:'Amiante : bâtiment ancien, repérage avant travaux (percements) — à vérifier',t:'sel',o:['','Non concerné','À demander au client','Rapport fourni']},
     horaires:{k:'horaires',l:'Horaires d\'intervention possibles (commerce, activité)',t:'txt',full:true},
     notes:{k:'notes',l:'Notes pour ce lot',t:'area'}
+  };
+  /* oublis silencieux d'une installation : l'app prévient au lieu de compter 0 € sans rien dire (audit du 30/09) */
+  K.installChecks=function(d,warn,o){
+    o=o||{}; if(!d||d.legacyCopy) return;
+    var ms=d.machines||[];
+    if(d.groupCable!=null&&!(num(d.groupLong)>0)&&!o.noAlim) warn.push('Alimentation électrique : longueur de câble à 0, rien de compté (distance tableau → unité)');
+    if(d.condLong!=null&&!(num(d.condLong)>0)&&(!d.pompeType||d.pompeType==='Aucune')&&!o.noCond) warn.push('Évacuation des condensats : longueur 0 et pas de pompe, rien de compté');
+    if(d.support!=null&&(!d.support||d.support==='Aucun')&&!o.noSupport) warn.push('Support de l\'unité extérieure : aucun compté — c\'est voulu (pose sur dalle existante…) ?');
+    if(d.tests!=null&&(!d.tests||d.tests==='0')&&!o.noTests) warn.push('Aucun contrôle compté (tirage au vide, test azote ou étanchéité)');
+    if(d.elecMode==='auto'&&ms.length){
+      var z=ms.filter(function(m){ return !m.breaker&&!(num(m.maxCurrent)>0); }).length, big=ms.filter(function(m){ return !m.breaker&&num(m.maxCurrent)>25; }).length;
+      if(z) warn.push('Protection électrique non comptée : intensité max. '+(ms.length>1?'de '+z+' groupe(s) ':'')+'à saisir (plaque ou notice)');
+      if(big) warn.push('Intensité max. supérieure à 25 A : choisis le disjoncteur à la main (protection non comptée)');
+    }
+    (d.splits||[]).forEach(function(s,j){ if(num(s.long)>=10) warn.push('Liaison '+(j+1)+' : '+A.fq(num(s.long))+' m — vérifie la longueur préchargée (notice) ; au-delà, ajoute le complément de fluide'); });
+    var v=o.visite||{}, ac=String(v.acces||v.ueAcces||'');
+    if(/Nacelle|Échafaudage/.test(ac)) warn.push('Accès '+(/Nacelle/.test(ac)?'nacelle':'échafaudage')+' : la location n\'est pas comptée (le supplément « accès difficile » ne couvre que le temps) — ajoute-la en article ou en supplément');
   };
   K.applyCommon=function(v,d,msg){
     if(num(v.distTab)>0&&d.groupLong!=null){ d.groupLong=num(v.distTab); msg.push('alimentation '+A.fq(d.groupLong)+' m'); }

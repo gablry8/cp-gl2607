@@ -137,15 +137,20 @@
       var share=lotsHT>0?commonHT*x.ht/lotsHT:(lots.length?commonHT/lots.length:0);
       x.commonShare=share;
       if(fr){ x.tva=0; return; }
-      var t=tvaOfLot(x.tvaMode,x.lines,share); x.tva=t.tva; tva+=t.tva;
+      var t=tvaOfLot(x.tvaMode,x.lines,share); x.tva=t.tva; x.parts=t.parts; tva+=t.tva;
       Object.keys(t.parts).forEach(function(k){ parts[k]=(parts[k]||0)+t.parts[k]; });
     });
     if(!fr&&!lots.length&&commonHT>0){ var tr=num(P.tva); tva+=commonHT*tr/100; parts[String(tr)]=(parts[String(tr)]||0)+commonHT; }
     var secPct=((P.marges&&P.marges.securite)||0)/100;
     options.forEach(function(x){
-      x.htBase=x.ht; var sav=savPct>0?x.detailH*savPct/100*rate:0;
-      x.ht=(x.htBase+sav)*(1+secPct);   /* = ce que l'option ajoute vraiment au total si le client la coche */
-      x.tva=fr?0:tvaOfLot(x.tvaMode,x.lines,x.ht-x.htBase).tva; x.ttc=x.ht+x.tva;
+      x.htBase=x.ht; var lot=(d.lots||[])[x.i], done=false;
+      /* = ce que l'option ajoute vraiment au total si le client la coche : on refait le calcul complet avec l'option dedans
+         (frais de commande, achat du matériel, SAV, marge de sécurité, déductions « une fois par devis », TVA) */
+      if(!d._altCalc&&lot&&!lot.alt){ try{
+        var dd=JSON.parse(JSON.stringify(d)); dd._altCalc=true; dd.lots[x.i].option=false; dd.lots=dd.lots.filter(function(l){ return !l.option; });
+        var ro=computeV2(dd); x.ht=ro.totalHT-totalHT; x.ttc=ro.totalTTC-(totalHT+tva); x.tva=x.ttc-x.ht; done=true; }catch(e){} }
+      if(!done){ var sav=savPct>0?x.detailH*savPct/100*rate:0, sp=feeOf(x).secu?secPct:0;
+        x.ht=(x.htBase+sav)*(1+sp); x.tva=fr?0:tvaOfLot(x.tvaMode,x.lines,x.ht-x.htBase).tva; x.ttc=x.ht+x.tva; }
     });
     /* solution alternative (réparer OU remplacer) : son vrai prix = le total du devis si elle remplace l'autre solution */
     options.forEach(function(x){
@@ -173,11 +178,16 @@
     var ctrLots=lots.filter(function(x){ var l=(d.lots||[])[x.i]; return l&&l.module==='entretien'&&l.data&&!l.data.legacyCopy&&l.data.format==='contrat'; });
     var ctrTTC=sum(ctrLots,function(x){ return (x.ht||0)+(x.commonShare||0)+(x.tva||0); }), billTTC=Math.max(0,totalTTC-ctrTTC);
     var acomptePct=d.acompteOn?num(d.acomptePct):0, acompte=billTTC*acomptePct/100, solde=billTTC-acompte;
+    /* montant gardé à l'envoi (next-fiabilite) : le devis a-t-il bougé depuis ? */
+    if(d.figEnv&&!d._altCalc&&Math.abs(Math.round(billTTC*100)/100-num(d.figEnv.bill))>0.01) warnings.unshift('Montant différent de celui '+(d.figEnv.statut==='accepte'?'accepté par':'envoyé à')+' ton client : '+money(num(d.figEnv.bill))+' le '+new Date(num(d.figEnv.at)).toLocaleDateString('fr-FR')+', '+money(billTTC)+' maintenant. Renvoie-lui le devis (ou fais-lui valider la nouvelle version) avant de facturer.');
     var mo=sum(all.filter(function(l){return l.mo;}),function(l){return l.ht;});
     var tvaBreak=Object.keys(parts).map(function(k){ return {rate:num(k),base:parts[k],tva:parts[k]*num(k)/100}; }).sort(function(a,b){return b.rate-a.rate;});
+    /* TVA de ce qui se facture sur le devis (sans le contrat d'entretien), taux par taux : pour les factures d'acompte et de solde */
+    var bp={}; lots.forEach(function(x){ if(ctrLots.indexOf(x)>=0||!x.parts) return; Object.keys(x.parts).forEach(function(k){ bp[k]=(bp[k]||0)+x.parts[k]; }); });
+    var billBreak=Object.keys(bp).map(function(k){ return {rate:num(k),base:bp[k],tva:bp[k]*num(k)/100}; }).filter(function(t){ return Math.abs(t.base)>0.005; }).sort(function(a,b){return b.rate-a.rate;});
     return {v:2,lines:all,mat:mat,totalHT:totalHT,tva:tva,tvaRate:tvaRate,tvaBreak:tvaBreak,franchise:fr,totalTTC:totalTTC,
       coutReel:coutReel,matAchat:matAchat,moAchat:moAchat,benefice:benefice,margePct:margePct,gainH:gainH,cotis:cotis,
-      benefNet:benefNet,gainHNet:gainHNet,mo:mo,heures:heures,rate:rate,acomptePct:acomptePct,acompte:acompte,solde:solde,billTTC:billTTC,ctrTTC:ctrTTC,ctrHT:sum(ctrLots,function(x){ return (x.ht||0)+(x.commonShare||0); }),ctrAll:ctrLots.length>0&&ctrLots.length===lots.length,
+      benefNet:benefNet,gainHNet:gainHNet,mo:mo,heures:heures,rate:rate,acomptePct:acomptePct,acompte:acompte,solde:solde,billTTC:billTTC,billBreak:billBreak,ctrTTC:ctrTTC,ctrHT:sum(ctrLots,function(x){ return (x.ht||0)+(x.commonShare||0); }),ctrAll:ctrLots.length>0&&ctrLots.length===lots.length,
       lots:lots,common:common,options:options,warnings:warnings,nbDepl:nD,joursEstim:Math.max(1,Math.ceil(heures/(CFG().hPerDay||6)))};
   }
   window.compute=function(d){ return (d&&d.v===2)?computeV2(d):LEGACY(d); };
@@ -209,7 +219,7 @@
   }
 
   /* ---------------- champs posés par d'autres écrans : jamais écrasés à l'enregistrement ---------------- */
-  var OWNED=['facAcompte','facSolde','signature','signLink','relances','datePlanif','matReserve','hReel','achatReel'];
+  var OWNED=['facAcompte','facSolde','signature','signLink','relances','datePlanif','matReserve','hReel','achatReel','figEnv'];
   function protect(c){
     try{
       var e=(DEVIS||[]).find(function(x){ return x.id===c.id; }); if(!e) return c;
@@ -272,6 +282,14 @@
 
   /* ---------------- création / ouverture ---------------- */
   function defaultsCommon(){ var c=CFG(); return {prepH:c.prepH,achatH:c.achatH,savPct:c.savPct}; }
+  /* un devis commencé par une dépose, une mise en service ou une sous-traitance a préparation / achat / SAV à 0 :
+     quand on y ajoute un lot qui en demande (clim, chambre…), on les remonte — jamais à la baisse, jamais sur une valeur saisie */
+  function mergeCommon(d,modId){
+    try{ var m=MODS[modId], t=Object.assign(defaultsCommon(),(m&&m.common)?m.common():{}), c=d.common||(d.common={}), up=[];
+      [['prepH','préparation'],['achatH','achat du matériel'],['savPct','provision SAV']].forEach(function(k){ if(!(num(c[k[0]])>0)&&num(t[k[0]])>0){ c[k[0]]=t[k[0]]; up.push(k[1]); } });
+      if(up.length) say('Ajouté pour ce lot : '+up.join(', ')+' (récapitulatif)');
+      return up; }catch(e){ return []; }
+  }
   function newLot(modId,opts){
     var m=MODS[modId]; opts=opts||{};
     var lot={id:newId(),module:modId,titre:opts.titre||'',option:false,tva:String(P.tva),data:m?m.defaults(opts):{},visite:{}};
@@ -643,7 +661,7 @@
       (c.acomptePct>0?'<div class="recap-line"><div class="lbl">Acompte ('+fq(c.acomptePct)+' %)</div><div style="font-weight:700;color:var(--blue)">'+money(c.acompte)+'</div></div><div class="recap-line"><div class="lbl">Solde fin de travaux</div><div>'+money(c.solde)+'</div></div>':'')+'</div>';
     /* santé */
     var low=c.margePct<20, lowH=c.gainH>0&&c.gainH<40;
-    h+='<div class="card"><h2>📈 Santé du devis</h2>'+
+    h+='<div class="card" id="nxd2Sante"><h2>📈 Santé du devis</h2>'+
       '<div class="recap-line"><div class="lbl">Déboursé sec<div class="sub2">matériel achat '+money(c.matAchat)+(fr?' (TVA d\'achat comprise, non récupérable)':'')+' + MO interne '+money(c.moAchat)+'</div></div><div>'+money(c.coutReel)+'</div></div>'+
       '<div class="recap-line"><div class="lbl">Bénéfice brut estimé</div><div style="color:var(--green);font-weight:700">'+money(c.benefice)+'</div></div>'+
       '<div class="recap-line"><div class="lbl">Marge</div><div style="font-weight:700;color:'+(low?'var(--red)':'var(--green)')+'">'+pct(c.margePct)+'</div></div>'+
@@ -658,10 +676,17 @@
     h+='<div id="nxd2FHost"></div>';
     return h;
   }
+  /* les alertes rangées par gravité : ce qui fausse le montant d'abord, puis ce qui est compté 0 €, puis le reste */
+  var RX_FIX=/compté deux fois|Montant différent|calcul impossible|non chiffré sur cet appareil|deux solutions|Aucune des deux solutions/i,
+      RX_ZERO=/non compté|rien de compté|aucun[e]? [^:]*compté|n'est pas comptée|prix d'achat à saisir|absent de la base|0 € compté|coché mais 0 €|prix à saisir/i;
+  function alertGroups(c){ var g={fix:[],zero:[],info:[]}, abs=[];
+    (c.warnings||[]).forEach(function(w){ var m=/^(?:Lot \d+ — )?Article « (.+) » absent de la base de prix$/.exec(w); if(m){ if(abs.indexOf(m[1])<0) abs.push(m[1]); return; } (RX_FIX.test(w)?g.fix:RX_ZERO.test(w)?g.zero:g.info).push(w); });
+    if(abs.length) g.zero.unshift(abs.length>1?abs.length+' articles absents de ta base de prix (comptés 0 €) : '+abs.join(' ; '):'Article « '+abs[0]+' » absent de ta base de prix (compté 0 €)'); if(c.margePct<20) g.fix.push('Marge sous 20 % : ce chantier semble sous-facturé.'); return g; }
   function alerts(c){
-    var a=[], d=cur, hist;
-    c.warnings.forEach(function(w){ a.push('<div class="nxd2-warn">'+esc(w)+'</div>'); });
-    if(c.margePct<20) a.push('<div class="nxd2-warn red">Marge sous 20 % : ce chantier semble sous-facturé.</div>');
+    var a=[], d=cur, hist, g=alertGroups(c), ttl=function(t,n){ return '<div style="font-weight:700;font-size:13px;margin:10px 0 2px">'+t+' ('+n+')</div>'; };
+    if(g.fix.length) a.push(ttl('🔴 À corriger avant d\'envoyer',g.fix.length)+g.fix.map(function(w){ return '<div class="nxd2-warn red">'+esc(w)+'</div>'; }).join(''));
+    if(g.zero.length) a.push(ttl('🟠 Comptés 0 € — à compléter ou à confirmer',g.zero.length)+g.zero.map(function(w){ return '<div class="nxd2-warn">'+esc(w)+'</div>'; }).join(''));
+    if(g.info.length) a.push(ttl('À vérifier',g.info.length)+g.info.map(function(w){ return '<div class="nxd2-warn">'+esc(w)+'</div>'; }).join(''));
     if(c.gainH>0&&c.gainH<40) a.push('<div class="nxd2-warn">Gain horaire sous 40 €/h.</div>');
     if(rateOf(d)<num(P.defaultRate)) a.push('<div class="nxd2-warn">Taux horaire ('+money(rateOf(d))+') sous ton taux de référence ('+money(P.defaultRate)+').</div>');
     if((d.zone||'Aucun')==='Aucun') a.push('<div class="nxd2-warn">Déplacement non facturé.</div>');
@@ -676,7 +701,8 @@
     var c; try{ c=computeV2(cur); }catch(e){ return; }
     var bar=document.getElementById('nxd2Bar');
     if(bar) bar.innerHTML='<div class="t"><b>'+money(c.franchise?c.totalHT:c.totalTTC)+'</b> '+(c.franchise?'net':'TTC')+' · marge <b style="color:'+(c.margePct<20?'var(--red)':'var(--green)')+'">'+pct(c.margePct)+'</b> · '+fq(r2(c.heures))+' h'+
-      (c.options.length?' · +'+c.options.length+' option(s)':'')+(dirty?' · <span style="color:var(--orange,#d97706)">non enregistré</span>':'')+'</div>'+
+      (c.options.length?' · +'+c.options.length+' option(s)':'')+(dirty?' · <span style="color:var(--orange,#d97706)">non enregistré</span>':'')+
+      (function(){ var g=alertGroups(c), n=g.fix.length+g.zero.length; return n?' · <a href="#" style="color:'+(g.fix.length?'var(--red,#c0392b)':'var(--orange,#d97706)')+';font-weight:700" onclick="nxd2.alertes();return false">⚠ '+n+' point'+(n>1?'s':'')+' à régler</a>':''; })()+'</div>'+
       '<button class="btn-dark btn-sm" onclick="nxd2.save()">💾 Enregistrer</button>';
     c.lots.concat(c.options).forEach(function(x){ var el=document.getElementById('nxd2LotTot'+x.i); if(el) el.textContent=x.alt?('total '+money(x.altTotalHT)+' HT si retenue'):(money(x.ht)+' HT'+(x.option?' (option)':'')); });
     (cur.lots||[]).forEach(function(lot,i){ var m=MODS[lot.module]; if(m&&m.live){ try{ m.live(lot,i,api); }catch(e){} } });
@@ -766,8 +792,13 @@
     CATS.forEach(function(ct){
       var ls=lines.filter(function(l){ return catOf(l)===ct[0]&&Math.abs(l.ht)>0.005; }); if(!ls.length) return;
       var subT=sum(ls,function(l){return l.ht;}), sub='';
-      if(ct[0]==='divers'){ var hasA=ls.some(function(l){ return l.label==='Frais administratifs devis'; }), hasC=ls.some(function(l){ return l.label==='Frais commande matériel'; });
-        sub=row('Consommables (visserie, colliers, mastic, ruban…)'+(hasA&&hasC?', frais de dossier et de commande':hasA?' et frais de dossier':hasC?' et frais de commande':''),subT); }
+      if(ct[0]==='divers'){
+        var isA=function(l){ return l.label==='Frais administratifs devis'; }, isC=function(l){ return l.label==='Frais commande matériel'; }, isS=function(l){ return /^Marge sécurité/.test(l.label); };
+        var isFee=function(l){ return isA(l)||isC(l)||isS(l); }, co=ls.filter(function(l){ return !isFee(l)&&/onsommables/i.test(l.label); }), ot=ls.filter(function(l){ return !isFee(l)&&!/onsommables/i.test(l.label); }), fe=ls.filter(isFee);
+        if(co.length) sub+=row('Consommables (visserie, colliers, mastic, ruban…)',sum(co,function(l){return l.ht;}));
+        sub+=ot.map(function(l){ return row(esc(clientLab(l)),l.ht); }).join('');
+        if(fe.length){ var nm=[fe.some(isA)?'dossier':'',fe.some(isC)?'commande':''].filter(Boolean), lb=nm.length?'Frais de '+nm.join(' et de '):'';
+          if(fe.some(isS)) lb=lb?lb+', aléas de chantier':'Aléas de chantier'; sub+=row(lb,sum(fe,function(l){return l.ht;})); } }
       else if(ct[0]==='mo'&&!d.pdfDetailMO){
         var h=ls.filter(function(l){ return l.unite==='h'; }), o=ls.filter(function(l){ return l.unite!=='h'; });
         var hh=sum(h,function(l){return num(l.qte);}), hv=sum(h,function(l){return l.ht;});
@@ -881,6 +912,7 @@
   /* ---------------- actions ---------------- */
   var nxd2={
     tab:function(t){ TAB=t; renderBody(); refreshLive(); try{ window.scrollTo(0,0); }catch(e){} },
+    alertes:function(){ TAB='recap'; renderBody(); refreshLive(); try{ var e=document.getElementById('nxd2Sante'); if(e) e.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){} },
     save:saveV2,
     close:function(){ go('tous'); },
     newDevis:function(){ chooser({}); },
@@ -888,7 +920,7 @@
     pick:function(id){
       var ov=document.getElementById('nxd2Choose'), opt=(ov&&ov._opt)||{}, visit=!!(document.getElementById('nxd2Visit')||{}).checked;
       if(ov) ov.remove();
-      if(opt.lot){ if(!MODS[id]) return; cur.lots.push(newLot(id,{type:null})); markDirty(); TAB='lots'; render(); return; }
+      if(opt.lot){ if(!MODS[id]) return; cur.lots.push(newLot(id,{type:null})); mergeCommon(cur,id); markDirty(); TAB='lots'; render(); return; }
       if(!MODS[id]){ var n=natureOf(id); return legacyNew(n.legacy,opt.client); }
       if(window._curView===VIEW) saveDraft();
       var d=newDevisV2(id,{client:opt.client});
@@ -898,7 +930,7 @@
     addLot:function(){ chooser({lot:true}); },
     delLot:function(i){ if(!cur.lots[i]) return; if(!confirm('Supprimer le lot '+(i+1)+' ('+natureOf(cur.lots[i].module).label+') ?')) return; cur.lots.splice(i,1); markDirty(); render(); },
     dupLot:function(i){ var l=clone(cur.lots[i]); l.id=newId(); l.titre=(l.titre?l.titre+' ':'')+'(copie)'; cur.lots.splice(i+1,0,l); markDirty(); render(); },
-    addLotMod:function(mod,asOption,titre){ if(!MODS[mod]) return null; var l=newLot(mod); l.option=!!asOption; if(titre) l.titre=titre; cur.lots.push(l); markDirty(); return l; },
+    addLotMod:function(mod,asOption,titre){ if(!MODS[mod]) return null; var l=newLot(mod); l.option=!!asOption; if(titre) l.titre=titre; cur.lots.push(l); if(!asOption) mergeCommon(cur,mod); markDirty(); return l; },
     altLot:function(i,titre){ var src=cur.lots[i]; var l=clone(src); if(!l) return; l.id=newId(); l.option=true; l.alt=src.id; l.titre=titre||'Solution alternative'; if(!src.titre) src.titre='Solution 1'; cur.lots.splice(i+1,0,l); markDirty(); render(); say('Solution alternative ajoutée : modifie-la. Si le client la choisit, « Retenir cette solution » la met à la place de l\'autre'); },
     /* le client choisit la solution alternative : elle devient le lot facturé, l'autre passe en solution non retenue (jamais les deux) */
     pickAlt:function(i){ var a=cur.lots[i]; if(!a||!a.alt) return; var k=cur.lots.findIndex(function(l){ return l.id===a.alt; });

@@ -2792,11 +2792,13 @@ function facturerDevis(id,which){
   const d=DEVIS.find(x=>x.id===id);if(!d)return;
   const c=compute(d);const today=todayISO();
   const tot=(typeof window.nxBillTotal==='function')?window.nxBillTotal(d,c):c.totalTTC; /* hors contrat d'entretien (facturé depuis l'onglet Contrats) */
+  if(!(which==='acompte'?d.facAcompte:d.facSolde)&&typeof window.nxFigCheck==='function'&&!window.nxFigCheck(d,tot))return; /* montant ≠ celui envoyé au client */
   if(which==='acompte'){
     if(d.facAcompte){toast('Acompte déjà facturé ('+d.facAcompte.num+')');return;}
     if(!(tot>0.005)){toast('Rien à facturer sur ce devis (contrat d\'entretien : il se facture depuis l\'onglet Contrats)');return;}
     const a=tot*(c.acomptePct||0)/100;
     d.facAcompte={num:nextFacNum(),date:today,montant:Math.round(a*100)/100,pct:c.acomptePct,baseTTC:Math.round(tot*100)/100,payeLe:null,mode:''};
+    if(c.billBreak&&c.billBreak.length&&tot>0)d.facAcompte.tvaR=c.billBreak.map(t=>({rate:t.rate,part:(t.base+t.tva)/tot}));
   }else{
     if(d.facSolde){toast('Déjà facturé ('+d.facSolde.num+')');return;}
     /* solde = total du devis − acompte RÉELLEMENT facturé (et non un pourcentage recalculé : le devis ou l'acompte ont pu changer depuis) */
@@ -2804,6 +2806,7 @@ function facturerDevis(id,which){
     if(m<-0.005){alert('Le total du devis ('+eur(tot)+') est inférieur à l\'acompte déjà facturé ('+eur(d.facAcompte.montant)+').\nPas de facture de solde : il faut établir un avoir de '+eur(-m)+'.');return;}
     if(m<=0.005){toast(d.facAcompte?'Rien à facturer : l\'acompte couvre déjà le total':'Rien à facturer sur ce devis (contrat d\'entretien : il se facture depuis l\'onglet Contrats)');return;}
     d.facSolde={num:nextFacNum(),date:today,montant:Math.round(m*100)/100,total:Math.round(tot*100)/100,payeLe:null,mode:''};
+    if(c.billBreak&&c.billBreak.length&&tot>0)d.facSolde.tvaR=c.billBreak.map(t=>({rate:t.rate,part:(t.base+t.tva)/tot}));
   }
   save(LS.devis,DEVIS);renderFBloc();
   toast('🧾 Facture émise — série continue, ne pas la supprimer');
@@ -2878,10 +2881,11 @@ function printFactureDevis(d,which){
   const c=compute(d),E=P.entreprise||{},OR='#121417';
   const f=which==='acompte'?d.facAcompte:d.facSolde;if(!f){toast('Pas encore facturé');return;}
   const rows=[];
-  if(which==='acompte')rows.push(['Acompte de '+(f.pct!=null?f.pct:c.acomptePct)+' % à la commande — selon devis '+d.num+' ('+d.type+')',f.montant]);
+  const tp=(c.ctrTTC>0.005&&!c.ctrAll)?(String(d.type||'').split(' + ').filter(x=>x!=='Contrat d\'entretien').join(' + ')||'Travaux')+' (hors contrat d\'entretien, facturé à part)':d.type;
+  if(which==='acompte')rows.push(['Acompte de '+(f.pct!=null?f.pct:c.acomptePct)+' % à la commande — selon devis '+d.num+' ('+tp+')',f.montant]);
   else if(d.facAcompte){const tt=f.total!=null?f.total:Math.round(((Number(f.montant)||0)+(Number(d.facAcompte.montant)||0))*100)/100;
-    rows.push(['Travaux réalisés selon devis '+d.num+' — '+d.type,tt]);rows.push(['Acompte déjà facturé ('+d.facAcompte.num+')',-d.facAcompte.montant]);}
-  else rows.push(['Travaux réalisés selon devis '+d.num+' — '+d.type,f.montant]);
+    rows.push(['Travaux réalisés selon devis '+d.num+' — '+tp,tt]);rows.push(['Acompte déjà facturé ('+d.facAcompte.num+')',-d.facAcompte.montant]);}
+  else rows.push(['Travaux réalisés selon devis '+d.num+' — '+tp,f.montant]);
   const body=rows.map(r=>'<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
@@ -3089,7 +3093,7 @@ function delCtr(id){if(!confirm('Supprimer ce contrat ? (ses factures émises re
   CTR=CTR.filter(x=>x.id!==id);save('cp2_contrats',CTR);renderContrats();updateBadges();}
 function visiteFaite(id){const c=CTR.find(x=>x.id===id);if(!c||!c.prochaineVisite)return;
   const d=new Date(c.prochaineVisite+'T00:00:00');
-  d.setMonth(d.getMonth()+(Number(c.visites)===2?6:12));
+  d.setMonth(d.getMonth()+Math.max(1,Math.round(12/Math.max(1,Math.round(Number(c.visites)||1)))));
   c.prochaineVisite=dISO(d);save('cp2_contrats',CTR);renderContrats();updateBadges();
   toast('✅ Visite faite — prochaine le '+d.toLocaleDateString('fr-FR'));}
 /* période de facturation d'un contrat : de date anniversaire à date anniversaire quand le contrat a une date de début

@@ -34,14 +34,16 @@
     var mode=d.moMode||'detail', rows=mode==='detail'?K.taskRows(d,cfg.TASKS,cfg.DEF):[];
     var data=A.clone(d); if(cfg.noSplit&&cfg.noSplit(d)) data.splits=[];
     var b=K.base(data,ctx,{type:cfg.type,rows:rows,mode:mode,heures:d.heures,machineLabel:cfg.machineLabel,catLabel:cfg.catLabel});
-    var B=K.builder(warn);
+    var B=K.builder(warn), hfH=0;
+    /* travaux en plus de la pose (dépose chaudière, désembouage…) : en mode forfait, comptés à part (le forfait ne couvre que la pose) */
+    if(mode==='forfait'){ var hr=K.hfRows(d,cfg.TASKS,cfg.DEF); K.taskLines(hr,ctx.rate,cfg.catLabel).forEach(function(l){ l.label+=' (en plus du forfait pose)'; l.cat='mo'; B.lines.push(l); }); hfH=A.sum(hr,function(r){ return r.h; }); }
     if(cfg.PER) K.perLines(B,d,cfg.PER.filter(function(x){ return !x.when||x.when(d); }));
     if(cfg.extra) cfg.extra(B,d,warn);
     stLines(B,d,warn);
     var lines=K.insertAfterMat(b.lines,B.lines.filter(function(l){ return l.group==='Matériel'; })).concat(B.lines.filter(function(l){ return l.group!=='Matériel'; }));
     K.machineWarn(d,warn,cfg.machineWord||'Équipement'); K.legacyWarn(b.lines,warn); K.verifWarn(B,warn);
-    if(cfg.check) cfg.check(d,warn);
-    return {lines:lines,mat:(b.mat||[]).concat(B.mat),heures:b.heures,detailH:mode==='forfait'?0:b.heures,warnings:warn};
+    if(cfg.check) cfg.check(d,warn,lot,ctx);
+    return {lines:lines,mat:(b.mat||[]).concat(B.mat),heures:b.heures+hfH,detailH:b.heures+hfH,warnings:warn};
   }
   function moCfg(mod,cfg,id){ return {id:id,mod:mod,TASKS:cfg.TASKS,DEF:cfg.DEF,forfait:cfg.forfait,hist:cfg.hist,catLabel:cfg.catLabel}; }
   function perDefaults(PER,d){ var o={}; PER.forEach(function(x){ var on=typeof x.on==='function'?x.on(d):!!x.on; o[x.k]={on:on,q:x.q==null?1:x.q}; }); return o; }
@@ -69,8 +71,17 @@
     ];
     var cfg={type:'Froid commercial',machineLabel:'équipement frigorifique',machineWord:'Équipement',catLabel:null,TASKS:TASKS,DEF:DEF,PER:PER,hist:'Froid commercial',
       noSplit:function(d){ return d.groupe==='loge'; },
-      check:function(d,warn){ if(d.nature==='remplacement'&&num((d.dep||{}).kg)>0) warn.push('Fluide récupéré sur l\'ancien équipement : fiche d\'intervention (Cerfa 15497) et bordereau de suivi (BSFF, Trackdéchets)'); }};
-    function defaults(){ var d=Object.assign({nature:'neuf',groupe:'loge',machines:[K.mkMachine()],splits:[{puiss:0,liaison:'',long:0,cableInter:''}],dep:{n:1,kg:0,fluide:''},manut:0,horaires:'',
+      extra:function(B,d){ var dp=d.dep||{}; if(d.nature==='remplacement'&&num(dp.n)>0&&num(dp.deee)>0){ var p=num(dp.deee); B.raw('Frais & divers','Évacuation de l\'ancien équipement (filière DEEE)','',p,p,{},'divers'); } },
+      check:function(d,warn,lot,ctx){ var dp=d.dep||{};
+        if(d.nature==='remplacement'){
+          if(num(dp.kg)>0) warn.push('Fluide récupéré sur l\'ancien équipement : fiche d\'intervention (Cerfa 15497) et bordereau de suivi (BSFF, Trackdéchets)');
+          if(!(num(dp.n)>0)) warn.push('Remplacement : 0 équipement déposé, la dépose n\'est pas comptée');
+          else { if(!(num(dp.kg)>0)) warn.push('Remplacement : fluide à récupérer 0 kg — la récupération n\'est pas comptée (indique la charge si l\'ancien équipement en contient)');
+            if(!(num(dp.deee)>0)) warn.push('Reprise DEEE de l\'ancien équipement : 0 € compté (laisse 0 si ton distributeur la reprend gratuitement)'); }
+        }
+        if(d.groupe!=='loge') K.circuitChecks(d,warn,'Groupe '+(d.groupe==='centrale'?'sur centrale':'déporté'));
+        K.installChecks(d,warn,{noTests:true,noSupport:true,noCond:true,visite:(lot||{}).visite}); }};
+    function defaults(){ K.seedFluides(); var d=Object.assign({nature:'neuf',groupe:'loge',machines:[K.mkMachine()],splits:[{puiss:0,liaison:'',long:0,cableInter:''}],dep:{n:1,kg:0,fluide:'',deee:0},manut:0,horaires:'',
       mes:'Aucune',brasure:'Aucune',tests:'0',acces:'0',supp:0,taille:'petit',extras:[],st:[],moMode:'detail',heures:0,units:K.initUnits(MOD,DEF),custom:[]},elecDef()); d.per=perDefaults(PER,d); return d; }
     function compute(lot,ctx){
       var r=genericCompute(lot,ctx,cfg), d=lot.data;
@@ -85,7 +96,7 @@
         A.fIn('Manutention (h)','data.manut',d.manut,{t:'n',step:0.5})+A.fIn('Horaires possibles (commerce)','data.horaires',d.horaires,{full:true})+'</div>');
       h+=K.secMachines(d,i,{title:'Équipements (vitrines, meubles, armoires, groupes)',row:'Équipement',add:true});
       if(d.groupe!=='loge') h+=K.secLiaison(d);
-      if(d.nature==='remplacement') h+=K.sec('Dépose de l\'ancien équipement','<div class="frm nxk2">'+A.fIn('Équipements déposés','data.dep.n',d.dep.n,{t:'n',step:1})+A.fIn('Fluide à récupérer (kg)','data.dep.kg',d.dep.kg||'',{t:'n',step:0.01})+A.fIn('Fluide','data.dep.fluide',d.dep.fluide)+'</div>'+
+      if(d.nature==='remplacement') h+=K.sec('Dépose de l\'ancien équipement','<div class="frm nxk2">'+A.fIn('Équipements déposés','data.dep.n',d.dep.n,{t:'n',step:1})+A.fIn('Fluide à récupérer (kg)','data.dep.kg',d.dep.kg||'',{t:'n',step:0.01})+A.fIn('Fluide','data.dep.fluide',d.dep.fluide)+A.fIn('Coût reprise DEEE (€ HT)','data.dep.deee',d.dep.deee||'',{t:'n',step:1,note:'0 si reprise gratuite'})+'</div>'+
         '<div class="nxd2-hint">Ancien équipement : récupération du fluide (fiche d\'intervention + BSFF) et reprise par une filière DEEE.</div>');
       h+=K.secPer(d,i,PER.filter(function(x){ return !x.when||x.when(d); }),'Organes, régulation et accessoires');
       h+=K.secElec(d)+secSt(d,i)+K.secMes(d)+K.secExtras(d,i);
@@ -97,7 +108,7 @@
     function pdf(lot){ var d=lot.data; if(d.legacyCopy) return ''; var ms=(d.machines||[]).filter(function(m){ return m.marque||m.ref; }).map(function(m){ return esc([m.marque,m.ref].filter(Boolean).join(' ')); }), out=[];
       if(ms.length) out.push('Équipements : '+ms.join(', '));
       out.push('Groupe : '+({loge:'logé',deporte:'déporté (groupe de condensation)',centrale:'raccordement à la centrale existante'})[d.groupe]);
-      if(d.nature==='remplacement') out.push('Dépose de l\'ancien équipement : fluide récupéré et tracé (bordereau de suivi BSFF), équipement remis à une filière DEEE.');
+      if(d.nature==='remplacement'&&num((d.dep||{}).n)>0) out.push('Dépose de l\'ancien équipement'+(num((d.dep||{}).kg)>0?' : fluide récupéré et tracé (bordereau de suivi BSFF),':' :')+' équipement remis à une filière DEEE.');
       return '<div style="font-size:10.5px;color:#333;line-height:1.55">'+out.join('<br>')+'</div>'; }
     function summary(lot){ var d=lot.data, n=(d.machines||[]).length; return 'Froid commercial — '+(d.nature==='remplacement'?'remplacement':'pose')+' de '+n+' équipement'+(n>1?'s':''); }
     function fromAssistant(g,lot){ var src=lot.data||{}, d=defaults(), msg=[]; if(src.machines&&src.machines.some(function(m){ return m.marque||m.ref; })) d.machines=A.clone(src.machines); lot.data=d; lot.exclusions=exclusions();
@@ -127,9 +138,9 @@
       {k:'circ',l:'Circulateur',nom:'Circulateur classe A 25-60',q:1,cat:'hydro',on:false},
       {k:'boue',l:'Pot à boue magnétique (désemboueur)',nom:'Pot à boue magnétique (désemboueur)',q:1,cat:'hydro',on:true},
       {k:'flex',l:'Flexibles inox (paire)',nom:'Flexibles inox DN25 (paire)',q:1,u:'paire',cat:'hydro',on:true},
-      {k:'vannes',l:'Vannes d\'arrêt 1"',nom:'Vanne d\'arrêt 1/4 tour 1"',q:2,cat:'hydro',on:true},
+      {k:'vannes',l:'Vannes d\'arrêt 1" (en plus du kit)',nom:'Vanne d\'arrêt 1/4 tour 1"',q:2,cat:'hydro',on:false},
       {k:'tube',l:'Multicouche Ø26 (m)',nom:'Multicouche Ø26',q:10,u:'m',step:0.5,cat:'hydro',on:true},
-      {k:'raccords',l:'Raccords laiton divers',nom:'Raccords laiton divers (forfait)',q:1,u:'forfait',cat:'hydro',on:true},
+      {k:'raccords',l:'Raccords laiton divers (en plus du kit)',nom:'Raccords laiton divers (forfait)',q:1,u:'forfait',cat:'hydro',on:false},
       {k:'isolant',l:'Isolant tuyau (m)',nom:'Isolant tuyau 19 mm',q:10,u:'m',step:0.5,cat:'hydro',on:true},
       {k:'inhib',l:'Inhibiteur / antigel',nom:'Inhibiteur / antigel (bidon)',q:1,cat:'hydro',on:true},
       {k:'sonde',l:'Sonde extérieure / câble bus',nom:'Sonde extérieure / câble bus',q:1,cat:'posemat',on:true},
@@ -141,16 +152,21 @@
       {k:'ue',l:'Pose de l\'unité extérieure',u:'par unité',q:function(d){ return (d.machines||[]).length; }},
       {k:'hydro',l:'Pose du module hydraulique / unité intérieure',u:'par unité',q:function(d){ return d.modele==='monobloc'?0:(d.machines||[]).length; }},
       {k:'raccord',l:'Raccordement hydraulique au circuit de chauffage',u:'par installation',q:function(){ return 1; }},
-      {k:'desemb',l:'Désembouage du circuit',u:'par circuit',q:function(d){ return d.desemb?1:0; }},
-      {k:'chaud',l:'Dépose de la chaudière existante',u:'par chaudière',q:function(d){ return d.chaudiere==='depose'?1:0; }},
+      {k:'desemb',l:'Désembouage du circuit',u:'par circuit',q:function(d){ return d.desemb?1:0; },hf:true},
+      {k:'chaud',l:'Dépose de la chaudière existante',u:'par chaudière',q:function(d){ return d.chaudiere==='depose'?1:0; },hf:true},
       {k:'elec',l:'Raccordements électriques',u:'par installation',q:function(d){ return d.elecMode==='none'?0:1; }},
       {k:'regul',l:'Régulation, sondes, paramétrage',u:'par installation',q:function(){ return 1; }},
       {k:'nett',l:'Nettoyage, explications au client',u:'par chantier',q:function(){ return 1; }}
     ];
     var cfg={type:'PAC air-eau',machineLabel:'pompe à chaleur air-eau',machineWord:'PAC',TASKS:TASKS,DEF:DEF,PER:PER,forfait:'PAC air-eau',hist:'PAC air-eau',
       noSplit:function(d){ return d.modele==='monobloc'; },
-      check:function(d,warn){ var dp=deper(d); var kw=num(((d.machines||[])[0]||{}).kw); if(dp>0&&kw>0&&kw<dp*0.8) warn.push('PAC de '+A.fq(kw)+' kW pour '+A.fq(Math.round(dp*10)/10)+' kW de déperditions (repère de ton onglet Dimensionnement : 80 à 100 %) : à vérifier');
-        if(d.chaudiere==='depose') warn.push('Dépose de la chaudière : évacuation / filière à prévoir (article ou sous-traitance)'); }};
+      check:function(d,warn,lot){ var dp=deper(d); var kw=num(((d.machines||[])[0]||{}).kw); if(dp>0&&kw>0&&kw<dp*0.8) warn.push('PAC de '+A.fq(kw)+' kW pour '+A.fq(Math.round(dp*10)/10)+' kW de déperditions (repère de ton onglet Dimensionnement : 80 à 100 %) : à vérifier');
+        if(d.chaudiere==='depose') warn.push('Dépose de la chaudière : évacuation / filière à prévoir (article ou sous-traitance)');
+        var ps=function(k){ var x=PER.find(function(p){ return p.k===k; }); return K.perState(d,x).on; };
+        if(ps('kit')&&(ps('vannes')||ps('raccords'))) warn.push('Kit hydraulique (vannes + raccords) ET '+[ps('vannes')?'vannes d\'arrêt':'',ps('raccords')?'raccords laiton':''].filter(Boolean).join(' et ')+' cochés : compté deux fois si le kit les contient déjà — décoche l\'un des deux');
+        if(d.modele==='split'){ var s0=(d.splits||[])[0]||{}; if(!s0.liaison||!(num(s0.long)>0)) warn.push('PAC bi-bloc : liaison frigorifique non comptée — choisis la liaison et sa longueur');
+          if(!d.tests||d.tests==='0') warn.push('PAC bi-bloc : aucun contrôle compté (tirage au vide à prévoir sur une liaison faite sur place)'); }
+        K.installChecks(d,warn,{noTests:true,visite:(lot||{}).visite}); }};
     function deper(d){ var s=num(d.surf), h=num(d.haut)||2.5, g=num(d.G), dT=num(d.tconf||20)-num(d.tbase); if(!(s>0&&g>0)) return 0; return g*s*h*dT/1000+num(d.occEcs)*0.25; }
     function defaults(){ var d=Object.assign({modele:'monobloc',emetteurs:'radiateurs',tDepart:'',chaudiere:'aucune',ecs:'conservee',desemb:false,surf:0,haut:2.5,G:1,tbase:-7,tconf:20,occEcs:0,
       machines:[K.mkMachine({kw:0})],splits:[{puiss:0,liaison:'',long:0,cableInter:''}],mes:mesKey('PAC air-eau'),brasure:'Aucune',tests:'0',acces:'0',supp:0,taille:'moyen',extras:[],st:[],moMode:'detail',heures:0,units:K.initUnits(MOD,DEF),custom:[]},elecDef());
@@ -219,7 +235,7 @@
       {k:'evac',l:'Évacuation des condensats (m)',nom:'Tuyau condensats',q:2,u:'m',step:0.5,cat:'posemat',on:true}
     ];
     var TASKS=[
-      {k:'depose',l:'Dépose de l\'ancien chauffe-eau (vidange, évacuation)',u:'par appareil',q:function(d){ return d.depose?1:0; }},
+      {k:'depose',l:'Dépose de l\'ancien chauffe-eau (vidange, évacuation)',u:'par appareil',q:function(d){ return d.depose?1:0; },hf:true},
       {k:'pose',l:'Pose du ballon',u:'par ballon',q:function(d){ return (d.machines||[]).length; }},
       {k:'raccord',l:'Raccordements hydrauliques et condensats',u:'par ballon',q:function(d){ return (d.machines||[]).length; }},
       {k:'gaines',l:'Gaines d\'air et traversées',u:'par ballon',q:function(d){ return d.impl==='gaine'?1:0; }},
@@ -228,7 +244,8 @@
     ];
     var cfg={type:'Ballon thermodynamique',machineLabel:'ballon thermodynamique',machineWord:'Ballon',TASKS:TASKS,DEF:DEF,PER:PER,forfait:'Ballon thermodynamique',hist:'Ballon thermodynamique',noSplit:function(){ return true; },
       check:function(d,warn){ var c=cap(d), v=num(((d.machines||[])[0]||{}).litres); if(c&&v&&v<c) warn.push('Ballon de '+v+' L pour un besoin de '+(num(d.occ)*num(d.profil))+' L/jour (repère de ton onglet Dimensionnement : '+c+' L) : à vérifier');
-        if(d.depose) warn.push('Ancien chauffe-eau : évacuation en déchetterie / filière à prévoir'); }};
+        if(d.depose) warn.push('Ancien chauffe-eau : évacuation en déchetterie / filière à prévoir');
+        K.installChecks(d,warn,{noTests:true,visite:(arguments[2]||{}).visite}); }};
     function cap(d){ var b=num(d.occ)*num(d.profil); if(!(b>0)) return 0; var std=[100,150,200,250,300]; return std.find(function(c){ return c>=b; })||300; }
     function defaults(){ var d=Object.assign({impl:'ambiant',depose:true,occ:0,profil:50,piece:'',machines:[K.mkMachine({litres:0})],mes:'Aucune',brasure:'Aucune',tests:'0',acces:'0',supp:0,taille:'petit',extras:[],st:[],moMode:'detail',heures:0,units:K.initUnits(MOD,DEF),custom:[]},elecDef());
       d.per=perDefaults(PER,d); return d; }
@@ -322,7 +339,7 @@
       if(d.appoint){ mes('Appoint de fluide — main-d\'œuvre et pesée',M().appoint); if(num(d.chargeKg)>0) B.add(d.fluide,d.chargeKg,'fluide',(d.fluide||'Fluide')+' — complément de charge'); }
       if(d.pv) mes('Procès-verbal de mise en service',M().pv);
       if(d.conso&&num(M().conso)>0) B.raw('Frais & divers','Consommables de mise en service','',num(M().conso),num(M().conso)*0.6,{},'divers');
-      var hs=Math.max(0,num(d.hsup)); if(hs>0){ B.raw('Pose & main-d’œuvre','Heures supplémentaires',A.fq(hs)+' h × '+A.money(rate)+'/h',hs*rate,0,{qte:hs,unite:'h',pu:rate,mo:true},'mo'); heures+=hs; }
+      var hs=Math.max(0,num(d.hsup)); if(hs>0){ var lh=B.raw('Pose & main-d’œuvre','Heures supplémentaires',A.fq(hs)+' h × '+A.money(rate)+'/h',hs*rate,0,{qte:hs,unite:'h',pu:rate,mo:true},'mo'); lh.catLabel='Main-d’œuvre (mise en service, réglages)'; heures+=hs; }
       heures+=Math.max(0,num(d.hEst)); /* temps passé estimé (planning, gain horaire) : champ modifiable */
       if(d.appoint&&num(d.chargeKg)>0) warn.push('Complément de charge : fiche d\'intervention (Cerfa 15497) à remplir');
       if(d.posePar==='autre') warn.push('Pose faite par un autre installateur : formule tes réserves sur le devis et vérifie avec ton assureur décennale');
@@ -369,8 +386,10 @@
     function compute(lot,ctx){ var d=lot.data||{}, warn=[], B=K.builder(warn), rows=K.taskRows(d,TASKS,DEF), h=A.sum(rows,function(r){ return r.h; });
       K.taskLines(rows,ctx.rate,'Main-d’œuvre — dépose').forEach(function(l){ l.cat='mo'; B.lines.push(l); });
       if(d.deee&&d.deee.on){ var p=Math.max(0,num(d.deee.prix)); B.raw('Frais & divers','Évacuation des équipements déposés (filière DEEE)','',p,p,{},'divers'); if(!p) warn.push('Évacuation DEEE : coût à saisir (0 si reprise gratuite par ton distributeur)'); }
-      if(d.bsff&&d.bsff.on){ var q=Math.max(0,num(d.bsff.prix)); if(q>0) B.raw('Frais & divers','Traitement du fluide récupéré (bordereau BSFF)','',q,q,{},'divers'); }
       var kg=A.sum(d.equips||[],function(e){ return num(e.charge); });
+      if(d.bsff&&d.bsff.on){ var q=Math.max(0,num(d.bsff.prix)); if(q>0) B.raw('Frais & divers','Traitement du fluide récupéré (bordereau BSFF)','',q,q,{},'divers'); else if(kg>0) warn.push('Traitement du fluide : coché mais 0 € — saisis le coût (ou décoche si ton distributeur reprend la bouteille gratuitement)'); }
+      try{ var dv=(ctx&&ctx.d)||{}; if(!lot.option&&(dv.lots||[]).some(function(o){ return o!==lot&&!o.option&&o.module==='froidcom'&&o.data&&!o.data.legacyCopy&&o.data.nature==='remplacement'&&num((o.data.dep||{}).n)>0; }))
+        warn.push('Ancien équipement compté deux fois ? Le lot Froid commercial (remplacement) compte déjà sa dépose et la récupération du fluide. Garde un seul des deux : mets 0 équipement déposé dans le froid commercial, ou supprime ce lot Dépose'); }catch(e){}
       if(kg>0) warn.push('Fluide récupéré ('+A.fq(kg)+' kg) : fiche d\'intervention (Cerfa 15497) et bordereau de suivi BSFF dans Trackdéchets');
       if(!(d.equips||[]).length) warn.push('Aucun équipement à déposer');
       return {lines:B.lines,mat:[],heures:h,detailH:h,warnings:warn}; }

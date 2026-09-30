@@ -254,7 +254,7 @@
     window.compute=function(d){
       var c=orig(d);
       try{
-        if(c&&!c.franchise&&d&&d.tvaMode==='mixte'){
+        if(c&&!c.franchise&&d&&d.v!==2&&d.tvaMode==='mixte'){
           var matHT=(c.lines||[]).filter(function(l){return l.group==='Matériel';}).reduce(function(s,l){return s+l.ht;},0);
           c.tva=matHT*0.20+(c.totalHT-matHT)*0.10;
           c.totalTTC=c.totalHT+c.tva;
@@ -337,15 +337,15 @@
       rx.lastIndex=0;
     });
     /* 2. Total : HT / TVA / TTC */
-    var montant=0,rate=20,isTTC=false;
+    var montant=0,rate=20,isTTC=false,parts=null;
     if(type==='facdevis'){
-      var d=args[0],which=args[1];var c=compute(d);
+      var d=args[0],which=args[1];
       var f=which==='acompte'?d.facAcompte:d.facSolde;if(!f)return;
       montant=Number(f.montant)||0;isTTC=true;
-      rate=c.totalHT>0?(c.tva/c.totalHT*100):(Number(P.tva)||20);
+      parts=nxrgDevisParts(d,f);rate=nxrgEffRate(parts);
     }else if(type==='dep'){var cd=computeDep(curDep);montant=cd.totalHT;rate=b.tvaDep;}
     else if(type==='loc'){var l=args[0];montant=Number(l.fac&&l.fac.montant)||0;rate=b.tvaLoc;}
-    else if(type==='ctr'){var f2=args[1];montant=Number(f2&&f2.montant)||0;rate=b.tvaCtr;}
+    else if(type==='ctr'){var f2=args[1];montant=Number(f2&&f2.montant)||0;rate=nxrgCtrRate(args[0]);}
     else return; /* contrat de location : mention seule */
     if(montant<=0)return;
     var ht,tva,ttc;
@@ -355,8 +355,13 @@
     var tables=Array.prototype.slice.call(doc.querySelectorAll('table')).filter(function(t){return /Net à payer/.test(t.textContent)&&!/TVA \(/.test(t.textContent);});
     var t=tables[tables.length-1];if(!t)return;
     var td='style="text-align:right;padding:6px 8px"';
+    var tvaRows='<tr><td '+td+'>TVA ('+rateLbl+' %)</td><td '+td+'>'+eur(tva)+'</td></tr>';
+    if(parts&&parts.length>1){   /* plusieurs taux : une ligne de TVA par taux (jamais un taux « moyen » qui n'existe pas) */
+      ht=0;tva=0;tvaRows=parts.map(function(p){ var tt=montant*(Number(p.part)||0), r=Number(p.rate)||0, h=tt/(1+r/100), v=tt-h; ht+=h; tva+=v;
+        return '<tr><td '+td+'>Base HT à '+(Math.round(r*10)/10).toString().replace('.',',')+' % : '+eur(h)+' — TVA</td><td '+td+'>'+eur(v)+'</td></tr>'; }).join('');
+      ttc=montant; }
     t.innerHTML='<tr><td '+td+'>Total HT</td><td '+td+'>'+eur(ht)+'</td></tr>'
-      +'<tr><td '+td+'>TVA ('+rateLbl+' %)</td><td '+td+'>'+eur(tva)+'</td></tr>'
+      +tvaRows
       +'<tr style="background:#f1f3f5"><td style="text-align:right;padding:8px;font-weight:800">Net à payer TTC</td><td style="text-align:right;padding:8px;font-weight:800">'+eur(ttc)+'</td></tr>';
   }
 
@@ -375,6 +380,22 @@
     if(!b.applied||!b.appliedOn)return nxrgAssujetti(); /* jamais basculé via l'app : suit le paramètre courant */
     return String(dateEmission||'')>=b.appliedOn;
   }
+  /* taux unique équivalent à une répartition par taux (parts de TTC) : HT = Σ part × montant / (1 + taux) */
+  function nxrgEffRate(tvaR){ var k=0; (tvaR||[]).forEach(function(t){ k+=(Number(t.part)||0)/(1+(Number(t.rate)||0)/100); }); return k>0?(1/k-1)*100:0; }
+  /* parts de TTC par taux pour une facture de devis : figées à l'émission, sinon celles du devis (hors contrat d'entretien) */
+  function nxrgDevisParts(d,f){
+    if(f&&Array.isArray(f.tvaR)&&f.tvaR.length) return f.tvaR;
+    try{ var c=compute(d); if(c&&Array.isArray(c.billBreak)&&c.billBreak.length){ var tt=c.billBreak.reduce(function(s,t){ return s+t.base+t.tva; },0); if(tt>0) return c.billBreak.map(function(t){ return {rate:t.rate,part:(t.base+t.tva)/tt}; }); }
+      if(c&&c.totalHT>0) return [{rate:c.tva/c.totalHT*100,part:1}]; }catch(e){}
+    return [{rate:Number(P.tva)||20,part:1}];
+  }
+  function nxrgCtrRate(c){
+    var b=rg.bascule||RG_DEF.bascule, m=c&&c.tva;
+    if(m==null||m===''){ try{ var dv=(DEVIS||[]).find(function(x){ return x.id===c.devisId; }), l=dv&&(dv.lots||[]).find(function(q){ return q.id===c.lotId; }); if(l&&l.tva!=null&&l.tva!=='') m=l.tva; }catch(e){} }
+    if(m==='mixte'){ var sh=Math.max(0,Math.min(1,Number(c.tvaMat)||0)); return 20*sh+10*(1-sh); }
+    var r=Number(m); return (m!=null&&m!==''&&isFinite(r))?r:Number(b.tvaCtr);
+  }
+  window.nxrgCtrRate=nxrgCtrRate;
   function nxrgSplit(montant,rate,isTTC){
     var ht,tva;
     if(rate<=0){return{ht:montant,tva:0,ttc:montant};}
@@ -391,9 +412,8 @@
       out.push({num:num,date:date||'',client:client||'—',nature:nature,ht:s.ht,tva:s.tva,ttc:s.ttc,payeLe:payeLe||'',mode:mode||''});
     }
     (typeof DEVIS!=='undefined'?DEVIS:[]).forEach(function(d){
-      var rate=20;try{var c=compute(d);rate=c.totalHT>0&&c.tva>0?c.tva/c.totalHT*100:(Number(P.tva)||20);}catch(e){}
-      if(d.facAcompte)push(d.facAcompte.num,d.facAcompte.date,d.cNom,'Travaux — acompte devis '+d.num,d.facAcompte.montant,rate,true,d.facAcompte.payeLe,d.facAcompte.mode);
-      if(d.facSolde)push(d.facSolde.num,d.facSolde.date,d.cNom,'Travaux — devis '+d.num,d.facSolde.montant,rate,true,d.facSolde.payeLe,d.facSolde.mode);
+      if(d.facAcompte)push(d.facAcompte.num,d.facAcompte.date,d.cNom,'Travaux — acompte devis '+d.num,d.facAcompte.montant,nxrgEffRate(nxrgDevisParts(d,d.facAcompte)),true,d.facAcompte.payeLe,d.facAcompte.mode);
+      if(d.facSolde)push(d.facSolde.num,d.facSolde.date,d.cNom,'Travaux — devis '+d.num,d.facSolde.montant,nxrgEffRate(nxrgDevisParts(d,d.facSolde)),true,d.facSolde.payeLe,d.facSolde.mode);
     });
     (typeof DEP!=='undefined'?DEP:[]).forEach(function(x){
       if(!x.facNum)return;var m=0;try{m=computeDep(x).totalHT;}catch(e){}
@@ -403,7 +423,7 @@
       if(l.fac)push(l.fac.num,l.fac.date,l.cNom,'Location adiabatique '+(l.num||''),l.fac.montant,b.tvaLoc,false,l.fac.payeLe,l.fac.mode);
     });
     (typeof CTR!=='undefined'?CTR:[]).forEach(function(c){
-      (c.facs||[]).forEach(function(f){push(f.num,f.date,c.clientNom,'Contrat entretien '+(f.annee||''),f.montant,b.tvaCtr,false,f.payeLe,f.mode);});
+      (c.facs||[]).forEach(function(f){push(f.num,f.date,c.clientNom,'Contrat entretien '+(f.annee||''),f.montant,nxrgCtrRate(c),false,f.payeLe,f.mode);});
     });
     return out.sort(function(a,b2){return String(a.date).localeCompare(String(b2.date));});
   }

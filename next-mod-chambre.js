@@ -44,7 +44,7 @@
   function groups(){ return K.cat('Chambre froide',/^Groupe/); }
   function evaps(){ return K.cat('Chambre froide',/^Évaporateur/); }
   function defaults(){
-    K.seed(MOD,SEED_VER,SEED,WEB_DATE);
+    K.seed(MOD,SEED_VER,SEED,WEB_DATE); K.seedFluides();
     var d={temp:'pos',consigne:2,usage:'',entrees:'',L:3,l:2,h:2.2,ep:K.first(panels(),['Panneau sandwich 80 mm','Panneau sandwich 60 mm']),sol:'isole',
       porte:K.first(doors(),['Porte pivotante froid positif']),porteDim:'',groupeType:'monobloc',pw:0,fluide:'',use:1,
       machines:[K.mkMachine({pw:0})],evap:K.first(evaps(),['Évaporateur cubique positif']),splits:[{puiss:0,liaison:'',long:0,cableInter:''}],
@@ -55,8 +55,12 @@
     return d;
   }
   function fromLegacy(s){ var d=defaults(); d.legacyCopy=true; Object.assign(d,K.baseFromLegacy(s)); return d; }
-  function geo(d){ var L=Math.max(0,num(d.L)), l=Math.max(0,num(d.l)), h=Math.max(0,num(d.h)); var murs=2*(L+l)*h, pl=L*l, sol=d.sol==='isole'?L*l:0;
-    return {L:L,l:l,h:h,V:L*l*h,murs:murs,plafond:pl,sol:sol,m2:Math.ceil(murs+pl+sol)}; }
+  /* les panneaux se comptent sur les faces EXTÉRIEURES : dimensions intérieures + l'épaisseur des panneaux (audit du 30/09 : l'intérieur sous-comptait ~5 à 7 m²) */
+  function epM(d){ var m=/(\d+)\s*mm/.exec(String(d.ep||'')); return m?num(m[1])/1000:0; }
+  function geo(d){ var L=Math.max(0,num(d.L)), l=Math.max(0,num(d.l)), h=Math.max(0,num(d.h)), e=epM(d), iso=d.sol==='isole';
+    var Le=L>0?L+2*e:0, le=l>0?l+2*e:0, He=h>0?h+e+(iso?e:0):0;
+    var murs=2*(Le+le)*He, pl=Le*le, sol=iso?Le*le:0;
+    return {L:L,l:l,h:h,e:e,Le:Le,le:le,He:He,V:L*l*h,murs:murs,plafond:pl,sol:sol,m2:Math.ceil(murs+pl+sol-1e-9)}; }
   /* repère de l'onglet Dimensionnement (même abaque) */
   function abaque(d){ var V=geo(d).V, neg=isNeg(d); var ratio=neg?(V<=5?180:V<=10?160:V<=20?140:V<=50?120:100):(V<=5?130:V<=10?110:V<=20?95:V<=50?80:65); return {ratio:ratio,W:V*ratio*(num(d.use)||1)}; }
   var TASKS=[
@@ -98,8 +102,10 @@
     var p=d.per||{};
     if(!(p.alarme&&p.alarme.on)) warn.push('Sécurité (INRS) : alarme sonore et lumineuse en cas d\'enfermement non prévue');
     if(isNeg(d)&&!(p.soupape&&p.soupape.on)) warn.push('Chambre négative sans soupape d\'équilibrage de pression');
+    if(isSplit(d)){ var s0=(d.splits||[])[0]||{}; if(!s0.liaison||!(num(s0.long)>0)) warn.push('Groupe de condensation : liaison frigorifique non comptée — choisis la liaison et sa longueur'); K.circuitChecks(d,warn,'Groupe de condensation (circuit fait sur place)'); }
+    K.installChecks(d,warn,{noTests:true,visite:lot.visite});
     K.verifWarn(B,warn);
-    return {lines:lines,mat:(b2.mat||[]).concat(B.mat),heures:b2.heures,detailH:mode==='forfait'?0:b2.heures,warnings:warn};
+    return {lines:lines,mat:(b2.mat||[]).concat(B.mat),heures:b2.heures,detailH:b2.heures,warnings:warn};
   }
 
   /* ---------- formulaire ---------- */
@@ -130,7 +136,7 @@
     return h;
   }
   function sumBlock(lot,i){ var d=lot.data, g=geo(d), ab=abaque(d), pw=num(((d.machines||[])[0]||{}).pw);
-    return '<div class="nxd2-ok" style="margin-top:8px">Volume <b>'+A.fq(Math.round(g.V*10)/10)+' m³</b> · panneaux <b>'+g.m2+' m²</b> (murs '+A.fq(Math.round(g.murs*10)/10)+', plafond '+A.fq(Math.round(g.plafond*10)/10)+(g.sol?', sol '+A.fq(Math.round(g.sol*10)/10):'')+')</div>'+
+    return '<div class="nxd2-ok" style="margin-top:8px">Volume <b>'+A.fq(Math.round(g.V*10)/10)+' m³</b> · panneaux <b>'+g.m2+' m²</b> (murs '+A.fq(Math.round(g.murs*10)/10)+', plafond '+A.fq(Math.round(g.plafond*10)/10)+(g.sol?', sol '+A.fq(Math.round(g.sol*10)/10):'')+') — faces extérieures '+A.fq(Math.round(g.Le*100)/100)+' × '+A.fq(Math.round(g.le*100)/100)+' × '+A.fq(Math.round(g.He*100)/100)+' m'+(g.e?' (panneaux de '+A.fq(Math.round(g.e*1000))+' mm)':'')+', sans les chutes</div>'+
       '<div class="nxd2-hint">Repère de puissance (méthode de ton onglet Dimensionnement : '+ab.ratio+' W/m³'+(num(d.use)>1?' × '+A.fq(num(d.use)):'')+') : <b>'+A.fq(Math.round(ab.W))+' W</b>'+(num(d.bilanW)>0?' — ton bilan : <b>'+A.fq(Math.round(num(d.bilanW)))+' W</b> (référence)':'')+(pw>0?' — groupe retenu : '+A.fq(Math.round(pw))+' W':'')+'. La sélection fabricant fait foi.</div>'; }
   function renderPart(id,lot,i){ if(id==='cfmo'+i) return K.moBlock(lot,i,{id:'cfmo',mod:MOD,TASKS:TASKS,DEF:UNITS_DEF,forfait:'Chambre froide',hist:'Chambre froide'}); if(id==='cfsum'+i) return sumBlock(lot,i); return ''; }
   function live(lot,i){ K.liveMachines(lot,i); var s=document.getElementById('cfsum'+i); if(s) s.innerHTML=sumBlock(lot,i); var mo=document.getElementById('cfmo'+i); if(mo&&!mo.contains(document.activeElement)) mo.innerHTML=renderPart('cfmo'+i,lot,i); }

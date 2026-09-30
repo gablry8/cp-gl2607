@@ -13,6 +13,7 @@
 
   var TYPES=['Monosplit','Bisplit','Trisplit','Quadrisplit','Plusieurs monosplits','Multisplit personnalisé','PAC air-air'];
   var UI_TYPES=['Mural','Console','Cassette','Plafonnier'];
+  var WIFI='Module Wi-Fi unité intérieure (selon marque)';
   var BREAKERS=['Disjoncteur 16A','Disjoncteur 20A','Disjoncteur 32A'];
   /* temps unitaires de départ (proposés par ClimPilot, à ajuster : ils sont retenus à chaque enregistrement) */
   var UNITS_DEF={ue:2,ui:1.5,liaison:1.5,goul:0.15,pompe:0.5,elec:1,nett:0.5};
@@ -44,13 +45,15 @@
     while((d.splits||(d.splits=[])).length<tu[1]) d.splits.push(mkSplit());
     if(d.splits.length>tu[1]) d.splits=d.splits.slice(0,tu[1]);
   }
+  /* mise en service : « Plusieurs monosplits » et « PAC air-air » = une MES monosplit par groupe extérieur */
+  function mesFor(type){ if(P.mes&&P.mes[type]!=null) return type; if((type==='Plusieurs monosplits'||type==='PAC air-air')&&P.mes&&P.mes.Monosplit!=null) return 'Monosplit'; return 'Aucune'; }
   function defaults(opts){
     opts=opts||{};
     var type=opts.type&&TYPES.indexOf(opts.type)>=0?opts.type:'Monosplit';
     var d={type:type,machines:[mkMachine()],splits:[mkSplit()],groupCable:'Câble 3G2,5',groupLong:0,goulottes:[{type:'Goulotte 80x60',long:0}],
       condLong:0,support:'Aucun',pompeType:'Aucune',pompeQte:1,taille:'auto',extras:[],heures:0,moMode:'detail',
-      units:Object.assign({},UNITS_DEF,savedUnits()||{}),custom:[],acces:'0',mes:(P.mes&&P.mes[type]!=null)?type:'Aucune',brasure:'Brasure simple',supp:0,tests:'0',
-      elecMode:'auto',breakerManual:'Disjoncteur 20A',breakerQte:1,differential:false,diffQte:1,proximity:false,wifi:false,tva55:{}};
+      units:Object.assign({},UNITS_DEF,savedUnits()||{}),custom:[],acces:'0',mes:mesFor(type),brasure:'Brasure simple',supp:0,tests:'0',
+      elecMode:'auto',breakerManual:'Disjoncteur 20A',breakerQte:1,differential:false,diffQte:1,proximity:false,wifi:false,tva55:{},parGroupe:true};
     var q=quoteDefaults(type); if(q) IMPORT.forEach(function(k){ if(q[k]!=null) d[k]=A.clone(q[k]); });
     fit(d);
     return d;
@@ -89,12 +92,21 @@
         lines.splice.apply(lines,[idx,1].concat(tl));
       }
     }
+    /* plusieurs groupes extérieurs : support, mise en service, brasure et contrôle sont à faire pour chacun (l'ancien moteur les comptait une fois) */
+    var nG=(data.machines||[]).length;
+    if(data.parGroupe&&nG>1) lines.forEach(function(l){
+      if((l.group==='Matériel'&&/^Support \(/.test(l.label))||(l.group==='Mise en service & déplacement'&&/^(Mise en service|Brasure|Mise sous vide \/ contrôle)$/.test(l.label))){
+        var pu=l.pu!=null?l.pu:l.ht; l.qte=nG; l.unite='u'; l.pu=pu; l.ht=pu*nG; l.achat=(l.achat||0)*nG; l.detail=(l.detail?l.detail+' — ':'')+nG+' groupes × '+A.money(pu); } });
+    var NK=window.NXK;
+    if(data.wifi&&NK){ try{ NK.seed('split',1,[[WIFI,'Divers','unité',0,'module Wi-Fi du fabricant, selon la marque de l\'unité intérieure : prix à saisir']],'30/09/2026'); }catch(e){}
+      var B=NK.builder(warnings), wl=B.add(WIFI,Math.max(1,(data.splits||[]).length),'regul','Module Wi-Fi (pilotage connecté)'); if(wl) lines.push(wl); }
+    if(NK&&NK.installChecks) NK.installChecks(data,warnings,{visite:lot.visite});
     (data.machines||[]).forEach(function(m,j){ if(!num(m.achat)) warnings.push('Groupe '+(j+1)+(m.marque?' ('+m.marque+')':'')+' : prix d\'achat à saisir'); });
     lines.forEach(function(l){ if(/absent du catalogue/.test(l.detail||'')) warnings.push('Article « '+l.label+' » absent de la base de prix'); });
     if(mode==='forfait'&&!(P.forfait&&P.forfait[data.type])) warnings.push('Pas de forfait pose pour « '+data.type+' » : les heures × taux sont utilisées');
     if(mode!=='detail'&&!heures) warnings.push('Heures estimées à renseigner (gain horaire et planning)');
     if(String(lot.tva)==='5.5'){ var t=data.tva55||{}; if(!(t.rev&&t.classe&&t.pilot&&t.log2&&t.p12)) warnings.push('TVA 5,5 % : tous les critères ne sont pas cochés'); }
-    return {lines:lines,mat:c.mat||[],heures:heures,detailH:mode==='forfait'?0:heures,warnings:warnings};
+    return {lines:lines,mat:c.mat||[],heures:heures,detailH:heures,warnings:warnings};
   }
 
   /* ---------- formulaire ---------- */
@@ -227,7 +239,7 @@
       else if(!t) d.type='Multisplit personnalisé';
     }
   }
-  A.hook('spType',function(li){ var l=A.cur().lots[li]; if(!l) return; fit(l.data); if(P.mes&&P.mes[l.data.type]!=null) l.data.mes=l.data.type; });
+  A.hook('spType',function(li){ var l=A.cur().lots[li]; if(!l) return; fit(l.data); l.data.mes=mesFor(l.data.type); });
   A.hook('spPuiss',function(li,el,v){ var l=A.cur().lots[li]; var m=/splits\.(\d+)\.puiss/.exec(el.dataset.k||''); if(!l||!m) return; try{ l.data.splits[+m[1]].liaison=liaisonForPower(v); }catch(e){} });
 
   /* ---------- visite technique ---------- */

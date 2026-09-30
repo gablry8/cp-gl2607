@@ -114,6 +114,7 @@
   }
   /* ancien formulaire « Gainable » : copie à l'identique (le kit reste en articles), même montant */
   function fromLegacy(s){
+    if((s.machines||[]).length>1||(s.splits||[]).length>1){ var K=window.NXK, dl={legacyCopy:true,type:'Gainable'}; if(K) Object.assign(dl,K.baseFromLegacy(s)); dl.units=Object.assign({},UNITS_DEF); dl.custom=[]; dl.tva55={}; return dl; }
     var sp=(s.splits||[])[0]||{};
     return {type:'Gainable',
       machines:(s.machines||[]).slice(0,1).map(function(m){ return {marque:m.marque||'',ref:m.ref||'',achat:num(m.achat),marge:m.marge!=null?num(m.marge):35,maxCurrent:num(m.maxCurrent),kw:num(sp.puiss),debit:0,pression:0}; }),
@@ -180,15 +181,16 @@
     /* régulation */
     if(zoning(d)){
       add(N.registre,c.registres,'regul','Registre motorisé de zone');
-      if(d.centrale) add(N.centrale,1,'regul');
+      var kit=d.zoneMat==='plenum'&&d.kitInclus!==false;   /* kit fabricant : thermostats et centrale fournis avec le plénum motorisé */
+      if(d.centrale&&!kit) add(N.centrale,1,'regul');
       if(d.passerelle) add(N.passerelle,1,'regul');
-      add(d.thermo==='radio'?N.thR:N.thF,c.thermostats,'regul');
+      if(!kit) add(d.thermo==='radio'?N.thR:N.thF,c.thermostats,'regul');
       add(N.bus,A.r2(c.bus),'regul');
     }
     if(d.wifi) add(N.wifi,1,'regul');
     /* pose */
     if(d.suspension) add(N.susp,1,'posemat','Kit de suspension de l\'unité');
-    if(d.trappe==='creer') add(N.trappe,1,'posemat');
+    if(d.trappe==='creer'&&d.platrerie==='moi') add(N.trappe,1,'posemat');   /* sous-traitée : fournie par le plaquiste ; exclue : à la charge du client */
     if(d.bacAux) add(N.bac,1,'posemat','Bac auxiliaire sous l\'unité');
     if(d.secuDeb) add(N.secu,1,'posemat','Sécurité de débordement (coupure)');
     return {lines:out,mat:mat,verif:Object.keys(used)};
@@ -223,6 +225,7 @@
   function autoTaille(d){ if(d.taille&&d.taille!=='auto') return d.taille; var b=counts(d).bouches; if(!b) return 'auto'; return b<=3?'petit':(b<=6?'moyen':'gros'); }
   function compute(lot,ctx){
     var data=lot.data||{}, rate=ctx.rate, warnings=[];
+    if(data.legacyCopy&&window.NXK) return window.NXK.legacyCompute(data,ctx,'Gainable','Main-d’œuvre — gainable');
     var m0=(data.machines||[])[0]||{};
     var o={type:'Gainable',machines:A.clone(data.machines||[]).map(function(m){ return {marque:m.marque,ref:m.ref,achat:num(m.achat),marge:num(m.marge),breaker:m.breaker||'',maxCurrent:num(m.maxCurrent)}; }),
       splits:(data.liaison||num(data.long))?[{puiss:num(m0.kw)||7,liaison:data.liaison,long:num(data.long),cableInter:data.cableInter}]:[],
@@ -270,13 +273,18 @@
     if(net.verif.length) warnings.push(net.verif.length+' article(s) au prix internet indicatif (« à vérifier ») : remplace-les par tes prix pro dans la base de prix');
     var k=counts(data);
     if(zoning(data)&&!k.zones) warnings.push('Zonage choisi, mais aucune pièce n\'est cochée « zone » : pas de thermostat ni de registre chiffré');
+    if(zoning(data)&&data.zoneMat==='plenum'&&data.kitInclus!==false) warnings.push('Plénum motorisé : thermostats et centrale comptés dans le kit (non facturés à part). Vérifie ta référence ; décoche « inclus dans le kit » s\'ils sont vendus séparément. La passerelle machine est comptée à part : vérifie qu\'elle n\'est pas déjà fournie');
+    if((data.pieces||[]).some(function(p){ return num(p.bouches)>0; })&&(data.extras||[]).some(function(x){ return x.nom&&num(x.qte)>0&&/^(Gaine|Grille|Plénum|Diffuseur)/i.test(x.nom); }))
+      warnings.push('Réseau en double ? Des gaines, grilles ou plénums sont dans les articles ET calculés pièce par pièce : retire les articles de l\'ancien kit');
+    if(num(data.long)>=10) warnings.push('Liaison de '+A.fq(num(data.long))+' m : vérifie la longueur préchargée (notice) ; au-delà, ajoute le complément de fluide');
+    if(window.NXK&&window.NXK.installChecks) window.NXK.installChecks(data,warnings,{visite:lot.visite});
     if(!zoning(data)||data.zoneMat!=='plenum'){ var pq=Math.max(1,num(data.plenumQte)||1); if(data.plenum===N.plenum&&k.bouches>6*pq) warnings.push(k.bouches+' bouches pour '+pq+' plénum(s) de 3 à 6 piquages : vérifie le nombre de sorties'); }
     var deb=num(m0.debit), sd=A.sum(data.pieces||[],function(p){ return num(p.debit); });
     if(deb>0&&sd>0&&(sd>deb*1.1||sd<deb*0.7)) warnings.push('Somme des débits des pièces ('+A.fq(Math.round(sd))+' m³/h) éloignée du débit nominal de l\'unité ('+A.fq(Math.round(deb))+' m³/h) : à vérifier avec la fiche fabricant');
     if(mode==='forfait'&&!(P.forfait&&P.forfait.Gainable)) warnings.push('Pas de forfait pose « Gainable » : les heures × taux sont utilisées');
     if(mode!=='detail'&&!heures) warnings.push('Heures estimées à renseigner (gain horaire et planning)');
     if(String(lot.tva)==='5.5'){ var t=data.tva55||{}; if(!(t.rev&&t.classe&&t.pilot&&t.log2&&t.p12)) warnings.push('TVA 5,5 % : tous les critères ne sont pas cochés'); }
-    return {lines:lines,mat:(c.mat||[]).concat(net.mat),heures:heures,detailH:mode==='forfait'?0:heures,warnings:warnings};
+    return {lines:lines,mat:(c.mat||[]).concat(net.mat),heures:heures,detailH:heures,warnings:warnings};
   }
 
   /* ---------- formulaire ---------- */
@@ -286,6 +294,7 @@
   function btn(lbl,act,i,extra,cls){ return '<button type="button" class="'+(cls||'btn-ghost btn-sm')+'" onclick="nxd2.act(\''+act+'\','+i+(extra!=null?','+extra:'')+')">'+lbl+'</button>'; }
   function pAchat(nom){ var p=pr(nom); if(!p) return nom&&nom!=='Aucun'?'⚠️ absent de la base':''; var u=0; try{ u=venteOf(nom,p.marge); }catch(e){} return (num(p.achat)?A.money(u)+' / '+esc(p.unite):'prix d\'achat à saisir')+(p.verif?' · à vérifier':''); }
   function render(lot,i){
+    if(lot.data&&lot.data.legacyCopy&&window.NXK) return window.NXK.legacyRender(lot.data,i,'gainable (plusieurs unités)',false);
     var d=lot.data, h='', k=counts(d), pn=names(function(){ return true; });
     if(!seeded()) seed();
     /* installation */
@@ -340,6 +349,7 @@
     /* régulation */
     var zh='<div class="frm">'+A.fSel('Régulation','data.regul',d.regul,[['thermostat','Thermostat unique (commande de l\'unité)'],['zonage','Zonage pièce par pièce']],{re:'lot'})+
       (zoning(d)?A.fSel('Matériel de zonage','data.zoneMat',d.zoneMat,[['registres','Registres motorisés sur les gaines'],['plenum','Plénum motorisé (kit fabricant)']],{re:'lot'})+
+        (d.zoneMat==='plenum'?A.fChk('Thermostats et centrale inclus dans le kit','data.kitInclus',d.kitInclus!==false,{re:'lot'}):'')+
         A.fSel('Thermostats','data.thermo',d.thermo,[['filaire','Filaires'],['radio','Radio']],{re:'#gasum'+i})+
         A.fIn('Câble bus (m)','data.cableBus',d.cableBus,{t:'n',step:1,ph:'auto : '+k.busAuto+' m',note:'vide = estimation'}):'')+'</div>'+
       (zoning(d)?A.fChk('Centrale de zonage','data.centrale',d.centrale)+A.fChk('Passerelle de communication avec l\'unité','data.passerelle',d.passerelle)+A.fChk('Clapet de délestage (bypass)','data.bypass',d.bypass):'')+
@@ -505,6 +515,7 @@
 
   /* ---------- PDF ---------- */
   function pdf(lot){
+    if(lot.data&&lot.data.legacyCopy) return '';
     var d=lot.data, k=counts(d), ps=(d.pieces||[]).filter(function(p){ return num(p.bouches)>0; }), h='';
     var td='text-align:left;padding:3px 6px;border-top:1px solid #eef1f5';
     if(ps.length){
@@ -521,6 +532,7 @@
     return h;
   }
   function summary(lot){
+    if(lot.data&&lot.data.legacyCopy) return 'Gainable';
     var d=lot.data, k=counts(d), m=(d.machines||[])[0]||{};
     return 'Gainable — '+(d.pieces||[]).length+' pièce'+((d.pieces||[]).length>1?'s':'')+', '+k.bouches+' bouche'+(k.bouches>1?'s':'')+(zoning(d)?', zonage '+k.zones+' zone'+(k.zones>1?'s':''):'')+((m.marque||m.ref)?' ('+((m.marque||'')+' '+(m.ref||'')).trim()+')':'');
   }

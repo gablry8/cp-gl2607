@@ -76,7 +76,7 @@
     /* contrôles */
     if(!(d.equips||[]).length) warn.push('Aucun équipement : ajoute le parc à entretenir');
     (d.equips||[]).forEach(function(e,j){ var lk=leak(e); if(lk.m==null) warn.push('Équipement '+(j+1)+' : '+lk.txt); else if(lk.m>0&&d.format==='contrat'&&12/lk.m>v) warn.push('Équipement '+(j+1)+' : contrôle d\'étanchéité '+lk.txt.replace(/ \(.*$/,'')+' — prévois '+(12/lk.m)+' visites par an (ou des passages dédiés)'); });
-    try{ var cur=A.cur(); if(d.format==='contrat'&&cur&&cur.lots&&cur.lots.indexOf(lot)>=0&&(Math.round(num(cur.nbDepl))||1)<v&&cur.zone!=='Aucun') warn.push('Déplacements : '+(Math.round(num(cur.nbDepl))||1)+' compté(s) pour '+v+' visites par an (onglet Client & chantier)'); }catch(e){}
+    try{ var dv=(ctx&&ctx.d)||A.cur(); if(d.format==='contrat'&&!lot.option&&dv&&(Math.round(num(dv.nbDepl))||1)<v&&dv.zone!=='Aucun') warn.push('Déplacements : '+(Math.round(num(dv.nbDepl))||1)+' compté(s) pour '+v+' visites par an — chaque visite est un déplacement (onglet Client & chantier)'); }catch(e){}
     return {lines:B.lines,mat:B.mat,heures:heures,detailH:heures,warnings:warn};
   }
 
@@ -87,7 +87,7 @@
       K.sec('Main-d\'œuvre','<div class="frm">'+A.fSel('Mode','data.moMode',d.moMode,[['forfait','Forfait'],['heures','Heures × taux']],{re:'lot'})+A.fIn('Heures','data.heures',d.heures,{t:'n',step:0.5})+'</div>');
     var u=K.units(d,UNITS_DEF), cur=A.cur()||{};
     h+=K.sec('Formule','<div class="frm nxk2">'+A.fSel('Formule','data.format',d.format,[['contrat','Contrat annuel'],['visite','Visite ponctuelle']],{re:'lot'})+
-      (d.format==='contrat'?A.fIn('Visites par an','data.visites',d.visites,{t:'n',step:1,min:1,re:'lot'})+A.fIn('Première visite prévue','data.premiere',d.premiere,{ph:'AAAA-MM-JJ'}):'')+
+      (d.format==='contrat'?A.fIn('Visites par an','data.visites',d.visites,{t:'n',step:1,min:1,re:'lot',on:'enVisites'})+A.fIn('Première visite prévue','data.premiere',d.premiere,{ph:'AAAA-MM-JJ'}):'')+
       A.fIn('Dégressivité équipements suivants (%)','data.degr',d.degr,{t:'n',step:5,note:'0 = même temps pour chacun'})+'</div>'+
       (d.format==='contrat'&&(Math.round(num(cur.nbDepl))||1)!==Math.max(1,Math.round(num(d.visites))||1)?'<div class="nxd2-hint">Chaque visite est un déplacement : '+K.btn('Compter '+Math.max(1,Math.round(num(d.visites))||1)+' déplacement(s)','alignDepl',i)+'</div>':''));
     /* parc */
@@ -183,6 +183,10 @@
     if(dv.ctrFaits.indexOf(k)<0) dv.ctrFaits.push(k);
     try{ if(typeof cur!=='undefined'&&cur&&cur.id===dv.id){ if(!Array.isArray(cur.ctrFaits)) cur.ctrFaits=[]; if(cur.ctrFaits.indexOf(k)<0) cur.ctrFaits.push(k); } }catch(e){}
   }
+  /* devis qui ne contient que des contrats : autant de déplacements que de visites (le plus grand nombre de visites) */
+  A.hook('enVisites',function(li){ try{ var c=A.cur(); if(!c) return; var real=(c.lots||[]).filter(function(l){ return !l.option; });
+    if(!real.length||!real.every(function(l){ return l.module===MOD&&l.data&&!l.data.legacyCopy&&l.data.format==='contrat'; })) return;
+    var mx=Math.max.apply(null,real.map(function(l){ return Math.max(1,Math.round(num(l.data.visites))||1); })); if(mx>=1) c.nbDepl=mx; }catch(e){} });
   function syncContracts(){
     var made=0, flagged=0, news=[];
     try{
@@ -201,6 +205,7 @@
           var t0=(d.equips||[])[0]?d.equips[0].type:'clim', part=dv.cType!=='Professionnel';
           var o={id:cid,clientNom:dv.cNom||'',type:CTYPE[t0]||'Climatisation',prix:Math.round(((e.ht||0)+(e.commonShare||0))*100)/100,
             visites:Math.max(1,Math.round(num(d.visites))||1),prochaineVisite:first,actif:true,facs:[],devisId:dv.id,lotId:l.id,debut:debut,fin:fin,reconduction:!!d.reconduction,particulier:part,
+            tva:(l.tva!=null&&l.tva!=='')?String(l.tva):String(P.tva),tvaMat:(function(){ var m=A.sum((e.lines||[]).filter(function(q){ return q.group==='Matériel'; }),function(q){ return q.ht; }); return e.ht>0?Math.round(m/e.ht*1000)/1000:0; })(),
             notes:'Contrat issu du devis n° '+(dv.num||'')+' — '+(d.equips||[]).map(function(q){ return [TLAB[q.type],q.marque,q.modele].filter(Boolean).join(' '); }).join(' ; ')};
           CTR.push(o); made++;
           news.push({dv:dv,k:k,o:o,task:(part&&d.reconduction)?{title:'Contrat d\'entretien '+(dv.cNom||'')+' : informer par écrit de la possibilité de ne pas reconduire (échéance '+new Date(fin+'T00:00:00').toLocaleDateString('fr-FR')+', art. L215-1)',
@@ -236,7 +241,7 @@
     isLegacyType:function(t){ return t==='Maintenance'; },
     remember:K.rememberUnits(UNITS_DEF), fromAssistant:fromAssistant, assistant:ASSIST,
     common:function(){ return {prepH:0,achatH:0,savPct:0}; },
-    fees:function(lot){ var d=(lot&&lot.data)||{}; return d.legacyCopy?{}:{commande:!!(d.usure&&d.usure.incluses)}; },
+    fees:function(lot){ var d=(lot&&lot.data)||{}, p=!!(d.usure&&d.usure.incluses&&num(d.usure.budget)>0); return d.legacyCopy?{}:{commande:p,achat:p}; },
     _leak:leak, UNITS_DEF:UNITS_DEF, sync:syncContracts
   });
 })();

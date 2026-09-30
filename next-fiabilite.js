@@ -76,7 +76,7 @@
     }; w._nxf=true; window[fn]=w;
   }
   /* 5. dupliquer un devis ne recopie ni ses factures, ni sa signature, ni son suivi */
-  var RESET=['facAcompte','facSolde','signature','signLink','sentAt','relances','datePlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits'];
+  var RESET=['facAcompte','facSolde','signature','signLink','sentAt','relances','datePlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv'];
   function guardDup(){
     var o=window.dupDevis; if(typeof o!=='function'||o._nxf) return;
     var w=function(id){
@@ -175,9 +175,40 @@
     try{ var n=0; (DEP||[]).forEach(function(x){ if(x&&x.facNum&&!frozen(x)){ x.facFig=freezeOf(x,{migre:true}); n++; } }); if(n) save(LS.dep,DEP); }catch(e){}
   }
   window.nxfDepFrozen=frozen;
+
+  /* 8. le montant envoyé au client est gardé (figEnv). Si, au moment de facturer, le devis donne autre chose
+        (modifié après l'envoi, tarifs changés entre-temps, calcul corrigé par une mise à jour), ClimPilot le dit
+        au lieu de facturer en silence un autre montant que celui que le client a vu. */
+  function figReady(d){ if(!d||typeof window.compute!=='function') return false; if(d.v!==2) return true; var M=(window.NXD2&&window.NXD2.modules)||{}; return (d.lots||[]).length>0&&(d.lots||[]).every(function(l){ return !!M[l.module]; }); }
+  function figOf(d){ var c=window.compute(cl(d)), b=typeof window.nxBillTotal==='function'?window.nxBillTotal(d,c):c.totalTTC; return {ht:Math.round(c.totalHT*100)/100,ttc:Math.round(c.totalTTC*100)/100,bill:Math.round(b*100)/100}; }
+  function stampFig(d){
+    if(!d) return false;
+    if((d.statut==='brouillon'||d.statut==='verifier'||d.statut==='pret')&&d.figEnv&&!d.facAcompte&&!d.facSolde){ delete d.figEnv; return true; }   /* repassé en préparation : la prochaine version envoyée fera foi */
+    if(d.statut!=='envoye'&&d.statut!=='accepte') return false;
+    var f=d.figEnv, sl=(d.signLink&&Number(d.signLink.at))||0;
+    if(f&&!(sl>Number(f.at||0))) return false;            /* déjà gardé ; un nouveau lien de signature = nouvelle version envoyée */
+    if(!figReady(d)) return false;
+    try{ d.figEnv=Object.assign(figOf(d),{at:Date.now(),statut:d.statut}); return true; }catch(e){ return false; }
+  }
+  function stampAll(){ try{ var n=0; (DEVIS||[]).forEach(function(d){ if(stampFig(d)) n++; }); if(n) save(LS.devis,DEVIS); return n; }catch(e){ return 0; } }
+  window.nxfStampFig=stampAll;
+  /* appelé par facturerDevis : true = on peut facturer ce montant */
+  window.nxFigCheck=function(d,tot){
+    try{ stampFig(d); var f=d&&d.figEnv; if(!f||Math.abs(Number(tot)-Number(f.bill))<=0.01) return true;
+      var dt=new Date(Number(f.at)).toLocaleDateString('fr-FR'), e=function(x){ return (typeof eur==='function')?eur(x):(Math.round(x*100)/100)+' €'; };
+      return confirm('Attention : ce devis a été '+(f.statut==='accepte'?'accepté par':'envoyé à')+' ton client pour '+e(f.bill)+' ('+dt+').\nIl donne maintenant '+e(tot)+' (devis modifié ou tarifs changés depuis).\n\nOK = facturer '+e(tot)+'\nAnnuler = ne rien facturer et vérifier le devis d\'abord');
+    }catch(err){ return true; }
+  };
+  function guardFig(tries){
+    tries=tries||0;
+    var g=window.go; if(typeof g==='function'&&!g._nxfig){ var wg=function(){ try{ stampAll(); }catch(e){} return g.apply(this,arguments); }; wg._nxfig=true; Object.keys(g).forEach(function(k){ wg[k]=g[k]; }); window.go=wg; }
+    var n=window.nxd2; if(n){ ['save','statut','sign'].forEach(function(k){ var o=n[k]; if(typeof o!=='function'||o._nxfig) return; var w=function(){ var r=o.apply(this,arguments); try{ setTimeout(stampAll,0); }catch(e){} return r; }; Object.keys(o).forEach(function(q){ w[q]=o[q]; }); w._nxfig=true; n[k]=w; }); }
+    else if(tries<30) setTimeout(function(){ guardFig(tries+1); },300);
+  }
   function boot(){ try{ normalize(); window.checkBackup&&window.checkBackup();
     guardDel('delDevis','devis','Devis'); guardDel('delDep','dep','Intervention'); guardDel('delLoc','loc','Location'); guardDel('delCtr','ctr','Contrat'); guardDup(); guardFacNum(); }catch(e){}
-    try{ guardDepFreeze(); }catch(e){} }
+    try{ guardDepFreeze(); }catch(e){}
+    try{ guardFig(0); setTimeout(stampAll,3000); }catch(e){} }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,0); }); else setTimeout(boot,0);
   /* la session cloud arrive un peu après le démarrage */
   var tries=0, iv=setInterval(function(){ tries++; if(cloudOn()||tries>30){ clearInterval(iv); try{ window.checkBackup&&window.checkBackup(); }catch(e){} } },1000);
