@@ -42,10 +42,15 @@
     }
     d.fl=d.fl||{}; d.diag=d.diag||{};
     var B=K.builder(warn), marg=num((P.dep||{}).margeP)||40;
-    (d.pieces||[]).forEach(function(p){ if(!p.nom||!(num(p.qte)>0)) return; B.add(p.nom,p.qte,'pieces',null,{achat:num(p.achat)>0?num(p.achat):null,marge:K.pr(p.nom)?null:marg,unite:'u'}); });
+    var PC=(d.pieces||[]).filter(function(p){ return p.nom&&num(p.qte)>0; });
+    PC.forEach(function(p){ B.add(p.nom,p.qte,'pieces',null,{achat:num(p.achat)>0?num(p.achat):null,marge:K.pr(p.nom)?null:marg,unite:'u',pu:num(p.vente)>0?num(p.vente):null}); });
     var fo=circuitOpen(d);
-    if(fo&&d.fl.deshy) B.add('Filtre déshydrateur',1,'pieces');
+    /* déshydrateur : pas en double si Gabriel l'a déjà mis dans les pièces */
+    var dhManual=PC.some(function(p){ return /d[ée]shydrat/i.test(p.nom); });
+    if(fo&&d.fl.deshy&&!dhManual) B.add('Filtre déshydrateur',1,'pieces');
     if(num(d.fl.charge)>0) B.add(d.fl.nom,d.fl.charge,'fluide',(d.fl.nom||'Fluide')+' — recharge');
+    var flPiece=PC.filter(function(p){ return /^Fluide /i.test(p.nom); });
+    if(flPiece.length&&num(d.fl.charge)>0) warn.push('Fluide compté deux fois ? « '+flPiece[0].nom+' » est dans les pièces ET en recharge ('+A.fq(num(d.fl.charge))+' kg) : garde-le à un seul endroit');
     /* main-d'œuvre */
     var u=K.units(d,UNITS_DEF), mo=[];
     (d.mo||[]).forEach(function(r){ var h=Math.max(0,num(r.h)); if(h>0) mo.push({l:r.l||'Main-d’œuvre',h:h}); });
@@ -60,14 +65,27 @@
     if(pct>0&&moHT>0){ var lm=B.raw('Pose & main-d’œuvre','Majoration '+(d.maj==='soir'?'soir / samedi':'dimanche / jour férié')+' ('+A.fq(pct)+' %)','',moHT*pct/100,0,{},'mo'); lm.catLabel='Main-d’œuvre — réparation'; }
     if(d.fl.vide&&num((P.tests||{}).vide)>0) B.raw('Mise en service & déplacement','Tirage au vide','',num(P.tests.vide),0,{},'mes');
     if(d.fl.azote&&num((P.tests||{}).azote)>0) B.raw('Mise en service & déplacement','Test azote (mise en pression)','',num(P.tests.azote),0,{},'mes');
-    if(d.conso){ var cv=num((P.conso||{}).petit); if(cv>0) B.raw('Frais & divers','Consommables (petit chantier)','visserie, colliers, nettoyant…',cv,cv*0.6,{},'divers'); }
-    if(d.diag.deduire&&num(d.diag.montant)>0) B.raw('Frais & divers','Diagnostic déjà facturé (déduit)','',-num(d.diag.montant),0,{},'deduc');
+    /* plusieurs lots de réparation dans le même devis (2 unités sur le même site) : consommables et déduction du diagnostic une seule fois */
+    var before=((ctx.d&&ctx.d.lots)||[]).slice(0,ctx.index||0).filter(function(q){ return q&&q.module===MOD&&!q.option&&q.data&&!q.data.legacyCopy; });
+    var consoDone=before.some(function(q){ return q.data.conso; }), diagDone=before.some(function(q){ return q.data.diag&&q.data.diag.deduire&&num(q.data.diag.montant)>0; });
+    if(d.conso&&!lot.option&&consoDone) warn.push('Consommables déjà comptés dans un lot de réparation précédent : pas comptés une 2e fois');
+    else if(d.conso){ var cv=num((P.conso||{}).petit); if(cv>0) B.raw('Frais & divers','Consommables (petit chantier)','visserie, colliers, nettoyant…',cv,cv*0.6,{},'divers'); }
+    if(d.diag.deduire&&num(d.diag.montant)>0){
+      if(!lot.option&&diagDone) warn.push('Diagnostic déjà déduit dans un lot précédent : pas déduit une 2e fois');
+      else { var fd=d.fromDep||{}; B.raw('Frais & divers','Diagnostic déjà facturé'+(fd.facNum?' ('+fd.facNum+(fd.date?' du '+new Date(fd.date+'T00:00:00').toLocaleDateString('fr-FR'):'')+')':'')+' — déduit','',-num(d.diag.montant),0,{},'deduc');
+        if(!fd.facNum) warn.push('Déduction d\'un diagnostic : aucune facture d\'intervention liée à ce devis — vérifie qu\'il a bien été facturé'); }
+    }
     /* contrôles */
     if(!(d.pieces||[]).some(function(p){ return p.nom&&num(p.qte)>0; })&&!heures) warn.push('Rien à chiffrer : ajoute les pièces et/ou la main-d\'œuvre');
     (d.pieces||[]).forEach(function(p){ if(p.nom&&num(p.qte)>0&&!K.pr(p.nom)&&!(num(p.achat)>0)) warn.push('Pièce « '+p.nom+' » : prix d\'achat à saisir'); });
     if(d.certitude==='confirmer') warn.push('Cause « à confirmer » : le devis le dit au client ; prévois le cas où le diagnostic change');
     if(fo) warn.push('Manipulation de fluide : fiche d\'intervention (Cerfa 15497) à remplir le jour de l\'intervention');
     if(num(d.fl.recup)>0&&!num(d.fl.charge)) warn.push('Fluide récupéré sans recharge prévue : vérifie la quantité à recharger');
+    /* circuit ouvert : le vide et l'essai d'étanchéité ne sont facturés que s'ils sont cochés */
+    var brase=PC.some(function(p){ return /^(compresseur|d[ée]tendeur|filtre d[ée]shydrat|d[ée]shydrat|vanne|[ée]vaporateur|condenseur|voyant|bouteille)/i.test(p.nom)&&!/moteur|ventil|carte|sonde|capteur|bobine|condensat/i.test(p.nom); });
+    if((fo||brase)&&(!d.fl.vide||!d.fl.azote)) warn.push('Circuit ouvert'+(brase&&!fo?' (pièce frigorifique remplacée)':'')+' : '+[!d.fl.azote?'essai d\'étanchéité à l\'azote':'',!d.fl.vide?'tirage au vide':''].filter(Boolean).join(' et ')+' non compté'+((!d.fl.vide&&!d.fl.azote)?'s':'')+' — coche-les si tu les fais, sinon ils ne sont pas facturés');
+    if(num(d.fl.recherche)>0&&!(num(d.fl.charge)>0)) warn.push('Recherche de fuite sans recharge prévue : pense au fluide à remettre');
+    if(brase&&!fo) warn.push('Pièce frigorifique remplacée sans fluide récupéré ni rechargé : renseigne la partie « fluide » (récupération / recharge)');
     K.verifWarn(B,warn);
     return {lines:B.lines,mat:B.mat,heures:heures,detailH:heures,warnings:warn};
   }
@@ -92,6 +110,7 @@
       var q='data.pieces.'+j+'.', inBase=!!K.pr(p.nom);
       return '<div class="frm nxk2" style="align-items:end;margin-bottom:6px;border-bottom:1px solid var(--line,#e3e8ef);padding-bottom:6px">'+A.fIn('Pièce','data.pieces.'+j+'.nom',p.nom,{list:'nxdpPieceDL',re:'lot',full:true})+
         A.fIn('Quantité',q+'qte',p.qte,{t:'n',step:1})+A.fIn(inBase?'Achat HT (vide = base)':'Prix d\'achat HT (€)',q+'achat',p.achat||'',{t:'n',step:0.01})+
+        A.fIn('Vente HT / u (vide = calculée)',q+'vente',p.vente||'',{t:'n',step:0.01})+
         A.fIn('Délai de livraison',q+'delai',p.delai,{ph:'ex. 48 h, 1 semaine'})+'<div class="calc">'+(inBase?esc(K.pInfo(p.nom)):(num(p.achat)?'vente '+A.money((function(){ try{ return priceVente(num(p.achat),num((P.dep||{}).margeP)||40); }catch(err){ return 0; } })())+' (marge pièces dépannage)':'prix à saisir'))+'</div>'+
         '<div>'+K.btn('🗑','delPiece',i,j,'iconbtn d')+'</div></div>';
     }).join('');
@@ -113,7 +132,7 @@
     h+=K.sec('Diagnostic déjà facturé',A.fChk('Déduire le diagnostic si la réparation est acceptée','data.diag.deduire',dg.deduire,{re:'lot'})+(dg.deduire?'<div class="frm">'+A.fIn('Montant à déduire (€ HT)','data.diag.montant',dg.montant,{t:'n',step:1})+'</div>':''));
     h+=K.sec('Conditions','<div class="frm">'+A.fIn('Garantie pièces et main-d\'œuvre (imprimée si remplie)','data.garantie',d.garantie,{full:true,ph:'ex. pièces : garantie fabricant ; main-d\'œuvre : 3 mois'})+'</div>'+A.fChk('Consommables (forfait petit chantier : '+A.money((P.conso||{}).petit)+')','data.conso',d.conso)+
       '<div class="row-actions" style="margin-top:8px"><button type="button" class="btn-ghost btn-sm" onclick="nxd2.altLot('+i+',\'Solution 2 — remplacement\')">＋ Ajouter une 2e solution (en option)</button></div>'+
-      '<div class="nxd2-hint">La 2e solution (remplacer au lieu de réparer, par exemple) est chiffrée à part : le client coche celle qu\'il signe.</div>');
+      '<div class="nxd2-hint">La 2e solution (remplacer au lieu de réparer, par exemple) est chiffrée à part, hors total ; le PDF donne le total du devis si elle est retenue. Si le client la choisit : bouton « Retenir cette solution » sur son lot (elle remplace l\'autre, jamais les deux).</div>');
     return h;
   }
   function live(lot,i){}
@@ -181,15 +200,46 @@
   var ASSIST={type:'Dépannage',consigne:'Devis de type "Dépannage" (réparation à faire accepter, pas un bon d\'intervention) : ajoute payload.depannage = {equipement:{type, marque, modele, fluide, charge}, symptome, constat, mesures:{hp, bp, tAsp, tLiq, sh, sr, intens, tension}, cause, certitude: "certaine"|"probable"|"confirmer", pieces:[{nom (valeur exacte de la base si elle existe), qte, achat (si dit), delai}], fluide:{nom (article « Fluide … » de la base), recupere_kg, recharge_kg}, heures, majoration: "soir"|"dim"}. "certaine" uniquement si Gabriel a mesuré ou constaté ; sinon "probable" ou "confirmer".'};
 
   /* ---------- bon d'intervention → devis de réparation ---------- */
+  /* Fiabilité (audit du 30/09) : rien n'est facturé deux fois entre l'intervention et le devis de réparation.
+     - la fiche ouverte est d'abord enregistrée (une pièce ajoutée sans enregistrer n'est plus perdue) ;
+     - intervention déjà facturée : ses pièces ne sont PAS reprises (elles sont sur la facture) ;
+     - intervention pas encore facturée : ses pièces passent dans le devis et, si Gabriel l'accepte, sont retirées de l'intervention
+       (listées dans ses notes) ; le fluide va dans la partie « fluide » (recharge) et non en pièce ;
+     - l'intervention garde le lien vers son devis : un 2e clic rouvre le même devis au lieu d'en créer un autre. */
+  function fmtD(iso){ return iso?new Date(iso+'T00:00:00').toLocaleDateString('fr-FR'):'—'; }
   window.nxdpFromDep=function(id){
     try{
-      try{ if(typeof formToDep==='function'&&window._curView==='depform') formToDep(); }catch(e){}
-      var x=(DEP||[]).find(function(q){ return q.id===id; })||(typeof curDep!=='undefined'&&curDep&&curDep.id===id?curDep:null); if(!x) return;
-      var d=NXD2.newDevis(MOD,{}), l=d.lots[0].data;
+      var open=window._curView==='depform'&&typeof curDep!=='undefined'&&curDep&&curDep.id===id;
+      if(open){ try{ window.saveDep(); }catch(e){} }
+      var x=(DEP||[]).find(function(q){ return q.id===id; })||(open?curDep:null); if(!x) return;
+      var prev=x.devisRep&&(DEVIS||[]).find(function(q){ return q.id===x.devisRep; });
+      if(prev&&confirm('Un devis de réparation existe déjà pour cette intervention ('+(prev.num||'')+').\nOK : l\'ouvrir.  Annuler : en préparer un autre.')){ NXD2.open(prev,{tab:'lots'}); return; }
+      var d=NXD2.newDevis(MOD,{}), l=d.lots[0].data, info=[];
       ['cNom','cTel','cMail','cType','cAdr','cVille','cSiren'].forEach(function(k){ if(x[k]) d[k]=x[k]; }); if(x.zone) d.zone=x.zone;
-      l.constat=x.desc||''; l.pieces=(x.pieces||[]).filter(function(p){ return p.nom; }).map(function(p){ return {nom:p.nom,qte:num(p.qte)||1,achat:num(p.achat),delai:''}; });
-      d.notes='Devis établi après l\'intervention du '+(x.date?new Date(x.date+'T00:00:00').toLocaleDateString('fr-FR'):'—')+(x.facNum?' (facture '+x.facNum+')':'')+'.';
-      NXD2.derive(d); NXD2.open(d,{tab:'lots',dirty:true,banner:'Devis de réparation préparé depuis l\'intervention : complète le diagnostic, la cause et les heures, puis enregistre.'});
+      l.constat=x.desc||'';
+      var fig=null; try{ fig=x.facNum?computeDep(x):null; }catch(e){}
+      l.fromDep={id:x.id,date:x.date||'',facNum:x.facNum||'',mo:fig?Math.round((num(fig.mo))*100)/100:0};
+      var ps=(x.pieces||[]).filter(function(p){ return p.nom&&num(p.qte)>0; });
+      if(x.facNum){
+        if(ps.length) info.push('pièces de l\'intervention non reprises : elles sont déjà sur la facture '+x.facNum);
+        if(fig&&num(fig.mo)>0){ l.diag.montant=Math.round(num(fig.mo)*100)/100; info.push('diagnostic facturé ('+x.facNum+', main-d\'œuvre '+A.money(num(fig.mo))+') : à déduire ou non, en bas du lot'); }
+      } else if(ps.length){
+        ps.forEach(function(p){
+          if(/^Fluide /i.test(p.nom)&&K.pr(p.nom)&&!(num(l.fl.charge)>0)){ l.fl.nom=p.nom; l.fl.charge=num(p.qte); return; }
+          l.pieces.push({nom:p.nom,qte:num(p.qte),achat:num(p.achat),vente:num(p.vente)>0?num(p.vente):'',delai:''});
+        });
+        if(confirm('Les pièces de l\'intervention ('+ps.map(function(p){ return p.nom+' ×'+A.fq(num(p.qte)); }).join(', ')+') passent dans le devis de réparation.\nLes retirer de l\'intervention pour qu\'elles ne soient pas facturées deux fois ? (conseillé)')){
+          var dd=DEP.find(function(q){ return q.id===x.id; })||x;
+          dd.notes=((dd.notes||'')+(dd.notes?'\n':'')+'Pièces reprises dans le devis de réparation '+d.num+' ('+new Date().toLocaleDateString('fr-FR')+') : '+ps.map(function(p){ return p.nom+' ×'+A.fq(num(p.qte))+(num(p.achat)?' (achat '+A.money(num(p.achat))+')':''); }).join(' ; ')).trim();
+          dd.pieces=(dd.pieces||[]).filter(function(p){ return !(p.nom&&num(p.qte)>0); });
+          if(open){ curDep.pieces=dd.pieces.slice(); curDep.notes=dd.notes; }
+          info.push('pièces retirées de l\'intervention (notées dans ses notes)');
+        } else info.push('⚠ pièces laissées AUSSI sur l\'intervention : ne les facture qu\'à un seul endroit');
+      }
+      var dx=DEP.find(function(q){ return q.id===x.id; }); if(dx){ dx.devisRep=d.id; if(open) curDep.devisRep=d.id; try{ save(LS.dep,DEP); }catch(e){} }
+      d.fromDep=x.id;
+      d.notes='Devis établi après l\'intervention du '+fmtD(x.date)+(x.facNum?' (facture '+x.facNum+')':'')+'.';
+      NXD2.derive(d); NXD2.open(d,{tab:'lots',dirty:true,banner:'Devis de réparation préparé depuis l\'intervention du '+fmtD(x.date)+' : complète le diagnostic, la cause et les heures, puis enregistre.'+(info.length?'<br>'+info.map(esc).join('<br>'):'')});
     }catch(e){ try{ toast('Impossible de préparer le devis : '+(e.message||e)); }catch(err){} }
   };
   function hookDepForm(tries){
@@ -210,6 +260,8 @@
     remember:K.rememberUnits(UNITS_DEF), fromAssistant:fromAssistant, assistant:ASSIST,
     onNewDevis:function(d){ var r=depRate(); if(r>0){ d.rateChoice='custom'; d.rateCustom=r; } },
     common:function(){ return {prepH:0,achatH:0.5,savPct:0}; },
+    /* pas de pièce à acheter (main-d'œuvre, fluide du camion) : ni achat du matériel ni frais de commande */
+    fees:function(lot){ var d=(lot&&lot.data)||{}; if(d.legacyCopy) return null; var has=(d.pieces||[]).some(function(p){ return p&&p.nom&&num(p.qte)>0; }); return {commande:has,achat:has}; },
     UNITS_DEF:UNITS_DEF
   });
 })();

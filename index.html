@@ -2770,13 +2770,19 @@ function askMode(){return (prompt('Mode de règlement ?\nVirement / Chèque / Es
 function facturerDevis(id,which){
   const d=DEVIS.find(x=>x.id===id);if(!d)return;
   const c=compute(d);const today=todayISO();
+  const tot=(typeof window.nxBillTotal==='function')?window.nxBillTotal(d,c):c.totalTTC; /* hors contrat d'entretien (facturé depuis l'onglet Contrats) */
   if(which==='acompte'){
     if(d.facAcompte){toast('Acompte déjà facturé ('+d.facAcompte.num+')');return;}
-    d.facAcompte={num:nextFacNum(),date:today,montant:Math.round(c.acompte*100)/100,payeLe:null,mode:''};
+    if(!(tot>0.005)){toast('Rien à facturer sur ce devis (contrat d\'entretien : il se facture depuis l\'onglet Contrats)');return;}
+    const a=tot*(c.acomptePct||0)/100;
+    d.facAcompte={num:nextFacNum(),date:today,montant:Math.round(a*100)/100,pct:c.acomptePct,baseTTC:Math.round(tot*100)/100,payeLe:null,mode:''};
   }else{
     if(d.facSolde){toast('Déjà facturé ('+d.facSolde.num+')');return;}
-    const m=d.facAcompte?c.solde:c.totalTTC;
-    d.facSolde={num:nextFacNum(),date:today,montant:Math.round(m*100)/100,payeLe:null,mode:''};
+    /* solde = total du devis − acompte RÉELLEMENT facturé (et non un pourcentage recalculé : le devis ou l'acompte ont pu changer depuis) */
+    const m=d.facAcompte?tot-(Number(d.facAcompte.montant)||0):tot;
+    if(m<-0.005){alert('Le total du devis ('+eur(tot)+') est inférieur à l\'acompte déjà facturé ('+eur(d.facAcompte.montant)+').\nPas de facture de solde : il faut établir un avoir de '+eur(-m)+'.');return;}
+    if(m<=0.005){toast(d.facAcompte?'Rien à facturer : l\'acompte couvre déjà le total':'Rien à facturer sur ce devis (contrat d\'entretien : il se facture depuis l\'onglet Contrats)');return;}
+    d.facSolde={num:nextFacNum(),date:today,montant:Math.round(m*100)/100,total:Math.round(tot*100)/100,payeLe:null,mode:''};
   }
   save(LS.devis,DEVIS);renderFBloc();
   toast('🧾 Facture émise — série continue, ne pas la supprimer');
@@ -2815,12 +2821,19 @@ function renderFBloc(){
     +'<button class="iconbtn" title="PDF" onclick="printFactureDevis(cur,\''+which+'\')">🖨️</button></div></div>';
   let h='<div class="card" style="border-top:3px solid var(--green);margin-top:14px"><h2>💰 Facturation du chantier</h2>'
    +'<div class="sub" style="margin-bottom:8px">Série unique F-'+new Date().getFullYear()+'-XXX (commune avec les interventions). Une facture émise ne se supprime pas — elle s\'annule par avoir.</div>';
-  if(cur.acompteOn&&c.acomptePct>0){
-    h+=cur.facAcompte?row(cur.facAcompte,'Acompte '+c.acomptePct+' %','acompte')
-      :'<button class="btn-pri btn-sm" style="margin-bottom:8px" onclick="facturerDevis(cur.id,\'acompte\')">🧾 Facturer l\'acompte ('+eur(c.acompte)+')</button><br>';
+  const tot=(typeof window.nxBillTotal==='function')?window.nxBillTotal(cur,c):c.totalTTC;
+  const ctrNote=(typeof window.nxBillNote==='function')?window.nxBillNote(cur,c):'';
+  if(ctrNote)h+='<div class="warnbox" style="margin-bottom:8px">'+ctrNote+'</div>';
+  if(cur.facAcompte){
+    h+=row(cur.facAcompte,'Acompte'+(cur.facAcompte.pct!=null?' '+cur.facAcompte.pct+' %':''),'acompte');
+    if(cur.facAcompte.baseTTC!=null&&Math.abs(cur.facAcompte.baseTTC-tot)>0.01&&!cur.facSolde)h+='<div class="warnbox" style="margin-bottom:8px">⚠ Le devis a changé depuis la facture d\'acompte ('+eur(cur.facAcompte.baseTTC)+' → '+eur(tot)+') : le solde est calculé sur le nouveau total, moins l\'acompte déjà facturé. Fais valider la modification par le client avant de facturer.</div>';
+  }else if(cur.acompteOn&&c.acomptePct>0&&tot>0.005){
+    h+='<button class="btn-pri btn-sm" style="margin-bottom:8px" onclick="facturerDevis(cur.id,\'acompte\')">🧾 Facturer l\'acompte ('+eur(tot*c.acomptePct/100)+')</button><br>';
   }
+  const resteSolde=cur.facAcompte?tot-(Number(cur.facAcompte.montant)||0):tot;
   h+=cur.facSolde?row(cur.facSolde,cur.facAcompte?'Solde':'Facture','solde')
-    :((!cur.acompteOn||!c.acomptePct||cur.facAcompte)?'<button class="btn-dark btn-sm" onclick="facturerDevis(cur.id,\'solde\')">🧾 Facturer '+(cur.facAcompte?'le solde ('+eur(c.solde)+')':'la totalité ('+eur(c.totalTTC)+')')+'</button>':'<div class="sub">Facture d\'abord l\'acompte (ou décoche « acompte » plus haut).</div>');
+    :(tot<=0.005?''
+    :(!cur.acompteOn||!c.acomptePct||cur.facAcompte)?(resteSolde<-0.005?'<div class="warnbox">⚠ Le total ('+eur(tot)+') est inférieur à l\'acompte facturé : pas de solde, il faut un avoir de '+eur(-resteSolde)+'.</div>':'<button class="btn-dark btn-sm" onclick="facturerDevis(cur.id,\'solde\')">🧾 Facturer '+(cur.facAcompte?'le solde ('+eur(resteSolde)+')':'la totalité ('+eur(tot)+')')+'</button>'):'<div class="sub">Facture d\'abord l\'acompte (ou décoche « acompte » plus haut).</div>');
   h+='<h3 style="font-size:13px;color:var(--green);margin:14px 0 6px">🏁 Réalité terrain <span class="sub" style="font-weight:400">(à remplir quand le chantier est fini — sauvegardé direct)</span></h3>'
    +'<div class="frm">'
    +'<label>Heures réellement passées<input type="number" step="0.5" min="0" value="'+(cur.hReel!=null?cur.hReel:'')+'" onchange="setReal(\'hReel\',this.value)"><span class="note-inline">prévu : '+fmtQ(cur.heures||0)+' h</span></label>'
@@ -2844,8 +2857,9 @@ function printFactureDevis(d,which){
   const c=compute(d),E=P.entreprise||{},OR='#121417';
   const f=which==='acompte'?d.facAcompte:d.facSolde;if(!f){toast('Pas encore facturé');return;}
   const rows=[];
-  if(which==='acompte')rows.push(['Acompte de '+c.acomptePct+' % à la commande — selon devis '+d.num+' ('+d.type+')',f.montant]);
-  else if(d.facAcompte){rows.push(['Travaux réalisés selon devis '+d.num+' — '+d.type,c.totalHT]);rows.push(['Acompte déjà facturé ('+d.facAcompte.num+')',-d.facAcompte.montant]);}
+  if(which==='acompte')rows.push(['Acompte de '+(f.pct!=null?f.pct:c.acomptePct)+' % à la commande — selon devis '+d.num+' ('+d.type+')',f.montant]);
+  else if(d.facAcompte){const tt=f.total!=null?f.total:Math.round(((Number(f.montant)||0)+(Number(d.facAcompte.montant)||0))*100)/100;
+    rows.push(['Travaux réalisés selon devis '+d.num+' — '+d.type,tt]);rows.push(['Acompte déjà facturé ('+d.facAcompte.num+')',-d.facAcompte.montant]);}
   else rows.push(['Travaux réalisés selon devis '+d.num+' — '+d.type,f.montant]);
   const body=rows.map(r=>'<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`
@@ -3046,7 +3060,7 @@ function saveCtr(){
   const g=id=>document.getElementById(id).value;
   if(!g('ct_client').trim()){toast('⚠ Renseigne le client');return;}
   const o={id:g('ct_id')||uid(),clientNom:g('ct_client').trim(),type:g('ct_type'),prix:Number(g('ct_prix'))||0,visites:Number(g('ct_visites'))||1,prochaineVisite:g('ct_next'),actif:document.getElementById('ct_actif').checked,notes:g('ct_notes'),facs:(g('ct_id')&&(CTR.find(x=>x.id===g('ct_id'))||{}).facs)||[]};
-  const i=CTR.findIndex(x=>x.id===o.id);if(i>=0)CTR[i]=o;else CTR.push(o);
+  const i=CTR.findIndex(x=>x.id===o.id);if(i>=0)CTR[i]=Object.assign({},CTR[i],o);else CTR.push(o); /* garde devis d'origine, dates de début/fin, reconduction */
   save('cp2_contrats',CTR);closeModal('mCtr');renderContrats();updateBadges();
   toast('🤝 Contrat enregistré — visite au planning');
 }
@@ -3057,11 +3071,29 @@ function visiteFaite(id){const c=CTR.find(x=>x.id===id);if(!c||!c.prochaineVisit
   d.setMonth(d.getMonth()+(Number(c.visites)===2?6:12));
   c.prochaineVisite=dISO(d);save('cp2_contrats',CTR);renderContrats();updateBadges();
   toast('✅ Visite faite — prochaine le '+d.toLocaleDateString('fr-FR'));}
+/* période de facturation d'un contrat : de date anniversaire à date anniversaire quand le contrat a une date de début
+   (contrat issu d'un devis signé), sinon l'année civile (contrats saisis à la main, comme avant) */
+function ctrPeriod(c,todayS){
+  const t=todayS||todayISO();
+  if(c&&/^\d{4}-\d{2}-\d{2}$/.test(c.debut||'')){
+    const add=(iso,n)=>{const d=new Date(iso+'T00:00:00');d.setFullYear(d.getFullYear()+n);return dISO(d);};
+    let s=c.debut;for(let k=0;k<60&&add(s,1)<=t;k++)s=add(s,1);
+    const e=new Date(add(s,1)+'T00:00:00');e.setDate(e.getDate()-1);
+    return {key:Number(s.slice(0,4)),du:s,au:dISO(e),anniv:true};
+  }
+  const y=Number(t.slice(0,4));return {key:y,du:y+'-01-01',au:y+'-12-31',anniv:false};
+}
+function ctrPeriodLbl(f){return f&&f.du&&f.au?'période du '+new Date(f.du+'T00:00:00').toLocaleDateString('fr-FR')+' au '+new Date(f.au+'T00:00:00').toLocaleDateString('fr-FR'):'année '+(f?f.annee:'');}
 function facturerContrat(id){const c=CTR.find(x=>x.id===id);if(!c)return;
-  const y=new Date().getFullYear();
+  const p=ctrPeriod(c),y=p.key;
   c.facs=c.facs||[];
-  if(c.facs.some(f=>f.annee===y)){toast('Année '+y+' déjà facturée ('+c.facs.find(f=>f.annee===y).num+')');return;}
+  if(c.facs.some(f=>f.annee===y)){toast((p.anniv?'Période':'Année')+' '+y+' déjà facturée ('+c.facs.find(f=>f.annee===y).num+')');return;}
+  /* année civile : une facture émise il y a moins de 11 mois couvre sans doute encore la période en cours */
+  const last=[...c.facs].sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
+  if(!p.anniv&&last&&last.date){const mois=(new Date(todayISO()+'T00:00:00')-new Date(last.date+'T00:00:00'))/(30.44*86400000);
+    if(mois<11&&!confirm('Dernière facture de ce contrat : '+last.num+' du '+new Date(last.date+'T00:00:00').toLocaleDateString('fr-FR')+' (il y a '+Math.max(0,Math.round(mois))+' mois).\nFacturer quand même l\'année '+y+' ?'))return;}
   const f={annee:y,num:nextFacNum(),date:todayISO(),montant:Math.round((c.prix||0)*100)/100,payeLe:null,mode:''};
+  if(p.anniv){f.du=p.du;f.au=p.au;}
   c.facs.push(f);save('cp2_contrats',CTR);renderContrats();
   toast('🧾 Facture '+f.num+' émise');printFactureCtr(c,f);}
 function printFactureCtr(c,f){
@@ -3076,7 +3108,7 @@ function printFactureCtr(c,f){
        <b>${c.clientNom}</b><br>${cl.adr||''}<br>${cl.ville||''}<br>${[cl.tel,cl.mail].filter(Boolean).join(' — ')}</div>
    </div>
    <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${f.num}</span></div>
-   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">Contrat d'entretien ${c.type||''} — année ${f.annee}</div>
+   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">Contrat d'entretien ${c.type||''} — ${ctrPeriodLbl(f)}</div>
    <table style="width:100%;border-collapse:collapse;font-size:11px">
      <thead><tr style="background:${OR};color:#fff"><th style="text-align:left;padding:9px 12px">Désignation</th><th style="padding:9px 12px;text-align:right">Montant</th></tr></thead>
      <tbody><tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">Contrat d'entretien ${c.type||''} — ${c.visites||1} visite${(c.visites||1)>1?'s':''}/an${c.notes?'<div style="font-size:9.5px;color:#777">'+c.notes+'</div>':''}</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">${eur(f.montant)}</td></tr></tbody></table>
@@ -3103,9 +3135,10 @@ function mailProposeCtr(eqId){const e=EQUIP.find(x=>x.id===eqId);if(!e)return;
 function renderContrats(){
   const el=document.getElementById('ctrTable');if(!el)return;
   const y=new Date().getFullYear(),today=dISO(new Date());
-  el.innerHTML=CTR.length?'<div class="scroll"><table><thead><tr><th class="l">Client</th><th class="l">Type</th><th>Prix/an</th><th>Visites</th><th>Prochaine visite</th><th class="l">Facture '+y+'</th><th></th></tr></thead><tbody>'
+  el.innerHTML=CTR.length?'<div class="scroll"><table><thead><tr><th class="l">Client</th><th class="l">Type</th><th>Prix/an</th><th>Visites</th><th>Prochaine visite</th><th class="l">Facture de la période</th><th></th></tr></thead><tbody>'
    +[...CTR].sort((a,b)=>(a.prochaineVisite||'9')<(b.prochaineVisite||'9')?-1:1).map(c=>{
-     const f=(c.facs||[]).find(x=>x.annee===y);
+     const pk=ctrPeriod(c).key;
+     const f=(c.facs||[]).find(x=>x.annee===pk);
      const late=c.actif!==false&&c.prochaineVisite&&c.prochaineVisite<today;
      return '<tr style="'+(c.actif===false?'opacity:.45':'')+'">'
       +'<td class="l" style="cursor:pointer" onclick="openClient360FromName(\''+String(c.clientNom).replace(/'/g,"\\'")+'\')"><b>'+c.clientNom+'</b></td>'
@@ -3116,8 +3149,8 @@ function renderContrats(){
       +'<button class="iconbtn" title="Visite faite" onclick="visiteFaite(\''+c.id+'\')">✅</button>'
       +'<button class="iconbtn" title="Mail au client" onclick="mailEntretien(\''+c.id+'\')">✉️</button>'
       +(!f?'<button class="iconbtn" title="Facturer l\'année" onclick="facturerContrat(\''+c.id+'\')">🧾</button>':'')
-      +(f&&!f.payeLe?'<button class="iconbtn" title="Marquer payée" onclick="payerFacture(\'ctr\',\''+c.id+'\',\''+y+'\')">💶</button>':'')
-      +(f?'<button class="iconbtn" title="PDF" onclick="printFactureCtr(CTR.find(x=>x.id===\''+c.id+'\'),CTR.find(x=>x.id===\''+c.id+'\').facs.find(x=>x.annee==='+y+'))">🖨️</button>':'')
+      +(f&&!f.payeLe?'<button class="iconbtn" title="Marquer payée" onclick="payerFacture(\'ctr\',\''+c.id+'\',\''+pk+'\')">💶</button>':'')
+      +(f?'<button class="iconbtn" title="PDF" onclick="printFactureCtr(CTR.find(x=>x.id===\''+c.id+'\'),CTR.find(x=>x.id===\''+c.id+'\').facs.find(x=>x.annee==='+pk+'))">🖨️</button>':'')
       +'<button class="iconbtn" onclick="openCtr(\''+c.id+'\')">✏️</button>'
       +'<button class="iconbtn d" onclick="delCtr(\''+c.id+'\')">🗑</button></td></tr>';}).join('')
    +'</tbody></table></div><div class="sub" style="margin-top:8px">CA récurrent potentiel : <b>'+eur0(CTR.filter(c=>c.actif!==false).reduce((s,c)=>s+(c.prix||0),0))+'/an</b> — c\'est lui qui lisse ta saison.</div>'

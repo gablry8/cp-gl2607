@@ -110,7 +110,12 @@
       lots.push(e); lines=lines.concat(r.lines); mat=mat.concat(e.mat); heures+=e.heures;
     });
     var common=[], addC=function(g,l,dt,ht,a,m){ common.push(mkLine(g,l,dt,ht,a,m)); };
+    /* frais de dossier, de commande, achat du matériel et marge de sécurité : selon la nature (ex. : pas sur une sous-traitance au taux convenu,
+       pas d'achat ni de frais de commande sans matériel à acheter). Par défaut (ancien format, clim, gainable…) : comme avant. */
+    var feeOf=function(x){ var m=MODS[x.module], f=null; try{ f=m&&m.fees?m.fees((d.lots||[])[x.i]||{}):null; }catch(e){} return Object.assign({admin:true,commande:true,secu:true,achat:true},f||{}); };
+    var fz=lots.map(feeOf), anyF=function(k){ return !lots.length||fz.some(function(f){ return f[k]; }); };
     var prepH=num(cm.prepH), achatH=num(cm.achatH), savPct=num(cm.savPct);
+    if(achatH>0&&!anyF('achat')){ warnings.push('Achat du matériel ('+fq(achatH)+' h) non compté : aucune pièce à acheter'); achatH=0; }
     if(prepH>0) addC('Pose & main-d’œuvre','Préparation du chantier',fq(prepH)+' h × '+money(rate)+'/h',prepH*rate,0,{qte:prepH,unite:'h',pu:rate,mo:true});
     if(achatH>0) addC('Pose & main-d’œuvre','Achat et enlèvement du matériel',fq(achatH)+' h × '+money(rate)+'/h',achatH*rate,0,{qte:achatH,unite:'h',pu:rate,mo:true});
     heures+=prepH+achatH;
@@ -118,10 +123,6 @@
     if(savPct>0&&savBase>0){ var hs=savBase*savPct/100; addC('Pose & main-d’œuvre','Provision SAV / garantie ('+fq(savPct)+' %)',fq(r2(hs))+' h × '+money(rate)+'/h',hs*rate,0,{qte:hs,unite:'h',pu:rate,mo:true}); heures+=hs; }
     var nD=Math.max(1,Math.round(num(d.nbDepl))||1), zp=zonePrice(d);
     if(zp>0) addC('Mise en service & déplacement','Déplacement',(d.zone||'')+(d.zone==='+60 km'?' ('+fq(num(d.km))+' km)':'')+(nD>1?' × '+nD+' déplacements':''),zp*nD,0,{qte:nD,unite:nD>1?'u':'forfait',pu:zp});
-    /* frais de dossier, de commande et marge de sécurité : selon la nature (ex. : pas sur une sous-traitance au taux convenu,
-       pas de frais de commande sans matériel). Par défaut (ancien format, clim, gainable…) : comme avant. */
-    var feeOf=function(x){ var m=MODS[x.module], f=null; try{ f=m&&m.fees?m.fees((d.lots||[])[x.i]||{}):null; }catch(e){} return Object.assign({admin:true,commande:true,secu:true},f||{}); };
-    var fz=lots.map(feeOf), anyF=function(k){ return !lots.length||fz.some(function(f){ return f[k]; }); };
     if(anyF('admin')) addC('Frais & divers','Frais administratifs devis','',P.fraisAdmin,P.fraisAdmin);
     if(anyF('commande')) addC('Frais & divers','Frais commande matériel','',P.fraisCommande,P.fraisCommande);
     var sub0=sum(lots.filter(function(x,k){ return fz[k].secu; }),function(x){ return x.ht; })+sum(common,function(l){return l.ht;});
@@ -146,6 +147,19 @@
       x.ht=(x.htBase+sav)*(1+secPct);   /* = ce que l'option ajoute vraiment au total si le client la coche */
       x.tva=fr?0:tvaOfLot(x.tvaMode,x.lines,x.ht-x.htBase).tva; x.ttc=x.ht+x.tva;
     });
+    /* solution alternative (réparer OU remplacer) : son vrai prix = le total du devis si elle remplace l'autre solution */
+    options.forEach(function(x){
+      var lot=(d.lots||[])[x.i]; if(!lot||!lot.alt||d._altCalc) return;
+      try{
+        var k=(d.lots||[]).findIndex(function(l){ return l.id===lot.alt; }), dd=JSON.parse(JSON.stringify(d)); dd._altCalc=true;
+        dd.lots[x.i].option=false; delete dd.lots[x.i].alt; if(k>=0) dd.lots[k].option=true;
+        dd.lots=dd.lots.filter(function(l){ return !l.option; });
+        var rr=computeV2(dd); x.alt=true; x.altOf=k; x.altTitre=k>=0?(d.lots[k].titre||('lot '+(k+1))):''; x.altTotalHT=rr.totalHT; x.altTotalTTC=rr.totalTTC;
+      }catch(e){}
+    });
+    (d.lots||[]).forEach(function(l,i){ if(!l.alt) return; var o=(d.lots||[]).find(function(q){ return q.id===l.alt; }); if(!o) return;
+      if(!l.option&&!o.option) warnings.push('Les deux solutions (« '+(o.titre||'1')+' » et « '+(l.titre||'2')+' ») sont dans le total : garde-en une seule (« Retenir cette solution »)');
+      if(l.option&&o.option) warnings.push('Aucune des deux solutions (« '+(o.titre||'1')+' » / « '+(l.titre||'2')+' ») n\'est dans le total'); });
     var modes=lots.map(function(x){return x.tvaMode;}).filter(function(v,i,a){return a.indexOf(v)===i;});
     var tvaRate=fr?0:(modes.length===1?(modes[0]==='mixte'?'20/10':num(modes[0])):Object.keys(parts).map(function(k){return k.replace('.',',');}).join(' / '));
     var totalTTC=totalHT+tva;
@@ -155,12 +169,15 @@
     var coutReel=matAchat+moAchat, benefice=totalHT-coutReel;
     var margePct=totalHT>0?benefice/totalHT*100:0, gainH=heures>0?benefice/heures:0;
     var cotis=totalHT*(Number(P.cotisTaux)||0)/100, benefNet=benefice-cotis, gainHNet=heures>0?benefNet/heures:0;
-    var acomptePct=d.acompteOn?num(d.acomptePct):0, acompte=totalTTC*acomptePct/100, solde=totalTTC-acompte;
+    /* un contrat d'entretien se facture chaque année depuis l'onglet Contrats : il ne fait pas partie de ce qui se facture sur le devis */
+    var ctrLots=lots.filter(function(x){ var l=(d.lots||[])[x.i]; return l&&l.module==='entretien'&&l.data&&!l.data.legacyCopy&&l.data.format==='contrat'; });
+    var ctrTTC=sum(ctrLots,function(x){ return (x.ht||0)+(x.commonShare||0)+(x.tva||0); }), billTTC=Math.max(0,totalTTC-ctrTTC);
+    var acomptePct=d.acompteOn?num(d.acomptePct):0, acompte=billTTC*acomptePct/100, solde=billTTC-acompte;
     var mo=sum(all.filter(function(l){return l.mo;}),function(l){return l.ht;});
     var tvaBreak=Object.keys(parts).map(function(k){ return {rate:num(k),base:parts[k],tva:parts[k]*num(k)/100}; }).sort(function(a,b){return b.rate-a.rate;});
     return {v:2,lines:all,mat:mat,totalHT:totalHT,tva:tva,tvaRate:tvaRate,tvaBreak:tvaBreak,franchise:fr,totalTTC:totalTTC,
       coutReel:coutReel,matAchat:matAchat,moAchat:moAchat,benefice:benefice,margePct:margePct,gainH:gainH,cotis:cotis,
-      benefNet:benefNet,gainHNet:gainHNet,mo:mo,heures:heures,rate:rate,acomptePct:acomptePct,acompte:acompte,solde:solde,
+      benefNet:benefNet,gainHNet:gainHNet,mo:mo,heures:heures,rate:rate,acomptePct:acomptePct,acompte:acompte,solde:solde,billTTC:billTTC,ctrTTC:ctrTTC,ctrHT:sum(ctrLots,function(x){ return (x.ht||0)+(x.commonShare||0); }),ctrAll:ctrLots.length>0&&ctrLots.length===lots.length,
       lots:lots,common:common,options:options,warnings:warnings,nbDepl:nD,joursEstim:Math.max(1,Math.ceil(heures/(CFG().hPerDay||6)))};
   }
   window.compute=function(d){ return (d&&d.v===2)?computeV2(d):LEGACY(d); };
@@ -575,7 +592,8 @@
       h+='<div class="nxd2-lot" data-lot="'+i+'">'+
         '<div class="nxd2-lothd"><span class="nat">'+n.ico+' Lot '+(i+1)+' · '+esc(n.label)+'</span>'+
         '<input type="text" data-k="titre" data-t="s" placeholder="Titre (ex. : étage, véranda…)" value="'+esc(lot.titre||'')+'">'+
-        '<label class="nxd2-chk" style="margin:0"><input type="checkbox" data-k="option" data-t="b"'+(lot.option?' checked':'')+'> option</label>'+
+        (lot.alt&&lot.option?'<button type="button" class="btn-ghost btn-sm" title="Le client choisit cette solution : elle remplace l\'autre dans le total" onclick="nxd2.pickAlt('+i+')">✔ Retenir cette solution</button>'
+          :'<label class="nxd2-chk" style="margin:0"><input type="checkbox" data-k="option" data-t="b"'+(lot.option?' checked':'')+'> option</label>')+
         '<span class="tot" id="nxd2LotTot'+i+'"></span>'+
         '<span class="row-actions">'+
           (i>0?'<button class="iconbtn" title="Monter" onclick="nxd2.moveLot('+i+',-1)">↑</button>':'')+
@@ -616,7 +634,7 @@
     h+='<div class="card"><h2>📑 Détail</h2>';
     c.lots.forEach(function(x){ h+='<h3 style="font-size:13.5px;color:var(--blue);margin:12px 0 4px">Lot '+(x.i+1)+' · '+esc(x.label)+(x.titre?' — '+esc(x.titre):'')+' <span style="float:right">'+money(x.ht)+'</span></h3>'+byLot(x.lines); });
     h+='<h3 style="font-size:13.5px;color:var(--blue);margin:12px 0 4px">Commun au devis <span style="float:right">'+money(sum(c.common,function(l){return l.ht;}))+'</span></h3>'+byLot(c.common);
-    if(c.options.length){ h+='<h3 style="font-size:13.5px;color:var(--orange,#d97706);margin:12px 0 4px">Options (hors total)</h3>'+c.options.map(function(x){ return '<div class="recap-line"><div class="lbl">Lot '+(x.i+1)+' · '+esc(x.label)+(x.titre?' — '+esc(x.titre):'')+'</div><div>'+money(x.ht)+' HT</div></div>'; }).join(''); }
+    if(c.options.length){ h+='<h3 style="font-size:13.5px;color:var(--orange,#d97706);margin:12px 0 4px">Options et autres solutions (hors total)</h3>'+c.options.map(function(x){ return '<div class="recap-line"><div class="lbl">Lot '+(x.i+1)+' · '+esc(x.label)+(x.titre?' — '+esc(x.titre):'')+(x.alt?'<div class="sub2">à la place de « '+esc(x.altTitre)+' » : total du devis</div>':'')+'</div><div>'+money(x.alt?x.altTotalHT:x.ht)+' HT</div></div>'; }).join(''); }
     h+='</div>';
     /* totaux */
     h+='<div class="card"><h2>💰 Totaux</h2><div class="recap-line"><div class="lbl">Total HT</div><div><b>'+money(c.totalHT)+'</b></div></div>'+
@@ -660,7 +678,7 @@
     if(bar) bar.innerHTML='<div class="t"><b>'+money(c.franchise?c.totalHT:c.totalTTC)+'</b> '+(c.franchise?'net':'TTC')+' · marge <b style="color:'+(c.margePct<20?'var(--red)':'var(--green)')+'">'+pct(c.margePct)+'</b> · '+fq(r2(c.heures))+' h'+
       (c.options.length?' · +'+c.options.length+' option(s)':'')+(dirty?' · <span style="color:var(--orange,#d97706)">non enregistré</span>':'')+'</div>'+
       '<button class="btn-dark btn-sm" onclick="nxd2.save()">💾 Enregistrer</button>';
-    c.lots.concat(c.options).forEach(function(x){ var el=document.getElementById('nxd2LotTot'+x.i); if(el) el.textContent=money(x.ht)+' HT'+(x.option?' (option)':''); });
+    c.lots.concat(c.options).forEach(function(x){ var el=document.getElementById('nxd2LotTot'+x.i); if(el) el.textContent=x.alt?('total '+money(x.altTotalHT)+' HT si retenue'):(money(x.ht)+' HT'+(x.option?' (option)':'')); });
     (cur.lots||[]).forEach(function(lot,i){ var m=MODS[lot.module]; if(m&&m.live){ try{ m.live(lot,i,api); }catch(e){} } });
   }
 
@@ -804,13 +822,16 @@
     }
     var opts='';
     if(c.options.length){
-      opts='<div style="margin-top:14px"><div style="font-weight:700;color:'+NV+';font-size:12px;margin-bottom:4px">Options proposées (non comprises dans le total ci-dessus)</div><table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #dce3ec">'+
+      var allAlt=c.options.every(function(x){ return x.alt; });
+      opts='<div style="margin-top:14px"><div style="font-weight:700;color:'+NV+';font-size:12px;margin-bottom:4px">'+(allAlt?'Autre solution proposée, au choix (non comprise dans le total ci-dessus)':'Options et autres solutions proposées (non comprises dans le total ci-dessus)')+'</div><table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #dce3ec">'+
         c.options.map(function(x){ var lot=d.lots[x.i], m=MODS[lot.module], s=''; try{ s=m&&m.summary?m.summary(lot):''; }catch(e){}
-          return '<tr><td style="padding:8px 12px;border-top:1px solid #e6ebf2">☐ '+esc(x.label)+(x.titre?' — '+esc(x.titre):'')+(s?' <span style="color:#8a93a0">('+esc(s)+')</span>':'')+'</td><td style="padding:8px 12px;border-top:1px solid #e6ebf2;text-align:right;font-weight:600">'+money(x.ht)+' HT'+(fr?'':' · '+money(x.ttc)+' TTC')+'</td></tr>'; }).join('')+'</table></div>';
+          if(x.alt) return '<tr><td style="padding:8px 12px;border-top:1px solid #e6ebf2">☐ '+esc(x.titre||x.label)+(s?' <span style="color:#8a93a0">('+esc(s)+')</span>':'')+'<div style="font-size:9.5px;color:#666">à la place de « '+esc(x.altTitre)+' » — montant total du devis si cette solution est retenue</div></td><td style="padding:8px 12px;border-top:1px solid #e6ebf2;text-align:right;font-weight:600">'+money(x.altTotalHT)+' HT'+(fr?'':' · '+money(x.altTotalTTC)+' TTC')+'</td></tr>';
+          return '<tr><td style="padding:8px 12px;border-top:1px solid #e6ebf2">☐ '+esc(x.label)+(x.titre?' — '+esc(x.titre):'')+(s?' <span style="color:#8a93a0">('+esc(s)+')</span>':'')+'</td><td style="padding:8px 12px;border-top:1px solid #e6ebf2;text-align:right;font-weight:600">+ '+money(x.ht)+' HT'+(fr?'':' · '+money(x.ttc)+' TTC')+'</td></tr>'; }).join('')+'</table></div>';
     }
     var excl=(d.lots||[]).filter(function(l){ return !l.option&&String(l.exclusions||'').trim(); }).map(function(l){ return (c.lots.length>1?'<b>'+esc(natureOf(l.module).label)+(l.titre?' — '+esc(l.titre):'')+' :</b> ':'')+esc(l.exclusions); });
     var reduit=!fr&&c.tvaBreak.some(function(t){ return t.rate>0&&t.rate<20; });
-    var regl=c.acomptePct>0?('acompte de '+money(c.acompte)+' ('+fq(c.acomptePct)+' %) à la commande, solde de '+money(c.solde)+' à la fin des travaux'):'à la fin des travaux';
+    var ctrRegl='contrat d\'entretien facturé chaque année, en début de période';
+    var regl=c.ctrAll?ctrRegl:((c.acomptePct>0&&c.acompte>0.005?('acompte de '+money(c.acompte)+' ('+fq(c.acomptePct)+' %) à la commande, solde de '+money(c.solde)+' à la fin des travaux'):'à la fin des travaux')+(c.ctrTTC>0.005?' ; '+ctrRegl:''));
     doc.innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">'+top+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin:8px 0 14px;flex-wrap:wrap"><div style="font-size:11px;color:#555;line-height:1.5;max-width:360px">'+
       '<div style="font-size:20px;font-weight:800;color:'+NV+'">Devis N° '+esc(d.num)+'</div><div style="margin-top:2px"><b>Objet :</b> '+esc(objetOf(d))+'</div></div>'+clientBox+'</div>'+
@@ -822,7 +843,7 @@
       'Devis gratuit, valable '+esc(valid)+' à compter de sa date d\'émission.<br>Délai d\'exécution des travaux : à convenir ensemble à la commande.<br>Règlement : '+esc(regl)+' — virement, chèque ou espèces.<br>'+
       'Matériel garanti selon la garantie constructeur ; installation réalisée dans les règles de l\'art et couverte par nos assurances (voir bas de page).'+
       (reduit?'<br>Taux réduit de TVA appliqué sous réserve des conditions d\'éligibilité en vigueur (logement achevé depuis plus de deux ans, équipement éligible).':'')+(!fr&&c.tvaBreak.some(function(t){ return t.rate===5.5; })?'<br>TVA à 5,5 % (art. 278-0 bis A du CGI) : le client certifie que le logement est à usage d\'habitation et achevé depuis plus de deux ans ; l\'entreprise certifie que les travaux et équipements remplissent les conditions d\'application de ce taux.':'')+'</div>'+
-      '<div style="display:flex;gap:14px;margin-top:14px"><div style="flex:1;border:1px solid #cfd6e0;border-radius:6px;padding:10px 12px"><div style="font-weight:700;color:'+NV+';font-size:11px">Bon pour accord — le client</div><div style="font-size:9.5px;color:#666;margin-top:2px">Date et signature, précédées de la mention « Bon pour accord ».'+(c.options.length?' Cochez les options retenues.':'')+'</div><div style="height:54px"></div></div>'+
+      '<div style="display:flex;gap:14px;margin-top:14px"><div style="flex:1;border:1px solid #cfd6e0;border-radius:6px;padding:10px 12px"><div style="font-weight:700;color:'+NV+';font-size:11px">Bon pour accord — le client</div><div style="font-size:9.5px;color:#666;margin-top:2px">Date et signature, précédées de la mention « Bon pour accord ».'+(c.options.length?(c.options.every(function(x){ return x.alt; })?' Cochez la solution retenue si ce n\'est pas celle du total.':' Cochez les options ou la solution retenues.'):'')+'</div><div style="height:54px"></div></div>'+
       '<div style="flex:1;border:1px solid #cfd6e0;border-radius:6px;padding:10px 12px"><div style="font-weight:700;color:'+NV+';font-size:11px">L\'entreprise</div><div style="font-size:9.5px;color:#666;margin-top:2px">'+esc(E.nom||'—')+(E.ville?' — '+esc(E.ville):'')+', le '+today+'</div><div style="height:54px"></div></div></div>'+
       '<div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">'+esc(E.piedNote||'')+'</div>'+
       (d.cType!=='Professionnel'&&E.mediateur?'<div style="margin-top:4px;font-size:9.5px;color:#777">Médiation de la consommation : '+esc(E.mediateur)+(E.mediateurSite?' — '+esc(E.mediateurSite):'')+'. En cas de litige non résolu, le client consommateur peut saisir gratuitement ce médiateur.</div>':'')+
@@ -838,7 +859,7 @@
     var h='<div style="display:flex;justify-content:flex-end;margin-top:14px"><table style="border-collapse:collapse;font-size:12px;min-width:280px">'+tr('Total HT',money(c.totalHT),{w:1});
     if(c.franchise) h+=tr('<span style="color:#888">TVA</span>','<span style="color:#888">non applicable (293 B)</span>')+tr('Net à payer',money(c.totalHT),{bg:1,b:1});
     else h+=c.tvaBreak.map(function(t){ return tr('TVA '+String(t.rate).replace('.',',')+' %'+(c.tvaBreak.length>1?' (base '+money(t.base)+')':''),money(t.tva)); }).join('')+tr('Total TTC',money(c.totalTTC),{bg:1,b:1});
-    if(c.acomptePct>0) h+=tr('Acompte à la commande ('+fq(c.acomptePct)+' %)','<span style="color:'+NV+';font-weight:700">'+money(c.acompte)+'</span>')+tr('Solde à la fin des travaux',money(c.solde));
+    if(c.acomptePct>0&&c.acompte>0.005) h+=tr('Acompte à la commande ('+fq(c.acomptePct)+' %)','<span style="color:'+NV+';font-weight:700">'+money(c.acompte)+'</span>')+tr('Solde à la fin des travaux'+(c.ctrTTC>0.005?' (hors contrat)':''),money(c.solde));
     return h+'</table></div>';
   }
   function printVisite(blank){
@@ -878,7 +899,11 @@
     delLot:function(i){ if(!cur.lots[i]) return; if(!confirm('Supprimer le lot '+(i+1)+' ('+natureOf(cur.lots[i].module).label+') ?')) return; cur.lots.splice(i,1); markDirty(); render(); },
     dupLot:function(i){ var l=clone(cur.lots[i]); l.id=newId(); l.titre=(l.titre?l.titre+' ':'')+'(copie)'; cur.lots.splice(i+1,0,l); markDirty(); render(); },
     addLotMod:function(mod,asOption,titre){ if(!MODS[mod]) return null; var l=newLot(mod); l.option=!!asOption; if(titre) l.titre=titre; cur.lots.push(l); markDirty(); return l; },
-    altLot:function(i,titre){ var l=clone(cur.lots[i]); if(!l) return; l.id=newId(); l.option=true; l.titre=titre||'Solution alternative'; cur.lots.splice(i+1,0,l); markDirty(); render(); say('Solution alternative ajoutée en option : modifie-la'); },
+    altLot:function(i,titre){ var src=cur.lots[i]; var l=clone(src); if(!l) return; l.id=newId(); l.option=true; l.alt=src.id; l.titre=titre||'Solution alternative'; if(!src.titre) src.titre='Solution 1'; cur.lots.splice(i+1,0,l); markDirty(); render(); say('Solution alternative ajoutée : modifie-la. Si le client la choisit, « Retenir cette solution » la met à la place de l\'autre'); },
+    /* le client choisit la solution alternative : elle devient le lot facturé, l'autre passe en solution non retenue (jamais les deux) */
+    pickAlt:function(i){ var a=cur.lots[i]; if(!a||!a.alt) return; var k=cur.lots.findIndex(function(l){ return l.id===a.alt; });
+      if(k>=0){ var o=cur.lots[k]; o.option=true; o.alt=a.id; }
+      a.option=false; delete a.alt; markDirty(); render(); say('Solution retenue : « '+(a.titre||'lot '+(i+1))+' » est maintenant dans le total'+(k>=0?', l\'autre solution est passée hors total':'')); },
     moveLot:function(i,dir){ var j=i+dir; if(j<0||j>=cur.lots.length) return; var t=cur.lots[i]; cur.lots[i]=cur.lots[j]; cur.lots[j]=t; markDirty(); render(); },
     act:function(name,i){ var lot=cur.lots[i], m=lot&&MODS[lot.module]; if(!m||!m.actions||!m.actions[name]) return; var args=[].slice.call(arguments,2); var r=m.actions[name].apply(null,[lot,i,api].concat(args)); markDirty(); if(r!==false) rerender('lot',i); refreshLive(); },
     applyVisite:function(i){ var lot=cur.lots[i], m=lot&&MODS[lot.module]; if(!m||!m.applyVisite) return; var msgs=m.applyVisite(lot,api)||[]; markDirty(); say(msgs.length?('Reporté au devis : '+msgs.join(' · ')):'Rien à reporter automatiquement'); renderBody(); refreshLive(); },
@@ -907,6 +932,10 @@
     }
   };
   window.nxd2=nxd2;
+  /* facturation depuis le devis (acompte / solde / totalité) : hors contrat d'entretien, facturé depuis l'onglet Contrats */
+  window.nxBillTotal=function(d,c){ try{ if(!d||d.v!==2) return c?c.totalTTC:0; c=(c&&c.billTTC!=null)?c:computeV2(d); return Math.round(c.billTTC*100)/100; }catch(e){ return c?c.totalTTC:0; } };
+  window.nxBillNote=function(d,c){ try{ if(!d||d.v!==2) return ''; c=(c&&c.billTTC!=null)?c:computeV2(d); if(!(c.ctrTTC>0.005)) return '';
+      return '🤝 '+(c.ctrAll?'Ce devis est un contrat d\'entretien':'Ce devis contient un contrat d\'entretien')+' ('+money(c.ctrHT)+' HT par an) : il se facture chaque année depuis l\'onglet <a href="#" onclick="go(\'contrats\');return false">Contrats</a>'+(c.ctrAll?', pas ici (une fois le devis accepté, le contrat y est créé tout seul).':' ; ici, seuls les autres travaux sont facturés.'); }catch(e){ return ''; } };
   window.NXD2={register:register,compute:computeV2,natures:NATURES,modules:MODS,newDevis:newDevisV2,newLot:newLot,open:openEditor,derive:derive,numFor:numFor,api:api,
     zonePrice:zonePrice,protect:protect,fromLegacyDevis:function(src){ var d=newDevisV2(null,{}); d.common={prepH:0,achatH:0,savPct:0}; ['cNom','cTel','cMail','cType','cAdr','cVille','cSiren','zone','rateChoice','rateCustom','acompteOn','acomptePct','notes'].forEach(function(k){ if(src[k]!=null) d[k]=src[k]; }); var mid=legacyMod(src.type)||'split'; var lot=newLot(mid); lot.data=MODS[mid].fromLegacy(src); lot.tva=src.tvaMode==='mixte'?'mixte':String(src.tvaRate!=null&&src.tvaRate!==''?src.tvaRate:P.tva); d.lots=[lot]; d.num=numFor(d); return derive(d); }};
 

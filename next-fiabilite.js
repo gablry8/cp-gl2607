@@ -115,8 +115,69 @@
       return o.apply(this,arguments);
     }; w._nxf=true; window.nextFacNum=w;
   }
+  /* 7. une facture d'intervention émise ne bouge plus.
+        Avant : le montant était recalculé à chaque affichage avec les tarifs du moment → un changement de tarif ou une pièce
+        ajoutée après coup changeait la facture (et le livre des recettes) sous le même numéro.
+        Maintenant : à l'émission, le calcul et le contenu imprimé sont figés (facFig) ; la fiche est verrouillée.
+        Correction possible (facture pas encore envoyée) : bouton « Corriger », la facture est refigée et la modification tracée. */
+  var BILL=['cNom','cTel','cMail','cType','cAdr','cVille','cSiren','date','desc','itype','mode','panne','heures','zone','maj','rateChoice','rateCustom',
+    'mesMode','mesType','heuresSup','nbRaccords','optRoute','optRaccords','optVide','optAzote','optEtanch','optAppoint','optConso','optPv','pieces'];
+  function cl(o){ return o==null?o:JSON.parse(JSON.stringify(o)); }
+  function frozen(d){ return !!(d&&d.facNum&&d.facFig&&d.facFig.num===d.facNum); }
+  var _cd=null;
+  function freezeOf(d,extra){ var r=cl(_cd(d)); r.num=d.facNum; r.at=Date.now(); r.src={}; BILL.forEach(function(k){ if(d[k]!==undefined) r.src[k]=cl(d[k]); }); return Object.assign(r,extra||{}); }
+  function lockDepForm(){
+    try{
+      var v=document.getElementById('v-depform'); if(!v||typeof curDep==='undefined'||!curDep) return;
+      var old=document.getElementById('nxfLock'); if(old) old.remove();
+      var locked=frozen(curDep)&&!curDep._unlock;
+      v.querySelectorAll('.card').forEach(function(c){
+        if(c.querySelector('#dp_notes')||c.id==='dp_recap'||c.id==='dp_sante') return;
+        c.querySelectorAll('input,select,textarea,button').forEach(function(el){
+          if(locked){ if(!el.disabled){ el.disabled=true; el.setAttribute('data-nxf-lock',''); } }
+          else if(el.hasAttribute('data-nxf-lock')){ el.disabled=false; el.removeAttribute('data-nxf-lock'); } });
+      });
+      if(!frozen(curDep)) return;
+      var b=document.createElement('div'); b.id='nxfLock'; b.className='warnbox'; b.style.margin='0 0 12px';
+      b.innerHTML=locked?'🔒 <b>Facture '+curDep.facNum+' émise</b>'+(curDep.facDate?' le '+new Date(curDep.facDate+'T00:00:00').toLocaleDateString('fr-FR'):'')+' : son contenu et son montant sont figés (une facture émise ne se modifie pas ; une erreur se corrige par un avoir). Tu peux toujours modifier les notes internes. '+
+        '<button type="button" class="btn-ghost btn-sm" onclick="nxfUnlockDep()">Corriger (facture pas encore envoyée)</button>'
+        :'✏️ <b>Correction de la facture '+curDep.facNum+'</b> : à l\'enregistrement, la facture est refigée avec ces nouvelles valeurs et la modification est tracée (avant / après).';
+      var head=v.querySelector('.flexhead'); if(head&&head.nextSibling) v.insertBefore(b,head.nextSibling); else v.insertBefore(b,v.firstChild);
+    }catch(e){}
+  }
+  window.nxfUnlockDep=function(){
+    try{ if(!curDep||!frozen(curDep)) return;
+      if(!confirm('Corriger la facture '+curDep.facNum+' ?\nÀ faire seulement si elle n\'a pas encore été envoyée au client. Sinon, la règle est de faire un avoir.')) return;
+      curDep._unlock=true; loadDepForm(); }catch(e){}
+  };
+  function guardDepFreeze(){
+    var o=window.computeDep; if(typeof o!=='function'||o._nxf) return;
+    _cd=o;
+    var w=function(d){ if(frozen(d)){ var r=cl(d.facFig); ['num','at','src','migre'].forEach(function(k){ delete r[k]; }); return r; } return _cd.apply(this,arguments); };
+    w._nxf=true; window.computeDep=w;
+    /* le formulaire relit l'écran : sur une facture figée, le contenu facturé reste celui de la facture */
+    var f2d=window.formToDep;
+    if(typeof f2d==='function'&&!f2d._nxf){ var wf=function(){ var r=f2d.apply(this,arguments); try{ if(curDep&&frozen(curDep)&&!curDep._unlock&&curDep.facFig.src) Object.assign(curDep,cl(curDep.facFig.src)); }catch(e){} return r; }; wf._nxf=true; window.formToDep=wf; }
+    var ldf=window.loadDepForm;
+    if(typeof ldf==='function'&&!ldf._nxf){ var wl=function(){ var r=ldf.apply(this,arguments); lockDepForm(); return r; }; wl._nxf=true; window.loadDepForm=wl; }
+    var sd=window.saveDep;
+    if(typeof sd==='function'&&!sd._nxf){ var ws=function(){
+        try{ if(curDep&&frozen(curDep)&&curDep._unlock){ window.formToDep(); var av=curDep.facFig.totalHT, nf=freezeOf(curDep); (curDep.facModifs=curDep.facModifs||[]).push({at:Date.now(),avant:av,apres:nf.totalHT}); curDep.facFig=nf; delete curDep._unlock; } }catch(e){}
+        var r=sd.apply(this,arguments); lockDepForm(); return r; }; ws._nxf=true; window.saveDep=ws; }
+    var fd=window.factureDep;
+    if(typeof fd==='function'&&!fd._nxf){ var wd=function(){
+        var r=fd.apply(this,arguments);
+        try{ if(curDep&&curDep.facNum&&!frozen(curDep)){ curDep.facFig=freezeOf(curDep); var x=(DEP||[]).find(function(q){ return q.id===curDep.id; }); if(x){ x.facFig=cl(curDep.facFig); save(LS.dep,DEP); } lockDepForm(); try{ recalcDep(); }catch(e){} } }catch(e){}
+        return r; }; wd._nxf=true; window.factureDep=wd; }
+    var dd=window.dupDep;
+    if(typeof dd==='function'&&!dd._nxf){ var wdd=function(){ var n0=(DEP||[]).length, r=dd.apply(this,arguments); try{ if(DEP.length>n0){ var x=DEP[DEP.length-1]; delete x.facFig; delete x.facModifs; delete x.devisRep; save(LS.dep,DEP); } }catch(e){} return r; }; wdd._nxf=true; window.dupDep=wdd; }
+    /* interventions déjà facturées avant cette version : figées une fois, avec les valeurs affichées aujourd'hui */
+    try{ var n=0; (DEP||[]).forEach(function(x){ if(x&&x.facNum&&!frozen(x)){ x.facFig=freezeOf(x,{migre:true}); n++; } }); if(n) save(LS.dep,DEP); }catch(e){}
+  }
+  window.nxfDepFrozen=frozen;
   function boot(){ try{ normalize(); window.checkBackup&&window.checkBackup();
-    guardDel('delDevis','devis','Devis'); guardDel('delDep','dep','Intervention'); guardDel('delLoc','loc','Location'); guardDel('delCtr','ctr','Contrat'); guardDup(); guardFacNum(); }catch(e){} }
+    guardDel('delDevis','devis','Devis'); guardDel('delDep','dep','Intervention'); guardDel('delLoc','loc','Location'); guardDel('delCtr','ctr','Contrat'); guardDup(); guardFacNum(); }catch(e){}
+    try{ guardDepFreeze(); }catch(e){} }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,0); }); else setTimeout(boot,0);
   /* la session cloud arrive un peu après le démarrage */
   var tries=0, iv=setInterval(function(){ tries++; if(cloudOn()||tries>30){ clearInterval(iv); try{ window.checkBackup&&window.checkBackup(); }catch(e){} } },1000);

@@ -356,6 +356,12 @@
       if(Array.isArray(p.pieces)) d.pieces=p.pieces.map(function(pc){ var f=findPrix(pc.nom); if(!f&&!pc.achat) warn.push('Prix de la pièce « '+pc.nom+' » à saisir'); return {nom:pc.nom||'',qte:+pc.qte||1,achat:+pc.achat||(f?f.achat:0)||0,vente:+pc.vente||(f?venteOf(pc.nom,f.marge):0)||0}; });
       var notes=[]; if(p.notes) notes.push(p.notes);
       if(p.fluide && (p.fluide.nom||p.fluide.charge||p.fluide.recupere)) d._fluide=p.fluide; /* → fiche Cerfa pré-remplie à l'enregistrement */
+      /* fluide chargé = fourniture facturée (sinon seulement noté pour la fiche Cerfa) */
+      if(p.fluide && +p.fluide.charge>0 && !(d.pieces||[]).some(function(pc){ return /^Fluide /i.test(pc.nom||''); })){
+        var fn=String(p.fluide.nom||'').trim().toUpperCase(), art=fn?(PRIX||[]).filter(function(a){ return /^Fluide /i.test(a.nom)&&a.nom.toUpperCase().indexOf(fn+' ')>=0; })[0]:null;
+        if(art){ d.pieces=(d.pieces||[]).concat([{nom:art.nom,qte:+p.fluide.charge,achat:+art.achat||0,vente:venteOf(art.nom,art.marge)||0}]); }
+        else warn.push('Fluide chargé ('+p.fluide.charge+' kg'+(fn?' de '+fn:'')+') : ajoute-le dans les pièces, sinon il n\'est pas facturé');
+      }
       if(p.fluide) notes.push('Fluide : '+[p.fluide.nom, p.fluide.charge?('chargé '+p.fluide.charge+' kg'):'', p.fluide.recupere?('récupéré '+p.fluide.recupere+' kg'):''].filter(Boolean).join(' · ')+' → pense à la fiche fluide (Cerfa).');
       if(x.dictee) notes.push('— Dictée d\'origine : « '+cleanDeep(x.dictee)+' »');
       d.notes=notes.join('\n');

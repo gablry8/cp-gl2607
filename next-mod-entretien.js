@@ -64,6 +64,8 @@
     var d=lot.data||{}, warn=[], rate=ctx.rate;
     if(d.legacyCopy){ var b=K.base(d,ctx,{type:'Maintenance',mode:d.moMode==='heures'?'heures':'forfait',heures:d.heures,catLabel:'Main-d’œuvre — entretien'}); K.legacyWarn(b.lines,warn); return {lines:b.lines,mat:b.mat,heures:b.heures,detailH:0,warnings:warn}; }
     var B=K.builder(warn), rows=hoursOf(d), v=d.format==='visite'?1:Math.max(1,Math.round(num(d.visites))||1), heures=0;
+    if(d.format==='contrat'&&!lot.option&&((ctx.d&&ctx.d.lots)||[]).some(function(q){ return q!==lot&&q&&!q.option&&q.module!==MOD; }))
+      warn.push('Contrat d\'entretien dans un devis avec d\'autres travaux : son prix annuel reprend le taux horaire de ce devis et seulement une part du déplacement et des frais. Pour un prix de contrat juste chaque année, fais-en un devis séparé.');
     rows.forEach(function(r,j){
       var e=r.e, lab='Entretien — '+(TLAB[e.type]||'équipement')+([e.marque,e.modele].filter(Boolean).length?' '+[e.marque,e.modele].filter(Boolean).join(' '):'');
       var l=B.raw('Pose & main-d’œuvre',lab,A.fq(A.r2(r.h1))+' h × '+v+' visite'+(v>1?'s':'')+' × '+A.money(rate)+'/h',r.h*rate,0,{qte:r.h,unite:'h',pu:rate,mo:true},'entr'); heures+=r.h;
