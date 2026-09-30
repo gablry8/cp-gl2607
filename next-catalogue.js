@@ -61,6 +61,74 @@
     });
   }
 
+  function putInfo(info){ return idb().then(function(d){ var t=d.transaction(IMP,'readwrite'); t.objectStore(IMP).put(info); return txDone(t); }); }
+  /* lignes ajoutées une par une (facture d'achat) : on complète le tarif du fournisseur sans le remplacer */
+  function mergeRows(four,rows,extra){
+    return imports().then(function(a){
+      var info=a.find(function(i){ return i.four===four; })||{four:four,n:0,date:today(),fichier:'factures d\'achat',pubOnly:false};
+      return idb().then(function(d){
+        var t=d.transaction([ST,IMP],'readwrite'), s=t.objectStore(ST);
+        rows.forEach(function(r){ s.put(r); });
+        return txDone(t);
+      }).then(function(){ CAT=null; return all(); }).then(function(allr){
+        info.n=allr.filter(function(x){ return x.four===four; }).length; info.at=Date.now(); delete info.upd; Object.assign(info,extra||{});
+        return putInfo(info);
+      });
+    });
+  }
+
+  /* ---------------- synchro entre appareils (table climpilot_catalogue) ---------------- */
+  var TBL='climpilot_catalogue', PART=4000, lastPull=0, pulling=null;
+  function cloud(){ try{ return (typeof sb!=='undefined'&&sb&&typeof SESS!=='undefined'&&SESS&&SESS.user)?sb:null; }catch(e){ return null; } }
+  function pack(r){ return [r.ref,r.lib,r.prix,r.pub,r.unite,r.ean,r.fam,r.marque,r.pubOnly?1:0,r.date]; }
+  function unpack(four,a){ var r={four:four,ref:String(a[0]||''),lib:String(a[1]||a[0]||''),prix:Number(a[2])||0,pub:a[3]==null?null:Number(a[3]),unite:a[4]||'unité',ean:a[5]||'',fam:a[6]||'',marque:a[7]||'',pubOnly:!!a[8],date:a[9]||''};
+    r.k=four+'|'+(r.ref||r.lib); r.s=norm([r.lib,r.ref,r.marque,r.fam,r.ean].join(' ')); return r; }
+  function pushFour(four){
+    var c=cloud(); if(!c) return Promise.resolve(false);
+    return Promise.all([all(),imports()]).then(function(v){
+      var rows=v[0].filter(function(x){ return x.four===four; }), info=v[1].find(function(i){ return i.four===four; })||{four:four,date:today()};
+      var now=new Date().toISOString(), parts=[];
+      for(var i=0;i<Math.max(1,Math.ceil(rows.length/PART));i++) parts.push({four:four,part:i,date:info.date||today(),n:rows.length,pub_only:!!info.pubOnly,fichier:info.fichier||'',rows:rows.slice(i*PART,(i+1)*PART).map(pack),updated_at:now});
+      return c.from(TBL).delete().eq('four',four).then(function(r){ if(r&&r.error) throw new Error(r.error.message);
+        var ch=Promise.resolve(); parts.forEach(function(p){ ch=ch.then(function(){ return c.from(TBL).insert(p).then(function(r2){ if(r2&&r2.error) throw new Error(r2.error.message); }); }); });
+        return ch; }).then(function(){ info.upd=now; return putInfo(info); }).then(function(){ return true; });
+    }).catch(function(e){ try{ console.warn('catalogue : envoi cloud impossible',e); }catch(err){} return false; });
+  }
+  function removeRemote(four){ var c=cloud(); if(!c) return Promise.resolve(false); return c.from(TBL).delete().eq('four',four).then(function(r){ return !(r&&r.error); }).catch(function(){ return false; }); }
+  /* au démarrage (et à l'ouverture de la base de prix) : récupère les tarifs importés sur un autre appareil */
+  function pull(force){
+    var c=cloud(); if(!c) return Promise.resolve(0);
+    if(pulling) return pulling; if(!force&&Date.now()-lastPull<60000) return Promise.resolve(0);
+    lastPull=Date.now();
+    pulling=c.from(TBL).select('four,part,date,n,pub_only,fichier,updated_at').eq('part',0).then(function(r){
+      if(!r||r.error||!Array.isArray(r.data)) return 0;
+      var remote={}; r.data.forEach(function(x){ remote[x.four]=x; });
+      return imports().then(function(loc){
+        var lm={}, jobs=[], n=0; loc.forEach(function(i){ lm[i.four]=i; });
+        Object.keys(remote).forEach(function(four){
+          var rr=remote[four], li=lm[four], rAt=Date.parse(rr.updated_at)||0;
+          var newer=!li||(li.upd?(Date.parse(li.upd)||0)<rAt:(li.at||0)<rAt);
+          if(li&&!li.upd&&(li.at||0)>=rAt){ jobs.push(function(){ return pushFour(four); }); return; }   /* import local plus récent, jamais envoyé */
+          if(!newer) return;
+          jobs.push(function(){ return c.from(TBL).select('part,rows').eq('four',four).order('part').then(function(pr){
+            if(!pr||pr.error||!Array.isArray(pr.data)) return;
+            var rows=[]; pr.data.sort(function(a,b){ return a.part-b.part; }).forEach(function(p){ (p.rows||[]).forEach(function(a){ rows.push(unpack(four,a)); }); });
+            return saveImport(four,rows,{four:four,n:rows.length,date:rr.date||'',fichier:rr.fichier||'',pubOnly:!!rr.pub_only,upd:rr.updated_at,at:rAt}).then(function(){ n++; });
+          }); });
+        });
+        loc.forEach(function(li){
+          if(remote[li.four]) return;
+          if(li.upd) jobs.push(function(){ return removeFour(li.four); });   /* retiré sur un autre appareil */
+          else jobs.push(function(){ return pushFour(li.four); });           /* importé avant la synchro : on l'envoie */
+        });
+        var ch=Promise.resolve(); jobs.forEach(function(j){ ch=ch.then(j).catch(function(){}); });
+        return ch.then(function(){ return n; });
+      });
+    }).catch(function(){ return 0; }).then(function(n){ pulling=null; if(n){ try{ renderStats(); }catch(e){} } return n; });
+    return pulling;
+  }
+  window.nxcatPull=pull; window.nxcatPush=pushFour;
+
   /* ---------------- lecture des fichiers ---------------- */
   function decode(buf){ try{ return new TextDecoder('utf-8',{fatal:true}).decode(buf); }catch(e){ try{ return new TextDecoder('windows-1252').decode(buf); }catch(e2){ return new TextDecoder().decode(buf); } } }
   function parseCSV(txt){
@@ -156,12 +224,12 @@
     return 'Pièces dépannage'; }
   function margeFor(cat){ try{ if(cat==='Pièces dépannage') return Number(P.dep.margeP)||40; var m=P.marges&&P.marges[cat]; return m!=null?Number(m):35; }catch(e){ return 35; } }
   /* l'article du catalogue entre dans la base de prix (synchronisée) : c'est lui que les devis et interventions utilisent */
-  function promote(e){
+  function promote(e,webTxt){
     var customs=load(LS.custom,[]), nom=nomFor(e);
     var ex=customs.find(function(p){ return (p.catFour===e.four&&p.catRef&&p.catRef===e.ref)||p.nom===nom; });
     var cat=ex&&ex.cat?ex.cat:guessCat(e);
     var o={nom:ex?ex.nom:nom,cat:cat,unite:e.unite||'unité',achat:r2(e.prix),marge:ex&&ex.marge!=null?ex.marge:margeFor(cat),verif:!!e.pubOnly,src:'local',catFour:e.four,catRef:e.ref,ean:e.ean||'',
-      web:'Tarif '+e.four+' importé le '+fmtD(e.date)+(e.pubOnly?' — prix public (pas ton prix net) : à vérifier':'')};
+      web:webTxt||('Tarif '+e.four+' importé le '+fmtD(e.date)+(e.pubOnly?' — prix public (pas ton prix net) : à vérifier':''))};
     if(ex){ if(r2(ex.achat)!==o.achat) (ex.hist=ex.hist||[]).push({date:today(),achat:ex.achat,four:ex.catFour||''}); Object.assign(ex,o); }
     else customs.push(Object.assign({id:'cat_'+slug(e.four+'_'+(e.ref||e.lib))},o));
     save(LS.custom,customs); try{ rebuildPrix(); }catch(err){}
@@ -201,18 +269,18 @@
     c=document.createElement('div'); c.className='card'; c.id='nxCatCard';
     c.innerHTML='<h2>📚 Catalogue fournisseurs</h2>'+
       '<div class="sub" style="margin-bottom:8px">Importe le fichier de prix d\'un fournisseur (Excel ou CSV, téléchargé sur ton espace pro). Ses références sont ensuite proposées quand tu tapes une pièce dans une intervention ou un devis ; à la 1re utilisation, l\'article entre dans ta base de prix avec son fournisseur et sa référence.</div>'+
-      '<div class="row-actions" style="margin-bottom:8px"><button class="btn-pri btn-sm" type="button" onclick="nxcatImport()">⤒ Importer un tarif fournisseur</button></div>'+
+      '<div class="row-actions" style="margin-bottom:8px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn-pri btn-sm" type="button" onclick="nxcatImport()">⤒ Importer un tarif fournisseur</button><button class="btn-ghost btn-sm" type="button" onclick="nxcatFacture()">📷 Facture d\'achat → prix à jour</button></div>'+
       '<div id="nxCatStats" class="sub"></div>'+
       '<input id="nxCatQ" type="search" autocomplete="off" placeholder="Chercher une référence ou une désignation (ex. : AE4440, détendeur, contacteur 25 A)" style="width:100%;margin-top:8px" oninput="nxcatFind(this.value)">'+
       '<div id="nxCatRes" style="margin-top:8px"></div>'+
-      '<div class="sub" style="margin-top:8px">Le catalogue reste sur cet appareil (trop gros pour la synchro) : importe-le aussi sur ton téléphone si tu veux chercher dedans sur chantier. Les articles que tu utilises, eux, passent dans ta base de prix et se synchronisent.</div>';
+      '<div class="sub" style="margin-top:8px">Un tarif importé sur un appareil arrive tout seul sur les autres (connectés au cloud) à leur ouverture.</div>';
     var cats=document.getElementById('prixCats'); v.insertBefore(c,cats||null);
     return c;
   }
   function renderStats(){
     var el=document.getElementById('nxCatStats'); if(!el) return;
     imports().then(function(a){
-      el.innerHTML=a.length?a.sort(function(x,y){ return String(x.four).localeCompare(String(y.four)); }).map(function(i){ return '<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line,#e3e8ef);padding:5px 0"><span><b>'+esc(i.four)+'</b> — '+(i.n||0).toLocaleString('fr-FR')+' références · tarif importé le '+fmtD(i.date)+(i.pubOnly?' · <span style="color:var(--orange,#d97706)">prix publics, pas tes prix nets</span>':'')+(i.fichier?' · '+esc(i.fichier):'')+'</span><button class="iconbtn d" type="button" title="Retirer ce tarif" onclick="nxcatRemove(\''+esc(String(i.four).replace(/'/g,"\\'"))+'\')">🗑</button></div>'; }).join('')
+      el.innerHTML=a.length?a.sort(function(x,y){ return String(x.four).localeCompare(String(y.four)); }).map(function(i){ return '<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line,#e3e8ef);padding:5px 0"><span><b>'+esc(i.four)+'</b> — '+(i.n||0).toLocaleString('fr-FR')+' références · tarif importé le '+fmtD(i.date)+(i.pubOnly?' · <span style="color:var(--orange,#d97706)">prix publics, pas tes prix nets</span>':'')+(i.fichier?' · '+esc(i.fichier):'')+(i.upd?' · ☁️ synchronisé':(cloud()?' · <span style="color:var(--orange,#d97706)">pas encore envoyé</span>':''))+'</span><button class="iconbtn d" type="button" title="Retirer ce tarif" onclick="nxcatRemove(\''+esc(String(i.four).replace(/'/g,"\\'"))+'\')">🗑</button></div>'; }).join('')
         :'Aucun tarif importé pour l\'instant.';
     }).catch(function(e){ el.textContent='Catalogue indisponible sur ce navigateur ('+(e.message||e)+').'; });
   }
@@ -232,7 +300,7 @@
     }).catch(function(e){ el.textContent='Recherche impossible : '+(e.message||e); });
   };
   window.nxcatAdd=function(i){ var e=(window._nxcatLast||[])[i]; if(!e) return; var n=promote(e); toastX('« '+n+' » ajouté à ta base de prix'); try{ renderPrix(); }catch(err){} };
-  window.nxcatRemove=function(four){ if(!confirm('Retirer le tarif « '+four+' » du catalogue ? (les articles déjà passés dans ta base de prix restent)')) return; removeFour(four).then(function(){ renderStats(); toastX('Tarif retiré'); }).catch(function(e){ toastX('⚠ '+(e.message||e)); }); };
+  window.nxcatRemove=function(four){ if(!confirm('Retirer le tarif « '+four+' » du catalogue, sur tous tes appareils ? (les articles déjà passés dans ta base de prix restent)')) return; removeFour(four).then(function(){ return removeRemote(four); }).then(function(){ renderStats(); toastX('Tarif retiré'); }).catch(function(e){ toastX('⚠ '+(e.message||e)); }); };
 
   /* ---------------- fenêtre d'import ---------------- */
   var IMPST=null;
@@ -281,26 +349,120 @@
     var b=buildRows(s.rows,s.det,four,g);
     if(!b.rows.length){ msg.innerHTML='⚠ Aucune ligne avec un prix : vérifie les colonnes.'; return; }
     msg.innerHTML='Import en cours…';
-    saveImport(four,b.rows,{four:four,n:b.rows.length,date:today(),fichier:s.fichier,pubOnly:b.pubOnly}).then(function(){
+    saveImport(four,b.rows,{four:four,n:b.rows.length,date:today(),fichier:s.fichier,pubOnly:b.pubOnly,at:Date.now()}).then(function(){
       var up=refreshBase(four,b.rows);
+      pushFour(four).then(function(ok){ var m2=document.getElementById('nxci_cloud'); if(m2) m2.textContent=ok?'☁️ Envoyé sur tes autres appareils (ils le récupèrent à l\'ouverture).':(cloud()?'⚠ Envoi sur tes autres appareils impossible pour l\'instant : ClimPilot réessaiera.':''); renderStats(); });
       msg.innerHTML='✅ '+b.rows.length.toLocaleString('fr-FR')+' références importées'+(b.skipped?' ('+b.skipped+' lignes ignorées : sans prix ou en double)':'')+(b.trunc?' — limité à '+MAXROWS.toLocaleString('fr-FR')+' lignes : filtre le fichier par familles':'')+
         (up?'<br>'+up+' article(s) de ta base de prix mis à jour avec le nouveau prix d\'achat (ancien prix gardé dans l\'historique).':'')+
         (b.pubOnly?'<br><span style="color:var(--orange,#d97706)">⚠ Prix publics : sans prix net ni remise, ce ne sont pas tes prix d\'achat — les articles utilisés seront marqués « à vérifier ».</span>':'')+
-        '<div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" type="button" onclick="nxcatClose()">Fermer</button></div>';
+        '<div id="nxci_cloud" class="sub" style="margin-top:6px"></div><div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" type="button" onclick="nxcatClose()">Fermer</button></div>';
       renderStats(); try{ renderPrix(); }catch(e){}
       window._nxcatLastImport={n:b.rows.length,skipped:b.skipped,updated:up,pubOnly:b.pubOnly};
     }).catch(function(e){ msg.innerHTML='⚠ Import impossible : '+esc(e.message||e); });
   };
 
+  /* ---------------- facture d'achat (photo ou PDF) → prix d'achat à jour ---------------- */
+  var FAC=null;
+  function b64(buf){ var s='', b=new Uint8Array(buf), CH=0x8000; for(var i=0;i<b.length;i+=CH) s+=String.fromCharCode.apply(null,b.subarray(i,i+CH)); return btoa(s); }
+  function resizeImg(file,max){
+    return new Promise(function(res,rej){
+      var img=new Image(), url=URL.createObjectURL(file);
+      img.onload=function(){ var k=Math.min(1,max/Math.max(img.width,img.height)); var c=document.createElement('canvas'); c.width=Math.round(img.width*k); c.height=Math.round(img.height*k);
+        c.getContext('2d').drawImage(img,0,0,c.width,c.height); URL.revokeObjectURL(url); res(c.toDataURL('image/jpeg',0.85).split(',')[1]); };
+      img.onerror=function(){ URL.revokeObjectURL(url); rej(new Error('image illisible')); };
+      img.src=url;
+    });
+  }
+  window.nxcatFacture=function(){
+    imports().catch(function(){ return []; }).then(function(a){
+      modal('<div style="display:flex;justify-content:space-between;align-items:center"><h2 style="margin:0">📷 Facture d\'achat → prix à jour</h2><button class="iconbtn" type="button" onclick="nxcatClose()">✕</button></div>'+
+        '<div class="sub" style="margin:8px 0">Photo de la facture (ou le PDF reçu par mail) : l\'IA lit chaque ligne, tu vérifies, et les prix d\'achat de ta base se mettent à jour. Coût : environ 1 à 2 centimes par facture, compté dans ton plafond IA du mois.</div>'+
+        '<datalist id="nxcf_fourDL">'+a.map(function(i){ return '<option value="'+esc(i.four)+'">'; }).join('')+'</datalist>'+
+        '<label style="display:block">Photo ou PDF<input id="nxcf_file" type="file" accept="image/*,application/pdf" onchange="nxcatFactRead()" style="display:block;margin-top:4px"></label>'+
+        '<div id="nxcf_body" style="margin-top:10px"></div>');
+    });
+  };
+  window.nxcatFactRead=function(){
+    var f=(document.getElementById('nxcf_file').files||[])[0], body=document.getElementById('nxcf_body'); if(!f||!body) return;
+    var c=cloud(); if(!c){ body.innerHTML='⚠ Connecte-toi au cloud (en haut de ClimPilot) : la lecture passe par ton assistant IA.'; return; }
+    var pdf=/pdf/i.test(f.type||'')||/\.pdf$/i.test(f.name||'');
+    body.innerHTML='🤖 Lecture de la facture… (10 à 30 secondes)';
+    (pdf?f.arrayBuffer().then(function(buf){ var d=b64(buf); if(d.length>4500000) throw new Error('PDF trop lourd (3 Mo maximum) : envoie seulement la page utile ou une photo'); return {media_type:'application/pdf',data:d}; })
+        :resizeImg(f,2000).then(function(d){ return {media_type:'image/jpeg',data:d}; }))
+    .then(function(doc){ return c.functions.invoke('assistant',{body:{mode:'facture',doc:doc}}); })
+    .then(function(r){ if(r&&r.error){ var ctx=r.error.context; if(ctx&&typeof ctx.json==='function') return ctx.json().catch(function(){ return {erreur:'http',message:r.error.message}; }); return {erreur:'reseau',message:'Assistant injoignable — vérifie ta connexion.'}; } return (r&&r.data)||{erreur:'vide',message:'Réponse vide'}; })
+    .then(function(res){
+      if(!res||res.type!=='facture'){ body.innerHTML='⚠ '+esc(res&&res.erreur==='cle_absente'?'IA non activée : la clé API n\'est pas installée.':(res&&res.message)||'Lecture impossible.'); return; }
+      FAC={f:res.facture||{},budget:res.budget}; factUI();
+    }).catch(function(e){ body.innerHTML='⚠ '+esc(e.message||e); });
+  };
+  function baseMatch(four,l){
+    var customs=[]; try{ customs=load(LS.custom,[]); }catch(e){}
+    var ref=String(l.ref||'').trim(), lib=norm(l.designation||'');
+    return customs.find(function(p){ return ref&&p.catRef===ref&&p.catFour===four; })||customs.find(function(p){ return ref&&p.catRef===ref; })||
+      customs.find(function(p){ return lib&&norm(p.nom)===lib; })||null;
+  }
+  function factUI(){
+    var f=FAC.f, L=Array.isArray(f.lignes)?f.lignes:[], body=document.getElementById('nxcf_body'); if(!body) return;
+    var four=String(f.fournisseur||'').trim(), tot=0;
+    L.forEach(function(l){ var q=Number(l.qte)||0, pu=Number(l.pu_ht)||0; tot+=q&&pu?q*pu:(Number(l.total_ht)||0); });
+    var ecart=Number(f.total_ht)>0&&Math.abs(tot-Number(f.total_ht))>1;
+    body.innerHTML='<div class="frm" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px">'+
+      '<label>Fournisseur<input id="nxcf_four" list="nxcf_fourDL" value="'+esc(four)+'"></label><label>Facture n°<input id="nxcf_num" value="'+esc(f.numero||'')+'"></label><label>Date<input id="nxcf_date" type="date" value="'+esc(/^\d{4}-\d{2}-\d{2}$/.test(f.date||'')?f.date:today())+'"></label></div>'+
+      (L.length?'':'<div class="warnbox" style="margin-top:8px">Aucune ligne lue : refais une photo plus nette, bien à plat.</div>')+
+      L.map(function(l,i){
+        var art=(l.nature||'article')==='article', pu=Number(l.pu_ht)||0, m=art?baseMatch(four,l):null;
+        var st=!art?'<span class="sub">'+esc({port:'frais de port',consigne:'consigne',taxe:'taxe / éco-participation'}[l.nature]||'autre')+' — non repris</span>'
+          :m?(Math.abs((Number(m.achat)||0)-pu)>0.005?'<span style="color:var(--orange,#d97706)">ta base : '+money(m.achat)+' → '+money(pu)+'</span>':'<span class="sub">ta base : prix inchangé</span>')
+          :'<span class="sub">nouvel article</span>';
+        return '<div style="display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line,#e3e8ef);padding:7px 0">'+
+          '<input type="checkbox" data-nxcf="'+i+'"'+(art&&pu>0?' checked':'')+' style="width:auto">'+
+          '<div style="min-width:0;flex:1"><div style="font-weight:600">'+esc(l.designation||l.ref||'—')+'</div><div class="sub">'+(l.ref?'réf. '+esc(l.ref)+' · ':'')+esc(String(l.qte==null?'':l.qte))+' '+esc(l.unite||'')+(l.remise_pct?' · remise '+esc(l.remise_pct)+' %':'')+(l.calcule?' · prix calculé (total ÷ quantité)':'')+'</div><div>'+st+'</div></div>'+
+          '<label style="width:110px;flex:none">PU net HT<input type="number" step="0.01" min="0" data-nxcfpu="'+i+'" value="'+(pu||'')+'"></label></div>';
+      }).join('')+
+      (ecart?'<div class="warnbox" style="margin-top:8px">⚠ Les lignes font '+money(tot)+' HT, la facture annonce '+money(f.total_ht)+' HT : une ligne est peut-être mal lue. Compare avec la facture.</div>':'')+
+      ((f.illisible||[]).length?'<div class="warnbox" style="margin-top:8px">Illisible / incertain : '+esc(f.illisible.join(' ; '))+'</div>':'')+
+      '<div class="warnbox" style="margin-top:8px">⚠️ Vérifie chaque prix avec la facture : l\'IA lit, elle ne certifie pas.</div>'+
+      '<div class="row-actions" style="margin-top:10px"><button class="btn-pri" type="button" onclick="nxcatFactApply()">Mettre à jour mes prix</button><button class="btn-ghost" type="button" onclick="nxcatClose()">Annuler</button></div>'+
+      '<div id="nxcf_msg" style="margin-top:8px"></div>'+(FAC.budget?'<div class="sub" style="margin-top:4px">IA ce mois : '+String(FAC.budget.depense_eur).replace('.',',')+' € / '+String(FAC.budget.plafond_eur).replace('.',',')+' €</div>':'');
+  }
+  window.nxcatFactApply=function(){
+    var f=FAC&&FAC.f, msg=document.getElementById('nxcf_msg'); if(!f) return;
+    var four=String((document.getElementById('nxcf_four')||{}).value||'').trim(), num=String((document.getElementById('nxcf_num')||{}).value||'').trim(), dt=String((document.getElementById('nxcf_date')||{}).value||'')||today();
+    if(!four){ msg.innerHTML='⚠ Indique le fournisseur.'; return; }
+    var L=f.lignes||[], rows=[], up=0, cr=0;
+    Array.prototype.slice.call(document.querySelectorAll('[data-nxcf]')).forEach(function(cb){
+      if(!cb.checked) return; var i=Number(cb.getAttribute('data-nxcf')), l=L[i]; if(!l) return;
+      var pu=numFr((document.querySelector('[data-nxcfpu="'+i+'"]')||{}).value); if(!(pu>0)) return;
+      var e={four:four,ref:String(l.ref||'').trim(),lib:String(l.designation||l.ref||'').trim(),prix:r2(pu),pub:null,unite:l.unite||'unité',ean:'',fam:'',marque:'',pubOnly:false,date:dt};
+      if(!e.lib&&!e.ref) return;
+      e.k=four+'|'+(e.ref||e.lib); e.s=norm([e.lib,e.ref].join(' ')); rows.push(e);
+      var m=baseMatch(four,l);
+      if(m&&(!e.ref||!m.catRef||m.catRef===e.ref)){ var cs=load(LS.custom,[]), p=cs.find(function(x){ return x.id===m.id; });
+        if(p){ if(r2(p.achat)!==e.prix) (p.hist=p.hist||[]).push({date:today(),achat:p.achat,four:p.catFour||''}); p.achat=e.prix; p.verif=false; p.catFour=four; if(e.ref) p.catRef=e.ref; p.web='Facture '+four+(num?' n° '+num:'')+' du '+fmtD(dt); save(LS.custom,cs); try{ rebuildPrix(); }catch(err){} } up++; }
+      else { var exists=load(LS.custom,[]).some(function(x){ return x.nom===nomFor(e)||(x.catFour===four&&e.ref&&x.catRef===e.ref); }); promote(e,'Facture '+four+(num?' n° '+num:'')+' du '+fmtD(dt)); exists?up++:cr++; }
+    });
+    if(!rows.length){ msg.innerHTML='⚠ Aucune ligne cochée avec un prix.'; return; }
+    msg.innerHTML='Enregistrement…';
+    mergeRows(four,rows).then(function(){ return pushFour(four); }).then(function(ok){
+      msg.innerHTML='✅ '+(up?up+' prix mis à jour dans ta base':'')+(up&&cr?', ':'')+(cr?cr+' article(s) ajouté(s)':'')+' — ancien prix gardé dans l\'historique.'+(ok?' ☁️ Aussi sur tes autres appareils.':'')+
+        '<div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" type="button" onclick="nxcatClose()">Fermer</button></div>';
+      renderStats(); try{ renderPrix(); }catch(e){}
+      window._nxcatLastFact={up:up,cr:cr,n:rows.length};
+    }).catch(function(e){ msg.innerHTML='⚠ '+esc(e.message||e); });
+  };
+
   /* test / assistant : import direct depuis des lignes déjà lues */
-  window.nxcatImportRows=function(four,rows,gRem){ var det=detect(rows), b=buildRows(rows,det,four,gRem||0); return saveImport(four,b.rows,{four:four,n:b.rows.length,date:today(),fichier:'',pubOnly:b.pubOnly}).then(function(){ return {n:b.rows.length,skipped:b.skipped,updated:refreshBase(four,b.rows),pubOnly:b.pubOnly,map:det.map}; }); };
+  window.nxcatImportRows=function(four,rows,gRem){ var det=detect(rows), b=buildRows(rows,det,four,gRem||0); return saveImport(four,b.rows,{four:four,n:b.rows.length,date:today(),fichier:'',pubOnly:b.pubOnly,at:Date.now()}).then(function(){ return pushFour(four); }).then(function(pushed){ return {n:b.rows.length,skipped:b.skipped,updated:refreshBase(four,b.rows),pubOnly:b.pubOnly,map:det.map,pushed:pushed}; }); };
   window.nxcatSearch=search; window.nxcatParseCSV=parseCSV; window.nxcatNumFr=numFr; window.nxcatReadFile=readFile; window.nxcatDetect=detect;
 
   function hook(tries){
     tries=tries||0;
     var rp=window.renderPrix;
     if(typeof rp!=='function'){ if(tries<30) setTimeout(function(){ hook(tries+1); },300); return; }
-    if(!rp._nxcat){ var w=function(){ var r=rp.apply(this,arguments); try{ card(); renderStats(); }catch(e){} return r; }; w._nxcat=true; window.renderPrix=w; }
+    if(!rp._nxcat){ var w=function(){ var r=rp.apply(this,arguments); try{ card(); renderStats(); pull(false); }catch(e){} return r; }; w._nxcat=true; window.renderPrix=w; }
+    /* la session cloud arrive un peu après le démarrage : on récupère alors les tarifs des autres appareils */
+    var k=0, iv=setInterval(function(){ k++; if(cloud()){ clearInterval(iv); pull(true); } else if(k>40) clearInterval(iv); },1500);
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ hook(0); }); else hook(0);
 })();
