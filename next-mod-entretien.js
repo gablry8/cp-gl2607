@@ -87,7 +87,7 @@
       K.sec('Main-d\'œuvre','<div class="frm">'+A.fSel('Mode','data.moMode',d.moMode,[['forfait','Forfait'],['heures','Heures × taux']],{re:'lot'})+A.fIn('Heures','data.heures',d.heures,{t:'n',step:0.5})+'</div>');
     var u=K.units(d,UNITS_DEF), cur=A.cur()||{};
     h+=K.sec('Formule','<div class="frm nxk2">'+A.fSel('Formule','data.format',d.format,[['contrat','Contrat annuel'],['visite','Visite ponctuelle']],{re:'lot'})+
-      (d.format==='contrat'?A.fIn('Visites par an','data.visites',d.visites,{t:'n',step:1,min:1,re:'lot',on:'enVisites'})+A.fIn('Première visite prévue','data.premiere',d.premiere,{ph:'AAAA-MM-JJ'}):'')+
+      (d.format==='contrat'?A.fIn('Visites par an','data.visites',d.visites,{t:'n',step:1,min:1,re:'lot',on:'enVisites'})+A.fIn('Première visite prévue','data.premiere',d.premiere,{date:true}):'')+
       A.fIn('Dégressivité équipements suivants (%)','data.degr',d.degr,{t:'n',step:5,note:'0 = même temps pour chacun'})+'</div>'+
       (d.format==='contrat'&&(Math.round(num(cur.nbDepl))||1)!==Math.max(1,Math.round(num(d.visites))||1)?'<div class="nxd2-hint">Chaque visite est un déplacement : '+K.btn('Compter '+Math.max(1,Math.round(num(d.visites))||1)+' déplacement(s)','alignDepl',i)+'</div>':''));
     /* parc */

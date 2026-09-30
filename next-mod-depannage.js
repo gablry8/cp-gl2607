@@ -132,7 +132,11 @@
       '<div class="nxd2-hint">Taux du devis : '+A.money(rate)+'/h'+(Math.abs(rate-dep)>0.01?' — ton taux dépannage est '+A.money(dep)+'/h (onglet Client & chantier, « taux horaire »)':' (ton taux dépannage)')+'. Récupération, mise en charge et déshydrateur sont ajoutés tout seuls d\'après la partie fluide.</div>');
     var dg=d.diag||{};
     h+=K.sec('Diagnostic déjà facturé',A.fChk('Déduire le diagnostic si la réparation est acceptée','data.diag.deduire',dg.deduire,{re:'lot'})+(dg.deduire?'<div class="frm">'+A.fIn('Montant à déduire (€ HT)','data.diag.montant',dg.montant,{t:'n',step:1})+'</div>':''));
-    h+=K.sec('Conditions','<div class="frm">'+A.fIn('Garantie pièces et main-d\'œuvre (imprimée si remplie)','data.garantie',d.garantie,{full:true,ph:'ex. pièces : garantie fabricant ; main-d\'œuvre : 3 mois'})+'</div>'+A.fChk('Consommables (forfait : '+A.money(d.consoDep?(P.mesOpt||{}).conso:(P.conso||{}).petit)+')','data.conso',d.conso)+
+    var cu=A.cur()||{}, zp=0; try{ zp=NXD2.zonePrice(cu); }catch(err){}
+    var sugg=Math.round((zp+num(cu.fraisDepl)+num((P.dep||{}).diag))*100)/100;
+    h+=K.sec('Conditions','<div class="frm">'+A.fIn('Garantie pièces et main-d\'œuvre (imprimée si remplie)','data.garantie',d.garantie,{full:true,ph:'ex. pièces : garantie fabricant ; main-d\'œuvre : 3 mois'})+
+      A.fIn('Si non réparable : montant facturé (€ HT, imprimé si rempli)','data.nonRep',d.nonRep||'',{t:'n',step:1,full:true,re:'lot',note:'suggestion '+A.money(sugg)+' = déplacement '+A.money(zp)+(num(cu.fraisDepl)?' + stationnement '+A.money(num(cu.fraisDepl)):'')+' + diagnostic '+A.money(num((P.dep||{}).diag))})+'</div>'+
+      (num(d.nonRep)>0&&num(d.nonRep)<sugg-0.01?'<div class="nxd2-warn">Montant « non réparable » ('+A.money(num(d.nonRep))+') inférieur à déplacement + diagnostic ('+A.money(sugg)+') : ton diagnostic serait fait à perte.</div>':'')+A.fChk('Consommables (forfait : '+A.money(d.consoDep?(P.mesOpt||{}).conso:(P.conso||{}).petit)+')','data.conso',d.conso)+
       '<div class="row-actions" style="margin-top:8px"><button type="button" class="btn-ghost btn-sm" onclick="nxd2.altLot('+i+',\'Solution 2 — remplacement\')">＋ Ajouter une 2e solution (en option)</button></div>'+
       '<div class="nxd2-hint">La 2e solution (remplacer au lieu de réparer, par exemple) est chiffrée à part, hors total ; le PDF donne le total du devis si elle est retenue. Si le client la choisit : bouton « Retenir cette solution » sur son lot (elle remplace l\'autre, jamais les deux).</div>');
     return h;
@@ -171,6 +175,7 @@
     var del=(d.pieces||[]).filter(function(p){ return p.delai; }).map(function(p){ return esc(p.nom)+' : '+esc(p.delai); });
     if(del.length) out.push('<b>Délai des pièces</b> : '+del.join(' ; '));
     if(d.garantie) out.push('<b>Garantie</b> : '+esc(d.garantie));
+    if(num(d.nonRep)>0) out.push('<b>Si l\'appareil s\'avère non réparable</b> : seuls le déplacement et le diagnostic seront facturés, soit '+A.money(num(d.nonRep))+' HT.');
     if(num((d.fl||{}).recup)>0) out.push('Fluide récupéré repris par la filière de traitement, avec bordereau de suivi (BSFF).');
     out.push('<i>Si d\'autres défauts apparaissent pendant la réparation, ils feront l\'objet d\'un nouveau devis.</i>');
     return '<div style="font-size:10.5px;color:#333;line-height:1.55">'+out.join('<br>')+'</div>';

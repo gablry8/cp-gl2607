@@ -122,6 +122,7 @@
     var savBase=sum(lots,function(x){return x.detailH;})+prepH+achatH;
     if(savPct>0&&savBase>0){ var hs=savBase*savPct/100; addC('Pose & main-d’œuvre','Provision SAV / garantie ('+fq(savPct)+' %)',fq(r2(hs))+' h × '+money(rate)+'/h',hs*rate,0,{qte:hs,unite:'h',pu:rate,mo:true}); heures+=hs; }
     var nD=Math.max(1,Math.round(num(d.nbDepl))||1), zp=zonePrice(d);
+    var fdp=num(d.fraisDepl); if(fdp>0) addC('Mise en service & déplacement','Frais de stationnement / péage',nD>1?nD+' déplacements':'',fdp*nD,fdp*nD,{qte:nD,unite:nD>1?'u':'forfait',pu:fdp});
     if(zp>0) addC('Mise en service & déplacement','Déplacement',(d.zone||'')+(d.zone==='+60 km'?' ('+fq(num(d.km))+' km)':'')+(nD>1?' × '+nD+' déplacements':''),zp*nD,0,{qte:nD,unite:nD>1?'u':'forfait',pu:zp});
     if(anyF('admin')) addC('Frais & divers','Frais administratifs devis','',P.fraisAdmin,P.fraisAdmin);
     if(anyF('commande')) addC('Frais & divers','Frais commande matériel','',P.fraisCommande,P.fraisCommande);
@@ -538,8 +539,9 @@
   /* --- briques de formulaire (liées au modèle par data-k) --- */
   function fIn(label,k,v,o){ o=o||{}; var t=o.t||'s';
     return '<label'+(o.full?' class="full"':'')+'>'+label+(o.note?' <span class="note-inline">'+o.note+'</span>':'')+
-      '<input'+(t==='n'?' type="number" step="'+(o.step||'any')+'" min="'+(o.min!=null?o.min:0)+'" inputmode="decimal"':'')+(o.list?' list="'+o.list+'"':'')+(o.ph?' placeholder="'+esc(o.ph)+'"':'')+
-      ' data-k="'+k+'" data-t="'+t+'"'+(o.on?' data-on="'+o.on+'"':'')+(o.re?' data-re="'+o.re+'"':'')+' value="'+esc(v==null?'':v)+'"></label>'; }
+      '<input'+(o.date?' type="date"':'')+(t==='n'?' type="number" step="'+(o.step||'any')+'" min="'+(o.min!=null?o.min:0)+'" inputmode="decimal"':'')+(o.list?' list="'+o.list+'"':'')+(o.ph?' placeholder="'+esc(o.ph)+'"':'')+
+      ' data-k="'+k+'" data-t="'+t+'"'+(o.on?' data-on="'+o.on+'"':'')+(o.re?' data-re="'+o.re+'"':'')+(o.addr?' data-addr="1" autocomplete="off"':'')+' value="'+esc(o.date?isoDate(v):(v==null?'':v))+'"></label>'; }
+  function isoDate(v){ try{ if(window.nxToISO) return window.nxToISO(v); }catch(e){} return v==null?'':v; }
   function fSel(label,k,v,opts,o){ o=o||{};
     var has=opts.some(function(x){ return String(Array.isArray(x)?x[0]:x)===String(v); });
     if(!has&&v!=null&&v!=='') opts=[[v,v+' (actuel)']].concat(opts);
@@ -561,13 +563,19 @@
         fIn('Nom du client *','$.cNom',d.cNom,{list:'nxd2ClientDL',on:'client'})+
         fIn('Téléphone','$.cTel',d.cTel)+fIn('Email','$.cMail',d.cMail)+
         fSel('Type','$.cType',d.cType,['Particulier','Professionnel'],{re:'tab'})+
-        fIn('Adresse du chantier *','$.cAdr',d.cAdr,{full:true})+fIn('Ville','$.cVille',d.cVille)+
+        fIn('Adresse du chantier *','$.cAdr',d.cAdr,{full:true,addr:true,ph:'tape l\'adresse : suggestions + distance depuis chez toi'})+fIn('Ville','$.cVille',d.cVille)+
         (pro?fIn('SIREN','$.cSiren',d.cSiren,{note:'client pro'}):'')+
       '</div></div>'+
       '<div class="card"><h2>🚐 Déplacements</h2><div class="frm">'+
         fSel('Distance du chantier','$.zone',d.zone,zones.map(function(z){ return [z,z+(z==='Aucun'?'':' — '+money(zonePrice({zone:z,km:d.km})))+(z==='+60 km'?' + '+fq(CFG().kmRate)+' €/km au-delà de 60':'')]; }),{on:'zone'})+
         (d.zone==='+60 km'?fIn('Distance aller (km)','$.km',d.km,{t:'n',step:1}):'')+
         fIn('Nombre de déplacements','$.nbDepl',d.nbDepl||1,{t:'n',step:1,min:1,note:'≈ '+c.joursEstim+' jour(s) de chantier d\'après les heures ('+fq(CFG().hPerDay)+' h/jour)'})+
+        fIn('Stationnement / péage (€ HT par déplacement)','$.fraisDepl',d.fraisDepl||'',{t:'n',step:1,note:'Paris, centre-ville…'})+
+      '</div><div id="nxadDist"></div>'+
+      '</div>'+
+      '<div class="card"><h2>📅 Planning</h2><div class="frm">'+
+        fIn('Date prévue du chantier','$.datePlanif',d.datePlanif,{date:true,note:'visible au planning une fois accepté'})+
+        fArea('Note chantier / accès (affichée au planning)','$.notePlanning',d.notePlanning,{rows:2})+
       '</div>'+
       (d.zone==='Aucun'&&(d.cAdr||d.cVille)?'<div class="nxd2-warn">Déplacement non facturé alors qu\'une adresse de chantier est renseignée.</div>':'')+
       ((d.nbDepl||1)<c.joursEstim?'<div class="nxd2-warn">'+c.joursEstim+' jours de chantier estimés pour '+(d.nbDepl||1)+' déplacement(s) compté(s) — vérifie que tes trajets sont bien facturés.</div>':'')+
@@ -576,7 +584,7 @@
   function tabVisite(){
     var d=cur, v=d.visite||(d.visite={});
     var h='<div class="card"><h2>📋 Visite technique</h2><div class="nxd2-hint">Remplis sur place ou dicte ce que tu vois. Les réponses restent attachées au devis ; « Appliquer au devis » reporte ce qui a un impact direct sur le chiffrage.</div>'+
-      '<div class="frm">'+fIn('Date de la visite','$.visite.date',v.date,{ph:'jj/mm/aaaa'})+fIn('Interlocuteur sur place','$.visite.contact',v.contact)+fArea('Notes générales','$.visite.notes',v.notes)+'</div>'+
+      '<div class="frm">'+fIn('Date de la visite','$.visite.date',v.date,{date:true})+fIn('Interlocuteur sur place','$.visite.contact',v.contact)+fArea('Notes générales','$.visite.notes',v.notes)+'</div>'+
       '<div class="row-actions" style="margin-top:8px"><button class="btn-ghost btn-sm" onclick="nxd2.printVisite(false)">🖨️ Fiche de visite remplie</button><button class="btn-ghost btn-sm" onclick="nxd2.printVisite(true)">🖨️ Fiche vierge à emporter</button></div></div>';
     (d.lots||[]).forEach(function(lot,i){
       var m=MODS[lot.module], qs=(m&&m.visite)||[];
@@ -776,7 +784,7 @@
     if(l.cat&&CATKEYS[l.cat]) return l.cat;
     if(l.group==='Matériel') return /^Machine/.test(l.label)?'equip':'posemat';
     if(l.group==='Pose & main-d’œuvre') return 'mo';
-    if(l.group==='Mise en service & déplacement') return l.label==='Déplacement'?'depl':'mes';
+    if(l.group==='Mise en service & déplacement') return (l.label==='Déplacement'||l.label==='Frais de stationnement / péage')?'depl':'mes';
     return 'divers';
   }
   var CATS=[['equip','Équipements'],['cf','Chambre : panneaux, porte et finitions'],['pieces','Pièces détachées'],['reseau','Réseau aéraulique — plénums, gaines, grilles'],['regul','Régulation et zonage'],['hydro','Hydraulique et raccordements'],['posemat','Liaisons, câbles, évacuation, supports et accessoires'],['fluide','Fluide frigorigène'],['entr','Entretien des équipements'],['mo','Main-d’œuvre — pose et installation'],['st','Travaux sous-traités'],['mes','Mise en service et contrôles'],['depl','Déplacement'],['divers','Consommables et frais de chantier'],['deduc','Déductions']];
@@ -899,7 +907,7 @@
     var sec=function(t){ return '<div style="background:'+NV+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">'+t+'</div>'; };
     var h='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px"><div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:16px">📋 FICHE DE VISITE TECHNIQUE</b><span style="font-family:monospace">'+esc(d.num)+'</span></div>'+
       '<div style="font-size:11px;color:#555;margin:4px 0"><b>'+esc(d.cNom||(blank?'Client : ':'—'))+'</b>'+(blank?dots:'')+' — '+esc([d.cAdr,d.cVille].filter(Boolean).join(', '))+(d.cTel?' · '+esc(d.cTel):'')+'</div>'+
-      '<div style="font-size:11px">Date : '+(blank||!d.visite.date?dots:esc(d.visite.date))+' &nbsp; Interlocuteur : '+(blank||!d.visite.contact?dots:esc(d.visite.contact))+'</div>';
+      '<div style="font-size:11px">Date : '+(blank||!d.visite.date?dots:esc(window.nxDateFR?window.nxDateFR(d.visite.date):d.visite.date))+' &nbsp; Interlocuteur : '+(blank||!d.visite.contact?dots:esc(d.visite.contact))+'</div>';
     (d.lots||[]).forEach(function(lot){
       var m=MODS[lot.module]; h+=sec(esc(natureOf(lot.module).label)+(lot.titre?' — '+esc(lot.titre):''));
       ((m&&m.visite)||[]).forEach(function(q){ var v=(lot.visite||{})[q.k]; h+='<div style="font-size:11px;padding:5px 0;border-bottom:1px solid #eee"><b>'+esc(q.l)+'</b> : '+(blank||v==null||v===''?(q.t==='sel'?q.o.filter(Boolean).map(function(o){ return '☐ '+esc(o); }).join(' &nbsp; '):dots):esc(v))+'</div>'; });
