@@ -5,7 +5,7 @@
 (function(){
   'use strict';
 
-  const NX_VERSION='Next 1.2.3 forfaits déplacement et consommables';
+  const NX_VERSION='Next 1.3.0 catalogue fournisseurs';
   const NX_KEYS={
     tasks:'cpnext_tasks',trash:'cpnext_trash',templates:'cpnext_templates',
     history:'cpnext_history',settings:'cpnext_settings',notified:'cpnext_notified',
