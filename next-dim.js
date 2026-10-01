@@ -128,7 +128,7 @@
   function viewFrigo(){
     var f=S.f, r=calcFrigo(f);
     var h='<div class="frm">'+sel('Fluide','f.fl',f.fl,Object.keys(REFTAB).map(function(k){ return [k,k]; }))+inp('Puissance frigorifique (kW)','f.kw',f.kw,0.1)+
-      inp('T° d\'évaporation (°C)','f.te',f.te,1,'−10 positif, −30 négatif')+inp('T° de condensation (°C)','f.tc',f.tc,1)+
+      inp('T° d\'évaporation (°C)','f.te',f.te,1,'−10 positif, −30 négatif',true)+inp('T° de condensation (°C)','f.tc',f.tc,1)+
       '<label class="nxd2-chk" style="grid-column:1/-1"><input type="checkbox" data-dm="f.riser" data-t="b"'+(f.riser?' checked':'')+'> <span>Colonne montante (évaporateur plus bas que le groupe) : vitesse mini plus élevée pour le retour d\'huile</span></label></div>';
     if(!r) return h+'<div class="nxd2-warn">Calcul impossible : puissance > 0, évaporation entre −40 et +15 °C, condensation entre 25 et 55 °C, et au moins 10 K d\'écart entre les deux.</div>';
     h+='<div class="nxdm-out">'+line('Débit de fluide',fq(r.m*3600,1)+' kg/h <small>(= '+fq(num(f.kw))+' kW ÷ '+fq(r.dh,1)+' kJ/kg d\'effet frigorifique)</small>')+
@@ -144,7 +144,7 @@
   }
 
   /* ================= UI ================= */
-  function inp(l,k,v,step,note){ return '<label>'+l+(note?' <span class="note-inline">'+esc(note)+'</span>':'')+'<input type="number" inputmode="decimal" step="'+(step||'any')+'" data-dm="'+k+'" value="'+esc(v==null?'':v)+'"></label>'; }
+  function inp(l,k,v,step,note,neg){ return '<label>'+l+(note?' <span class="note-inline">'+esc(note)+'</span>':'')+'<input type="number" inputmode="decimal" step="'+(step||'any')+'"'+(neg?' min="-60"':'')+' data-dm="'+k+'" value="'+esc(v==null?'':v)+'"></label>'; }
   function sel(l,k,v,opts){ return '<label>'+l+'<select data-dm="'+k+'">'+opts.map(function(o){ return '<option value="'+esc(o[0])+'"'+(String(o[0])===String(v)?' selected':'')+'>'+esc(o[1])+'</option>'; }).join('')+'</select></label>'; }
   function line(a,b){ return '<div class="recap-line"><div class="lbl">'+a+'</div><div>'+b+'</div></div>'; }
   function setPath(o,p,v){ var ks=p.split('.'), x=o; for(var i=0;i<ks.length-1;i++) x=x[ks[i]]; x[ks[ks.length-1]]=v; }
@@ -157,7 +157,7 @@
   function onEdit(e,final){
     var el=e.target; if(!el.dataset||!el.dataset.dm) return;
     var k=el.dataset.dm, v=el.type==='checkbox'?el.checked:(el.tagName==='SELECT'&&!isNaN(Number(el.value))&&k!=='w.tube'&&k!=='f.fl'?Number(el.value):el.value);
-    if(el.type==='number') v=el.value===''?'':num(el.value);
+    if(el.type==='number'||el.dataset.nxdec) v=el.value===''?'':num(el.value);
     setPath(S,k,v); keep();
     if(final||el.tagName==='SELECT'||el.type==='checkbox'){ var y=window.scrollY; render(); window.scrollTo(0,y); }
     else { clearTimeout(onEdit.t); onEdit.t=setTimeout(function(){ var a=document.activeElement, sel=a&&a.dataset&&a.dataset.dm, pos=a&&a.selectionStart; var y=window.scrollY; render(); window.scrollTo(0,y); if(sel){ var n=document.querySelector('[data-dm="'+sel+'"]'); if(n){ n.focus(); try{ if(pos!=null&&n.type!=='number') n.setSelectionRange(pos,pos); }catch(_){} } } },450); }

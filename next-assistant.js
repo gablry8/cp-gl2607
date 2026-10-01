@@ -570,7 +570,7 @@
       snapBackup('avant_restauration').then(function(r0){
         if(r0&&r0.error){ if(!confirm('La sauvegarde de sécurité a échoué ('+r0.error.message+'). Restaurer quand même ?')) return; }
         try{ SYNC_KEYS.forEach(function(k){ if(b.data[k]!==undefined) localStorage.setItem(k,JSON.stringify(b.data[k])); }); localStorage.setItem('cp2_dirty','1'); }catch(e){ toastX('⚠ Restauration impossible : '+e.message,'warn'); return; }
-        Promise.resolve(typeof pushState==='function'?pushState(true,true):null).then(function(){ toastX('✅ Sauvegarde restaurée — rechargement…','ok'); setTimeout(function(){ location.reload(); },900); });
+        Promise.resolve(typeof pushState==='function'?pushState(true,true):null).then(function(){ toastX('✅ Sauvegarde restaurée — rechargement…','ok'); setTimeout(function(){ (window.nxStoreReload?nxStoreReload():location.reload()); },900); });
       });
     });
   };

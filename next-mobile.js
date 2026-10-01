@@ -38,8 +38,52 @@
     });
   }
 
+  /* ---------- nombres à virgule (01/10/2026) ----------
+     Sur iPhone, une case « nombre » refusait la virgule (1,5 kg devenait vide). Chaque case nombre devient une
+     case texte au clavier décimal : tu tapes 1,5 ou 1.5, l'app lit toujours 1.5 (aucun calcul ne change).
+     Les cases qui acceptent un nombre négatif (températures, mesures) ont un bouton ± (le clavier décimal
+     de l'iPhone n'a pas de signe moins). */
+  var VDESC=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value');
+  function normNum(v){
+    v=String(v==null?'':v).replace(/[\s  ]/g,'');
+    if(v.indexOf(',')>=0&&v.indexOf('.')>=0) v=v.replace(/\./g,'');
+    v=v.replace(',','.');
+    return /^[-+]?(\d+\.?\d*|\.\d+|)([eE][-+]?\d+)?$/.test(v)?v.replace(/^\+/,''):'';
+  }
+  function showNum(v){ v=String(v==null?'':v); return /^-?\d*\.?\d*(e-?\d+)?$/i.test(v)?v.replace('.',','):v; }
+  window.nxNormNum=normNum;
+  function negOK(el){ var m=el.getAttribute('min'); if(m!==null&&m!==''&&Number(m)<0) return true; return el.dataset.neg==='1'; }
+  function decimalize(el){
+    if(!el||el.tagName!=='INPUT'||el.dataset.nxdec||el.type!=='number') return;
+    el.dataset.nxdec='1';
+    var raw=VDESC.get.call(el);
+    try{ el.type='text'; }catch(e){ return; }
+    el.setAttribute('inputmode','decimal'); el.setAttribute('autocomplete','off'); el.setAttribute('spellcheck','false');
+    Object.defineProperty(el,'value',{configurable:true,enumerable:true,
+      get:function(){ return normNum(VDESC.get.call(this)); },
+      set:function(v){ VDESC.set.call(this,showNum(v)); }});
+    Object.defineProperty(el,'valueAsNumber',{configurable:true,get:function(){ var n=parseFloat(normNum(VDESC.get.call(this))); return isFinite(n)?n:NaN; }});
+    VDESC.set.call(el,showNum(raw));
+    if(negOK(el)&&!(el.nextElementSibling&&el.nextElementSibling.classList.contains('nxdec-pm'))){
+      var w=document.createElement('span'); w.className='nxdec-wrap'; el.parentNode.insertBefore(w,el); w.appendChild(el);
+      var b=document.createElement('button'); b.type='button'; b.className='nxdec-pm'; b.textContent='±'; b.title='Changer le signe (nombre négatif)';
+      b.addEventListener('pointerdown',function(e){ e.preventDefault(); });
+      b.addEventListener('click',function(e){ e.preventDefault(); var r=VDESC.get.call(el).trim(); VDESC.set.call(el,r.charAt(0)==='-'?r.slice(1):'-'+r);
+        el.dispatchEvent(new Event('input',{bubbles:true})); el.dispatchEvent(new Event('change',{bubbles:true})); });
+      w.appendChild(b);
+    }
+  }
+  function decimalizeAll(root){ if(!root||!root.querySelectorAll) return; if(root.tagName==='INPUT') decimalize(root); root.querySelectorAll('input[type="number"]').forEach(decimalize); }
+  window.nxDecimalize=decimalizeAll;
+  /* saisie impossible à lire (ex. « 2 kg ») : la case se signale au lieu d'être prise pour 0 en silence */
+  document.addEventListener('focusout',function(e){ var el=e.target; if(!el||!el.dataset||!el.dataset.nxdec) return; var r=VDESC.get.call(el).trim(); var bad=r!==''&&normNum(r)==='';
+    el.classList.toggle('nxdec-bad',bad); if(bad){ el.title='Nombre non reconnu : tape seulement des chiffres (ex. 1,5)'; try{ toast('⚠ « '+r+' » n\'est pas un nombre — tape seulement des chiffres (ex. 1,5)'); }catch(_){} } else el.removeAttribute('title'); },true);
+
   /* ---------- CSS ---------- */
   var CSS=
+    '.nxdec-wrap{display:flex;gap:6px;align-items:stretch;width:100%}.nxdec-wrap input{flex:1;min-width:0}'+
+    '.nxdec-pm{flex:0 0 auto;min-width:42px;border:1px solid var(--line2,#cfd8e3);background:var(--panel,#fff);border-radius:8px;font-size:18px;font-weight:600;cursor:pointer;color:inherit}'+
+    'input.nxdec-bad{border-color:var(--red,#c0392b)!important;background:#fdecea!important}'+
     'body.nx-ov-open #nxaFab{display:none!important}'+
     'body.nx-d2 #nxaFab{bottom:calc(84px + env(safe-area-inset-bottom,0px))!important}'+
     '@media(max-width:860px){.content{padding-bottom:110px!important}#nxaFab{right:12px!important;bottom:calc(12px + env(safe-area-inset-bottom,0px));padding:11px 15px!important;font-size:13px!important}'+
@@ -207,19 +251,30 @@
   var LIMIT=5000000;
   function storageUse(){ var n=0; try{ for(var i=0;i<localStorage.length;i++){ var k=localStorage.key(i); n+=k.length+(localStorage.getItem(k)||'').length; } }catch(e){} return {chars:n,pct:Math.round(n/LIMIT*100)}; }
   window.nxmStorage=storageUse;
-  function storageBanner(){
-    var u=storageUse(), c=document.querySelector('.content'); if(!c) return;
+  function bigStore(){ return !!(window.nxStore&&nxStore.mode==='idb'); }
+  function showStore(pct,txt){
+    var c=document.querySelector('.content'); if(!c) return;
     var old=document.getElementById('nxmStore'); if(old) old.remove();
-    if(u.pct<70) return;
+    if(pct<70) return;
     var b=document.createElement('div'); b.id='nxmStore'; b.className='warnbox'; b.style.margin='0 0 12px';
-    b.innerHTML='💾 <b>Mémoire de l\'appareil remplie à '+u.pct+' %</b>'+(u.pct>=90?' — risque de ne plus pouvoir enregistrer !':'')+' Fais une <b>⤓ Sauvegarde</b>, puis vide la corbeille et l\'historique (Outils). Les grosses données sont surtout les signatures des devis. <button type="button" class="btn-ghost btn-sm" onclick="this.parentNode.remove()">OK</button>';
+    b.innerHTML='💾 <b>Mémoire de l\'appareil remplie à '+pct+' %</b>'+(pct>=90?' — risque de ne plus pouvoir enregistrer !':'')+' '+txt+' <button type="button" class="btn-ghost btn-sm" onclick="this.parentNode.remove()">OK</button>';
     c.insertBefore(b,c.firstChild);
   }
+  function storageBanner(){
+    /* grande mémoire active : on mesure la place réellement disponible (quota du navigateur) */
+    if(bigStore()&&navigator.storage&&navigator.storage.estimate){
+      navigator.storage.estimate().then(function(e){ if(!e||!e.quota) return; var pct=Math.round((e.usage||0)/e.quota*100); window._nxQuota=e; showStore(pct,'Libère de l\'espace sur le téléphone (photos, vidéos) et fais une <b>⤓ Sauvegarde</b>.'); }).catch(function(){});
+      return;
+    }
+    var u=storageUse();
+    showStore(u.pct,'Fais une <b>⤓ Sauvegarde</b>, puis vide la corbeille et l\'historique (Outils). Les grosses données sont surtout les signatures des devis.');
+  }
+  window.nxmStorageBanner=storageBanner;
   function boot(){
-    injectCSS(); bindPicker(); dateify(document); syncBody(); setTimeout(corruptBanner,600); setTimeout(draftBanner,1500); setTimeout(storageBanner,2000);
+    injectCSS(); bindPicker(); dateify(document); decimalizeAll(document); syncBody(); setTimeout(corruptBanner,600); setTimeout(draftBanner,1500); setTimeout(storageBanner,2000);
     new MutationObserver(function(ms){
       schedule();
-      ms.forEach(function(m){ [].forEach.call(m.addedNodes||[],function(n){ if(n.nodeType===1&&n.querySelector) dateify(n); }); });
+      ms.forEach(function(m){ [].forEach.call(m.addedNodes||[],function(n){ if(n.nodeType===1&&n.querySelector){ dateify(n); decimalizeAll(n); } }); });
     }).observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style']});
     window.addEventListener('resize',function(){ lastPdfW=-1; schedule(); });
   }

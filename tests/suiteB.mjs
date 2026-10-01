@@ -137,10 +137,10 @@ const clean=e=>[...new Set(e)].slice(0,6).join(' | ');
   const warned=r.banner&&!/ enregistré$/.test(r.toasts)&&r.added===0;
   rec('Stockage plein','Stockage plein : alerte rouge, jamais « enregistré »',warned,JSON.stringify(r));
   await ctx.close();
-  const g=await page({mobile:true,init:()=>{ if(!sessionStorage.getItem('__f')){ sessionStorage.setItem('__f','1'); localStorage.setItem('cp2_testfill',JSON.stringify(['x'.repeat(3900000)])); } }});
-  await g.p.reload(); await g.p.waitForTimeout(3000);
-  const gb=await g.p.evaluate(()=>({b:(document.getElementById('nxmStore')||{}).textContent||'',u:window.nxmStorage&&nxmStorage().pct}));
-  rec('Stockage plein','Mémoire presque pleine → prévenu au démarrage',/remplie à/.test(gb.b),JSON.stringify(gb));
+  const g=await page({mobile:true,init:()=>{ try{ navigator.storage.estimate=()=>Promise.resolve({usage:950,quota:1000}); }catch(e){} }});
+  await g.p.waitForTimeout(2500);
+  const gb=await g.p.evaluate(()=>({b:(document.getElementById('nxmStore')||{}).textContent||'',mode:nxStore.mode}));
+  rec('Stockage plein','Mémoire presque pleine → prévenu au démarrage',/remplie à 95/.test(gb.b),JSON.stringify(gb));
   await g.ctx.close();
 }
 

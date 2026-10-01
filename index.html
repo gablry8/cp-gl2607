@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="ClimPilot">
 <link rel="apple-touch-icon" href="icon-192.png">
+<script src="next-store.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
@@ -975,7 +976,7 @@ tbody tr:hover{background:#f7f9fd}
 <div id="devisDoc"></div>
 <div class="toast" id="toast"></div>
 
-<script>
+<script type="text/x-climpilot" id="nxMain">
 /* ============ DÉTECTEUR D'ERREUR VISIBLE (debug terrain) ============ */
 window.onerror=function(msg,src,line){try{var d=document.createElement('div');
   d.style.cssText='position:fixed;left:8px;right:8px;bottom:8px;z-index:999999;background:#7f1d1d;color:#fff;padding:10px 14px;border-radius:10px;font:12px/1.5 monospace;box-shadow:0 8px 30px rgba(0,0,0,.4)';
@@ -2479,7 +2480,7 @@ function importJSON(input){const f=input.files[0];if(!f)return;const r=new FileR
   try{
     if(o.all&&typeof o.all==='object'){
       Object.keys(o.all).forEach(k=>{if(!/^(cp2_|cpnext_)/.test(k)||NX_BK_SKIP.test(k))return;const v=o.all[k];localStorage.setItem(k,typeof v==='string'?v:JSON.stringify(v));if(SYNC_KEYS.indexOf(k)>=0)markDirty();});
-      toast('Sauvegarde complète restaurée — rechargement…');setTimeout(()=>location.reload(),700);return;
+      toast('Sauvegarde complète restaurée — rechargement…');setTimeout(()=>(window.nxStoreReload?nxStoreReload():location.reload()),700);return;
     }
     if(o.devis)DEVIS=o.devis;if(o.clients)CLIENTS=o.clients;if(o.cmd)CMD=o.cmd;if(o.machlib)MACHLIB=o.machlib;
     if(o.dep)DEP=o.dep;if(o.facseq)save(LS.facseq,o.facseq);save(LS.dep,DEP);
@@ -3591,7 +3592,7 @@ function markDirty(){try{localStorage.setItem('cp2_dirty','1');}catch(e){}
    d'un autre appareil. En cas de conflit : fusion « 3 voies » par identifiant (base = dernière version
    synchronisée, local, cloud) → rien n'est perdu ; ce qui a été supprimé d'un côté reste supprimé.
    Pendant un formulaire (devis, intervention), la fusion attend la sortie du formulaire. */
-function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();location.reload();}
+function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();if(window.nxStoreReload)return nxStoreReload();location.reload();}
 function cpStable(v){if(Array.isArray(v))return '['+v.map(cpStable).join(',')+']';
   if(v&&typeof v==='object')return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+cpStable(v[k])).join(',')+'}';
   return JSON.stringify(v===undefined?null:v);}
@@ -3698,7 +3699,7 @@ function afterLogin(){
     else if(document.visibilityState==='visible')pullState(); /* retour sur l'appli (téléphone) : récupérer les modifs des autres appareils */});
 }
 async function cloudLogout(){if(!confirm('Se déconnecter du cloud sur cet appareil ? (les données locales restent)'))return;
-  try{await sb.auth.signOut();}catch(e){}location.reload();}
+  try{await sb.auth.signOut();}catch(e){}if(window.nxStoreReload)nxStoreReload();else location.reload();}
 async function initCloud(){
   if(!(window.supabase&&window.supabase.createClient)){cloudLbl('⚠ cloud non chargé — mode local','err');return;}
   sb=window.supabase.createClient(SUPA_URL,SUPA_KEY);
@@ -3720,33 +3721,33 @@ initCloud();
 if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}catch(e){}}
 
 </script>
-<script src="next-addons.js"></script>
-<script src="next-regime.js"></script>
-<script src="next-siren.js"></script>
-<script src="next-icons.js"></script>
-<script src="next-statut.js"></script>
-<script src="next-pdf.js"></script>
-<script src="next-activite.js"></script>
-<script src="next-relance.js"></script>
-<script src="next-commande.js"></script>
-<script src="next-assistant.js"></script>
-<script src="next-signature.js"></script>
-<script src="next-cerfa.js"></script>
-<script src="next-journee.js"></script>
-<script src="next-devis2.js"></script>
-<script src="next-mod-split.js"></script>
-<script src="next-mod-gainable.js"></script>
-<script src="next-mod-kit.js"></script>
-<script src="next-mod-depannage.js"></script>
-<script src="next-mod-entretien.js"></script>
-<script src="next-mod-chambre.js"></script>
-<script src="next-mod-autres.js"></script>
-<script src="next-catalogue.js"></script>
-<script src="next-fiabilite.js"></script>
-<script src="next-mobile.js"></script>
-<script src="next-adresse.js"></script>
-<script src="next-flu-guide.js"></script>
-<script src="next-dim.js"></script>
-<script src="next-fournisseur.js"></script>
+<script type="text/x-climpilot" data-src="next-addons.js"></script>
+<script type="text/x-climpilot" data-src="next-regime.js"></script>
+<script type="text/x-climpilot" data-src="next-siren.js"></script>
+<script type="text/x-climpilot" data-src="next-icons.js"></script>
+<script type="text/x-climpilot" data-src="next-statut.js"></script>
+<script type="text/x-climpilot" data-src="next-pdf.js"></script>
+<script type="text/x-climpilot" data-src="next-activite.js"></script>
+<script type="text/x-climpilot" data-src="next-relance.js"></script>
+<script type="text/x-climpilot" data-src="next-commande.js"></script>
+<script type="text/x-climpilot" data-src="next-assistant.js"></script>
+<script type="text/x-climpilot" data-src="next-signature.js"></script>
+<script type="text/x-climpilot" data-src="next-cerfa.js"></script>
+<script type="text/x-climpilot" data-src="next-journee.js"></script>
+<script type="text/x-climpilot" data-src="next-devis2.js"></script>
+<script type="text/x-climpilot" data-src="next-mod-split.js"></script>
+<script type="text/x-climpilot" data-src="next-mod-gainable.js"></script>
+<script type="text/x-climpilot" data-src="next-mod-kit.js"></script>
+<script type="text/x-climpilot" data-src="next-mod-depannage.js"></script>
+<script type="text/x-climpilot" data-src="next-mod-entretien.js"></script>
+<script type="text/x-climpilot" data-src="next-mod-chambre.js"></script>
+<script type="text/x-climpilot" data-src="next-mod-autres.js"></script>
+<script type="text/x-climpilot" data-src="next-catalogue.js"></script>
+<script type="text/x-climpilot" data-src="next-fiabilite.js"></script>
+<script type="text/x-climpilot" data-src="next-mobile.js"></script>
+<script type="text/x-climpilot" data-src="next-adresse.js"></script>
+<script type="text/x-climpilot" data-src="next-flu-guide.js"></script>
+<script type="text/x-climpilot" data-src="next-dim.js"></script>
+<script type="text/x-climpilot" data-src="next-fournisseur.js"></script>
 </body>
 </html>

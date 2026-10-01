@@ -455,7 +455,8 @@
        les ~5 millions de caractères d'un iPhone et bloquer l'enregistrement des devis. Budget : ≤ 1,2 M caractères et
        ≤ la moitié de l'espace libre ; sinon moins de versions, voire aucune (les sauvegardes cloud quotidiennes restent). */
     let other=0;try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k!==NX_KEYS.history)other+=k.length+(localStorage.getItem(k)||'').length;}}catch(e){}
-    const budget=Math.min(1200000,Math.max(0,(4800000-other)*0.5));
+    const big=!!(window.nxStore&&nxStore.mode==='idb'); /* grande mémoire : plus de place pour l'historique */
+    const budget=big?6000000:Math.min(1200000,Math.max(0,(4800000-other)*0.5));
     for(const keep of [10,6,4,2,1]){
       const str=JSON.stringify(hist.slice(0,keep));if(str.length>budget)continue;
       try{localStorage.setItem(NX_KEYS.history,str);return;}catch(e){}
@@ -467,7 +468,7 @@
   }
   function nxRestoreSnapshot(id){
     const h=nxLoad(NX_KEYS.history,[]).find(x=>x.id===id);if(!h)return;if(!confirm('Restaurer cette version ? Une sauvegarde de l’état actuel sera créée avant.'))return;
-    nxSnapshot('Avant restauration');Object.entries(h.data||{}).forEach(([k,v])=>localStorage.setItem(k,JSON.stringify(v)));localStorage.setItem('cp2_dirty','1');alert('Version restaurée. ClimPilot va se recharger.');location.reload();
+    nxSnapshot('Avant restauration');Object.entries(h.data||{}).forEach(([k,v])=>localStorage.setItem(k,JSON.stringify(v)));localStorage.setItem('cp2_dirty','1');alert('Version restaurée. ClimPilot va se recharger.');(window.nxStoreReload?nxStoreReload():location.reload());
   }
   function nxRenderTools(){
     nxCleanTrash();const box=document.getElementById('nxTools');if(!box)return;const hist=nxLoad(NX_KEYS.history,[]);
