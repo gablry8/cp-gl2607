@@ -95,7 +95,7 @@
     /* plusieurs groupes extérieurs : support, mise en service, brasure et contrôle sont à faire pour chacun (l'ancien moteur les comptait une fois) */
     var nG=(data.machines||[]).length;
     if(data.parGroupe&&nG>1) lines.forEach(function(l){
-      if((l.group==='Matériel'&&/^Support \(/.test(l.label))||(l.group==='Mise en service & déplacement'&&/^(Mise en service|Brasure|Mise sous vide \/ contrôle)$/.test(l.label))){
+      if((l.group==='Matériel'&&/^Support \(/.test(l.label))||(l.group==='Mise en service & déplacement'&&/^(Mise en service|Brasure|Mise sous vide \/ contrôle|Test azote \(mise en pression\)|Tirage au vide|Contrôle d’étanchéité)$/.test(l.label))){
         var pu=l.pu!=null?l.pu:l.ht; l.qte=nG; l.unite='u'; l.pu=pu; l.ht=pu*nG; l.achat=(l.achat||0)*nG; l.detail=(l.detail?l.detail+' — ':'')+nG+' groupes × '+A.money(pu); } });
     var NK=window.NXK;
     if(data.wifi&&NK){ try{ NK.seed('split',1,[[WIFI,'Divers','unité',0,'module Wi-Fi du fabricant, selon la marque de l\'unité intérieure : prix à saisir']],'30/09/2026'); }catch(e){}
@@ -162,10 +162,9 @@
     h+=sec('Mise en service et contrôles','<div class="frm">'+
       A.fSel('Mise en service','data.mes',d.mes,mesK.map(function(k){ return [k,k==='Aucune'?'Aucune':k+' — '+A.money(P.mes[k])]; }))+
       A.fSel('Brasure','data.brasure',d.brasure,brK.map(function(k){ return [k,k==='Aucune'?'Aucune':k+' — '+A.money(P.bras[k])]; }))+
-      A.fSel('Contrôle','data.tests',d.tests,[['0','Aucun'],['vide','Tirage au vide — '+A.money((P.tests||{}).vide)],['azote','Test azote — '+A.money((P.tests||{}).azote)],['etanch','Contrôle d\'étanchéité — '+A.money((P.tests||{}).etanch)]])+
       A.fSel('Accès','data.acces',d.acces,[['0','Normal'],['diff','Difficile (+'+A.money((P.acces||{}).diff)+')']])+
       A.fIn('Suppléments chantier (€ HT)','data.supp',d.supp,{t:'n',step:1})+
-      A.fSel('Consommables','data.taille',d.taille||'auto',[['auto','Auto (selon le nombre d\'unités)'],['petit','Petit chantier'],['moyen','Chantier moyen'],['gros','Gros chantier']])+'</div>');
+      A.fSel('Consommables','data.taille',d.taille||'auto',[['auto','Auto (selon le nombre d\'unités)'],['petit','Petit chantier'],['moyen','Chantier moyen'],['gros','Gros chantier']])+'</div>'+(window.NXK&&NXK.testsHTML?NXK.testsHTML(d):''));
     /* articles */
     var dl='<datalist id="nxd2PrixDL">'+(typeof PRIX!=='undefined'?PRIX:[]).map(function(p){ return '<option value="'+esc(p.nom)+'">'; }).join('')+'</datalist>';
     var xh=(d.extras||[]).map(function(x,j){

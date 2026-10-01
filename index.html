@@ -327,7 +327,7 @@ tbody tr:hover{background:#f7f9fd}
             <label>Mise en service<select id="f_mes" onchange="recalc()"></select></label>
             <label>Brasure<select id="f_brasure" onchange="recalc()"></select></label>
             <label>Suppléments chantier (€)<input type="number" id="f_supp" min="0" value="0" onchange="recalc()"><span class="note-inline">toiture, carottage, combles…</span></label>
-            <label>Mise sous vide / contrôle<select id="f_tests" onchange="recalc()"><option value="0">Aucun</option><option value="vide">Tirage au vide</option><option value="azote">Test azote</option><option value="etanch">Contrôle étanchéité</option></select></label>
+            <label>Mise sous vide / contrôle<select id="f_tests" onchange="recalc()"><option value="0">Aucun</option><option value="vide">Tirage au vide</option><option value="azote">Test azote</option><option value="etanch">Contrôle étanchéité</option><option value="azote+vide">Test azote + tirage au vide</option><option value="azote+vide+etanch">Azote + vide + étanchéité</option></select></label>
           </div></div>
           <div class="navbtns"><button class="btn-ghost" onclick="step(4)">‹ Précédent</button><button class="btn-pri" onclick="step(6)">Voir le récapitulatif ›</button></div>
         </div>
@@ -1426,7 +1426,10 @@ function compute(d){
   if((Number(d.supp)||0)>0)add('Pose & main-d’œuvre','Suppléments chantier','',Number(d.supp),0);
   if(d.mes&&d.mes!=='Aucune'&&(P.mes[d.mes]||0)>0)add('Mise en service & déplacement','Mise en service',d.mes,P.mes[d.mes],0);
   if(d.brasure&&d.brasure!=='Aucune'&&(P.bras[d.brasure]||0)>0)add('Mise en service & déplacement','Brasure',d.brasure,P.bras[d.brasure],0);
-  if(d.tests&&d.tests!=='0'&&P.tests[d.tests])add('Mise en service & déplacement','Mise sous vide / contrôle',{vide:'Tirage au vide',azote:'Test azote',etanch:'Contrôle étanchéité'}[d.tests],P.tests[d.tests],0);
+  {/* contrôles cumulables : 'azote+vide' = deux lignes ; une valeur simple garde l'ancien libellé */
+   const tk=String(d.tests||'0').split('+').filter(k=>P.tests[k]);
+   if(tk.length===1)add('Mise en service & déplacement','Mise sous vide / contrôle',{vide:'Tirage au vide',azote:'Test azote',etanch:'Contrôle étanchéité'}[tk[0]],P.tests[tk[0]],0);
+   else tk.forEach(k=>add('Mise en service & déplacement',{azote:'Test azote (mise en pression)',vide:'Tirage au vide',etanch:'Contrôle d’étanchéité'}[k],'',P.tests[k],0));}
   if(d.zone&&d.zone!=='Aucun'&&(P.zone[d.zone]||0)>0)add('Mise en service & déplacement','Déplacement',d.zone,P.zone[d.zone],0);
 
   let taille=d.taille||'auto';

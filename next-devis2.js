@@ -45,7 +45,7 @@
   function franchise(){ try{ return P.regimeTVA!=='assujetti'; }catch(e){ return true; } }
 
   /* réglages communs mémorisés (synchronisés entre appareils) */
-  var CFG_DEF={kmRate:0.9, hPerDay:6, prepH:0.5, achatH:1, savPct:5};
+  var CFG_DEF={kmRate:0.9, hPerDay:6, prepH:0.5, achatH:1, savPct:5, ctrSep:0};
   function DEFS(){ var d=lsGet(DEFK,{}); if(!d||typeof d!=='object') d={}; if(!d.cfg) d.cfg={}; return d; }
   function CFG(){ var c=DEFS().cfg, o={}; Object.keys(CFG_DEF).forEach(function(k){ o[k]=(c[k]!=null&&c[k]!=='')?num(c[k]):CFG_DEF[k]; }); return o; }
   try{ if(Array.isArray(window.SYNC_KEYS) && window.SYNC_KEYS.indexOf(DEFK)<0) window.SYNC_KEYS.push(DEFK); }catch(e){}
@@ -97,19 +97,22 @@
   }
   function computeV2(d){
     var rate=rateOf(d), cm=d.common||{}, lines=[], mat=[], warnings=[], lots=[], options=[], heures=0;
+    /* d.rnd : chaque ligne arrondie au centime (détail = total, acompte + solde + contrat = devis). Les devis déjà envoyés
+       avant cette règle gardent leur calcul d'origine (montant identique à celui que le client a reçu). */
+    var RND=!!d.rnd;
     (d.lots||[]).forEach(function(lot,i){
       var mod=MODS[lot.module], r;
       try{ r=mod?mod.compute(lot,{d:d,rate:rate,index:i}):null; }catch(e){ r=null; warnings.push('Lot '+(i+1)+' : calcul impossible ('+(e.message||e)+')'); }
       if(!r) r={lines:[mkLine('Frais & divers','Lot « '+natureOf(lot.module).label+' » : module absent sur cet appareil — mets ClimPilot à jour','',0,0)],mat:[],heures:0,detailH:0,warnings:['Lot « '+natureOf(lot.module).label+' » non chiffré sur cet appareil : recharge ClimPilot (mise à jour) avant d\'envoyer ou de facturer'],missing:true};
-      r.lines.forEach(function(l){ l.lot=i; });
+      r.lines.forEach(function(l){ l.lot=i; if(RND) l.ht=r2(l.ht); });
       var e={i:i,id:lot.id,module:lot.module,label:natureOf(lot.module).label,titre:lot.titre||'',option:!!lot.option,
-        ht:sum(r.lines,function(l){return l.ht;}),heures:r.heures||0,detailH:r.detailH||0,lines:r.lines,mat:r.mat||[],
+        ht:(RND?r2:Number)(sum(r.lines,function(l){return l.ht;})),heures:r.heures||0,detailH:r.detailH||0,lines:r.lines,mat:r.mat||[],
         tvaMode:(lot.tva!=null&&lot.tva!=='')?String(lot.tva):String(P.tva),warnings:r.warnings||[]};
       (e.warnings||[]).forEach(function(w){ warnings.push((d.lots.length>1?'Lot '+(i+1)+' — ':'')+w); });
       if(lot.option){ options.push(e); return; }
       lots.push(e); lines=lines.concat(r.lines); mat=mat.concat(e.mat); heures+=e.heures;
     });
-    var common=[], addC=function(g,l,dt,ht,a,m){ common.push(mkLine(g,l,dt,ht,a,m)); };
+    var common=[], addC=function(g,l,dt,ht,a,m){ common.push(mkLine(g,l,dt,RND?r2(ht):ht,a,m)); };
     /* frais de dossier, de commande, achat du matériel et marge de sécurité : selon la nature (ex. : pas sur une sous-traitance au taux convenu,
        pas d'achat ni de frais de commande sans matériel à acheter). Par défaut (ancien format, clim, gainable…) : comme avant. */
     var feeOf=function(x){ var m=MODS[x.module], f=null; try{ f=m&&m.fees?m.fees((d.lots||[])[x.i]||{}):null; }catch(e){} return Object.assign({admin:true,commande:true,secu:true,achat:true},f||{}); };
@@ -132,16 +135,19 @@
     var secu=sub0*((P.marges&&P.marges.securite)||0)/100;
     if(secu>0) addC('Frais & divers','Marge sécurité ('+P.marges.securite+'%)','imprévus',secu,0);
     var all=lines.concat(common);
-    var totalHT=sum(all,function(l){return l.ht;});
+    var totalHT=sum(all,function(l){return l.ht;}); if(RND) totalHT=r2(totalHT);
     var fr=franchise(), tva=0, parts={}, lotsHT=sum(lots,function(x){return x.ht;}), commonHT=sum(common,function(l){return l.ht;});
-    lots.forEach(function(x){
-      var share=lotsHT>0?commonHT*x.ht/lotsHT:(lots.length?commonHT/lots.length:0);
+    var shares=lots.map(function(x){ return lotsHT>0?commonHT*x.ht/lotsHT:(lots.length?commonHT/lots.length:0); });
+    if(RND&&lots.length){ shares=shares.map(r2); var dsh=r2(commonHT-sum(shares,function(v){return v;})); if(Math.abs(dsh)>0.001){ var big=0; lots.forEach(function(x,k){ if(x.ht>lots[big].ht) big=k; }); shares[big]=r2(shares[big]+dsh); } }
+    lots.forEach(function(x,k){
+      var share=shares[k];
       x.commonShare=share;
       if(fr){ x.tva=0; return; }
       var t=tvaOfLot(x.tvaMode,x.lines,share); x.tva=t.tva; x.parts=t.parts; tva+=t.tva;
       Object.keys(t.parts).forEach(function(k){ parts[k]=(parts[k]||0)+t.parts[k]; });
     });
     if(!fr&&!lots.length&&commonHT>0){ var tr=num(P.tva); tva+=commonHT*tr/100; parts[String(tr)]=(parts[String(tr)]||0)+commonHT; }
+    if(RND&&!fr){ tva=0; Object.keys(parts).forEach(function(k){ parts[k]=r2(parts[k]); tva+=r2(parts[k]*num(k)/100); }); tva=r2(tva); lots.forEach(function(x){ x.tva=r2(x.tva); }); }
     var secPct=((P.marges&&P.marges.securite)||0)/100;
     options.forEach(function(x){
       x.htBase=x.ht; var lot=(d.lots||[])[x.i], done=false;
@@ -168,7 +174,7 @@
       if(l.option&&o.option) warnings.push('Aucune des deux solutions (« '+(o.titre||'1')+' » / « '+(l.titre||'2')+' ») n\'est dans le total'); });
     var modes=lots.map(function(x){return x.tvaMode;}).filter(function(v,i,a){return a.indexOf(v)===i;});
     var tvaRate=fr?0:(modes.length===1?(modes[0]==='mixte'?'20/10':num(modes[0])):Object.keys(parts).map(function(k){return k.replace('.',',');}).join(' / '));
-    var totalTTC=totalHT+tva;
+    var totalTTC=totalHT+tva; if(RND) totalTTC=r2(totalTTC);
     var costFactor=fr?(1+(Number(P.achatTVA)||0)/100):1;
     var matAchat=sum(all,function(l){return l.achat;})*costFactor;
     var moAchat=heures*(Number(P.coutInterne)||0);
@@ -179,13 +185,14 @@
     var ctrLots=lots.filter(function(x){ var l=(d.lots||[])[x.i]; return l&&l.module==='entretien'&&l.data&&!l.data.legacyCopy&&l.data.format==='contrat'; });
     var ctrTTC=sum(ctrLots,function(x){ return (x.ht||0)+(x.commonShare||0)+(x.tva||0); }), billTTC=Math.max(0,totalTTC-ctrTTC);
     var acomptePct=d.acompteOn?num(d.acomptePct):0, acompte=billTTC*acomptePct/100, solde=billTTC-acompte;
+    if(RND){ ctrTTC=r2(ctrTTC); billTTC=r2(Math.max(0,totalTTC-ctrTTC)); acompte=r2(billTTC*acomptePct/100); solde=r2(billTTC-acompte); }
     /* montant gardé à l'envoi (next-fiabilite) : le devis a-t-il bougé depuis ? */
     if(d.figEnv&&!d._altCalc&&Math.abs(Math.round(billTTC*100)/100-num(d.figEnv.bill))>0.01) warnings.unshift('Montant différent de celui '+(d.figEnv.statut==='accepte'?'accepté par':'envoyé à')+' ton client : '+money(num(d.figEnv.bill))+' le '+new Date(num(d.figEnv.at)).toLocaleDateString('fr-FR')+', '+money(billTTC)+' maintenant. Renvoie-lui le devis (ou fais-lui valider la nouvelle version) avant de facturer.');
     var mo=sum(all.filter(function(l){return l.mo;}),function(l){return l.ht;});
-    var tvaBreak=Object.keys(parts).map(function(k){ return {rate:num(k),base:parts[k],tva:parts[k]*num(k)/100}; }).sort(function(a,b){return b.rate-a.rate;});
+    var tvaBreak=Object.keys(parts).map(function(k){ return {rate:num(k),base:parts[k],tva:RND?r2(parts[k]*num(k)/100):parts[k]*num(k)/100}; }).sort(function(a,b){return b.rate-a.rate;});
     /* TVA de ce qui se facture sur le devis (sans le contrat d'entretien), taux par taux : pour les factures d'acompte et de solde */
     var bp={}; lots.forEach(function(x){ if(ctrLots.indexOf(x)>=0||!x.parts) return; Object.keys(x.parts).forEach(function(k){ bp[k]=(bp[k]||0)+x.parts[k]; }); });
-    var billBreak=Object.keys(bp).map(function(k){ return {rate:num(k),base:bp[k],tva:bp[k]*num(k)/100}; }).filter(function(t){ return Math.abs(t.base)>0.005; }).sort(function(a,b){return b.rate-a.rate;});
+    var billBreak=Object.keys(bp).map(function(k){ var bs=RND?r2(bp[k]):bp[k]; return {rate:num(k),base:bs,tva:RND?r2(bs*num(k)/100):bs*num(k)/100}; }).filter(function(t){ return Math.abs(t.base)>0.005; }).sort(function(a,b){return b.rate-a.rate;});
     return {v:2,lines:all,mat:mat,totalHT:totalHT,tva:tva,tvaRate:tvaRate,tvaBreak:tvaBreak,franchise:fr,totalTTC:totalTTC,
       coutReel:coutReel,matAchat:matAchat,moAchat:moAchat,benefice:benefice,margePct:margePct,gainH:gainH,cotis:cotis,
       benefNet:benefNet,gainHNet:gainHNet,mo:mo,heures:heures,rate:rate,acomptePct:acomptePct,acompte:acompte,solde:solde,billTTC:billTTC,billBreak:billBreak,ctrTTC:ctrTTC,ctrHT:sum(ctrLots,function(x){ return (x.ht||0)+(x.commonShare||0); }),ctrAll:ctrLots.length>0&&ctrLots.length===lots.length,
@@ -206,6 +213,7 @@
   function numLocked(d){ return !!(d.updatedAt||d.sentAt||d.signLink||d.signature||d.facAcompte||d.facSolde||(d.statut&&d.statut!=='brouillon')); }
   function derive(d){
     if(!d||d.v!==2) return d;
+    if(d.rnd==null&&['brouillon','verifier','pret'].indexOf(d.statut||'brouillon')>=0&&!d.facAcompte&&!d.facSolde&&!d.figEnv&&!(d.lots||[]).some(function(l){ return l.data&&l.data.legacyCopy; })) d.rnd=1;
     var real=(d.lots||[]).filter(function(l){return !l.option;});
     var labs=real.map(lotTypeLabel).filter(function(v,i,a){return a.indexOf(v)===i;});
     d.type=labs.length?labs.join(' + '):'Devis';
@@ -343,10 +351,26 @@
     }
   }
 
+  /* ---------------- contrat d'entretien → son propre devis (même client) ---------------- */
+  function ctrLotsMixed(d){ var real=(d.lots||[]).filter(function(l){ return !l.option; }), ct=real.filter(function(l){ return l.module==='entretien'&&l.data&&!l.data.legacyCopy&&l.data.format==='contrat'; }); return (ct.length&&ct.length<real.length)?ct:[]; }
+  function splitContract(auto){
+    if(!cur||cur.v!==2) return null; var ct=ctrLotsMixed(cur); if(!ct.length) return null;
+    if(!auto&&(cur.statut==='envoye'||cur.statut==='accepte')&&!confirm('Ce devis a déjà été '+(cur.statut==='accepte'?'accepté':'envoyé')+' avec le contrat dedans.\nAprès la séparation, renvoie les deux devis au client.\nContinuer ?')) return null;
+    var n=newDevisV2(null,{});
+    ['cNom','cTel','cMail','cType','cAdr','cVille','cSiren','zone','km','rateChoice','rateCustom'].forEach(function(k){ if(cur[k]!=null) n[k]=clone(cur[k]); });
+    n.common={prepH:0,achatH:0,savPct:0}; try{ if(MODS.entretien&&MODS.entretien.common) Object.assign(n.common,MODS.entretien.common()); }catch(e){}
+    n.lots=ct.map(clone); n.nbDepl=Math.max.apply(null,ct.map(function(l){ return Math.max(1,Math.round(num(l.data.visites))||1); }));
+    n.notes='Contrat d\'entretien séparé du devis n° '+(cur.num||'')+'.'; n.num=numFor(n); derive(n); n.updatedAt=Date.now();
+    cur.lots=cur.lots.filter(function(l){ return ct.indexOf(l)<0; });
+    DEVIS.push(n); persist(LS.devis,DEVIS);
+    return n;
+  }
+
   /* ---------------- enregistrement ---------------- */
   function saveV2(silent){
     if(!cur||cur.v!==2) return false;
     if(!String(cur.cNom||'').trim()&&!confirm('Nom client vide. Enregistrer quand même ?')){ TAB='client'; renderBody(); return false; }
+    var sepN=null; try{ if(CFG().ctrSep&&['brouillon','verifier','pret'].indexOf(cur.statut||'brouillon')>=0) sepN=splitContract(true); }catch(e){}
     protect(cur); derive(cur); cur.updatedAt=Date.now(); delete cur._statutSet;
     if(cur.statut==='envoye'&&!cur.sentAt) cur.sentAt=Date.now();
     try{ upsertClient();
@@ -364,7 +388,7 @@
     dirty=false; dropDraft(cur.id);
     try{ updateBadges(); }catch(e){}
     if(inbox && typeof window.nxaInboxValidated==='function'){ try{ window.nxaInboxValidated(inbox); }catch(e){} }
-    say('💾 Devis '+cur.num+' enregistré');
+    say(sepN?'💾 Devis '+cur.num+' enregistré — contrat d\'entretien mis dans le devis '+sepN.num:'💾 Devis '+cur.num+' enregistré');
     render();
     return true;
   }
@@ -924,6 +948,7 @@
   /* ---------------- actions ---------------- */
   var nxd2={
     tab:function(t){ TAB=t; renderBody(); refreshLive(); try{ window.scrollTo(0,0); }catch(e){} },
+    sepCtr:function(){ var n=splitContract(false); if(!n) return; markDirty(); saveV2(true); say('Contrat d\'entretien mis dans son propre devis : '+n.num+' (brouillon, même client)'); },
     alertes:function(){ TAB='recap'; renderBody(); refreshLive(); try{ var e=document.getElementById('nxd2Sante'); if(e) e.scrollIntoView({behavior:'smooth',block:'start'}); }catch(e){} },
     save:saveV2,
     close:function(){
@@ -985,7 +1010,7 @@
   window.nxBillNote=function(d,c){ try{ if(!d||d.v!==2) return ''; c=(c&&c.billTTC!=null)?c:computeV2(d); if(!(c.ctrTTC>0.005)) return '';
       return '🤝 '+(c.ctrAll?'Ce devis est un contrat d\'entretien':'Ce devis contient un contrat d\'entretien')+' ('+money(c.ctrHT)+' HT par an) : il se facture chaque année depuis l\'onglet <a href="#" onclick="go(\'contrats\');return false">Contrats</a>'+(c.ctrAll?', pas ici (une fois le devis accepté, le contrat y est créé tout seul).':' ; ici, seuls les autres travaux sont facturés.'); }catch(e){ return ''; } };
   window.NXD2={register:register,compute:computeV2,natures:NATURES,modules:MODS,newDevis:newDevisV2,newLot:newLot,open:openEditor,derive:derive,numFor:numFor,api:api,
-    zonePrice:zonePrice,protect:protect,fromLegacyDevis:function(src){ var d=newDevisV2(null,{}); d.common={prepH:0,achatH:0,savPct:0}; ['cNom','cTel','cMail','cType','cAdr','cVille','cSiren','zone','rateChoice','rateCustom','acompteOn','acomptePct','notes'].forEach(function(k){ if(src[k]!=null) d[k]=src[k]; }); var mid=legacyMod(src.type)||'split'; var lot=newLot(mid); lot.data=MODS[mid].fromLegacy(src); lot.tva=src.tvaMode==='mixte'?'mixte':String(src.tvaRate!=null&&src.tvaRate!==''?src.tvaRate:P.tva); d.lots=[lot]; d.num=numFor(d); return derive(d); }};
+    zonePrice:zonePrice,protect:protect,fromLegacyDevis:function(src){ var d=newDevisV2(null,{}); d.rnd=0; d.common={prepH:0,achatH:0,savPct:0}; ['cNom','cTel','cMail','cType','cAdr','cVille','cSiren','zone','rateChoice','rateCustom','acompteOn','acomptePct','notes'].forEach(function(k){ if(src[k]!=null) d[k]=src[k]; }); var mid=legacyMod(src.type)||'split'; var lot=newLot(mid); lot.data=MODS[mid].fromLegacy(src); lot.tva=src.tvaMode==='mixte'?'mixte':String(src.tvaRate!=null&&src.tvaRate!==''?src.tvaRate:P.tva); d.lots=[lot]; d.num=numFor(d); return derive(d); }};
 
   /* assistant : un devis dicté de clim murale s'ouvre au nouveau format */
   var _nxaOpen=window.nxaOpenDevis;
@@ -1035,7 +1060,7 @@
       '<label>Provision SAV (%)<input type="number" step="1" min="0" value="'+c.savPct+'" onchange="nxd2.setCfg(\'savPct\',this.value)"></label>'+
       '<label>Heures facturées par jour<input type="number" step="0.5" min="1" value="'+c.hPerDay+'" onchange="nxd2.setCfg(\'hPerDay\',this.value)"></label>'+
       '<label>Au-delà de 60 km (€/km)<input type="number" step="0.05" min="0" value="'+c.kmRate+'" onchange="nxd2.setCfg(\'kmRate\',this.value)"><span class="note-inline">ajouté au forfait 50-60 km ('+money(num((P.zone||{})['+50 km']))+')</span></label>'+
-      '</div><div class="nxd2-hint">Valeurs de départ pour chaque nouveau devis ; tu peux les changer devis par devis dans le récapitulatif.</div>';
+      '</div><label class="nxd2-chk" style="margin-top:8px"><input type="checkbox"'+(c.ctrSep?' checked':'')+' onchange="nxd2.setCfg(\'ctrSep\',this.checked?1:0)"> Contrat d\'entretien ajouté à un devis de travaux : le mettre tout seul dans un devis séparé à l\'enregistrement (même client)</label><div><div class="nxd2-hint">Valeurs de départ pour chaque nouveau devis ; tu peux les changer devis par devis dans le récapitulatif.</div>';
   }
   nxd2.setFlag=function(on){ try{ localStorage.setItem(FLAGK,on?'1':'0'); }catch(e){} say(on?'Choix de la nature activé':'Ancien formulaire par défaut'); };
   nxd2.setCfg=function(k,v){ var all=DEFS(); all.cfg[k]=num(v); persist(DEFK,all); say('Réglage enregistré'); };
