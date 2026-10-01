@@ -16,3 +16,5 @@ Pas utilisé par l'application (fichiers ignorés par le service worker).
   (pip : factur-x, saxonche, lxml) et le schematron officiel CEN
   (git clone https://github.com/ConnectingEurope/eInvoicing-EN16931 ; variable EN16931_XSLT)
 - suiteG-virgule.mjs : saisie des nombres à virgule
+- suiteH-superpdp.mjs : plateforme agréée Super PDP (serveur simulé) — connexion, contrôle, envoi test,
+  statuts, factures reçues, annuaire, compte réel, cadre de facturation BT-23
