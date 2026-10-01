@@ -85,8 +85,23 @@
     m.grand=r2(m.lineTotal+m.taxTotal);
     m.due=r2(m.grand-m.prepaid);
     m.seller=e;
+    /* cadre de facturation (BT-23, règle française BR-FR-08) : nature B/S/M + situation
+       1 = facture normale · 2 = déjà payée à l'émission · 4 = facture définitive après acompte */
+    m.nature=defaultNature(m);
+    m.situ=(m.type==='380'&&m.prepaid>0)?'4':(m.type!=='381'&&m.payeLe&&String(m.payeLe)<=String(m.date))?'2':'1';
     return m;
   }
+  /* même nature que celle écrite sur le PDF : devis (fourniture + pose) et dépannage avec pièces = mixte (M),
+     le reste = services (S) ; un avoir reprend la nature de sa facture. Choix enregistré par document s'il a été changé. */
+  function defaultNature(m){
+    try{ var saved=((JSON.parse(localStorage.getItem('cpnext_pdp')||'{}')||{}).docs||{})[m.id]; if(saved&&/^[BSM]$/.test(saved.nature||'')) return saved.nature; }catch(e){}
+    if(m.type==='381'&&m.ref&&m.ref.id&&m.ref.id!==m.id){ var o=model(m.ref.id); if(o) return o.nature; }
+    if(m.kind==='devis') return 'M';
+    if(m.kind==='dep'){ var inv=(window.nxInvoices?nxInvoices():[]).find(function(i){ return i.num===m.id; }); var f=inv&&inv.f; if(f&&f.pieces&&f.pieces.length) return 'M'; }
+    return 'S';
+  }
+  var NATURE_TXT={B:'livraison de biens',S:'prestation de services',M:'livraison de biens et prestation de services'};
+  window.nxEinvNatureTxt=NATURE_TXT;
 
   /* ---------- ce qui manque pour une facture électronique complète ---------- */
   function checks(m){
@@ -132,6 +147,7 @@
      { seller:{nom,siret,adresse,cp,ville,email}, buyer:{nom,siren,adr,ville,type}, suffix:'-T1' } */
   function xml(n,ov){
     var m=model(n); if(!m) return null;
+    if(ov&&/^[BSM]$/.test(ov.nature||'')) m.nature=ov.nature;
     if(ov){ if(ov.seller) m.seller=Object.assign({},m.seller,ov.seller); if(ov.buyer) m.cli=Object.assign({},m.cli,ov.buyer); if(ov.suffix){ m.id=m.id+ov.suffix; if(m.ref) m.ref=Object.assign({},m.ref,{id:m.ref.id+ov.suffix}); } }
     var e=m.seller, pro=String((m.cli||{}).type||'')==='Professionnel';
     var notes=[];
@@ -139,9 +155,9 @@
     notes.push(['PMD','Pénalités de retard : 3 fois le taux d\'intérêt légal.']);
     notes.push(['PMT',pro?'Indemnité forfaitaire pour frais de recouvrement : 40 €.':'Indemnité forfaitaire pour frais de recouvrement (clients professionnels) : 40 €.']);
     notes.push(['AAB','Pas d\'escompte pour paiement anticipé.']);
-    notes.push(['','Nature de l\'opération : '+(m.kind==='devis'?'livraison de biens et prestation de services':'prestation de services')+'.']);
+    notes.push(['','Nature de l\'opération : '+NATURE_TXT[m.nature]+'.']);
     var h='<?xml version="1.0" encoding="UTF-8"?>\n<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" xmlns:qdt="urn:un:unece:uncefact:data:standard:QualifiedDataType:100" xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100">'+
-      '<rsm:ExchangedDocumentContext><ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>urn:cen.eu:en16931:2017</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter></rsm:ExchangedDocumentContext>'+
+      '<rsm:ExchangedDocumentContext><ram:BusinessProcessSpecifiedDocumentContextParameter><ram:ID>'+m.nature+m.situ+'</ram:ID></ram:BusinessProcessSpecifiedDocumentContextParameter><ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>urn:cen.eu:en16931:2017</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter></rsm:ExchangedDocumentContext>'+
       '<rsm:ExchangedDocument><ram:ID>'+x(m.id)+'</ram:ID><ram:TypeCode>'+m.type+'</ram:TypeCode><ram:IssueDateTime><udt:DateTimeString format="102">'+d8(m.date)+'</udt:DateTimeString></ram:IssueDateTime>'+
       notes.map(function(t){ return '<ram:IncludedNote><ram:Content>'+x(t[1])+'</ram:Content>'+(t[0]?'<ram:SubjectCode>'+t[0]+'</ram:SubjectCode>':'')+'</ram:IncludedNote>'; }).join('')+'</rsm:ExchangedDocument>'+
       '<rsm:SupplyChainTradeTransaction>'+

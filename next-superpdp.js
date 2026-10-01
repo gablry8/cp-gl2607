@@ -90,8 +90,9 @@
     return null;
   }
   function sirenOf(c){ var d=String((c&&c.siren)||'').replace(/\D/g,''); return d.length>=9?d.slice(0,9):''; }
-  window.nxPdpSend=function(num){
+  window.nxPdpSend=function(num,nat){
     var d=docInfo(num); if(!d){ say('Document introuvable'); return; }
+    if(/^[BSM]$/.test(nat||'')){ var mm=M(); mm.docs[num]=mm.docs[num]||{envois:[]}; mm.docs[num].nature=nat; saveM(mm); }
     busy('Connexion à la plateforme…');
     status(true).then(function(st){
       if(st.erreur){ modal('Plateforme agréée','<div class="nxd2-warn red">'+esc(st.message||st.erreur)+'</div>'); return; }
@@ -103,23 +104,26 @@
         return;
       }
       var ov=sandbox?testOverrides(co,num):null;
-      var xml=window.nxEinvXML?nxEinvXML(num,ov):null; if(!xml){ modal('Envoi','<div class="nxd2-warn red">Fichier impossible à fabriquer.</div>'); return; }
+      var xml=window.nxEinvXML?nxEinvXML(num,ov):null;
+      var cadre=(/<ram:BusinessProcessSpecifiedDocumentContextParameter><ram:ID>([A-Z]\d)</.exec(xml||'')||[])[1]||'';
+      if(!xml){ modal('Envoi','<div class="nxd2-warn red">Fichier impossible à fabriquer.</div>'); return; }
       busy('Contrôle du fichier par la plateforme (format, norme européenne, règles françaises)…');
       api({action:'validate',xml:xml,name:num}).then(function(v){
         if(v.erreur){ modal('Contrôle','<div class="nxd2-warn red">'+esc(v.message||v.erreur)+'</div>'); return; }
         var rep=v.rapport||{};
         if(!rep.is_valid){ modal('Contrôle — '+num,reportHTML(rep)+(sandbox?'<div class="sub2" style="margin-top:8px">Bac à sable : envoi entre sociétés de test.</div>':'')); return; }
         modal((sandbox?'TEST — ':'')+'Envoyer '+num,reportHTML(rep)+
+          natureSel(num,cadre)+
           '<div class="recap-line" style="margin-top:8px"><div><b>'+esc(sandbox?ov.buyer.nom:(d.cli.nom||'—'))+'</b><div class="sub2">'+esc(d.label)+'</div></div><div><b>'+money(d.montant)+'</b></div></div>'+
           (sandbox?'<div class="nxd2-warn">Compte de <b>test</b> : le document part de ta société de test « '+esc(co.nom||'')+' » vers « '+esc(ov.buyer.nom)+' », numéro '+esc(num+ov.suffix)+'. Rien n\'est envoyé à ton vrai client.</div>':'<div class="nxd2-hint">Le document part au client par le circuit officiel. Une facture envoyée ne se retire pas : en cas d\'erreur, on fait un avoir.</div>'),
           '<button class="btn-ghost" onclick="closeModal(\'mPdp\')">Annuler</button><button class="btn-pri" id="nxpdpGo">'+(sandbox?'Envoyer le test':'Envoyer')+'</button>');
         document.getElementById('nxpdpGo').onclick=function(){
           busy('Envoi…');
-          api({action:'send',xml:xml,external_id:(num+(ov?ov.suffix:'')).slice(0,64)}).then(function(s){
+          api({action:'send',xml:xml,external_id:(num+(ov&&ov.suffix||'')).slice(0,64)}).then(function(s){
             if(s.erreur){ modal('Envoi refusé','<div class="nxd2-warn red">'+esc(s.message||s.erreur)+(s.status?' <span class="sub2">(HTTP '+s.status+')</span>':'')+'</div>'); return; }
             var m=M(), le=lastEv(s.events);
             m.docs[num]=m.docs[num]||{envois:[]};
-            m.docs[num].envois=(m.docs[num].envois||[]).concat([{id:s.id,env:sandbox?'sandbox':'production',at:new Date().toISOString(),ref:num+(ov?ov.suffix:''),code:le?le.status_code:'api:uploaded',texte:le?le.status_text:''}]);
+            m.docs[num].envois=(m.docs[num].envois||[]).concat([{id:s.id,env:sandbox?'sandbox':'production',at:new Date().toISOString(),ref:num+(ov&&ov.suffix||''),cadre:cadre,code:le?le.status_code:'api:uploaded',texte:le?le.status_text:''}]);
             saveM(m);
             modal('Envoyé','<div class="nxd2-ok">✅ '+esc(num)+' déposé sur la plateforme'+(sandbox?' (test)':'')+'. Statut : <b>'+esc(lab(le?le.status_code:'api:uploaded'))+'</b>.</div><div class="sub2">Le statut se met à jour dans « Facture électronique ».</div>');
             refreshView();
@@ -128,6 +132,13 @@
       });
     });
   };
+  var SITU={'1':'facture normale','2':'déjà payée','4':'définitive après acompte'};
+  function natureSel(num,cadre){
+    var n=cadre.charAt(0), s=cadre.charAt(1), T=window.nxEinvNatureTxt||{B:'livraison de biens',S:'prestation de services',M:'livraison de biens et prestation de services'};
+    return '<div class="frm" style="margin-top:8px"><label class="full">Nature de l\'opération (cadre de facturation <b>'+esc(cadre)+'</b> — '+esc(SITU[s]||'')+')'+
+      '<select onchange="nxPdpSend(\''+esc(num)+'\',this.value)">'+['M','S','B'].map(function(k){ return '<option value="'+k+'"'+(k===n?' selected':'')+'>'+k+' — '+T[k]+'</option>'; }).join('')+'</select></label></div>'+
+      '<div class="sub2">Par défaut, la même nature que sur ta facture PDF. Si tu la changes, le fichier est recontrôlé.</div>';
+  }
   window.nxPdpLastStatus=function(num){ var d=M().docs[num]; if(!d||!d.envois||!d.envois.length) return null; return d.envois[d.envois.length-1]; };
 
   /* ---------- statuts : mise à jour ---------- */
