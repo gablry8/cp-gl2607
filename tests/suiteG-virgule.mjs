@@ -17,8 +17,8 @@ const hasPm=await p.evaluate(s=>{ const e=document.querySelector(s); return !!(e
 if(hasPm){ await p.locator(cs).fill('18'); await p.locator(cs).locator('xpath=following-sibling::button').tap(); await p.waitForTimeout(400);
   const c=await p.evaluate(()=>NXD2.api.cur().lots[0].data.consigne); ok('± donne −18',c===-18,String(c)); }
 // legacy dépannage form
-await p.evaluate(()=>{ go('dep'); newDep(); }); await p.waitForTimeout(300);
-const leg=await p.evaluate(()=>{ const i=document.querySelector('#v-dep input[inputmode="decimal"]'); if(!i) return 'none'; return i.id||i.className; });
+await p.evaluate(()=>{ newDep('dep'); }); await p.waitForTimeout(300);
+const leg=await p.evaluate(()=>{ const n=document.querySelectorAll('input[type="number"]').length; const i=document.querySelector('.view.active input[inputmode="decimal"]'); return n?'reste '+n+' cases nombre':(i?(i.id||i.className):'none'); });
 ok('Formulaire intervention : cases décimales',leg!=='none',leg);
 // dim te
 await p.evaluate(()=>{ go('dim'); nxdm.tab('frigo'); }); await p.waitForTimeout(200);
@@ -27,8 +27,8 @@ const kw=await p.evaluate(()=>JSON.parse(localStorage.getItem('cpnext_dim2')).f.
 const te=await p.evaluate(()=>!!document.querySelector('[data-dm="f.te"]').nextElementSibling);
 ok('T° évaporation : bouton ±',te);
 // invalid
-await p.locator('[data-dm="f.kw"]').fill('2 kw'); await p.locator('[data-dm="f.kw"]').blur(); await p.waitForTimeout(200);
-ok('Saisie invalide signalée',await p.evaluate(()=>!!document.querySelector('.nxdec-bad')));
+const bad=await p.evaluate(async()=>{ let m=''; const ot=window.toast; window.toast=x=>{ m+=x; }; const k=document.querySelector('[data-dm="f.kw"]'); k.focus(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(k,'2 kw'); k.blur(); await new Promise(r=>setTimeout(r,50)); window.toast=ot; return m; });
+ok('Saisie invalide signalée',/n'est pas un nombre/.test(bad),bad);
 // fiche fluide
 await p.evaluate(()=>{ go('fluides'); openFlu(); }); await p.waitForTimeout(300);
 await p.locator('#fl_charge').fill('0,9'); const fc=await p.evaluate(()=>document.getElementById('fl_charge').value); ok('Fiche fluide charge 0,9 → 0.9',fc==='0.9',fc);
