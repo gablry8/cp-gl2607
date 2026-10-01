@@ -26,6 +26,8 @@
   function num(v){ var n=Number(String(v==null?'':v).replace(',','.')); return isFinite(n)?n:0; }
   function r2(n){ return Math.round((Number(n)||0)*100)/100; }
   function a2(n){ return r2(n).toFixed(2); }
+  /* taux de TVA : « 20 » pour un taux entier, « 5.50 » sinon (règle française BR-FR-16 : liste fermée de chaînes) */
+  function rt(n){ n=r2(n); return n===Math.round(n)?String(Math.round(n)):n.toFixed(2); }
   function d8(iso){ return String(iso||'').slice(0,10).replace(/-/g,''); }
   function today(){ try{ return todayISO(); }catch(e){ return new Date().toISOString().slice(0,10); } }
   function E(){ try{ return P.entreprise||{}; }catch(e){ return {}; } }
@@ -109,7 +111,11 @@
     var o='<ram:'+tag+'><ram:Name>'+x((isSeller?p.nom:p.nom)||'—')+'</ram:Name>';
     if(s) o+='<ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">'+s+'</ram:ID></ram:SpecifiedLegalOrganization>';
     o+='<ram:PostalTradeAddress>'+(sv.cp?'<ram:PostcodeCode>'+x(sv.cp)+'</ram:PostcodeCode>':'')+(adr?'<ram:LineOne>'+x(adr)+'</ram:LineOne>':'')+(sv.ville?'<ram:CityName>'+x(sv.ville)+'</ram:CityName>':'')+'<ram:CountryID>FR</ram:CountryID></ram:PostalTradeAddress>';
-    var mail=isSeller?p.email:p.mail; if(mail) o+='<ram:URIUniversalCommunication><ram:URIID schemeID="EM">'+x(mail)+'</ram:URIID></ram:URIUniversalCommunication>';
+    /* adresse électronique de facturation (BT-34 / BT-49) : le SIREN dans l'annuaire officiel (schéma 0225) ;
+       pour un particulier sans SIREN, son e-mail (schéma EM) */
+    var mail=isSeller?p.email:p.mail;
+    if(s) o+='<ram:URIUniversalCommunication><ram:URIID schemeID="0225">'+s+'</ram:URIID></ram:URIUniversalCommunication>';
+    else if(mail) o+='<ram:URIUniversalCommunication><ram:URIID schemeID="EM">'+x(mail)+'</ram:URIID></ram:URIUniversalCommunication>';
     /* identifiant fiscal du vendeur (BT-31 n° TVA si tu en as un ; sinon BT-32 = SIREN, référence de ton statut fiscal en franchise) */
     if(isSeller){ var tv=String(p.tvaIntra||'').replace(/\s/g,'');
       if(tv) o+='<ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">'+x(tv)+'</ram:ID></ram:SpecifiedTaxRegistration>';
@@ -118,12 +124,15 @@
   }
   function taxXML(t,m,line){
     var exempt=t.cat==='E';
-    if(line) return '<ram:ApplicableTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>'+t.cat+'</ram:CategoryCode><ram:RateApplicablePercent>'+a2(exempt?0:t.rate)+'</ram:RateApplicablePercent></ram:ApplicableTradeTax>';
+    if(line) return '<ram:ApplicableTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>'+t.cat+'</ram:CategoryCode><ram:RateApplicablePercent>'+rt(exempt?0:t.rate)+'</ram:RateApplicablePercent></ram:ApplicableTradeTax>';
     return '<ram:ApplicableTradeTax><ram:CalculatedAmount>'+a2(t.tva)+'</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode>'+(exempt?'<ram:ExemptionReason>'+x(mention(m.date))+'</ram:ExemptionReason>':'')+
-      '<ram:BasisAmount>'+a2(t.base)+'</ram:BasisAmount><ram:CategoryCode>'+t.cat+'</ram:CategoryCode>'+(exempt?'<ram:ExemptionReasonCode>VATEX-FR-FRANCHISE</ram:ExemptionReasonCode>':'')+'<ram:RateApplicablePercent>'+a2(exempt?0:t.rate)+'</ram:RateApplicablePercent>'+'</ram:ApplicableTradeTax>';
+      '<ram:BasisAmount>'+a2(t.base)+'</ram:BasisAmount><ram:CategoryCode>'+t.cat+'</ram:CategoryCode>'+(exempt?'<ram:ExemptionReasonCode>VATEX-FR-FRANCHISE</ram:ExemptionReasonCode>':'')+'<ram:RateApplicablePercent>'+rt(exempt?0:t.rate)+'</ram:RateApplicablePercent>'+'</ram:ApplicableTradeTax>';
   }
-  function xml(n){
+  /* ov (facultatif) : identités de remplacement pour un envoi de TEST sur le bac à sable de la plateforme
+     { seller:{nom,siret,adresse,cp,ville,email}, buyer:{nom,siren,adr,ville,type}, suffix:'-T1' } */
+  function xml(n,ov){
     var m=model(n); if(!m) return null;
+    if(ov){ if(ov.seller) m.seller=Object.assign({},m.seller,ov.seller); if(ov.buyer) m.cli=Object.assign({},m.cli,ov.buyer); if(ov.suffix){ m.id=m.id+ov.suffix; if(m.ref) m.ref=Object.assign({},m.ref,{id:m.ref.id+ov.suffix}); } }
     var e=m.seller, pro=String((m.cli||{}).type||'')==='Professionnel';
     var notes=[];
     if(m.franchise) notes.push(['',mention(m.date)]);
