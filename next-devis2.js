@@ -220,7 +220,7 @@
   }
 
   /* ---------------- champs posés par d'autres écrans : jamais écrasés à l'enregistrement ---------------- */
-  var OWNED=['facAcompte','facSolde','signature','signLink','relances','datePlanif','matReserve','hReel','achatReel','figEnv'];
+  var OWNED=['facAcompte','facSolde','facAnnulees','signature','signLink','relances','datePlanif','matReserve','hReel','achatReel','figEnv'];
   function protect(c){
     try{
       var e=(DEVIS||[]).find(function(x){ return x.id===c.id; }); if(!e) return c;
@@ -230,6 +230,9 @@
         if(c[k]==null||c[k]==='') c[k]=clone(e[k]);
       });
       if(e.signature && !c.signature) c.signature=clone(e.signature);
+      /* facture annulée par avoir : un éditeur ouvert avant l'avoir ne doit jamais la remettre en place */
+      var ann=(e.facAnnulees||[]).map(function(f){ return f.num; });
+      ['facAcompte','facSolde'].forEach(function(k){ if(c[k]&&ann.indexOf(c[k].num)>=0){ if(e[k]) c[k]=clone(e[k]); else delete c[k]; } });
       /* contrats déjà créés depuis ce devis (module Entretien) : l'éditeur ne doit jamais les « oublier » */
       if(Array.isArray(e.ctrFaits)){ var cf=Array.isArray(c.ctrFaits)?c.ctrFaits.slice():[]; e.ctrFaits.forEach(function(k){ if(cf.indexOf(k)<0) cf.push(k); }); c.ctrFaits=cf; }
       ['refus','acceptedAt'].forEach(function(k){ if(e[k]!=null&&c[k]==null) c[k]=clone(e[k]); });

@@ -60,10 +60,11 @@
   /* 4. une facture émise ne disparaît pas : suppression bloquée (elle s'annule par un avoir) */
   function facsOf(kind,id){
     try{
-      if(kind==='devis'){ var d=DEVIS.find(function(x){ return x.id===id; }); return d?[d.facAcompte,d.facSolde].filter(Boolean).map(function(f){ return f.num; }):[]; }
-      if(kind==='dep'){ var x=DEP.find(function(o){ return o.id===id; }); return x&&x.facNum?[x.facNum]:[]; }
-      if(kind==='loc'){ var l=LOC.find(function(o){ return o.id===id; }); return l&&l.fac?[l.fac.num]:[]; }
-      if(kind==='ctr'){ var c=CTR.find(function(o){ return o.id===id; }); return c?(c.facs||[]).map(function(f){ return f.num; }):[]; }
+      var ann=function(o,k){ return ((o&&o[k])||[]).map(function(f){ return f.num; }); };
+      if(kind==='devis'){ var d=DEVIS.find(function(x){ return x.id===id; }); return d?[d.facAcompte,d.facSolde].filter(Boolean).map(function(f){ return f.num; }).concat(ann(d,'facAnnulees')):[]; }
+      if(kind==='dep'){ var x=DEP.find(function(o){ return o.id===id; }); return x?(x.facNum?[x.facNum]:[]).concat(ann(x,'facAnnulees')):[]; }
+      if(kind==='loc'){ var l=LOC.find(function(o){ return o.id===id; }); return l?(l.fac?[l.fac.num]:[]).concat(ann(l,'facAnnulees')):[]; }
+      if(kind==='ctr'){ var c=CTR.find(function(o){ return o.id===id; }); return c?(c.facs||[]).map(function(f){ return f.num; }).concat(ann(c,'facsAnnulees')):[]; }
     }catch(e){}
     return [];
   }
@@ -76,7 +77,7 @@
     }; w._nxf=true; window[fn]=w;
   }
   /* 5. dupliquer un devis ne recopie ni ses factures, ni sa signature, ni son suivi */
-  var RESET=['facAcompte','facSolde','signature','signLink','sentAt','relances','datePlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv'];
+  var RESET=['facAcompte','facSolde','facAnnulees','signature','signLink','sentAt','relances','datePlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv'];
   function guardDup(){
     var o=window.dupDevis; if(typeof o!=='function'||o._nxf) return;
     var w=function(id){
@@ -96,7 +97,9 @@
         sur les factures reçues de l'autre → il redonnerait un numéro déjà pris. On repart donc du plus grand numéro existant. */
   function facNumsAll(){
     var a=[];
-    try{ (DEVIS||[]).forEach(function(d){ [d.facAcompte,d.facSolde].forEach(function(f){ if(f&&f.num) a.push(f.num); }); }); }catch(e){}
+    try{ (DEVIS||[]).forEach(function(d){ [d.facAcompte,d.facSolde].concat(d.facAnnulees||[]).forEach(function(f){ if(f&&f.num) a.push(f.num); }); }); }catch(e){}
+    /* factures annulées par avoir : leur numéro reste pris */
+    try{ (DEP||[]).forEach(function(x){ (x&&x.facAnnulees||[]).forEach(function(f){ if(f&&f.num) a.push(f.num); }); }); (LOC||[]).forEach(function(l){ (l&&l.facAnnulees||[]).forEach(function(f){ if(f&&f.num) a.push(f.num); }); }); (CTR||[]).forEach(function(c){ (c&&c.facsAnnulees||[]).forEach(function(f){ if(f&&f.num) a.push(f.num); }); }); }catch(e){}
     try{ (DEP||[]).forEach(function(x){ if(x&&x.facNum) a.push(x.facNum); }); }catch(e){}
     try{ (LOC||[]).forEach(function(l){ if(l&&l.fac&&l.fac.num) a.push(l.fac.num); }); }catch(e){}
     try{ (CTR||[]).forEach(function(c){ ((c&&c.facs)||[]).forEach(function(f){ if(f&&f.num) a.push(f.num); }); }); }catch(e){}

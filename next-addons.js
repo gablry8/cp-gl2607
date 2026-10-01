@@ -137,6 +137,7 @@
       if(l.fac)docs.push({num:l.fac.num,type:'Facture',stype:'Facture (location)',date:l.fac.date||'',client:l.cNom||'—',montant:l.fac.montant,statut:l.fac.payeLe?'✔ Payée':'⌛ À encaisser',open:"go('loc')"});});
     (CTR||[]).forEach(c=>{(c.facs||[]).forEach(f=>{docs.push({num:f.num,type:'Facture',stype:'Facture (entretien '+f.annee+')',date:f.date||'',client:c.clientNom||'—',montant:f.montant,statut:f.payeLe?'✔ Payée':'⌛ À encaisser',open:"go('contrats')"});});});
     (typeof FLU!=='undefined'?FLU:[]).forEach(f=>docs.push({num:f.num||'',type:'Fiche fluides',date:f.date||'',client:f.client||'—',montant:null,statut:'',open:"go('fluides')"}));
+    try{if(typeof window.nxDocsExtra==='function')return window.nxDocsExtra(docs);}catch(e){}
     return docs;
   }
   function nxSerieCheck(nums){
@@ -160,6 +161,7 @@
     rows.sort((a,b)=>tri==='date'?((b.date||'')<(a.date||'')?-1:1):tri==='montant'?((b.montant||0)-(a.montant||0)):String(a.num).localeCompare(String(b.num),undefined,{numeric:true}));
     const chk=nxSerieCheck(docs.filter(d=>d.type==='Facture').map(d=>d.num));
     const chkL=nxSerieCheck(docs.filter(d=>d.type==='Contrat location').map(d=>d.num));
+    const chkA=nxSerieCheck(docs.filter(d=>d.type==='Avoir').map(d=>d.num));
     const nFac=docs.filter(d=>d.type==='Facture'&&(d.date||'').slice(0,4)===y);
     const att=nFac.filter(d=>d.statut.indexOf('encaisser')>=0);
     box.innerHTML=
@@ -167,6 +169,7 @@
      +(chk.gaps.length?'<div class="warnbox" style="border-color:var(--red);color:var(--red)">🚨 <b>Trous dans la série de factures :</b> '+chk.gaps.join(', ')+'. Une série de factures doit être CONTINUE (obligation comptable). Une facture ratée ne se supprime pas : elle s\'annule par un avoir et garde son numéro. Vérifie la corbeille (Sécurité & corbeille) pour restaurer.</div>':'')
      +(chk.dups.length?'<div class="warnbox" style="border-color:var(--red);color:var(--red)">🚨 <b>Numéros de facture en DOUBLE :</b> '+chk.dups.join(', ')+' — à corriger immédiatement.</div>':'')
      +(chkL.dups.length?'<div class="warnbox">⚠ Contrats de location en double : '+chkL.dups.join(', ')+'</div>':'')
+     +(chkA.gaps.length||chkA.dups.length?'<div class="warnbox" style="border-color:var(--red);color:var(--red)">🚨 <b>Série d\'avoirs :</b> '+(chkA.gaps.length?'manquants '+chkA.gaps.join(', '):'')+(chkA.dups.length?' en double '+chkA.dups.join(', '):'')+'</div>':'')
      +(!chk.gaps.length&&!chk.dups.length?'<div class="warnbox" style="background:var(--green-soft);border-color:#b7e3c6;color:#0f6b39">✅ Séries de numéros propres : aucune facture manquante, aucun doublon.</div>':'')
      +'<div class="kpis">'
      +'<div class="kpi blue"><div class="lab">Documents '+(y||'—')+'<span>📁</span></div><div class="val">'+rows.length+'</div></div>'
@@ -174,7 +177,7 @@
      +'<div class="kpi warn"><div class="lab">À encaisser<span>⌛</span></div><div class="val">'+att.length+' ('+eur0(att.reduce((s,d)=>s+(d.montant||0),0))+')</div></div></div>'
      +'<div class="card"><div class="row-actions" style="margin-bottom:10px">'
      +'<select id="nxDocsYear" style="max-width:110px" onchange="nxRenderDocs()">'+years.map(x=>'<option'+(x===y?' selected':'')+'>'+x+'</option>').join('')+'</select>'
-     +'<select id="nxDocsType" style="max-width:170px" onchange="nxRenderDocs()"><option value=""'+(ty===''?' selected':'')+'>Tous les types</option>'+['Devis','Facture','Contrat location','Fiche fluides'].map(t=>'<option'+(t===ty?' selected':'')+'>'+t+'</option>').join('')+'</select>'
+     +'<select id="nxDocsType" style="max-width:170px" onchange="nxRenderDocs()"><option value=""'+(ty===''?' selected':'')+'>Tous les types</option>'+['Devis','Facture','Avoir','Contrat location','Fiche fluides'].map(t=>'<option'+(t===ty?' selected':'')+'>'+t+'</option>').join('')+'</select>'
      +'<select id="nxDocsTri" style="max-width:150px" onchange="nxRenderDocs()"><option value="num"'+(tri==='num'?' selected':'')+'>Tri : n° croissant</option><option value="date"'+(tri==='date'?' selected':'')+'>Tri : plus récents</option><option value="montant"'+(tri==='montant'?' selected':'')+'>Tri : montant ↓</option></select>'
      +'<button class="btn-ghost btn-sm" onclick="nxExportDocsCSV()">📊 Export CSV du registre</button></div>'
      +(rows.length?'<div class="scroll"><table><thead><tr><th class="l">N°</th><th class="l">Type</th><th class="l">Date</th><th class="l">Client</th><th>Montant HT</th><th class="l">Statut</th></tr></thead><tbody>'

@@ -8,3 +8,11 @@ Lancer : servir le dossier du site sur http://localhost:8765 (`python3 -m http.s
 puis `node tests/suiteA.mjs`, `node tests/suiteB.mjs`, `node tests/suiteC.mjs`.
 Les chemins de Chromium/Playwright et de sortie sont ceux de l'environnement de Claude : à adapter.
 Pas utilisé par l'application (fichiers ignorés par le service worker).
+
+## Ajouts 01/10/2026
+- suiteD-memoire.mjs : grande mémoire (IndexedDB), migration, secours, fusion
+- suiteE-avoirs.mjs : avoirs (total/partiel, refacturation, remboursements, séries)
+- suiteF-einvoice.mjs + genxml.mjs + validate-einvoice.py : XML CII EN 16931, validés contre le XSD Factur-X
+  (pip : factur-x, saxonche, lxml) et le schematron officiel CEN
+  (git clone https://github.com/ConnectingEurope/eInvoicing-EN16931 ; variable EN16931_XSLT)
+- suiteG-virgule.mjs : saisie des nombres à virgule

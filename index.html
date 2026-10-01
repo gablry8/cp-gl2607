@@ -2166,7 +2166,7 @@ function delDep(id){const d=DEP.find(x=>x.id===id);
   if(d&&d.facNum&&!confirm('⚠️ Cette intervention a une facture émise ('+d.facNum+'). En comptabilité une facture ne se supprime pas, elle s\'annule par avoir. Supprimer quand même ?'))return;
   if(!d.facNum&&!confirm('Supprimer cette intervention ?'))return;
   DEP=DEP.filter(x=>x.id!==id);save(LS.dep,DEP);renderDep();updateBadges();}
-function dupDep(id){const d=JSON.parse(JSON.stringify(DEP.find(x=>x.id===id)));d.id=uid();d.created=Date.now();d.date=todayISO();d.statut='brouillon';d.facNum='';d.facDate=null;d.payeLe=null;DEP.push(d);save(LS.dep,DEP);renderDep();toast('Intervention dupliquée');}
+function dupDep(id){const d=JSON.parse(JSON.stringify(DEP.find(x=>x.id===id)));d.id=uid();d.created=Date.now();d.date=todayISO();d.statut='brouillon';d.facNum='';d.facDate=null;d.payeLe=null;delete d.facAnnulees;DEP.push(d);save(LS.dep,DEP);renderDep();toast('Intervention dupliquée');}
 function renderDep(){
   const year=new Date().getFullYear();
   const all=DEP.map(x=>({...x,_c:computeDep(x)}));
@@ -3749,5 +3749,7 @@ if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}
 <script type="text/x-climpilot" data-src="next-flu-guide.js"></script>
 <script type="text/x-climpilot" data-src="next-dim.js"></script>
 <script type="text/x-climpilot" data-src="next-fournisseur.js"></script>
+<script type="text/x-climpilot" data-src="next-avoir.js"></script>
+<script type="text/x-climpilot" data-src="next-einvoice.js"></script>
 </body>
 </html>
