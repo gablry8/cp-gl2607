@@ -16,3 +16,15 @@ Pas utilisé par l'application (fichiers ignorés par le service worker).
   (pip : factur-x, saxonche, lxml) et le schematron officiel CEN
   (git clone https://github.com/ConnectingEurope/eInvoicing-EN16931 ; variable EN16931_XSLT)
 - suiteG-virgule.mjs : saisie des nombres à virgule
+
+## Ajouts 02/10/2026 (1.10 — préparation, non déployée)
+- suiteI-emission.mjs : émission sécurisée (série TEST en démonstration, numéro du serveur en mode réel,
+  facture non émise si serveur ou migration absents, réponse perdue puis nouvelle tentative, double clic,
+  avoir, rapprochement, doublons, fusion PC/téléphone, restauration, version envoyée à la synchro,
+  deux onglets, ancienne version qui écrit). Le serveur y est SIMULÉ avec les mêmes règles que le SQL.
+- tests/sql/ : la migration supabase/migrations/20261002120000_documents_emis.sql testée sur un VRAI
+  PostgreSQL (16) avec l'authentification Supabase imitée (00_supabase_emul.sql) et le schéma de production
+  relu le 02/10/2026 (01_base_actuelle.sql). Lancer : PGHOST=<socket> PGPORT=<port> pytest tests/sql
+  (pip : psycopg[binary], pytest). Concurrence, nouvelle tentative, plantage, écrasement, suppression,
+  autre utilisateur, ancienne version : voir test_migration.py.
+- Les suites A à H attendent désormais la série de démonstration TEST-F / TEST-AV (pas de cloud dans les tests).

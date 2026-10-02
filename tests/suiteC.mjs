@@ -59,10 +59,12 @@ import fs from 'fs';
   const r=await p.evaluate(()=>{ const d=DEVIS.find(x=>x.statut==='accepte'&&compute(x).totalHT>0); facturerDevis(d.id,'solde'); const c=document.getElementById('nx-pdf-close'); if(c) c.click();
     window.confirm=()=>true; const n0=DEVIS.length; try{ delDevis(d.id); }catch(e){} const still=DEVIS.some(x=>x.id===d.id);
     /* compteur en retard (autre appareil) */
-    const max=d.facSolde.num; save(LS.facseq,{year:new Date().getFullYear(),seq:0}); const nx=nextFacNum();
-    return {still,max,nx}; });
+    const max=d.facSolde.num; save(LS.facseq,{year:new Date().getFullYear(),seq:0}); save('cp2_testseq',{year:new Date().getFullYear(),F:0,AV:0});
+    const d2=DEVIS.find(x=>x.statut==='accepte'&&x.id!==d.id&&compute(x).totalHT>0&&!x.facSolde); facturerDevis(d2.id,'solde'); const c2=document.getElementById('nx-pdf-close'); if(c2) c2.click();
+    const n=s=>+String(s).match(/(\d+)$/)[1]; const nx=d2.facSolde&&d2.facSolde.num;
+    return {still,max,nx,ok:!!nx&&nx!==max&&n(nx)>n(max)}; });
   rec('Factures','Devis facturé impossible à supprimer',r.still);
-  rec('Factures','Compteur en retard : jamais de numéro déjà utilisé',r.nx>r.max,r.max+' puis '+r.nx);
+  rec('Factures','Compteur en retard : jamais de numéro déjà utilisé',r.ok,r.max+' puis '+r.nx);
   await ctx.close();
 }
 

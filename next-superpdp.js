@@ -92,7 +92,8 @@
   function sirenOf(c){ var d=String((c&&c.siren)||'').replace(/\D/g,''); return d.length>=9?d.slice(0,9):''; }
   window.nxPdpSend=function(num,nat){
     var d=docInfo(num); if(!d){ say('Document introuvable'); return; }
-    if(/^[BSM]$/.test(nat||'')){ var mm=M(); mm.docs[num]=mm.docs[num]||{envois:[]}; mm.docs[num].nature=nat; saveM(mm); }
+    var figee=!!(window.nxEmisModele&&nxEmisModele(num));   /* 1.10 : facture figée à l'émission → nature fixée */
+    if(/^[BSM]$/.test(nat||'')&&!figee){ var mm=M(); mm.docs[num]=mm.docs[num]||{envois:[]}; mm.docs[num].nature=nat; saveM(mm); }
     busy('Connexion à la plateforme…');
     status(true).then(function(st){
       if(st.erreur){ modal('Plateforme agréée','<div class="nxd2-warn red">'+esc(st.message||st.erreur)+'</div>'); return; }
@@ -135,6 +136,8 @@
   var SITU={'1':'facture normale','2':'déjà payée','4':'définitive après acompte'};
   function natureSel(num,cadre){
     var n=cadre.charAt(0), s=cadre.charAt(1), T=window.nxEinvNatureTxt||{B:'livraison de biens',S:'prestation de services',M:'livraison de biens et prestation de services'};
+    if(window.nxEmisModele&&nxEmisModele(num)) return '<div class="sub2" style="margin-top:8px">Nature de l\'opération : <b>'+esc(T[n]||n)+'</b> (cadre de facturation <b>'+esc(cadre)+'</b> — '+esc(SITU[s]||'')+'). '+
+      'Elle est <b>figée à l\'émission</b> : elle fait partie de la facture (PDF et XML) et ne se change plus à l\'envoi. En cas d\'erreur : avoir, puis nouvelle facture.</div>';
     return '<div class="frm" style="margin-top:8px"><label class="full">Nature de l\'opération (cadre de facturation <b>'+esc(cadre)+'</b> — '+esc(SITU[s]||'')+')'+
       '<select onchange="nxPdpSend(\''+esc(num)+'\',this.value)">'+['M','S','B'].map(function(k){ return '<option value="'+k+'"'+(k===n?' selected':'')+'>'+k+' — '+T[k]+'</option>'; }).join('')+'</select></label></div>'+
       '<div class="sub2">Par défaut, la même nature que sur ta facture PDF. Si tu la changes, le fichier est recontrôlé.</div>';
@@ -262,7 +265,7 @@
   /* ---------- boutons « Envoyer » ailleurs dans l'app ---------- */
   function decorate(){
     /* écran Avoirs : à côté de chaque facture / avoir */
-    document.querySelectorAll('#nxav table tr').forEach(function(tr){ var b=tr.querySelector('td b'); var t=b&&b.textContent; if(!t||!/^(F|AV)-\d{4}-\d+$/.test(t)||tr.querySelector('.nxpdp-x')) return;
+    document.querySelectorAll('#nxav table tr').forEach(function(tr){ var b=tr.querySelector('td b'); var t=b&&b.textContent; if(!t||!/^(TEST-)?(F|AV)-\d{4}-\d+$/.test(t)||tr.querySelector('.nxpdp-x')) return;
       var s=window.nxPdpLastStatus(t), td=tr.lastElementChild;
       td.insertAdjacentHTML('beforeend',' <button class="btn-ghost btn-sm nxpdp-x" onclick="nxPdpSend(\''+t+'\')">'+(s?'Renvoyer':'Envoyer')+'</button>'+(s?' <span class="nxpdp-st '+cls(s.code)+'">'+esc(lab(s.code,s.texte))+'</span>':'')); });
     /* bloc facturation du devis */

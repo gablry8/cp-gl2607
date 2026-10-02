@@ -28,7 +28,7 @@ const clean=e=>[...new Set(e)].slice(0,6).join(' | ');
       [d.facAcompte,d.facSolde].forEach(f=>{ if(f) nums.push(f.num); }); });
     const chk=typeof nxSerieCheck==='function'?nxSerieCheck():null;
     return {nums,chk:chk?JSON.stringify(chk).slice(0,200):'n/a',sum:acc.map(d=>{ const t=(typeof nxBillTotal==='function')?nxBillTotal(d,compute(d)):compute(d).totalTTC; return Math.round(((d.facAcompte||{}).montant||0)*100+((d.facSolde||{}).montant||0)*100)-Math.round(t*100); })}; });
-  const seq=fac.nums.map(n=>+n.split('-')[2]); const cont=seq.every((v,i)=>i===0||v===seq[i-1]+1);
+  const seq=fac.nums.map(n=>+String(n).match(/(\d+)$/)[1]); const cont=seq.every((v,i)=>i===0||v===seq[i-1]+1);
   rec('Factures','Numéros de facture continus ('+fac.nums.join(', ')+')',fac.nums.length>0&&cont,fac.chk);
   rec('Factures','Acompte + solde = total du devis (au centime)',fac.sum.every(x=>x===0),JSON.stringify(fac.sum));
   const dblF=await p.evaluate(()=>{ const d=DEVIS.find(x=>x.facSolde); if(!d) return 'n/a'; const n0=d.facSolde.num; facturerDevis(d.id,'solde'); return d.facSolde.num===n0; });

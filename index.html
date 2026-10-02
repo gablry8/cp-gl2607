@@ -3649,7 +3649,7 @@ async function pushState(manual,force){
   try{
     let meta=load('cp2_sync',{}),L=cpLocalData(),merged=false;
     for(let tour=0;tour<4;tour++){
-      const {data:res,error}=await sb.rpc('cp_state_push',{p_data:L,p_expected:meta.lastRemote||null,p_force:!!force});
+      const {data:res,error}=await (window.cpStatePushRpc?window.cpStatePushRpc(L,meta.lastRemote||null,!!force):sb.rpc('cp_state_push',{p_data:L,p_expected:meta.lastRemote||null,p_force:!!force}));
       if(error)throw error;
       if(res&&res.ok){
         localStorage.removeItem('cp2_dirty');cpSetBase(L,res.updated_at);
@@ -3752,5 +3752,6 @@ if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}
 <script type="text/x-climpilot" data-src="next-avoir.js"></script>
 <script type="text/x-climpilot" data-src="next-einvoice.js"></script>
 <script type="text/x-climpilot" data-src="next-superpdp.js"></script>
+<script type="text/x-climpilot" data-src="next-emission.js"></script>
 </body>
 </html>
