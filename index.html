@@ -1143,6 +1143,9 @@ function deriveParams(T){return {
 let TARIF=load(LS.cache,null)||seedTarif();
 let NOTION_PRIX=[],PDEF=null,PRIX=[],P=null;
 const PGROUPS=['forfait','mes','zone','bras','tests','acces','conso','marges','entreprise','dep','depPannes','mesOpt'];
+/* 1.10 : taux de cotisation unique (next-taux.js, profil fiscal) — P.cotisTaux n'est plus qu'une valeur de compatibilité */
+function cotisPct(d){try{if(typeof window.nxCotisPct==='function')return window.nxCotisPct(d);}catch(e){}return Number(P.cotisTaux)||0;}
+function cotisLbl(d){return String(cotisPct(d)).replace('.',',');}
 const PSCALARS=['tauxHoraire','coutInterne','tva','cotisTaux','defaultRate','accGoulParM','fraisAdmin','fraisCommande','regimeTVA','achatTVA','objectifCA','acomptePctDefaut','validiteJours'];
 function rebuildPrix(){
   const customs=load(LS.custom,[]);
@@ -1293,7 +1296,7 @@ function renderDash(){
   const margeMoy=caAccepte>0?benef/caAccepte*100:0;
   const k=[['Devis créés',a.length,'blue','📊'],['Acceptés',by('accepte').length,'good','✅'],
    ['CA '+year+' HT (devis + interv. + loc.)',eur0(caTotal),'good','€'],['💶 ENCAISSÉ '+year,eur0(encYear),'good','💶'],['Facturé — en attente',eur0(impTot),'warn','⌛'],['dont interventions (dép.+MES)',eur0(caDepYear),'purple','🔧'],['dont locations adia',eur0(caLocYear),'blue','💨'],['Marge moyenne devis',pct(margeMoy),'good','📈'],
-   ['Bénéfice brut',eur0(benef),'good','💰'],['Net après cotis. '+P.cotisTaux+' %',eur0(benefNet),'purple','🧾'],
+   ['Bénéfice brut',eur0(benef),'good','💰'],['Net après cotis. '+cotisLbl()+' %',eur0(benefNet),'purple','🧾'],
    ['À vérifier',by('verifier').length,'warn','📋']];
   document.getElementById('dashKpis').innerHTML=k.map(x=>`<div class="kpi ${x[2]}"><div class="lab">${x[0]}<span>${x[3]}</span></div><div class="val">${x[1]}</div></div>`).join('');
   const obj=P.objectifCA||74450; const progr=obj>0?Math.min(100,caTotal/obj*100):0; const reste=Math.max(0,obj-caTotal);
@@ -1340,10 +1343,11 @@ function renderDash(){
   if(fin){
     const u=urssafNext();const q={T1:0,T2:1,T3:2,T4:3}[u.q];
     const encQ=allRecettes().filter(r=>{const dd=new Date(r.date+'T00:00:00');return dd.getFullYear()===new Date().getFullYear()&&Math.floor(dd.getMonth()/3)===q;}).reduce((s,r)=>s+r.montant,0);
-    const prov=encQ*(Number(P.cotisTaux)||0)/100;
+    const qd=new Date().getFullYear()+'-'+String(q*3+3).padStart(2,'0')+'-01'; /* taux du trimestre (l\'ACRE et les barèmes changent en début de trimestre) */
+    const prov=encQ*cotisPct(qd)/100;
     const late=impayes.filter(f=>f.days>30);
     fin.innerHTML='<div class="card" style="border-left:4px solid var(--red)"><h2>💸 Paiements & URSSAF</h2>'
-     +'<div class="recap-line"><div class="lbl">🏦 À provisionner pour l\'URSSAF ('+u.q+' : '+eur0(encQ)+' encaissés × '+P.cotisTaux+' %)</div><div><b>'+eur0(prov)+'</b></div></div>'
+     +'<div class="recap-line"><div class="lbl">🏦 À provisionner pour l\'URSSAF ('+u.q+' : '+eur0(encQ)+' encaissés × '+cotisLbl(qd)+' %)</div><div><b>'+eur0(prov)+'</b></div></div>'
      +'<div class="recap-line"><div class="lbl">📅 Prochaine déclaration '+u.q+'</div><div><b>avant le '+u.dl+'</b></div></div>'
      +(late.length?'<div style="margin-top:10px"><b style="color:var(--red)">Factures en retard (+30 j) :</b>'
        +late.map(f=>'<div class="recap-line"><div><b>'+f.num+' — '+f.client+'</b><div class="sub2">émise le '+(f.date||'—')+' · '+f.days+' jours</div></div><div class="row-actions"><b>'+eur0(f.montant)+'</b><button class="iconbtn" title="Mail de rappel" onclick="mailRelancePaiement(\''+f.kind+'\',\''+f.id+'\',\''+f.which+'\')">✉️</button><button class="btn-pri btn-sm" onclick="payerFacture(\''+f.kind+'\',\''+f.id+'\',\''+f.which+'\')">💶 Payée</button></div></div>').join('')+'</div>'
@@ -1450,7 +1454,7 @@ function compute(d){
   const coutReel=matAchat+moAchat, benefice=totalHT-coutReel;
   const margePct=totalHT>0?benefice/totalHT*100:0, gainH=heures>0?benefice/heures:0;
   // Cotisations micro (URSSAF + CFE + impôt libératoire) : taux global × CA encaissé (= HT, la TVA collectée n'est pas un revenu)
-  const cotis=totalHT*(Number(P.cotisTaux)||0)/100;
+  const cotis=totalHT*cotisPct()/100;
   const benefNet=benefice-cotis;
   const gainHNet=heures>0?benefNet/heures:0;
   const acomptePct=d.acompteOn?(Number(d.acomptePct)||0):0;
@@ -1667,7 +1671,7 @@ function recalc(){formToDevis();const c=compute(cur);
     <div class="recap-line"><div class="lbl">Bénéfice brut estimé</div><div style="color:var(--green);font-weight:700">${eur(c.benefice)}</div></div>
     <div class="recap-line"><div class="lbl">Marge</div><div style="font-weight:700;color:${low?'var(--red)':'var(--green)'}">${pct(c.margePct)}</div></div>
     <div class="recap-line"><div class="lbl">Gain réel / heure (${c.heures} h)</div><div style="font-weight:700;color:${lowH?'var(--red)':'var(--ink)'}">${eur(c.gainH)}/h</div></div>
-    <div class="recap-line"><div class="lbl">Cotisations micro (${P.cotisTaux} %)<div class="sub2">URSSAF + CFE + impôt libératoire — calculées sur le CA encaissé (${eur(c.totalHT)})</div></div><div style="color:var(--red)">− ${eur(c.cotis)}</div></div>
+    <div class="recap-line"><div class="lbl">Cotisations micro (${cotisLbl()} %)<div class="sub2">selon ton profil fiscal (Paramètres) — calculées sur le CA encaissé (${eur(c.totalHT)})</div></div><div style="color:var(--red)">− ${eur(c.cotis)}</div></div>
     <div class="recap-line tot"><div class="lbl">Reste net (avant charges fixes)<div class="sub2" style="font-weight:400">assurances, camion, carburant… restent à couvrir</div></div><div style="color:${c.benefNet>0?'var(--green)':'var(--red)'}">${eur(c.benefNet)}<div class="sub2" style="text-align:right;font-weight:400">${c.heures>0?'soit '+eur(c.gainHNet)+'/h net':''}</div></div></div>
     ${(low||lowH)?`<div class="warnbox" style="margin-top:10px">⚠️ ${low?'Marge sous 20%. ':''}${lowH?'Gain sous 45 €/h. ':''}Vérifie si ce chantier n\'est pas sous-facturé.</div>`:'<div class="hint" style="margin-top:8px">✅ Marge et gain horaire corrects.</div>'}`;
   const m=c.mat;
@@ -1845,7 +1849,7 @@ function renderParams(){
     numRow('Acompte par défaut (% du TTC)','pg_acpt',P.acomptePctDefaut,'demandé si tu coches « acompte » sur le devis')+
     numRow('Objectif CA annuel (€)','pg_obj',P.objectifCA,'jauge du tableau de bord — business plan : 74 450 €')+
     numRow('Coût interne MO (€/h)','pg_cout',P.coutInterne,'déboursé réel par heure — Notion : coût interne technicien')+
-    numRow('Cotisations micro — taux global (%)','pg_cotis',P.cotisTaux,'Année 1 ACRE : 13,22 % (URSSAF 11 % + CFE/CMA 0,52 % + impôt libératoire 1,70 %) • Année 2+ : 24,22 %. Taux du business plan — à vérifier sur urssaf.fr, ils évoluent.')+
+    numRow('Cotisations micro — taux global (%)','pg_cotis',cotisPct(),'Calculé depuis ton profil fiscal (ci-dessous).')+
     numRow('TVA (%)','pg_tva',P.tva,'20% standard • 10% rénovation >2 ans • à vérifier')+
     numRow('Accessoires goulotte (€/m)','pg_accg',P.accGoulParM,'estimé auto au mètre — à vérifier')+
     numRow('Consommables — petit chantier (€)','pg_cp',P.conso.petit,'Notion : visserie + imprévus')+
@@ -2026,7 +2030,7 @@ function computeDep(d){
   const costFactor=(P.regimeTVA!=='assujetti')?(1+(Number(P.achatTVA)||0)/100):1;
   const coutReel=(piecesAchat+consoAchat)*costFactor+heures*(P.coutInterne||0);
   const benefice=totalHT-coutReel;
-  const cotis=totalHT*(Number(P.cotisTaux)||0)/100;
+  const cotis=totalHT*cotisPct()/100;
   const benefNet=benefice-cotis;
   const gainHNet=heures>0?benefNet/heures:0;
   return {itype,mo,moRows,moLbl,maj,majPct,depl,deplLbl,urgPct,consoV,consoAchat,consoLbl,pieces,piecesVente,piecesAchat,totalHT,coutReel,benefice,cotis,benefNet,gainHNet,heures,rate,margePct:totalHT>0?benefice/totalHT*100:0};
@@ -2140,7 +2144,7 @@ function recalcDep(){
   document.getElementById('dp_sante').innerHTML='<h2>📈 Santé de l\'intervention</h2>'+
     '<div class="recap-line"><div class="lbl">Coût réel<div class="sub2">pièces + conso achat TTC '+eur((c.piecesAchat+c.consoAchat)*((P.regimeTVA!=='assujetti')?(1+(Number(P.achatTVA)||0)/100):1))+' + MO interne '+eur(c.heures*(P.coutInterne||0))+'</div></div><div>'+eur(c.coutReel)+'</div></div>'+
     '<div class="recap-line"><div class="lbl">Bénéfice brut</div><div style="color:var(--green);font-weight:700">'+eur(c.benefice)+'</div></div>'+
-    '<div class="recap-line"><div class="lbl">Cotisations micro ('+P.cotisTaux+' %)</div><div style="color:var(--red)">− '+eur(c.cotis)+'</div></div>'+
+    '<div class="recap-line"><div class="lbl">Cotisations micro ('+cotisLbl()+' %)</div><div style="color:var(--red)">− '+eur(c.cotis)+'</div></div>'+
     '<div class="recap-line tot"><div class="lbl">Reste net (avant charges fixes)</div><div style="color:'+(c.benefNet>0?'var(--green)':'var(--red)')+'">'+eur(c.benefNet)+(c.heures>0?'<div class="sub2" style="text-align:right;font-weight:400">soit '+eur(c.gainHNet)+'/h net</div>':'')+'</div></div>'+
     ((low||lowH)?'<div class="warnbox" style="margin-top:10px">⚠️ '+(low?'Marge sous 20 %. ':'')+(lowH?'Gain net sous 45 €/h. ':'')+'Cette intervention semble sous-facturée — pense au temps de trajet, au SAV possible et à l\'achat des pièces.</div>':'<div class="hint" style="margin-top:8px">✅ Rentabilité correcte.</div>');
 }
@@ -2444,7 +2448,7 @@ function exportCSV(){
   const a=calcAll();if(!a.length){toast('Aucun devis à exporter');return;}
   const nf=n=>String((Math.round((Number(n)||0)*100)/100)).replace('.',','); // décimales FR pour Excel
   const esc2=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
-  const head=['Numéro','Date','Client','Ville','Type client','Type chantier','Statut','Heures prévues','Total HT','TVA','Total TTC','Coût matériel (achat)','Coût MO interne','Déboursé sec','Bénéfice brut','Marge %','Cotisations ('+nf(P.cotisTaux)+'%)','Reste net','Gain brut €/h','Gain net €/h','Acompte','Notes / SAV'];
+  const head=['Numéro','Date','Client','Ville','Type client','Type chantier','Statut','Heures prévues','Total HT','TVA','Total TTC','Coût matériel (achat)','Coût MO interne','Déboursé sec','Bénéfice brut','Marge %','Cotisations ('+nf(cotisPct())+'%)','Reste net','Gain brut €/h','Gain net €/h','Acompte','Notes / SAV'];
   const rows=a.map(d=>[d.num,new Date(d.created||0).toLocaleDateString('fr-FR'),d.cNom,d.cVille,d.cType,d.type,d.statut,nf(d.heures),
     nf(d._c.totalHT),nf(d._c.tva),nf(d._c.totalTTC),nf(d._c.matAchat),nf(d._c.moAchat),nf(d._c.coutReel),
     nf(d._c.benefice),nf(d._c.margePct),nf(d._c.cotis),nf(d._c.benefNet),nf(d._c.gainH),nf(d._c.gainHNet),nf(d._c.acompte),d.notes||'']);
@@ -3041,10 +3045,11 @@ function renderRecettes(){
   const y=(sel&&sel.value)||cy;
   const rows=all.filter(r=>(r.date||'').slice(0,4)===y);
   const tot=rows.reduce((s,r)=>s+r.montant,0);
-  const cotis=tot*(Number(P.cotisTaux)||0)/100;
+  const cotis=rows.reduce((s,r)=>s+r.montant*cotisPct(r.date)/100,0); /* taux à la date de chaque encaissement (ACRE) */
+  const cotisTx=[...new Set(rows.map(r=>cotisPct(r.date)))];
   document.getElementById('recKpis').innerHTML=
    '<div class="kpi good"><div class="lab">Encaissé '+y+'<span>💶</span></div><div class="val">'+eur0(tot)+'</div></div>'
-   +'<div class="kpi purple"><div class="lab">Cotisations à provisionner ('+(P.cotisTaux)+' %)<span>🏦</span></div><div class="val">'+eur0(cotis)+'</div></div>'
+   +'<div class="kpi purple"><div class="lab">Cotisations à provisionner ('+(cotisTx.length>1?'taux selon la date':String(cotisTx[0]!=null?cotisTx[0]:cotisPct()).replace('.',',')+' %')+')<span>🏦</span></div><div class="val">'+eur0(cotis)+'</div></div>'
    +'<div class="kpi blue"><div class="lab">Encaissements<span>🧾</span></div><div class="val">'+rows.length+'</div></div>'
    +'<div class="kpi warn"><div class="lab">Factures en attente<span>⌛</span></div><div class="val">'+eur0(allImpayes().reduce((s,f)=>s+f.montant,0))+'</div></div>';
   document.getElementById('recTable').innerHTML=rows.length?'<div class="scroll"><table><thead><tr><th class="l">Date</th><th class="l">Client</th><th class="l">Nature</th><th class="l">N° facture</th><th class="l">Règlement</th><th>Montant</th></tr></thead><tbody>'
@@ -3408,7 +3413,7 @@ function realStats(d,c){
   const hR=hasH?Number(d.hReel):(Number(d.heures)||0);
   const achat=hasA?Number(d.achatReel):c.matAchat;
   const benef=c.totalHT-achat-hR*(Number(P.coutInterne)||0);
-  const cotis=c.totalHT*(Number(P.cotisTaux)||0)/100;
+  const cotis=c.totalHT*cotisPct()/100;
   return {hR,achat,benef,net:benef-cotis,gainH:hR>0?benef/hR:0,gainHNet:hR>0?(benef-cotis)/hR:0,estim:!hasA};
 }
 const TOOLKIT_BASE=['EPI : gants, lunettes, chaussures de sécurité','Perceuse / visseuse + forets béton & métal','Niveau, mètre, crayon, cordeau','Échelle / escabeau','Bâche de protection + aspirateur','Consommables : chevilles, visserie, colliers, mastic, scotch'];
@@ -3754,5 +3759,6 @@ if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}
 <script type="text/x-climpilot" data-src="next-superpdp.js"></script>
 <script type="text/x-climpilot" data-src="next-emission.js"></script>
 <script type="text/x-climpilot" data-src="next-particuliers.js"></script>
+<script type="text/x-climpilot" data-src="next-taux.js"></script>
 </body>
 </html>

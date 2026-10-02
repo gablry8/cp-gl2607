@@ -174,7 +174,7 @@
     var moAchat=heures*(Number(P.coutInterne)||0);
     var coutReel=matAchat+moAchat, benefice=totalHT-coutReel;
     var margePct=totalHT>0?benefice/totalHT*100:0, gainH=heures>0?benefice/heures:0;
-    var cotis=totalHT*(Number(P.cotisTaux)||0)/100, benefNet=benefice-cotis, gainHNet=heures>0?benefNet/heures:0;
+    var cotis=totalHT*(typeof cotisPct==='function'?cotisPct():(Number(P.cotisTaux)||0))/100, /* 1.10 : taux unique (next-taux.js) */ benefNet=benefice-cotis, gainHNet=heures>0?benefNet/heures:0;
     /* un contrat d'entretien se facture chaque année depuis l'onglet Contrats : il ne fait pas partie de ce qui se facture sur le devis */
     var ctrLots=lots.filter(function(x){ var l=(d.lots||[])[x.i]; return l&&l.module==='entretien'&&l.data&&!l.data.legacyCopy&&l.data.format==='contrat'; });
     var ctrTTC=sum(ctrLots,function(x){ return (x.ht||0)+(x.commonShare||0)+(x.tva||0); }), billTTC=Math.max(0,totalTTC-ctrTTC);
@@ -678,7 +678,7 @@
       '<div class="recap-line"><div class="lbl">Bénéfice brut estimé</div><div style="color:var(--green);font-weight:700">'+money(c.benefice)+'</div></div>'+
       '<div class="recap-line"><div class="lbl">Marge</div><div style="font-weight:700;color:'+(low?'var(--red)':'var(--green)')+'">'+pct(c.margePct)+'</div></div>'+
       '<div class="recap-line"><div class="lbl">Gain / heure ('+fq(r2(c.heures))+' h)</div><div style="font-weight:700;color:'+(lowH?'var(--red)':'inherit')+'">'+money(c.gainH)+'/h</div></div>'+
-      '<div class="recap-line"><div class="lbl">Cotisations micro ('+P.cotisTaux+' %)</div><div style="color:var(--red)">− '+money(c.cotis)+'</div></div>'+
+      '<div class="recap-line"><div class="lbl">Cotisations micro ('+(typeof cotisLbl==='function'?cotisLbl():P.cotisTaux)+' %)</div><div style="color:var(--red)">− '+money(c.cotis)+'</div></div>'+
       '<div class="recap-line tot"><div class="lbl">Reste net avant charges fixes</div><div>'+money(c.benefNet)+'</div></div>'+
       alerts(c).join('')+'</div>';
     /* matériel */

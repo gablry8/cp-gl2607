@@ -36,3 +36,6 @@ Pas utilisé par l'application (fichiers ignorés par le service worker).
   une base simulée : node tests/functions/test-signature.mjs (Node ≥ 22.6).
 - Depuis l'étape 3, le jeu de données (lib.mjs SEED) indique « signé dans les locaux » pour le client
   particulier, afin que les autres suites testent la facturation sans le contrôle L221-10.
+- suiteK-fiscal.mjs : taux unique (next-taux.js) selon le profil fiscal et la date (ACRE, versement
+  libératoire, CFP, CMA, mixte), même taux sur tous les écrans, plafonds micro, franchise de TVA
+  (année de création, suivante, courante), avertissement logiciel de caisse.

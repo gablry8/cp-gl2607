@@ -268,3 +268,60 @@ Textes relus pour cette étape (Légifrance, 02/10/2026) :
 - **Régression** : A 14/14, B 54/54, C 17/17, D 18/18, E 19/19, F 9/9, G 10/10, H 33/33, I 24/24.
   - Les jeux de données des suites B, C, E, H, I et `genxml.mjs` précisent désormais le mode de conclusion de leurs clients particuliers (« dans les locaux », ou dépannage signé il y a 10 jours) : sans cela, la 1.10 refuse — à juste titre — leurs factures.
 - **Non testé** : la fonction déployée sur Supabase, la page de signature contre le vrai serveur.
+
+---
+
+## Étape 4 — Fiscalité et cotisations (C4, C5, C6, C21)
+
+Nouvelle couche `next-taux.js` ; retouches ciblées dans `index.html` (helper `cotisPct()`, 11 lectures et le champ des Paramètres), `next-devis2.js` (2 lectures) et `next-regime.js`.
+
+Sources (lues le 02/10/2026 ; `bofip.impots.gouv.fr` et `www.impots.gouv.fr` sont bloqués depuis l'environnement de préparation : leurs règles ont été lues **en extraits de recherche**, pas en page complète) :
+- taux micro 2026 (21,2 % prestations BIC, 12,3 % ventes, 25,6 % BNC) : https://entreprendre.service-public.gouv.fr/vosdroits/F36232 ; https://www.urssaf.fr/accueil/outils-documentation/taux-baremes/taux-cotisations-ac-plnr.html
+- ACRE : décret n° 2026-69 du 6 février 2026 (taux = 75 % du taux normal pour une création à partir du 01/07/2026) : https://www.legifrance.gouv.fr/jorf/id/JORFTEXT000053449085 ; durée (fin du 3e trimestre civil suivant le début, demande dans les 60 jours) : https://www.urssaf.fr/accueil/exoneration-acre-createur.html
+- versement libératoire (1 % ventes, 1,7 % prestations BIC, 2,2 % BNC ; revenu fiscal de référence N-2 ≤ 27 478 € par part en 2026) : https://www.impots.gouv.fr/professionnel/le-versement-liberatoire
+- formation professionnelle (0,3 % artisan, 0,1 % commerçant) : https://entreprendre.service-public.gouv.fr/vosdroits/F23459
+- taxe pour frais de chambre de métiers (0,48 % prestations, 0,22 % ventes, hors Alsace-Moselle) : BOFiP BOI-IF-AUT-20 — **à confirmer**
+- plafonds micro 2026-2028 (83 600 / 203 100 €) : https://www.impots.gouv.fr/professionnel/questions/pour-rester-micro-entrepreneur-quel-montant-de-chiffre-daffaires-ou-de ; micro de plein droit l'année de création et la suivante, prorata : BOFiP BOI-BIC-DECLA-10-10-20
+- franchise de TVA (37 500 / 41 250 € prestations, 85 000 / 93 500 € ventes ; création sans prorata ; année suivante proratisée) : https://www.impots.gouv.fr/professionnel/questions/en-tant-que-micro-entrepreneur-puis-je-etre-redevable-de-la-tva ; https://entreprendre.service-public.gouv.fr/vosdroits/F21746
+- logiciel de caisse : BOFiP BOI-TVA-DECLA-30-10-30 : https://bofip.impots.gouv.fr/bofip/10691-PGP.html
+
+### 4.1 Un seul taux, daté, sourcé, avec ses hypothèses (C4)
+- **État** : implémenté ; testé localement (suite K) ; profil **à confirmer** par Gabriel.
+- **Problème reproduit** (avant) : `P.cotisTaux` = 13,22 % par défaut, libellé « URSSAF 11 % + CFE/CMA 0,52 % + impôt 1,70 % » ; le simulateur utilisait d'autres valeurs (10,6 % ACRE, 0,52 %, 1,7 %) ; 22 lectures dispersées.
+- **Correction** :
+  - table datée (`nxTauxTables`) et **profil fiscal** dans Paramètres : début d'activité, activité (prestations / mixte + part de ventes), ACRE, versement libératoire, inscription au registre des métiers, CFE, taux manuel. Valeur par défaut de chaque réponse : **à confirmer** ;
+  - **une seule fonction** `nxCotisPct(date)` ; `index.html` (`cotisPct()`), `next-devis2.js` et `next-regime.js` l'utilisent ; `P.cotisTaux` n'est plus qu'une valeur de compatibilité, recalculée (aussi quand le profil arrive d'un autre appareil par la synchro) ; le champ des Paramètres est en lecture seule ;
+  - provisions au **taux de la date** de chaque encaissement (livre des recettes, synthèse comptable, trimestre URSSAF) : l'ACRE se termine en cours d'année ;
+  - chaque taux est affiché avec son **détail** et ses **hypothèses** (ACRE non comptée tant qu'elle n'est pas confirmée ; versement libératoire compté tant que ce n'est pas tranché ; CFE non comprise ; tout le CA en prestations…).
+- **Avant / après** (profil par défaut, 02/10/2026) : 13,22 % → **23,68 %** (21,2 + 1,7 + 0,3 + 0,48). Avec l'ACRE pour une création au 15/07/2026 : **18,38 %** jusqu'au 30/06/2027 (15,9 + 2,48), puis 23,68 %.
+- **À confirmer** : éligibilité à l'ACRE (publics visés depuis 2026, demande dans les 60 jours) ; option pour le versement libératoire (revenu fiscal de référence) ; inscription au registre des métiers et taux de la taxe CMA ; montant de la CFE.
+
+### 4.2 Plafond du régime micro (C5, corrigé par l'erratum)
+- **État** : implémenté ; testé localement.
+- **Correction** : plafonds par période (77 700 / 188 700 € jusqu'en 2025 ; **83 600 / 203 100 €** en 2026-2028) ; compteur réel (`nxEtatMicro`) : **micro de plein droit** l'année de création et la suivante, le CA de création étant ajusté au prorata pour apprécier la suite ; ensuite, alerte au dépassement (deux années de suite au-dessus font passer au réel au 1er janvier suivant). Le simulateur de « Statut & régime » utilise ces valeurs et ce message.
+
+### 4.3 Franchise de TVA : compteur réel (C6)
+- **État** : implémenté ; testé localement.
+- **Correction** (`nxEtatFranchise`, carte « Seuils » dans **Ma journée** et **Statut & régime**) :
+  - année de **création** : franchise perdue en cours d'année seulement au-delà du seuil majoré (41 250 €, **sans prorata**) ; le CA de l'année sera comparé l'année suivante au seuil de 37 500 € **proratisé** (ex. création au 01/07/2027 : 18 904 €) ;
+  - année **suivante** : franchise perdue depuis le 1er janvier si le CA de création dépasse le seuil proratisé ;
+  - années **courantes** : CA de l'an dernier > 37 500 € → perdue depuis le 1er janvier ; CA de l'année > 37 500 € → perdue au 1er janvier suivant ; > 41 250 € → TVA **dès le jour du dépassement** ;
+  - assujetti : compteur sans objet.
+- **Hypothèses affichées** : CA retenu = le plus élevé entre facturé (avoirs déduits) et encaissé — prudent, **à confirmer** ; tout le CA compté en prestations.
+- Le message erroné du simulateur (« la franchise tombe en cours d'année » dès 37 500 €) est corrigé.
+
+### 4.4 Activité mixte : matériel fourni et posé (C21) — analyse, aucune provision modifiée
+- **État** : analyse écrite ; réglage disponible mais **non activé** ; **à confirmer** avec le comptable.
+- **Ce que dit le BOFiP** (BOI-BIC-DECLA-10-10-20, § 90, lu en extrait) : les entrepreneurs du bâtiment qui fournissent, en plus de la main-d'œuvre, les **matériaux ou matières premières principaux** exercent une **activité mixte** : plafond micro global de 203 100 € dont 83 600 € au plus de prestations ; franchise de TVA si le CA global ne dépasse pas 85 000 € et la part prestations 37 500 €.
+- **Ce qui reste à trancher** : (1) un climatiseur fourni et posé est-il un « matériau principal » au sens du texte ? (2) la part « matériel » se déclare-t-elle à l'URSSAF en ventes (12,3 %) ? (3) comment la ventiler facture par facture.
+- **Dans l'appli** : par défaut, tout reste compté en prestations (provision la plus prudente, plafonds les plus bas). Le profil permet de choisir « mixte » et une part de ventes ; ce n'est utilisé que si Gabriel le choisit. Le simulateur l'explique.
+
+### 4.5 Logiciel de caisse (bascule vers la TVA)
+- **État** : avertissement implémenté ; testé localement ; **à confirmer** avec le comptable.
+- **Analyse** (BOI-TVA-DECLA-30-10-30, lu en extrait) : l'obligation d'utiliser un logiciel ou système de caisse **certifié** (art. 286, I-3° bis du CGI) vise les assujettis à la TVA qui enregistrent les règlements de clients particuliers ; les entreprises en **franchise en base** (293 B) en sont **exclues**. ClimPilot enregistre des encaissements et n'est pas certifié.
+- **Correction** : avertissement dans la carte « Bascule de régime » et dans la confirmation « Basculer maintenant ». Rien n'est bloqué.
+
+### Tests exécutés pour l'étape 4 (02/10/2026)
+- **Suite K** (`tests/suiteK-fiscal.mjs`) : **32/32** — taux selon le profil (défaut, ACRE 25 % et 50 %, fin d'ACRE avec les exemples de l'URSSAF, sans VL, non artisan, manuel, mixte) ; même taux sur devis, intervention, devis v2, tableau de bord, Paramètres, Statut & régime ; provision au taux de chaque date ; plafonds 2025/2026 ; franchise (création, suivante, courante, assujetti) ; CA réel (facture, encaissement, avoir) ; cartes « Seuils » ; avertissement logiciel de caisse ; profil synchronisé.
+- **Régression** : A 14/14, B 54/54, C 17/17, D 18/18, E 19/19, F 9/9, G 10/10, H 33/33, I 24/24, J 50/50.
+- **Non vérifié** : les taux utilisés par la fonction serveur `assistant` (texte de son prompt) n'ont pas été relus dans cette étape.

@@ -3,14 +3,15 @@
  * Comparateur micro-entreprise / micro+TVA / EURL-IS / SASU avec les chiffres réels de Gabriel.
  * Fichier isolé : ne touche pas au moteur historique. Chargé après next-addons.js.
  *
- * TAUX VÉRIFIÉS 07/2026 (sources : URSSAF, economie.gouv, legifiscal) :
- *   - Micro BIC prestations : 21,2 % (10,6 % avec ACRE année 1)
- *   - Versement libératoire : 1,7 % · Plafond micro : 77 700 € · Franchise TVA : 37 500 / 41 250 €
+ * 1.10 (02/10/2026) : les taux et seuils micro viennent de next-taux.js (table datée et sourcée, profil fiscal) :
+ *   - Micro BIC prestations : 21,2 % ; ACRE = 75 % du taux pour une création à partir du 01/07/2026 (décret 2026-69)
+ *   - Versement libératoire 1,7 % (option) · CFP 0,3 % · taxe CMA 0,48 % (à confirmer)
+ *   - Plafond micro 2026-2028 : 83 600 € (prestations) / 203 100 € (ventes) · Franchise TVA : 37 500 / 41 250 €
  *   - IS : 15 % jusqu'à 42 500 €, 25 % au-delà · PFU dividendes : 30 %
  * ORDRES DE GRANDEUR (à affiner avec un expert-comptable) :
  *   - Cotisations TNS ≈ 45 % de la rémunération nette (minimum ≈ 1 200 €/an)
  *   - SASU : coût total ≈ 1,80 × le salaire net
- *   - CFP + chambre des métiers ≈ 0,52 % (hypothèse du business plan)
+ *   - CFP + chambre des métiers : voir next-taux.js (profil fiscal)
  */
 (function(){
   'use strict';
@@ -51,6 +52,23 @@
     pfu:0.30, irDiv:0.128, tva:0.20
   };
 
+  /* taux du simulateur depuis next-taux.js (repli : anciennes constantes) */
+  function nxrgTaux(p){
+    var y=new Date().getFullYear(), out={social:p.acre?R0().microA1*100:R0().microA2*100,taxes:R0().microTaxes*100,vl:R0().vl*100,plafond:R0().plafondMicro,franchise:{base:37500,majore:41250},hypotheses:[]};
+    try{
+      var prof=window.nxFiscalProfil(), deb=prof.debut||'2026-07-01', sim=Object.assign({},prof,{debut:deb});
+      /* « année 1 » : taux à la date de début (période ACRE) ; « année 2+ » : taux normal d'aujourd'hui */
+      var t=p.acre?window.nxTaux(deb,'services',Object.assign({},sim,{acre:'oui'})):window.nxTaux(todayISO(),'services',Object.assign({},sim,{acre:'non'}));
+      out.social=t.social; out.taxes=Math.round((t.cfp+t.cma)*100)/100; out.vl=t.vl;
+      out.plafond=window.nxPlafondsMicro(y).services; out.franchise=window.nxSeuilsFranchise(y).services;
+      if(p.acre&&!prof.debut) out.hypotheses.push('Hypothèse : création à partir du 01/07/2026 (ACRE = 75 % du taux) — renseigne ta date de début d’activité dans Paramètres › Profil fiscal');
+      if(prof.vl==='a_confirmer') out.hypotheses.push('Versement libératoire compté (à confirmer)');
+      if(prof.artisan==='a_confirmer') out.hypotheses.push('CFP artisan et taxe CMA comptées (inscription au registre des métiers à confirmer)');
+    }catch(e){}
+    return out;
+  }
+  function R0(){ return RG_RATES; }
+
   function nxrgCompute(p){
     var R=RG_RATES;
     var caMat=p.fournirMat?p.achats*(1+p.margeMat/100):0;
@@ -60,18 +78,21 @@
     var remAn=p.remNette*12;
     var out={caTotal:caTotal,caMat:caMat,statuts:[]};
 
+    /* 1.10 : taux du profil fiscal (next-taux.js) ; « année 1 » = date de l'ACRE, sinon taux normal */
+    var X=nxrgTaux(p);
     function micro(franchise){
-      var taux=p.acre?R.microA1:R.microA2;
-      var cotis=caTotal*taux, taxes=caTotal*R.microTaxes, vl=caTotal*R.vl;
+      var taux=X.social/100;
+      var cotis=caTotal*taux, taxes=caTotal*X.taxes/100, vl=caTotal*X.vl/100;
       var coutMat=matHT*(franchise?(1+R.tva):1);
       var net=caTotal-cotis-taxes-vl-coutMat-p.chargesFixes-creditAn;
       var al=[];
-      if(caTotal>R.plafondMicro)al.push('CA total '+Math.round(caTotal).toLocaleString('fr-FR')+' € > plafond micro 77 700 € → micro impossible en régime de croisière (tolérance : 1 seul dépassement).');
-      if(franchise&&p.caBase>R.seuilFranchise)al.push('Prestations > 37 500 € → la franchise de TVA tombe en cours d’année : ce scénario n’est tenable qu’en début d’activité.');
+      if(caTotal>X.plafond)al.push('CA total '+Math.round(caTotal).toLocaleString('fr-FR')+' € > plafond micro '+X.plafond.toLocaleString('fr-FR')+' € (prestations). Micro de plein droit l’année de création et la suivante ; ensuite, deux années de suite au-dessus du plafond font passer au régime réel au 1er janvier suivant.');
+      if(franchise&&p.caBase>X.franchise.majore)al.push('Prestations > '+X.franchise.majore.toLocaleString('fr-FR')+' € (seuil majoré) → TVA due dès le jour du dépassement.');
+      else if(franchise&&p.caBase>X.franchise.base)al.push('Prestations > '+X.franchise.base.toLocaleString('fr-FR')+' € → franchise de TVA perdue au 1er janvier de l’année suivante (l’année suivant la création, le seuil est proratisé).');
       if(franchise)al.push('TVA 20 % non récupérable sur le matériel ('+Math.round(matHT*R.tva).toLocaleString('fr-FR')+' €/an perdus) — et tes clients ne profitent pas du nouveau taux de 5,5 % sur les PAC éligibles.');
       return{label:franchise?'Micro (franchise TVA)':'Micro assujetti TVA',
-        rows:[['Cotisations ('+(taux*100).toFixed(1).replace('.',',')+' %)',-cotis],['CFP + chambre (0,52 %)',-taxes],['Impôt (VL 1,7 %, IR inclus)',-vl],['Matériel ('+(franchise?'TTC':'HT récup.')+')',-coutMat],['Charges fixes',-p.chargesFixes],['Crédit camion',-creditAn]],
-        net:net,irInclus:true,alerts:al};
+        rows:[['Cotisations ('+(taux*100).toFixed(1).replace('.',',')+' %)',-cotis],['CFP + chambre ('+String(X.taxes).replace('.',',')+' %)',-taxes],[X.vl?'Impôt (VL '+String(X.vl).replace('.',',')+' %, IR inclus)':'Impôt sur le revenu (non compté : sans versement libératoire)',-vl],['Matériel ('+(franchise?'TTC':'HT récup.')+')',-coutMat],['Charges fixes',-p.chargesFixes],['Crédit camion',-creditAn]],
+        net:net,irInclus:!!X.vl,alerts:al.concat(X.hypotheses)};
     }
 
     function societe(sasu){
@@ -124,7 +145,7 @@
       +rgInput('remNette','Rémunération nette visée €/mois (société)',rg.remNette,100)
       +rgInput('comptable','Expert-comptable €/an (société)',rg.comptable,100,'devis à demander')
       +rgInput('capital','Capital social € (EURL)',rg.capital,500)
-      +'<label>Année<select id="rg_acre" onchange="nxrgSet(\'acre\',this.value===\'1\')"><option value="1"'+(rg.acre?' selected':'')+'>Année 1 — ACRE (10,6 %)</option><option value="0"'+(rg.acre?'':' selected')+'>Année 2+ (21,2 %)</option></select></label>'
+      +'<label>Année<select id="rg_acre" onchange="nxrgSet(\'acre\',this.value===\'1\')"><option value="1"'+(rg.acre?' selected':'')+'>Année 1 — ACRE ('+String(nxrgTaux({acre:true}).social).replace('.',',')+' %)</option><option value="0"'+(rg.acre?'':' selected')+'>Année 2+ ('+String(nxrgTaux({acre:false}).social).replace('.',',')+' %)</option></select></label>'
       +'<label>Matériel<select id="rg_mat" onchange="nxrgSet(\'fournirMat\',this.value===\'1\')"><option value="1"'+(rg.fournirMat?' selected':'')+'>Je fournis (revendu avec marge)</option><option value="0"'+(rg.fournirMat?'':' selected')+'>Le client achète en direct</option></select></label>'
       +'</div>'
       +'<div class="sub" style="margin-top:8px">CA total simulé : <b>'+rgFmt(r.caTotal)+'</b>'+(r.caMat>0?' (dont '+rgFmt(r.caMat)+' de matériel revendu)':'')+'</div></div>';
@@ -148,13 +169,13 @@
 
     var explain='<details class="next-card" style="margin-top:14px"><summary style="cursor:pointer"><b>🧮 Comment c’est calculé (et ce qui est vérifié vs approximatif)</b></summary>'
       +'<div class="sub" style="margin-top:10px;line-height:1.7">'
-      +'<b>Micro</b> : cotisations = CA total × 21,2 % (10,6 % ACRE) — <b>vérifié URSSAF 2026</b>. CFP + chambre 0,52 % = hypothèse de ton business plan. Versement libératoire 1,7 % : ton impôt est inclus. En franchise (art. 293 B) tu paies le matériel TTC sans récupérer la TVA. Les cotisations portent sur TOUT le CA, y compris le matériel revendu — c’est ça qui tue la micro quand tu fournis beaucoup de matériel.<br><br>'
+      +'<b>Micro</b> : taux de ton <b>profil fiscal</b> (Paramètres) — 21,2 % sur les prestations (URSSAF 2026), ACRE = 75 % de ce taux pour une création à partir du 01/07/2026 (décret 2026-69), versement libératoire 1,7 % si tu l’as choisi, formation 0,3 % et chambre des métiers 0,48 % si tu es artisan. En franchise (art. 293 B) tu paies le matériel TTC sans récupérer la TVA. Ici, tout le CA (matériel revendu compris) est compté en prestations : si tu fournis et poses le matériel principal, le BOFiP traite l’activité comme <b>mixte</b> (ventes + prestations, BOI-BIC-DECLA-10-10-20 § 90) — la ventilation et ses effets sur les cotisations sont <b>à confirmer avec ton comptable</b>.<br><br>'
       +'<b>EURL à l’IS</b> : résultat = CA − achats HT − charges − comptable − (rémunération + cotisations TNS ≈ 45 % du net, <i>ordre de grandeur à affiner</i>). IS 15 % jusqu’à 42 500 € puis 25 % — <b>vérifié</b>. Dividendes : PFU 30 % jusqu’à 10 % du capital, au-delà cotisations TNS ≈ 45 % + IR 12,8 %.<br><br>'
       +'<b>SASU</b> : coût total du salaire ≈ 1,80 × le net (<i>ordre de grandeur</i>, pas de cotisation chômage). Dividendes intégralement au PFU 30 % — l’avantage SASU. Meilleure retraite/prévoyance que TNS, mais chaque euro de salaire coûte bien plus cher.<br><br>'
       +'<b>Ce que le simulateur ne chiffre PAS</b> : ton IR au barème sur la rémunération de société (dépend de ton foyer), les règles fines de déductibilité (repas, crédit véhicule : seuls intérêts + amortissement sont déductibles — ici l’annuité complète est prise, légèrement optimiste), la CFE réelle de ta commune, la protection sociale (arrêt maladie, retraite) qui vaut plus en SASU. <b>Avant de décider : valide avec un expert-comptable — c’est une simulation, pas un conseil fiscal.</b>'
       +'</div></details>';
 
-    box.innerHTML=inputs+cards+explain+nxrgBasculeCard()+nxrgPackCard();
+    box.innerHTML=(typeof window.nxCarteSeuils==='function'?window.nxCarteSeuils():'')+inputs+cards+explain+nxrgBasculeCard()+nxrgPackCard();
   }
 
   window.nxrgSet=function(field,value){
@@ -174,8 +195,8 @@
     var b=rg.bascule||{};
     var etat;
     try{etat=nxrgAssujetti()
-      ?'<span class="badge" style="background:#5b8def;color:#fff">ASSUJETTI TVA</span> taux devis par défaut '+(P.tva||20)+' % · provision '+(P.cotisTaux||0)+' %'
-      :'<span class="badge" style="background:#34d399;color:#06281c">MICRO — FRANCHISE 293 B</span> provision '+(P.cotisTaux||0)+' %';}
+      ?'<span class="badge" style="background:#5b8def;color:#fff">ASSUJETTI TVA</span> taux devis par défaut '+(P.tva||20)+' % · provision '+(typeof cotisLbl==='function'?cotisLbl():(P.cotisTaux||0))+' %'
+      :'<span class="badge" style="background:#34d399;color:#06281c">MICRO — FRANCHISE 293 B</span> provision '+(typeof cotisLbl==='function'?cotisLbl():(P.cotisTaux||0))+' %';}
     catch(e){etat='<span class="sub">paramètres en cours de chargement…</span>';}
     var planInfo='';
     if(b.applied)planInfo='<div class="sub" style="margin-top:8px;color:#34d399">✔ Bascule appliquée le '+rgEsc(b.appliedOn||'?')+' ('+(b.cible==='societe'?'société':'micro assujettie TVA')+').</div>';
@@ -185,7 +206,7 @@
       +'<div class="next-form" style="margin-top:10px">'
       +'<label>Date de bascule<input type="date" id="rgb_date" value="'+rgEsc(b.date)+'" onchange="nxrgBSet(\'date\',this.value)"></label>'
       +'<label>Je passe en<select id="rgb_cible" onchange="nxrgBSet(\'cible\',this.value)"><option value="micro-tva"'+(b.cible!=='societe'?' selected':'')+'>Micro assujettie TVA (option ou seuil 37 500 € dépassé)</option><option value="societe"'+(b.cible==='societe'?' selected':'')+'>Société (EURL / SASU)</option></select></label>'
-      +'<label>Provision après bascule % <span class="sub">(micro A2 : 23,42 — société : demande à ton comptable)</span><input type="number" step="0.01" id="rgb_prov" value="'+b.provision+'" oninput="nxrgBSet(\'provision\',this.value)"></label>'
+      +'<label>Provision si société % <span class="sub">(en micro, le taux reste calculé par ton profil fiscal)</span><input type="number" step="0.01" id="rgb_prov" value="'+b.provision+'" oninput="nxrgBSet(\'provision\',this.value)"></label>'
       +'<label>TVA défaut devis %<input type="number" step="0.1" id="rgb_tvadef" value="'+b.tvaDefaut+'" oninput="nxrgBSet(\'tvaDefaut\',this.value)"></label>'
       +'<label>TVA dépannage/MES %<input type="number" step="0.1" id="rgb_tvadep" value="'+b.tvaDep+'" oninput="nxrgBSet(\'tvaDep\',this.value)"></label>'
       +'<label>TVA locations %<input type="number" step="0.1" id="rgb_tvaloc" value="'+b.tvaLoc+'" oninput="nxrgBSet(\'tvaLoc\',this.value)"></label>'
@@ -197,6 +218,7 @@
       +(nxrgAssujetti()?'<button class="btn-ghost" onclick="nxrgRetourFranchise()">↩ Revenir en franchise (réimpression d’anciennes factures)</button>':'')
       +'</div>'
       +'<div class="sub" style="margin-top:12px;line-height:1.7">'
+      +'<div class="warnbox" style="margin-bottom:8px">⚠ <b>Logiciel de caisse</b> : en franchise en base (293 B) tu n’es pas concerné. Une fois <b>assujetti à la TVA</b>, enregistrer ici les paiements de clients particuliers impose un logiciel ou système de caisse <b>certifié</b> (art. 286, I-3° bis du CGI ; BOFiP BOI-TVA-DECLA-30-10-30). ClimPilot n’est pas certifié : solution à voir avec ton comptable avant la bascule.</div>'
       +'<b>Ce que la bascule change concrètement :</b> devis avec TVA (5,5 / 10 / 20 % ou mixte 20 % matériel + 10 % pose, à choisir au récapitulatif), factures d’intervention, de location et d’entretien imprimées avec HT / TVA / TTC au lieu de la mention 293 B, provision cotisations recalculée au nouveau taux. Renseigne ton <b>n° de TVA intracommunautaire</b> dans Paramètres → entreprise : il apparaîtra en pied de page.<br>'
       +'⚠ <b>Limites connues (honnêteté avant tout)</b> : les factures émises AVANT la bascule doivent rester en 293 B — réimprime-les via « Revenir en franchise » temporairement. Les encaissements d’interventions/locations restent enregistrés en HT dans le livre des recettes ; le suivi de la TVA collectée à reverser (déclarations CA3/CA12) n’est pas encore géré — prochaine étape possible avec le pack comptable. <b>Rappel loi 2026 : 5,5 % seulement si PAC air/air réversible éligible (A++/A+ multi, ≤ 12 kW, F-Gaz, connectée) et logement > 2 ans.</b>'
       +'</div></div>';
@@ -215,7 +237,7 @@
   };
   window.nxrgAnnuler=function(){rg.bascule.planned=false;rgSave();renderRegime();nxrgToast('Planification annulée','ok');};
   window.nxrgAppliquer=function(){
-    if(!confirm('Basculer MAINTENANT en régime assujetti TVA ?\n\nTous les nouveaux devis et factures porteront de la TVA. Les documents déjà émis restent en 293 B (réimprime-les avant si besoin).'))return;
+    if(!confirm('Basculer MAINTENANT en régime assujetti TVA ?\n\nTous les nouveaux devis et factures porteront de la TVA. Les documents déjà émis restent en 293 B (réimprime-les avant si besoin).\n\n⚠ Logiciel de caisse : une fois assujetti, si tu enregistres ici les paiements de clients particuliers, la loi impose un logiciel ou système de caisse certifié (art. 286, I-3° bis du CGI). ClimPilot n\'est pas certifié : à voir avec ton comptable AVANT de basculer.'))return;
     nxrgApply();
   };
   window.nxrgRetourFranchise=function(){
@@ -229,7 +251,8 @@
       var ov=load(LS.over,{});
       ov.regimeTVA='assujetti';
       ov.tva=b.tvaDefaut||20;
-      ov.cotisTaux=b.provision;
+      /* 1.10 : en micro (même assujettie à la TVA) le taux de cotisation ne change pas ; en société, provision saisie à la main */
+      if(b.cible==='societe'&&Number(b.provision)>0){ try{ window.nxFiscalSet('manuel',Number(b.provision)); }catch(e){} }
       save(LS.over,ov);rebuildP();
       b.applied=true;b.appliedOn=nxrgToday();b.planned=false;rgSave();
       if(document.getElementById('nxRegime')&&window._curView==='nx_regime')renderRegime();
@@ -477,7 +500,7 @@
     var impayes=all.filter(function(f){return !f.payeLe&&f.date&&f.date<=(p.to||'9999');});
     var sum=function(arr,k){return arr.reduce(function(s,x){return s+x[k];},0);};
     var natures={};enc.forEach(function(f){var n=f.nature.split('—')[0].trim();if(!natures[n])natures[n]={ht:0,n:0};natures[n].ht+=f.ht;natures[n].n++;});
-    var cot=sum(enc,'ht')*(Number(P.cotisTaux)||0)/100;
+    var cot=enc.reduce(function(s,f){ return s+f.ht*(typeof cotisPct==='function'?cotisPct(f.payeLe):(Number(P.cotisTaux)||0))/100; },0); /* 1.10 : taux à la date de chaque encaissement */
     var E=P.entreprise||{};
     var natRows=Object.keys(natures).map(function(n){return '<tr><td style="padding:6px 10px;border:1px solid #eee">'+rgEsc(n)+'</td><td style="text-align:center;padding:6px 10px;border:1px solid #eee">'+natures[n].n+'</td><td style="text-align:right;padding:6px 10px;border:1px solid #eee">'+eur(natures[n].ht)+'</td></tr>';}).join('');
     var impRows=impayes.slice(0,15).map(function(f){return '<tr><td style="padding:5px 10px;border:1px solid #eee">'+rgEsc(f.num)+'</td><td style="padding:5px 10px;border:1px solid #eee">'+rgEsc(f.client)+'</td><td style="padding:5px 10px;border:1px solid #eee">'+rgEsc(f.date)+'</td><td style="text-align:right;padding:5px 10px;border:1px solid #eee">'+eur(f.ttc)+'</td></tr>';}).join('');
@@ -489,7 +512,7 @@
       +kv('Encaissements de la période ('+enc.length+' règlements)',eur(sum(enc,'ttc')),true)
       +kv('dont TVA collectée (à reverser si assujetti)',eur(sum(enc,'tva')))
       +kv('Chiffre d’affaires HT encaissé',eur(sum(enc,'ht')))
-      +kv('Cotisations à provisionner ('+(P.cotisTaux||0)+' % du HT encaissé)',eur(cot))
+      +kv('Cotisations à provisionner (profil fiscal, taux à la date de chaque encaissement)',eur(cot))
       +kv('Factures émises sur la période ('+emises.length+')',eur(sum(emises,'ttc')))
       +kv('Impayés en cours (toutes périodes : '+impayes.length+')',eur(sum(impayes,'ttc')))
       +'</table>'
