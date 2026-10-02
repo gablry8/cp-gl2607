@@ -12,6 +12,8 @@ La production (`main`, site en ligne, base Supabase) n'a **pas** été modifiée
 
 Les tests réussis ne valent **pas** certification : ils prouvent seulement que les cas décrits se comportent comme attendu.
 
+**Résumé** : étapes 0 à 5 implémentées et testées localement ; rien n'est déployé (ni la migration, ni la fonction `signature`, ni le site). La section **Livraison**, en fin de document, donne l'état de chaque point, les points à confirmer et les conditions avant toute mise en production.
+
 ---
 
 ## 0. Erratum de l'audit du 01-02/10/2026
@@ -247,14 +249,14 @@ Textes relus pour cette étape (Légifrance, 02/10/2026) :
   - bouton **« Contrat d'intervention à signer »** : document imprimé à partir des données de l'intervention, contenant ce que demandent les art. 2 et 4 de l'arrêté : date, entreprise (nom, adresse, SIRET, téléphone), client et lieu d'intervention, nature exacte des travaux, taux horaire TTC et mode de décompte du temps, frais de déplacement, décompte détaillé (quantité × prix unitaire), totaux HT/TTC et TVA (ou mention de franchise), gratuité du document, durée de validité, zones « bon pour accord » et « exemplaire remis » ; texte de rétractation si signé chez le client hors urgence ;
   - bouton **« Contrat signé par le client »** : date + type de preuve enregistrés (`contratAvant`) ; le bandeau passe au vert ;
   - facturer **sans** contrat préalable reste possible (la prestation faite doit être facturée), mais demande une confirmation et laisse une **trace** (`contratAvantManquant`) visible sur l'intervention.
-- **Écart avec le plan** : le plan prévoyait de verrouiller la saisie des travaux tant que le contrat n'est pas signé. Je ne l'ai pas fait : la saisie sert aussi à préparer le contrat (pièces, temps estimé) et le verrou empêcherait de facturer un travail déjà fait. Le contrôle est donc un avertissement fort + une trace. **À confirmer** si tu préfères un blocage.
+- **Renforcé ensuite (voir 3.6)** : à ta demande, le contrôle se fait maintenant **avant** les travaux, par une fenêtre bloquante à l'ouverture de l'intervention ; le contrôle à la facturation reste comme second filet. La saisie (pièces, temps) reste possible pour préparer le contrat.
 - **Limites** :
   - la phrase « le temps est compté sur place, de l'arrivée à la fin de l'intervention » est une valeur par défaut — **à confirmer** selon ta pratique (l'arrêté demande d'indiquer les modalités de décompte) ;
   - « offre valable le jour de son établissement » — **à confirmer**.
 
 ### 3.5 Remise de l'exemplaire : « remis » seulement avec une preuve
 - **État** : implémenté ; testé localement (suite J, test de la fonction) ; fonction serveur **non déployée**.
-- **Papier** : zone « exemplaire client remis le … — signature du client » sur le devis et le contrat d'intervention ; bouton « Exemplaire papier remis (accusé signé) ».
+- **Papier** : zone « exemplaire client remis le … — signature du client » sur le devis et le contrat d'intervention ; remise **déclarée** avec les pièces remises et l'accusé signé (détail en 3.7).
 - **Électronique** :
   - page de signature : case facultative « j'accepte de recevoir mon exemplaire sur support durable » ; après signature, bouton **« Télécharger mon exemplaire »** (document + preuve de signature dans un fichier autonome) ;
   - fonction `signature` (copie dans `supabase/functions/signature/index.ts`, établie à partir de la version 3 déployée, lue en lecture seule) : nouvelle action `copie` qui enregistre la date du premier téléchargement et le nombre de téléchargements, et dépose une note dans la boîte de Gabriel ; si la migration n'est pas appliquée, la signature fonctionne comme avant (repli testé) ;
@@ -325,3 +327,137 @@ Sources (lues le 02/10/2026 ; `bofip.impots.gouv.fr` et `www.impots.gouv.fr` son
 - **Suite K** (`tests/suiteK-fiscal.mjs`) : **32/32** — taux selon le profil (défaut, ACRE 25 % et 50 %, fin d'ACRE avec les exemples de l'URSSAF, sans VL, non artisan, manuel, mixte) ; même taux sur devis, intervention, devis v2, tableau de bord, Paramètres, Statut & régime ; provision au taux de chaque date ; plafonds 2025/2026 ; franchise (création, suivante, courante, assujetti) ; CA réel (facture, encaissement, avoir) ; cartes « Seuils » ; avertissement logiciel de caisse ; profil synchronisé.
 - **Régression** : A 14/14, B 54/54, C 17/17, D 18/18, E 19/19, F 9/9, G 10/10, H 33/33, I 24/24, J 50/50.
 - **Non vérifié** : les taux utilisés par la fonction serveur `assistant` (texte de son prompt) n'ont pas été relus dans cette étape.
+
+---
+
+## Étape 3 bis — Renforcements demandés le 02/10/2026 (particuliers, sauvegarde)
+
+### 3.6 Dépannage chez un particulier : contrôle **avant** le démarrage des travaux
+- **État** : implémenté ; testé localement (suite J).
+- **Problème** (après l'étape 3) : à l'ouverture, seul un bandeau rouge rappelait le contrat ; le contrôle bloquant n'arrivait qu'à la facturation, donc après les travaux.
+- **Correction** (`next-particuliers.js`) : dès qu'une intervention chez un particulier a un client et n'a ni contrat signé ni facture, une **fenêtre bloquante** s'ouvre (à l'ouverture et à l'enregistrement) : imprimer le contrat à faire signer, enregistrer le contrat signé (date + preuve), préciser le lieu / l'urgence, revenir à la liste sans commencer, ou **reporter avec un motif obligatoire**, conservé sur l'intervention et affiché dans le bandeau. Quitter l'écran ferme la fenêtre ; elle revient à l'ouverture suivante tant que rien n'est fait. La facturation garde son contrôle (second filet).
+- **Limite** : l'appli ne peut pas empêcher physiquement de commencer un chantier ; elle rend l'oubli impossible sans une décision écrite et tracée.
+
+### 3.7 Remise de l'exemplaire et de ses annexes
+- **État** : implémenté ; testé localement (suite J, test de la page de signature).
+- **Papier** : la remise est **déclarée** dans une fenêtre (date, pièces remises : contrat ou devis signé, formulaire de rétractation, conditions et annexes) et n'est enregistrée que si l'accusé de remise **signé par le client** est coché ; avertissement si le formulaire de rétractation manque (art. L221-9 et L221-20). Affichage : « déclarée remise le … (pièces) — accusé papier à conserver ». Bouton aussi sur l'intervention dès que le contrat est signé.
+- **Électronique** : seul le téléchargement **enregistré par le serveur** est affiché comme remise ; le fichier téléchargé indique les annexes qu'il contient (information et formulaire de rétractation).
+- Sans l'un ou l'autre : « Exemplaire client : **non confirmé** ». Une tâche ou une invitation n'est jamais présentée comme une remise.
+
+### 3.8 Sauvegarde des données avant la 1.10
+- **État** : implémenté ; testé localement (suite L).
+- Au premier lancement de la 1.10 sur un appareil : **copie locale automatique** (« Avant ClimPilot 1.10 », dans l'historique de l'appli) et carte sur le tableau de bord invitant à **télécharger une sauvegarde complète** (fichier JSON, fonction existante `exportJSON`), affichée tant qu'aucune sauvegarde n'a été téléchargée depuis.
+- Côté serveur : sauvegarde à vérifier par Gabriel dans le tableau de bord Supabase (Database › Backups) ou par `pg_dump` — **condition de déploiement** (je n'ai ni lu ni copié les données).
+
+---
+
+## Étape 5 — Documents et sécurité (C9, C10, C11, C13, C14, C16, C17, C18, C20, C22)
+
+Nouvelle couche `next-documents.js` ; retouches ciblées dans `index.html` (Paramètres, pieds de page, validité, nature, factures à 0 €), `next-einvoice.js`, `next-avoir.js`, `next-devis2.js`, `next-statut.js`, `next-particuliers.js`, `signer.html`.
+
+Textes relus (Légifrance, 02/10/2026) :
+- Code de commerce, art. R526-27 (dénomination « EI ») : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000045697814
+- Code de l'artisanat, art. L132-1 (assurance sur chaque devis et facture quand elle est obligatoire ; assureur ; couverture géographique ; reprend l'art. 22-2 de la loi 96-603) : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000047362294
+- Code de la consommation, art. L616-1 et R616-1 (coordonnées du médiateur) : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000032224762 ; https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000032808378
+
+### 5.1 Dénomination « EI » (C9)
+- **État** : implémenté ; testé localement.
+- **Correction** : `nxDenomination(E)` — pour un entrepreneur individuel (statut micro / EI / vide), dénomination suivie de « EI », avec le **nom de l'entrepreneur** ajouté s'il n'y figure pas (nouveau champ Paramètres « Nom et prénom de l'entrepreneur ») ; rien pour une société. Appliquée à l'en-tête et au pied de **tous** les documents (`docTop`/`docLegal`), au nom du vendeur dans le **XML**, au contrat d'intervention.
+- **À confirmer** : la dénomination exacte déclarée au registre.
+
+### 5.2 Assurance et médiateur selon les travaux et le client (C10)
+- **État** : implémenté ; testé localement.
+- **Règle appliquée** (pas seulement « SIRET présent ») :
+  - **assurance** : exigée pour les devis et factures de **travaux de pose** (lots autres que dépannage, entretien, mise en service ; ancien devis selon son type), sauf si Gabriel indique que la décennale n'est pas obligatoire ; assureur + n° et couverture géographique ;
+  - **médiateur** : exigé sur le **devis** d'un client **particulier** ;
+  - **mode réel** : facture non émise / devis non envoyé pour signature tant que la mention manque ; **démonstration** : document de TEST émis avec un avertissement.
+- **À confirmer** : l'obligation de décennale pour chaque type de pose (avec l'assureur) ; le médiateur auquel Gabriel adhère (il ne doit pas en indiquer un autre).
+
+### 5.3 Pieds de page et validité (C11, C14)
+- **État** : implémenté ; testé localement.
+- **Correction** : nouveau « pied de facture et d'avoir » ; le pied de devis (« Devis gratuit… prix indicatifs ») n'est plus imprimé sur les factures ni les avoirs. Une seule durée de validité (Paramètres « Validité du devis ») : une durée différente écrite dans la note de bas de devis est alignée, et les mails l'utilisent. Le texte par défaut ne contient plus « valable 30 jours ».
+
+### 5.4 Nature de l'opération (C13)
+- **État** : implémenté ; testé localement ; **à confirmer** avec le comptable.
+- **Correction** : réglage « Nature des chantiers fourniture + pose et dépannages avec pièces » : **S** / **M** / **à confirmer** (défaut). Tant que c'est à confirmer, les documents de démonstration utilisent **S** (prestation de services, comme les travaux immobiliers) sur le PDF **et** dans le XML ; en **mode réel**, une telle facture n'est pas émise tant que S ou M n'est pas choisi (la nature est figée à l'émission).
+
+### 5.5 Factures à 0 € (C16)
+- **État** : implémenté ; testé localement. Location sans montant, contrat sans prix et intervention à 0 € : aucune facture, aucun numéro.
+
+### 5.6 Mention de franchise selon la date du document (C17)
+- **État** : implémenté (étapes 1-2) ; testé localement (suite L, horloge en 2027) : une facture de 2026 réimprimée en 2027 garde « 293 B » et est marquée reconstituée.
+
+### 5.7 RGPD (C18)
+- **État** : implémenté (textes) ; **à confirmer** (durées, destinataires).
+- Paragraphe « Données personnelles » sur chaque **devis** et sur la **page de signature** (responsable, données, finalité, hébergement UE, durées, droits, CNIL). Brouillon de registre : `docs/RGPD-registre.md` (gestion clients/factures, signature, assistant de dictée — fournisseur Anthropic, transferts hors UE probables à vérifier —, sauvegardes).
+
+### 5.8 Signature électronique simple (C20)
+- **État** : documenté ; aucun changement de code. La signature en ligne reste une signature électronique **simple** (valable, sans présomption de fiabilité). Les preuves conservées (horodatage serveur, empreinte, IP, navigateur, consentements, téléchargement de l'exemplaire) aident en cas de litige. Recommandation **à décider** : pour les gros montants, envoyer aussi au client un e-mail de confirmation avec le PDF signé.
+
+### 5.9 Sécurité du compte (C22)
+- **État** : vérifié en lecture seule ; **à faire par Gabriel**.
+- Conseils de sécurité Supabase lus le 02/10/2026 : un seul avertissement, « Leaked Password Protection Disabled » (protection contre les mots de passe divulgués désactivée). Procédure : https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
+- À faire dans le tableau de bord Supabase : activer la protection des mots de passe divulgués ; activer la double authentification du compte Supabase et, si possible, du compte ClimPilot ; utiliser un mot de passe propre à ClimPilot.
+
+### Tests exécutés pour les étapes 3 bis et 5 (02/10/2026)
+- **Suite L** (`tests/suiteL-documents.mjs`) : **25/25** — « EI » (règle, facture, XML, avoir) ; pied de facture et validité unique ; nature S par défaut et M sur réglage (PDF et XML identiques) ; pose détectée selon les lots ; démonstration : document de TEST avec avertissement ; factures à 0 € refusées ; RGPD sur le devis ; médiateur pour un particulier ; nouveaux champs des Paramètres ; sauvegarde au premier lancement ; mode réel : nature à confirmer et assurance manquante bloquent avant toute demande de numéro, devis sans médiateur non envoyé ; en 2027, réimpression d'une facture de 2026 avec sa mention d'origine.
+- **Suite J** : **56/56** (dont la fenêtre « avant de commencer », le report tracé, la remise papier déclarée avec ses pièces, les annexes du fichier téléchargé).
+- **Défaut trouvé et corrigé par ces tests** : la réimpression d'une ancienne facture reprenait la date du jour pour choisir la mention de franchise (C17) ; la date du document est maintenant gardée pendant toute l'impression.
+- **Jeux de données des suites H, I, J (mode réel)** : ils renseignent désormais la nature et l'assurance, faute de quoi la 1.10 refuse la facture.
+- **Régression** : voir la section « Livraison ».
+
+---
+
+## Livraison — état de chaque point, points à confirmer, conditions de déploiement
+
+### Tableau d'état (02/10/2026)
+Légende : **I** implémenté · **TL** testé localement · **TS** testé sur le service concerné · **AC** à confirmer.
+
+| Point | Sujet | État | Preuve |
+|---|---|---|---|
+| C7, C8 | Numéro + facture enregistrés ensemble côté serveur, même demande = même facture, pas de facture hors ligne, document figé | I, TL (PostgreSQL 16 + navigateur) ; **TS non fait** (Supabase de test) | SQL 13/13, suite I |
+| — | Synchronisation : rien de perdu, doublons gardés et envoi bloqué, deux onglets, ancienne version, restauration | I, TL | suites I, D |
+| — | Sauvegarde des données avant la 1.10 (copie locale + invitation au téléchargement) | I, TL ; sauvegarde serveur **à faire par Gabriel** | suite L |
+| C1 | Facture payée le jour même (BR-FR-CO-09) | I, TL (XSD + CEN + BR-FR) ; **TS non fait** (SUPER PDP) | suite F, matrice 11 XML |
+| C12 | Garde-fous d'envoi SUPER PDP | I, TL (plateforme simulée) ; AC (doublons côté SUPER PDP) | suite H |
+| C19 | Date de prestation (BT-72) | I, TL ; avertissement R008 restant pour les chantiers | suite F |
+| C2, C3 | Mode de conclusion ≠ urgence, date réelle + preuve, « à préciser » bloquant, 7 jours (J+8) sur tous les parcours, paiement irrégulier tracé | I, TL ; AC (calcul J+8, caution) | suite J |
+| C15 | Contrat de dépannage **avant** les travaux (fenêtre bloquante, report tracé) | I, TL ; AC (formulations par défaut) | suite J |
+| — | Remise de l'exemplaire et des annexes (papier déclaré avec accusé ; électronique enregistré par le serveur) | I, TL ; fonction `signature` **non déployée** | suite J, test de la fonction 10/10 |
+| C4 | Taux unique daté et sourcé, profil fiscal, hypothèses | I, TL ; AC (ACRE, VL, CMA, CFE) | suite K |
+| C5, C6 | Plafond micro, compteur de franchise | I, TL | suite K |
+| C21 | Activité mixte | analyse ; AC (comptable) | — |
+| — | Logiciel de caisse (bascule TVA) | avertissement I, TL ; AC | suite K |
+| C9 | « EI » | I, TL ; AC (dénomination déclarée) | suite L |
+| C10 | Assurance / médiateur selon les travaux et le client | I, TL ; AC (décennale, médiateur) | suite L |
+| C11, C14 | Pied de facture distinct, validité unique | I, TL | suite L |
+| C13 | Nature S/M, choix exigé en mode réel | I, TL ; AC (comptable) | suite L |
+| C16 | Factures à 0 € | I, TL | suite L |
+| C17 | Mention de franchise selon la date du document | I, TL | suites F, L |
+| C18 | RGPD (devis, page de signature, registre) | I ; AC (durées, destinataires) | suite L |
+| C20 | Signature simple | documenté ; AC (e-mail de confirmation) | — |
+| C22 | Mots de passe divulgués, double authentification | lu ; **à faire par Gabriel** | conseils Supabase |
+
+### Points à confirmer (par Gabriel, son comptable, son assureur ou un tiers)
+1. Calcul du délai de 7 jours (J+8 retenu, prudent) ; chèque de caution de location = « contrepartie » ?
+2. Point de départ des 14 jours de rétractation pour un chantier avec fourniture de matériel ; formulaire comparé mot à mot à l'annexe R221-1.
+3. Formulations du contrat d'intervention (décompte du temps, validité de l'offre).
+4. Profil fiscal : date de début, ACRE (éligibilité et demande dans les 60 jours), versement libératoire, inscription au registre des métiers, taxe CMA, CFE.
+5. Activité mixte (matériel fourni et posé) et nature S/M des factures — avec le comptable.
+6. Assurance décennale selon les travaux (assureur) ; médiateur auquel tu adhères.
+7. Dénomination exacte déclarée (« … EI »).
+8. Durées de conservation et destinataires (registre RGPD) ; transferts hors UE de l'assistant.
+9. Traitement des doublons par SUPER PDP ; anciennes factures (avant 1.10) envoyées ou non à la plateforme.
+10. Valeur de preuve du téléchargement de l'exemplaire ; e-mail de confirmation pour les gros montants.
+
+### Conditions avant toute mise en production (toutes à faire ou valider par Gabriel)
+1. **Sauvegardes** : télécharger une sauvegarde complète (JSON) depuis **chaque** appareil ; vérifier qu'une sauvegarde serveur récente existe (tableau de bord Supabase › Database › Backups, ou `pg_dump`).
+2. **Projet Supabase de test** : appliquer la migration `supabase/migrations/20261002120000_documents_emis.sql`, déployer la fonction `signature` préparée, et refaire les parcours (émission, coupure réseau, double clic, deux appareils, restauration) avec la branche.
+3. Avec ton accord seulement : appliquer la migration sur le projet réel, puis déployer la fonction `signature`.
+4. Fermer tous les anciens onglets et mettre à jour chaque appareil (une version < 1.10 ne peut plus écrire après la migration).
+5. Trancher les points « à confirmer » ci-dessus (au minimum : nature S/M, assurance, médiateur, profil fiscal).
+6. Activer la protection des mots de passe divulgués et la double authentification.
+7. Fusionner la branche `claude/quirky-pasteur-ds9m47` dans `main` : décision et geste de Gabriel.
+
+### Aperçu isolé
+Une copie de la branche est publiée en page privée claude.ai : mode démonstration, **aucune connexion au cloud** (la bibliothèque Supabase n'y est pas chargée), données fictives à charger par le bouton « Charger des exemples ». Les fenêtres de confirmation du navigateur étant désactivées dans une page publiée, un bandeau d'aperçu les remplace : chaque message ou question s'affiche et va dans un journal ; la réponse (Oui / Non) se règle dans le bandeau. Les données restent dans le navigateur de la personne qui ouvre la page.

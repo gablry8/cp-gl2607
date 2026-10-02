@@ -37,11 +37,12 @@ async function setup(env,opts={}){
   const {p,ctx,errs}=await page({mobile:opts.mobile!==false?true:false});
   await p.evaluate(MOCK+'('+JSON.stringify(env)+')');
   await seed(p);
-  if(env==='production') await p.evaluate(()=>{ Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:'12 rue A',cp:'60140',ville:'Bailleval'}); });
+  if(env==='production') await p.evaluate(()=>{ Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:'12 rue A',cp:'60140',ville:'Bailleval',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); });
   /* une facture pro (SIREN) et une facture particulier */
   const nums=await p.evaluate(async()=>{
     const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0);
     const pro=acc.find(d=>d.cType==='Professionnel'), part=acc.find(d=>d.cType!=='Professionnel')||acc[1];
+    P.entreprise.natureChantier='M'; /* 1.10 : nature des chantiers choisie explicitement dans Paramètres (défaut : à confirmer → S) */
     pro.cSiren='552100554'; part.cType='Particulier'; if(!part.conclusion) part.conclusion={mode:'locaux',date:todayISO(),preuve:{type:'papier',ref:'jeu de test'}}; /* 1.10 : contrat précisé (suite J) */
     await facturerDevis(pro.id,'solde'); await new Promise(r=>setTimeout(r,150)); const c1=document.getElementById('nx-pdf-close'); if(c1) c1.click();
     await facturerDevis(part.id,'solde'); await new Promise(r=>setTimeout(r,150)); const c2=document.getElementById('nx-pdf-close'); if(c2) c2.click();

@@ -178,7 +178,7 @@
       '<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+esc(lib)+(av.motif?'<div style="color:#666;margin-top:4px">Motif : '+esc(av.motif)+'</div>':'')+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+money(-(av.franchise?T.ttc:(av.basis==='ttc'?T.ht:num(av.montant))))+'</td></tr></tbody></table>'+
       tva+'<div style="display:flex;justify-content:flex-end;margin-top:14px"><table style="border-collapse:collapse;font-size:12px;min-width:270px">'+tot+'</table></div>'+
       '<div style="margin-top:12px;font-size:11px;color:#333"><b>'+esc(etat)+'</b></div>'+ment+
-      '<div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">'+esc(E.piedNote||'')+'</div>'+legal+'</div>';
+      '<div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">'+esc(E.piedFacture||'')+'</div>'+legal+'</div>'; /* 1.10 : jamais le pied de devis sur un avoir */
     window.print();
   }
   window.nxPrintAvoir=printAvoir;

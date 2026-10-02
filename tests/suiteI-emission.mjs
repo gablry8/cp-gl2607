@@ -41,7 +41,7 @@ const SERVEUR=`(function(){
     return q; }
   window.__srv=srv; window.sb={rpc:rpc,from:from,auth:{getSession:()=>Promise.resolve({data:{session:null}})}};
 })();`;
-const REEL=`(function(){ window.SESS={user:{id:'u1',email:'test@test'}}; Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:"12 rue de l'Hostellerie",cp:'60140',ville:'Bailleval'}); })();`;
+const REEL=`(function(){ window.SESS={user:{id:'u1',email:'test@test'}}; Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:"12 rue de l'Hostellerie",cp:'60140',ville:'Bailleval',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); })();`;
 const wait=(p,ms)=>p.waitForTimeout(ms);
 const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.click(); })()`;
 

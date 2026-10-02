@@ -93,13 +93,15 @@
     if(m.situ==='2'){ m.prepaid=m.grand; m.due=0; }
     return m;
   }
-  /* même nature que celle écrite sur le PDF : devis (fourniture + pose) et dépannage avec pièces = mixte (M),
+  /* même nature que celle écrite sur le PDF : devis (fourniture + pose) et dépannage avec pièces = réglage (S ou M),
      le reste = services (S) ; un avoir reprend la nature de sa facture. Choix enregistré par document s'il a été changé. */
   function defaultNature(m){
     try{ var saved=((JSON.parse(localStorage.getItem('cpnext_pdp')||'{}')||{}).docs||{})[m.id]; if(saved&&/^[BSM]$/.test(saved.nature||'')) return saved.nature; }catch(e){}
     if(m.type==='381'&&m.ref&&m.ref.id&&m.ref.id!==m.id){ var o=model(m.ref.id); if(o) return o.nature; }
-    if(m.kind==='devis') return 'M';
-    if(m.kind==='dep'){ var inv=(window.nxInvoices?nxInvoices():[]).find(function(i){ return i.num===m.id; }); var f=inv&&inv.f; if(f&&f.pieces&&f.pieces.length) return 'M'; }
+    /* 1.10 : fourniture + pose et dépannage avec pièces = réglage des Paramètres (S tant que « à confirmer » ; C13 de l'audit) */
+    var nc=(E().natureChantier==='M')?'M':'S';
+    if(m.kind==='devis') return nc;
+    if(m.kind==='dep'){ var inv=(window.nxInvoices?nxInvoices():[]).find(function(i){ return i.num===m.id; }); var f=inv&&inv.f; if(f&&f.pieces&&f.pieces.length) return nc; }
     return 'S';
   }
   var NATURE_TXT={B:'livraison de biens',S:'prestation de services',M:'livraison de biens et prestation de services'};
@@ -125,7 +127,7 @@
   /* ---------- XML CII EN 16931 ---------- */
   function party(tag,p,isSeller){
     var sv=isSeller?{cp:p.cp||'',ville:p.ville||''}:splitVille(p.ville), adr=isSeller?p.adresse:p.adr, s=siren(isSeller?p.siret:p.siren);
-    var o='<ram:'+tag+'><ram:Name>'+x((isSeller?p.nom:p.nom)||'—')+'</ram:Name>';
+    var o='<ram:'+tag+'><ram:Name>'+x((isSeller&&window.nxDenomination?window.nxDenomination(p):p.nom)||'—')+'</ram:Name>'; /* 1.10 : « EI » (R526-27) */
     if(s) o+='<ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">'+s+'</ram:ID></ram:SpecifiedLegalOrganization>';
     o+='<ram:PostalTradeAddress>'+(sv.cp?'<ram:PostcodeCode>'+x(sv.cp)+'</ram:PostcodeCode>':'')+(adr?'<ram:LineOne>'+x(adr)+'</ram:LineOne>':'')+(sv.ville?'<ram:CityName>'+x(sv.ville)+'</ram:CityName>':'')+'<ram:CountryID>FR</ram:CountryID></ram:PostalTradeAddress>';
     /* adresse électronique de facturation (BT-34 / BT-49) : le SIREN dans l'annuaire officiel (schéma 0225) ;

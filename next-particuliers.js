@@ -110,14 +110,29 @@
       if(typeof ensuite==='function') ensuite();
     };
   };
-  /* remise de l'exemplaire papier : seulement si le client a signé l'accusé de remise */
+  /* remise de l'exemplaire papier : DÉCLARÉE par Gabriel, avec les pièces remises et l'accusé signé à conserver.
+     Jamais affichée comme faite sans cette déclaration (une tâche ou une invitation ne vaut pas remise). */
+  var PIECES={contrat:'Contrat / devis signé',retractation:'Formulaire de rétractation',conditions:'Conditions et annexes du contrat'};
   window.nxPartRemisePapier=function(kind,id){
-    var o=objet(kind,id); if(!o) return;
-    var d=prompt('Exemplaire papier remis au client et accusé de remise SIGNÉ par lui ?\nDate de la remise (jj/mm/aaaa) :',fr(today())); if(d==null) return;
-    var iso=(window.nxToISO?nxToISO(d):'')||today();
-    o.conclusion=Object.assign({},o.conclusion||{},{remise:{type:'papier',date:iso,preuve:'accusé de remise signé par le client (papier)',at:Date.now()}});
-    enregistrer(kind); try{ renderFBloc(); }catch(e){} try{ if(kind==='dep') loadDepForm(); }catch(e){}
+    var o=objet(kind,id); if(!o) return; var c=conclusion(o), avecRetr=c.mode!=='locaux';
+    var html='<p class="sub" style="margin:6px 0 10px">À remplir <b>seulement</b> si l\'exemplaire a réellement été remis en main propre et que le client a signé l\'accusé de remise (à conserver avec le contrat).</p>'+
+      '<label class="full" style="display:block;margin:6px 0">Date de la remise<input type="date" id="nxrDate" value="'+today()+'" style="width:100%"></label>'+
+      '<div style="margin:8px 0 4px"><b>Pièces remises</b></div>'+Object.keys(PIECES).map(function(k){ var on=k!=='retractation'||avecRetr;
+        return '<label style="display:flex;gap:8px;margin:3px 0"><input type="checkbox" data-piece="'+k+'"'+(on?' checked':'')+'> '+esc(PIECES[k])+(k==='retractation'&&avecRetr?' <span class="sub">(obligatoire hors locaux, art. L221-9)</span>':'')+'</label>'; }).join('')+
+      '<label style="display:flex;gap:8px;margin:10px 0 0"><input type="checkbox" id="nxrAccuse"> <span>Le client a <b>signé l\'accusé de remise</b> (je le conserve)</span></label>';
+    modal('Exemplaire client remis en main propre',html,'<button class="btn-ghost" onclick="document.getElementById(\'nxPartM\').remove()">Annuler</button><button class="btn-pri" id="nxrOk">Enregistrer la remise</button>');
+    document.getElementById('nxrOk').onclick=function(){
+      if(!document.getElementById('nxrAccuse').checked){ alert('Sans accusé de remise signé, la remise n\'est pas enregistrée.'); return; }
+      var pieces=[].slice.call(document.querySelectorAll('#nxPartM [data-piece]')).filter(function(x){ return x.checked; }).map(function(x){ return x.getAttribute('data-piece'); });
+      if(pieces.indexOf('contrat')<0){ alert('Coche au moins le contrat ou le devis signé.'); return; }
+      if(avecRetr&&pieces.indexOf('retractation')<0&&!confirm('Le formulaire de rétractation n\'a pas été remis : il est obligatoire pour un contrat conclu hors établissement ou à distance (sinon le délai est prolongé de 12 mois, art. L221-20). Enregistrer quand même ?')) return;
+      var iso=(document.getElementById('nxrDate')||{}).value||today();
+      o.conclusion=Object.assign({},o.conclusion||{},{remise:{type:'papier',date:iso,pieces:pieces,accuseSigne:true,preuve:'déclarée par l\'entreprise — accusé de remise signé par le client (papier, à conserver)',at:Date.now()}});
+      enregistrer(kind); document.getElementById('nxPartM').remove(); say('Remise de l\'exemplaire enregistrée');
+      try{ renderFBloc(); }catch(e){} try{ if(kind==='dep') loadDepForm(); }catch(e){}
+    };
   };
+  function texteRemise(rem){ return 'déclarée remise le '+fr(rem.date)+(rem.pieces&&rem.pieces.length?' ('+rem.pieces.map(function(k){ return PIECES[k]||k; }).join(', ')+')':'')+' — accusé papier à conserver'; }
 
   /* ---------- émission d'une facture (appelé par next-emission avant l'essai à blanc) ---------- */
   window.nxAvantEmission=function(sorte,args){
@@ -223,11 +238,11 @@
     var d=objet('devis',cur.id)||cur, c=conclusion(d), r=regle('devis',d), rem=c.remise;
     var sigRem=d.signature&&d.signature.copieLe; /* écrit seulement par la synchro des signatures (date enregistrée par le serveur) */
     var b=document.createElement('div'); b.id='nxPartBloc'; b.className='warnbox'; b.style.margin='8px 0';
-    b.innerHTML='<b>Contrat avec un particulier</b> : '+esc(MODES[c.mode])+(c.date?' — conclu le '+fr(c.date):'')+(c.urgence?' — <b>urgence</b> demandée':'')+
+    b.innerHTML='<div style="min-width:0;flex:1"><b>Contrat avec un particulier</b> : '+esc(MODES[c.mode])+(c.date?' — conclu le '+fr(c.date):'')+(c.urgence?' — <b>urgence</b> demandée':'')+
       '<br>'+(r.ok?'<span style="color:#0f6b39">Paiement possible.</span>':'<span style="color:#b42318">'+esc(r.texte||'')+'</span>')+
-      '<br>Exemplaire client : '+(rem?'remis le '+fr(rem.date)+' ('+esc(rem.preuve||rem.type)+')':sigRem?'téléchargé par le client le '+fr(sigRem)+' (enregistré par le serveur)':'<b>non confirmé</b>')+
+      '<br>Exemplaire client : '+(rem?esc(texteRemise(rem)):sigRem?'téléchargé par le client le '+fr(sigRem)+' (enregistré par le serveur)':'<b>non confirmé</b>')+
       '<div class="row-actions" style="margin-top:6px"><button type="button" class="btn-ghost btn-sm" onclick="nxPartConclusion(\'devis\',\''+esc(d.id)+'\')">Préciser / modifier</button>'+
-      '<button type="button" class="btn-ghost btn-sm" onclick="nxPartRemisePapier(\'devis\',\''+esc(d.id)+'\')">Exemplaire papier remis (accusé signé)</button></div>';
+      '<button type="button" class="btn-ghost btn-sm" onclick="nxPartRemisePapier(\'devis\',\''+esc(d.id)+'\')">Exemplaire papier remis (accusé signé)</button></div></div>';
     el.insertBefore(b,el.firstChild);
   }
 
@@ -239,14 +254,52 @@
     var x=curDep, ca=x.contratAvant, c=conclusion(x);
     var b=document.createElement('div'); b.id='nxPartDep'; b.className='warnbox'; b.style.margin='0 0 12px';
     if(!ca||!ca.date) b.style.cssText+=';border-color:#e5484d;background:#fde8eb;color:#7a1020';
-    b.innerHTML=(ca&&ca.date?'✅ <b>Contrat d\'intervention signé avant les travaux</b> le '+fr(ca.date)+' ('+esc(PREUVES[ca.preuve]||ca.preuve||'')+')':
+    b.innerHTML='<div style="min-width:0;flex:1">'+(ca&&ca.date?'✅ <b>Contrat d\'intervention signé avant les travaux</b> le '+fr(ca.date)+' ('+esc(PREUVES[ca.preuve]||ca.preuve||'')+')':
         '🛑 <b>À faire AVANT de commencer</b> : faire signer au client le <b>contrat d\'intervention</b> (dépannage, réparation ou entretien chez un particulier : obligatoire dès le premier euro — arrêté du 24/01/2017).')+
       '<br>Contrat : '+esc(MODES[c.mode])+(c.urgence?' — <b>urgence</b> demandée par le client':'')+(x.contratAvantManquant?'<br><b>Facturé sans contrat préalable enregistré</b> (le '+fr(x.contratAvantManquant.date)+').':'')+
+      (x.contratReporte&&!(ca&&ca.date)?'<br><b>Contrat reporté</b> le '+fr(x.contratReporte.date)+' — motif : '+esc(x.contratReporte.motif):'')+
+      '<br>Exemplaire client : '+(c.remise?esc(texteRemise(c.remise)):'<b>non confirmé</b>')+
       '<div class="row-actions" style="margin-top:6px;flex-wrap:wrap"><button type="button" class="btn-ghost btn-sm" onclick="nxPartContratDep()">🖨 Contrat d\'intervention à signer</button>'+
       '<button type="button" class="btn-ghost btn-sm" onclick="nxPartContratSigne()">Contrat signé par le client</button>'+
-      '<button type="button" class="btn-ghost btn-sm" onclick="nxPartConclusion(\'dep\',\''+esc(x.id)+'\')">Lieu / urgence</button></div>';
+      '<button type="button" class="btn-ghost btn-sm" onclick="nxPartConclusion(\'dep\',\''+esc(x.id)+'\')">Lieu / urgence</button>'+
+      (ca&&ca.date?'<button type="button" class="btn-ghost btn-sm" onclick="nxPartRemisePapier(\'dep\',\''+esc(x.id)+'\')">Exemplaire remis (accusé signé)</button>':'')+'</div></div>';
     var head=v.querySelector('.flexhead'); if(head&&head.nextSibling) v.insertBefore(b,head.nextSibling); else v.insertBefore(b,v.firstChild);
+    porte();
   }
+  /* fenêtre bloquante tant que le contrat n'est ni signé ni reporté avec un motif (tracé) */
+  function aControler(x){ return x&&x.cType!=='Professionnel'&&String(x.cNom||'').trim()&&!(x.contratAvant&&x.contratAvant.date)&&!x.facNum&&!x.contratReporte; }
+  function fermerPorte(){ var e=document.getElementById('nxPartPorte'); if(e) e.remove(); }
+  function porte(){
+    var g=document.getElementById('nxPartPorte');
+    if(typeof curDep==='undefined'||!aControler(curDep)||window.__nxPartPorteOff||window._curView!=='depform'){ if(g) g.remove(); return; }
+    if(g){ if(g.getAttribute('data-dep')===curDep.id) return; g.remove(); }
+    var m=document.createElement('div'); m.id='nxPartPorte'; m.setAttribute('data-dep',curDep.id);
+    m.style.cssText='position:fixed;inset:0;z-index:99994;background:rgba(10,25,45,.55);display:flex;align-items:center;justify-content:center;padding:14px';
+    m.innerHTML='<div style="background:var(--panel,#fff);color:var(--ink,#1b2437);border-radius:14px;max-width:520px;width:100%;padding:16px 18px;box-shadow:0 20px 60px rgba(0,0,0,.3)">'+
+      '<h2 style="margin:0 0 6px;font-size:17px">🛑 Avant de commencer les travaux</h2>'+
+      '<p style="margin:0 0 10px">Intervention chez un particulier (<b>'+esc(curDep.cNom)+'</b>) : le <b>contrat d\'intervention</b> doit être signé par le client <b>avant</b> tout travail, dès le premier euro (arrêté du 24/01/2017, art. 4).</p>'+
+      '<div class="row-actions" style="flex-direction:column;align-items:stretch;gap:8px">'+
+      '<button class="btn-pri" id="nxpgImp">🖨 Imprimer le contrat à faire signer</button>'+
+      '<button class="btn-ghost" id="nxpgSig">✍️ Le client a signé — enregistrer (date + preuve)</button>'+
+      '<button class="btn-ghost" id="nxpgLieu">Préciser le lieu de signature / l\'urgence</button>'+
+      '<button class="btn-ghost" id="nxpgRet">← Revenir à la liste (sans commencer)</button>'+
+      '</div><details style="margin-top:12px"><summary class="sub" style="cursor:pointer">Reporter (motif obligatoire, conservé sur l\'intervention)</summary>'+
+      '<textarea id="nxpgMotif" rows="2" style="width:100%;margin-top:6px" placeholder="Ex. : simple diagnostic sans travaux, intervention annulée…"></textarea>'+
+      '<button class="btn-ghost btn-sm" id="nxpgRep" style="margin-top:6px">Reporter avec ce motif</button></details></div>';
+    document.body.appendChild(m);
+    var fermer=fermerPorte;
+    document.getElementById('nxpgRet').onclick=function(){ fermer(); try{ go('dep'); }catch(e){} };
+    document.getElementById('nxpgImp').onclick=function(){ window.nxPartContratDep(); };
+    document.getElementById('nxpgSig').onclick=function(){ fermer(); window.nxPartContratSigne(); };
+    document.getElementById('nxpgLieu').onclick=function(){ fermer(); window.nxPartConclusion('dep',curDep.id); };
+    document.getElementById('nxpgRep').onclick=function(){
+      var mo=String((document.getElementById('nxpgMotif')||{}).value||'').trim(); if(mo.length<5){ alert('Indique le motif du report (au moins quelques mots).'); return; }
+      try{ formToDep(); }catch(e){}
+      curDep.contratReporte={date:today(),at:Date.now(),motif:mo};
+      try{ saveDep(); }catch(e){} fermer(); try{ loadDepForm(); }catch(e){} say('Report enregistré sur l\'intervention');
+    };
+  }
+  window.nxPartPorte=porte;
   window.nxPartContratSigne=function(){
     if(typeof curDep==='undefined'||!curDep) return; try{ formToDep(); }catch(e){}
     var d=prompt('Date de signature du contrat d\'intervention par le client (jj/mm/aaaa) :',fr(today())); if(d==null) return;
@@ -269,7 +322,7 @@
     var ht=Number(c.totalHT)||0, ttc=ht*(1+tva/100), cc=conclusion(x);
     var td='style="border:1px solid #ccc;padding:6px 8px"';
     var html='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px;font-size:12px">'+
-      '<div style="display:flex;justify-content:space-between;border-bottom:2px solid #c8102e;padding-bottom:8px;margin-bottom:10px"><div><b style="font-size:16px">'+esc(E.nom||'—')+'</b><br>'+esc([E.adresse,E.cp,E.ville].filter(Boolean).join(' '))+(E.siret?'<br>SIRET : '+esc(E.siret):'')+(E.tel?'<br>Tél : '+esc(E.tel):'')+'</div>'+
+      '<div style="display:flex;justify-content:space-between;border-bottom:2px solid #c8102e;padding-bottom:8px;margin-bottom:10px"><div><b style="font-size:16px">'+esc((window.nxDenomination?window.nxDenomination(E):E.nom)||'—')+'</b><br>'+esc([E.adresse,E.cp,E.ville].filter(Boolean).join(' '))+(E.siret?'<br>SIRET : '+esc(E.siret):'')+(E.tel?'<br>Tél : '+esc(E.tel):'')+'</div>'+
       '<div style="text-align:right">Contrat établi le <b>'+fr(today())+'</b></div></div>'+
       '<h2 style="font-size:15px;margin:6px 0">Contrat d\'intervention — dépannage, réparation ou entretien à domicile (avant travaux)</h2>'+
       '<p><b>Client</b> : '+esc(x.cNom||'')+'<br><b>Lieu d\'intervention</b> : '+esc([x.cAdr,x.cVille].filter(Boolean).join(' '))+'</p>'+
@@ -302,6 +355,8 @@
         if(!r.ok&&!confirm('⚠ '+(r.texte||'Contrat de location à préciser')+'\n\nLe chèque de caution demandé dans ce mail pourrait être considéré comme une « contrepartie » reçue avant la fin du délai (art. L221-10) — point à confirmer.\n\nPréparer le mail quand même ?')) return;
         return ml.apply(this,arguments); }; w6._nxpart=true; window.mailLoc=w6; }
     var rf=window.renderFBloc; if(typeof rf==='function'&&!rf._nxpart){ var w3=function(){ var r=rf.apply(this,arguments); try{ panneauDevis(); }catch(e){} return r; }; w3._nxpart=true; window.renderFBloc=w3; }
+    var gg=window.go; if(typeof gg==='function'&&!gg._nxpart){ var w8=function(v){ var r=gg.apply(this,arguments); if(v!=='depform') fermerPorte(); return r; }; w8._nxpart=true; window.go=w8; }
+    var sd=window.saveDep; if(typeof sd==='function'&&!sd._nxpart){ var w7=function(){ var r=sd.apply(this,arguments); try{ porte(); }catch(e){} return r; }; w7._nxpart=true; window.saveDep=w7; }
     var ld=window.loadDepForm; if(typeof ld==='function'&&!ld._nxpart){ var w4=function(){ var r=ld.apply(this,arguments); try{ panneauDep(); }catch(e){} return r; }; w4._nxpart=true; window.loadDepForm=w4; }
     var tries=0; (function wait(){ if(typeof window.printDevis==='function'&&window.printDevis._nxs){ envelopperImpression(); return; } if(++tries<60) setTimeout(wait,150); else envelopperImpression(); })();
   }

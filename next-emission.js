@@ -343,7 +343,7 @@
   /* facture émise AVANT la 1.10 (ou sans version figée) : réimpression reconstituée et signalée comme telle */
   function duplicata(num,dateDoc,orig,self,args){
     var real=window.print, dd=window.__nxDocDate; window.__nxDocDate=dateDoc;
-    window.print=function(){ try{ var el=document.getElementById('devisDoc'); if(el&&num) el.insertAdjacentHTML('afterbegin','<div style="border:1px dashed #888;color:#555;font:11px Arial,Helvetica,sans-serif;padding:6px;margin-bottom:8px;text-align:center">Duplicata reconstitué le '+new Date().toLocaleDateString('fr-FR')+' à partir des données actuelles — peut différer du document envoyé à l\'origine.</div>'); }catch(e){} window.print=real; window.__nxDocDate=dd; return real.apply(window,arguments); };
+    window.print=function(){ try{ var el=document.getElementById('devisDoc'); if(el&&num) el.insertAdjacentHTML('afterbegin','<div style="border:1px dashed #888;color:#555;font:11px Arial,Helvetica,sans-serif;padding:6px;margin-bottom:8px;text-align:center">Duplicata reconstitué le '+new Date().toLocaleDateString('fr-FR')+' à partir des données actuelles — peut différer du document envoyé à l\'origine.</div>'); }catch(e){} window.print=real; try{ return real.apply(window,arguments); } finally{ window.__nxDocDate=dd; } }; /* date du document gardée pendant l'impression (mention de franchise, C17) */
     try{ return orig.apply(self,args); } finally{ if(window.print!==real){ window.print=real; window.__nxDocDate=dd; } }
   }
 

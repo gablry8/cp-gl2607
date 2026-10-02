@@ -5,7 +5,7 @@
 (function(){
   'use strict';
 
-  const NX_VERSION='Next 1.10.0-beta — émission sécurisée des factures (préparation, non déployée)';
+  const NX_VERSION='Next 1.10.0-beta — corrections après audit (préparation, non déployée)';
   const NX_KEYS={
     tasks:'cpnext_tasks',trash:'cpnext_trash',templates:'cpnext_templates',
     history:'cpnext_history',settings:'cpnext_settings',notified:'cpnext_notified',

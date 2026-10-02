@@ -39,3 +39,6 @@ Pas utilisé par l'application (fichiers ignorés par le service worker).
 - suiteK-fiscal.mjs : taux unique (next-taux.js) selon le profil fiscal et la date (ACRE, versement
   libératoire, CFP, CMA, mixte), même taux sur tous les écrans, plafonds micro, franchise de TVA
   (année de création, suivante, courante), avertissement logiciel de caisse.
+- suiteL-documents.mjs : dénomination « EI », pied de facture ≠ pied de devis, validité unique, nature S/M,
+  assurance et médiateur selon les travaux et le client (blocage en mode réel), factures à 0 €, RGPD,
+  sauvegarde au premier lancement de la 1.10, mention de franchise selon la date du document (horloge 2027).

@@ -1136,7 +1136,9 @@ function deriveParams(T){return {
   entreprise:{nom:'Gabriel Leroy — Froid & Climatisation',activite:'Installation • Dépannage • Maintenance clim & froid',
     adresse:'',cp:'',ville:'',tel:'',email:'',siret:'',tvaIntra:'',rib:'',statut:'Micro-entreprise (en création)',capital:'',naf:'',
     attFluides:'',attOrganisme:'',mediateur:'',mediateurSite:'',assurance:'',assuranceZone:'',
-    mentionTVA:'',piedNote:'Devis gratuit, valable 30 jours. Prix matériel indicatifs à confirmer selon fournisseur. Diamètres de liaisons et sections de câble à valider avec la notice constructeur.'}
+    mentionTVA:'',piedNote:'Prix matériel indicatifs à confirmer selon fournisseur. Diamètres de liaisons et sections de câble à valider avec la notice constructeur.',
+    /* 1.10 : pied de facture distinct, dénomination EI, nature des chantiers et assurance décennale à confirmer */
+    piedFacture:'',nomEntrepreneur:'',natureChantier:'a_confirmer',decennale:'a_confirmer'}
 };}
 
 /* ============ ASSEMBLAGE PRIX & PARAMS (Notion + local) ============ */
@@ -1826,6 +1828,7 @@ function delPrix(id){
   save(LS.custom,customs.filter(x=>x.id!==id));rebuildPrix();renderPrix();toast(overrides?'↺ Prix Notion rétabli':'Article supprimé');}
 
 /* ============ PARAMS (Notion + surcharges locales) ============ */
+function selRow(label,id,val,opts){return '<label class="full">'+label+'<select id="'+id+'">'+opts.map(o=>'<option value="'+o[0]+'"'+(String(val)===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></label>';}
 function numRow(label,id,val,note){return `<label>${label}<input type="number" step="0.01" id="${id}" value="${val}">${note?`<span class="note-inline">${note}</span>`:''}</label>`;}
 function txtRow(label,id,val,full){return `<label class="${full?'full':''}">${label}<input type="text" id="${id}" value="${(val||'').replace(/"/g,'&quot;')}"></label>`;}
 function renderParams(){
@@ -1835,13 +1838,15 @@ function renderParams(){
     txtRow('Activité (sous-titre)','pe_act',E.activite,true)+
     txtRow('Adresse','pe_adr',E.adresse)+txtRow('Code postal','pe_cp',E.cp)+txtRow('Ville','pe_ville',E.ville)+
     txtRow('Téléphone','pe_tel',E.tel)+txtRow('Email','pe_email',E.email)+
-    txtRow('Statut','pe_statut',E.statut)+txtRow('Capital (€)','pe_capital',E.capital)+txtRow('Code NAF','pe_naf',E.naf)+
+    txtRow('Statut','pe_statut',E.statut)+txtRow('Nom et prénom de l\'entrepreneur (dénomination « EI »)','pe_nomei',E.nomEntrepreneur||'')+txtRow('Capital (€)','pe_capital',E.capital)+txtRow('Code NAF','pe_naf',E.naf)+
     txtRow('SIRET','pe_siret',E.siret)+txtRow('N° TVA intracom.','pe_tvaintra',E.tvaIntra)+txtRow('RIB / IBAN','pe_rib',E.rib,true)+
     txtRow('N° attestation de capacité fluides','pe_attflu',E.attFluides)+txtRow('Organisme (attestation fluides)','pe_attorg',E.attOrganisme)+
     txtRow('Médiateur de la consommation (nom)','pe_medi',E.mediateur)+txtRow('Médiateur — site web','pe_medisite',E.mediateurSite)+
     txtRow('Assurance pro (assureur + n° contrat)','pe_assur',E.assurance)+txtRow('Assurance — couverture géographique','pe_assurzone',E.assuranceZone)+
     txtRow('Validité du devis','pe_validite',E.validiteDevis||'3 mois')+
-    txtRow('Note bas de devis','pe_pied',E.piedNote,true);
+    txtRow('Note bas de devis','pe_pied',E.piedNote,true)+txtRow('Note bas de facture et d\'avoir','pe_piedfac',E.piedFacture||'',true)+
+    selRow('Nature des chantiers « fourniture + pose » et dépannages avec pièces (facture électronique)','pe_nature',E.natureChantier||'a_confirmer',[['a_confirmer','À confirmer avec le comptable'],['S','S — prestation de services (travaux)'],['M','M — biens et services distincts']])+
+    selRow('Assurance décennale obligatoire pour mes travaux de pose','pe_decennale',E.decennale||'a_confirmer',[['a_confirmer','À confirmer avec mon assureur'],['oui','Oui'],['non','Non']]);
   document.getElementById('paramGen').innerHTML=
     `<label class="full">Régime TVA<select id="pg_regime"><option value="franchise" ${P.regimeTVA!=='assujetti'?'selected':''}>Franchise en base (micro — je ne facture pas la TVA)</option><option value="assujetti" ${P.regimeTVA==='assujetti'?'selected':''}>Assujetti à la TVA (je facture et récupère)</option></select><span class="note-inline">franchise = mention « 293 B » sur le devis + matériel compté en TTC pour ta marge réelle</span></label>`+
     numRow('TVA sur tes achats (%)','pg_achattva',P.achatTVA,'utilisée en franchise pour le coût réel de ton matériel')+
@@ -1882,7 +1887,7 @@ function renderParams(){
 function saveParams(){const g=id=>+document.getElementById(id).value;const t=id=>document.getElementById(id)?document.getElementById(id).value:'';
   const cand=JSON.parse(JSON.stringify(P));
   cand.entreprise={...P.entreprise,nom:t('pe_nom'),activite:t('pe_act'),adresse:t('pe_adr'),cp:t('pe_cp'),ville:t('pe_ville'),tel:t('pe_tel'),email:t('pe_email'),statut:t('pe_statut'),capital:t('pe_capital'),naf:t('pe_naf'),siret:t('pe_siret'),tvaIntra:t('pe_tvaintra'),rib:t('pe_rib'),
-    attFluides:t('pe_attflu'),attOrganisme:t('pe_attorg'),mediateur:t('pe_medi'),mediateurSite:t('pe_medisite'),assurance:t('pe_assur'),assuranceZone:t('pe_assurzone'),validiteDevis:t('pe_validite')||'3 mois',piedNote:t('pe_pied')};
+    attFluides:t('pe_attflu'),attOrganisme:t('pe_attorg'),mediateur:t('pe_medi'),mediateurSite:t('pe_medisite'),assurance:t('pe_assur'),assuranceZone:t('pe_assurzone'),nomEntrepreneur:t('pe_nomei'),piedFacture:t('pe_piedfac'),natureChantier:t('pe_nature')||'a_confirmer',decennale:t('pe_decennale')||'a_confirmer',validiteDevis:t('pe_validite')||'3 mois',piedNote:t('pe_pied')};
   cand.acomptePctDefaut=g('pg_acpt');cand.objectifCA=g('pg_obj');cand.regimeTVA=t('pg_regime')||'franchise';cand.achatTVA=g('pg_achattva');
   cand.defaultRate=g('pg_taux');cand.tauxHoraire=cand.defaultRate;cand.coutInterne=g('pg_cout');cand.cotisTaux=g('pg_cotis');cand.tva=g('pg_tva');cand.fraisAdmin=g('pg_fadm');cand.fraisCommande=g('pg_fcmd');
   cand.accGoulParM=g('pg_accg');cand.conso={petit:g('pg_cp'),moyen:g('pg_cm'),gros:g('pg_cg')};
@@ -2227,6 +2232,8 @@ function docLegal(E,C){const legal=[E.nom,[E.statut,E.capital?'capital '+E.capit
    « Catégorie de l'opération » affichée dès maintenant (inoffensif) ; les 3 autres
    restent en attente et n'apparaissent que lorsqu'elles concernent vraiment Gabriel :
    SIREN client (B2B, si renseigné), adresse de livraison si différente, option TVA débits. */
+/* 1.10 : nature des chantiers et dépannages avec pièces = réglage des Paramètres (S par défaut tant que « à confirmer ») */
+function natureChantierTxt(E){return (E&&E.natureChantier)==='M'?'Livraison de biens et prestation de services':'Prestation de services';}
 function facMentions(nature,cli,E){
   const L=['<b>Nature de l\'opération :</b> '+nature+'.'];
   const siren=cli&&(cli.siren||cli.cSiren);
@@ -2281,8 +2288,8 @@ function printFacture(){
      <b>Conditions de règlement :</b> paiement à réception de facture — virement, chèque ou espèces.<br>
      Pas d'escompte pour paiement anticipé. Pénalités de retard : 3 fois le taux d'intérêt légal.${d.cType==='Professionnel'?' Indemnité forfaitaire de recouvrement (professionnels) : 40 €.':''}
    </div>
-   ${facMentions((c.pieces&&c.pieces.length)?'Prestation de services et livraison de biens':'Prestation de services',d,E)}
-   <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
+   ${facMentions((c.pieces&&c.pieces.length)?natureChantierTxt(E):'Prestation de services',d,E)}
+   <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedFacture||''}</div>
    ${docLegal(E,OR)}
    </div>`;
   window.print();
@@ -2293,6 +2300,8 @@ const NFQ=new Intl.NumberFormat('fr-FR');
 function fmtQ(n){return NFQ.format(Math.round((Number(n)||0)*100)/100);}
 /* Validité par défaut du devis (choix commercial, modifiable en Paramètres → entreprise.validiteDevis) */
 function devisValidite(E){return (E&&E.validiteDevis)||'3 mois';}
+/* 1.10 : une seule durée de validité — une durée écrite dans la note de bas de devis est alignée sur celle des Paramètres */
+function piedDevis(E){return String((E&&E.piedNote)||'').replace(/valable\s+\d+\s*(jours|mois)/gi,'valable '+devisValidite(E));}
 function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.entreprise||{};
   const NV='#121417', TINT='#f1f3f5';          // accent bleu marine + fond clair
   const today=new Date().toLocaleDateString('fr-FR');
@@ -2329,7 +2338,7 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
          <tr style="background:${TINT}"><td style="text-align:right;padding:9px 8px;font-weight:800;color:${NV}">Montant estimé ≈</td><td style="text-align:right;padding:9px 8px;font-weight:800;color:${NV}">${montantAff}</td></tr>
        </table>
      </div>
-     <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
+     <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${piedDevis(E)}</div>
      ${docLegal(E,NV)}
      </div>`;
     window.print();
@@ -2427,7 +2436,7 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
        <div style="height:54px"></div>
      </div>
    </div>
-   <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
+   <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${piedDevis(E)}</div>
    ${d.cType!=='Professionnel'&&E.mediateur?'<div style="margin-top:4px;font-size:9.5px;color:#777">Médiation de la consommation : '+E.mediateur+(E.mediateurSite?' — '+E.mediateurSite:'')+'. En cas de litige non résolu, le client consommateur peut saisir gratuitement ce médiateur.</div>':''}
    ${docLegal(E,NV)}
    </div>`;
@@ -2897,6 +2906,7 @@ function payerFacture(kind,id,which){
 function facturerLoc(id){const l=LOC.find(x=>x.id===id);if(!l)return;
   if(l.fac){toast('Déjà facturée ('+l.fac.num+')');return;}
   const c=computeLoc(l);
+  if(!(c.totalHT>0.005)){toast('Rien à facturer : montant nul (complète la location)');return;}
   l.fac={num:nextFacNum(),date:todayISO(),montant:Math.round(c.totalHT*100)/100,payeLe:null,mode:''};
   save(LS.loc,LOC);renderLoc();toast('🧾 Facture '+l.fac.num+' émise');printFactureLoc(l);}
 function renderFBloc(){
@@ -2970,8 +2980,8 @@ function printFactureDevis(d,which){
    </div>
    <div style="margin-top:14px;font-size:10px;color:#555;line-height:1.6"><b>Conditions de règlement :</b> paiement à réception de facture — virement, chèque ou espèces.<br>
    Pas d'escompte pour paiement anticipé. Pénalités de retard : 3 fois le taux d'intérêt légal.${d.cType==='Professionnel'?' Indemnité forfaitaire de recouvrement (professionnels) : 40 €.':''}</div>
-   ${facMentions('Livraison de biens et prestation de services',d,E)}
-   <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedNote||''}</div>
+   ${facMentions(natureChantierTxt(E),d,E)}
+   <div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">${E.piedFacture||''}</div>
    ${docLegal(E,OR)}
    </div>`;
   window.print();
@@ -3181,6 +3191,7 @@ function facturerContrat(id){const c=CTR.find(x=>x.id===id);if(!c)return;
   const last=[...c.facs].sort((a,b)=>String(b.date).localeCompare(String(a.date)))[0];
   if(!p.anniv&&last&&last.date){const mois=(new Date(todayISO()+'T00:00:00')-new Date(last.date+'T00:00:00'))/(30.44*86400000);
     if(mois<11&&!confirm('Dernière facture de ce contrat : '+last.num+' du '+new Date(last.date+'T00:00:00').toLocaleDateString('fr-FR')+' (il y a '+Math.max(0,Math.round(mois))+' mois).\nFacturer quand même l\'année '+y+' ?'))return;}
+  if(!((Number(c.prix)||0)>0.005)){toast('Rien à facturer : prix du contrat non renseigné');return;}
   const f={annee:y,num:nextFacNum(),date:todayISO(),montant:Math.round((c.prix||0)*100)/100,payeLe:null,mode:''};
   if(p.anniv){f.du=p.du;f.au=p.au;}
   c.facs.push(f);save('cp2_contrats',CTR);renderContrats();
@@ -3546,7 +3557,7 @@ function buildMail(to,subject,body){
 }
 function mailDevis(){formToDevis();const c=compute(cur);const E=P.entreprise||{};
   buildMail(cur.cMail,'Devis '+cur.num+' — '+(E.nom||'GL Froid & Clim'),
-'Bonjour'+(cur.cNom?' '+cur.cNom:'')+',\n\nSuite à notre échange, voici notre devis '+cur.num+' ('+cur.type+') pour un montant de '+eur(c.totalHT)+' HT — TVA non applicable, art. 293 B du CGI.\n\nIl est valable '+(P.validiteJours||30)+' jours. Je reste disponible pour toute question ou ajustement.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:'')+'\n\n(Pense à joindre le PDF généré par « Aperçu / PDF »)');}
+'Bonjour'+(cur.cNom?' '+cur.cNom:'')+',\n\nSuite à notre échange, voici notre devis '+cur.num+' ('+cur.type+') pour un montant de '+eur(c.totalHT)+' HT — TVA non applicable, art. 293 B du CGI.\n\nIl est valable '+devisValidite(P.entreprise)+'. Je reste disponible pour toute question ou ajustement.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:'')+'\n\n(Pense à joindre le PDF généré par « Aperçu / PDF »)');}
 function mailRelance(id){const d=DEVIS.find(x=>x.id===id);if(!d)return;const c=compute(d);const E=P.entreprise||{};
   buildMail(d.cMail,'Suivi de notre devis '+d.num,
 'Bonjour'+(d.cNom?' '+d.cNom:'')+',\n\nJe me permets de revenir vers vous au sujet du devis '+d.num+' ('+eur(c.totalHT)+' HT) transmis le '+(d.sentAt?new Date(d.sentAt).toLocaleDateString('fr-FR'):'récemment')+'.\n\nAvez-vous pu l\'étudier ? Je reste à votre disposition pour en discuter ou l\'ajuster si besoin.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:''));}
@@ -3760,5 +3771,6 @@ if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}
 <script type="text/x-climpilot" data-src="next-emission.js"></script>
 <script type="text/x-climpilot" data-src="next-particuliers.js"></script>
 <script type="text/x-climpilot" data-src="next-taux.js"></script>
+<script type="text/x-climpilot" data-src="next-documents.js"></script>
 </body>
 </html>
