@@ -28,3 +28,11 @@ Pas utilisé par l'application (fichiers ignorés par le service worker).
   (pip : psycopg[binary], pytest). Concurrence, nouvelle tentative, plantage, écrasement, suppression,
   autre utilisateur, ancienne version : voir test_migration.py.
 - Les suites A à H attendent désormais la série de démonstration TEST-F / TEST-AV (pas de cloud dans les tests).
+- suiteJ-particuliers.mjs : contrats avec les particuliers (mode de conclusion et urgence distincts,
+  « à préciser » bloquant, délai de 7 jours L221-10 sur facture / XML / PDF / encaissement / bascule
+  « payée » / relance, paiement irrégulier tracé, rétractation selon le mode, contrat de dépannage avant
+  travaux, remise de l'exemplaire, page de signature).
+- functions/test-signature.mjs : fonction serveur « signature » (copie 1.10 non déployée) testée avec
+  une base simulée : node tests/functions/test-signature.mjs (Node ≥ 22.6).
+- Depuis l'étape 3, le jeu de données (lib.mjs SEED) indique « signé dans les locaux » pour le client
+  particulier, afin que les autres suites testent la facturation sans le contrôle L221-10.

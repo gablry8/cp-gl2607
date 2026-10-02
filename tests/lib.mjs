@@ -44,7 +44,10 @@ export const SEED=`(function(){
     {id:'c2',nom:"L'Atelier du Froid",tel:'03 44 00 00 00',type:'Professionnel',adr:"2 rue de l'Église",ville:'60140 Bailleval',notes:'Accès par la cour'},
     {id:'c3',nom:'M. "Jojo" Martin',tel:'',type:'Particulier',adr:'10 Rue de Grenelle',ville:'75007 Paris',notes:''}];
   c.forEach(x=>CLIENTS.push(x)); save(LS.clients,CLIENTS);
-  const mk=(mod,cl,st,extra)=>{ const d=NXD2.newDevis(mod,{}); d.lots=[NXD2.newLot(mod)]; Object.assign(d,{cNom:cl.nom,cTel:cl.tel,cAdr:cl.adr,cVille:cl.ville,cType:cl.type,statut:st},extra||{}); d.num=NXD2.numFor(d); NXD2.derive(d); return d; };
+  /* 1.10 : pour un particulier, le mode de conclusion doit être précisé avant toute facture (règles testées par la suite J) ;
+     ici, le jeu de test est « signé dans les locaux », ce qui laisse la facturation suivre son cours normal */
+  const conc=cl=>cl.type==='Particulier'?{conclusion:{mode:'locaux',date:t,preuve:{type:'papier',ref:'jeu de test'},urgence:false}}:{};
+  const mk=(mod,cl,st,extra)=>{ const d=NXD2.newDevis(mod,{}); d.lots=[NXD2.newLot(mod)]; Object.assign(d,{cNom:cl.nom,cTel:cl.tel,cAdr:cl.adr,cVille:cl.ville,cType:cl.type,statut:st},conc(cl),extra||{}); d.num=NXD2.numFor(d); NXD2.derive(d); return d; };
   const L=[];
   NXD2.natures.forEach((n,i)=>{ L.push(mk(n.id,c[i%3],['brouillon','envoye','accepte','refuse'][i%4],i%4===2?{datePlanif:t}:{})); });
   L.forEach(d=>DEVIS.push(d)); save(LS.devis,DEVIS);

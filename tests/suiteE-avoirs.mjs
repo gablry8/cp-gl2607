@@ -32,7 +32,7 @@ const closePdf=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.
   rec('Avoirs','Devis avec facture annulée : suppression bloquée',del);
 
   /* E2 intervention : avoir partiel avant paiement → impayé réduit → paiement = montant réduit */
-  const e2=await p.evaluate(()=>{ const x={id:'depA',cNom:'Boulangerie Dupré',date:dISO(new Date()),itype:'dep',statut:'brouillon',heures:2,pieces:[],rateChoice:'custom',rateCustom:90};
+  const e2=await p.evaluate(()=>{ const x={id:'depA',cNom:'Boulangerie Dupré',cType:'Professionnel',date:dISO(new Date()),itype:'dep',statut:'brouillon',heures:2,pieces:[],rateChoice:'custom',rateCustom:90};
     DEP.push(x); save(LS.dep,DEP); curDep=x; try{ loadDepForm(); }catch(e){} try{ factureDep(); }catch(e){} const d=DEP.find(o=>o.id==='depA'); const tot=computeDep(d).totalHT;
     const r=nxCreateAvoir({facNum:d.facNum,montant:50,motif:'Geste commercial'});
     const imp=allImpayes().find(i=>i.num===d.facNum); payDep('depA'); const rc=allRecettes().find(x=>x.num===d.facNum);

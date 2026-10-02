@@ -42,7 +42,7 @@ async function setup(env,opts={}){
   const nums=await p.evaluate(async()=>{
     const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0);
     const pro=acc.find(d=>d.cType==='Professionnel'), part=acc.find(d=>d.cType!=='Professionnel')||acc[1];
-    pro.cSiren='552100554'; part.cType='Particulier';
+    pro.cSiren='552100554'; part.cType='Particulier'; if(!part.conclusion) part.conclusion={mode:'locaux',date:todayISO(),preuve:{type:'papier',ref:'jeu de test'}}; /* 1.10 : contrat précisé (suite J) */
     await facturerDevis(pro.id,'solde'); await new Promise(r=>setTimeout(r,150)); const c1=document.getElementById('nx-pdf-close'); if(c1) c1.click();
     await facturerDevis(part.id,'solde'); await new Promise(r=>setTimeout(r,150)); const c2=document.getElementById('nx-pdf-close'); if(c2) c2.click();
     return {pro:pro.facSolde.num,part:part.facSolde.num};

@@ -174,3 +174,97 @@ Les tests réussis ne valent **pas** certification : ils prouvent seulement que 
   - **plateforme réelle** : non testée (pas de SIRET).
 - **Régression complète** : A 14/14, B 53/54, C 17/17, D 18/18, E 19/19, F 9/9, G 10/10, H 33/33, I 24/24, SQL 13/13.
   - Le contrôle B en échec est le test de **volume** (temps d'affichage de moins de 0,8 s avec 1 500 devis). Mesuré côte à côte, il varie autant en 1.9.1 qu'en 1.10 (registre des documents : 346 à 880 ms en 1.9.1, 399 à 1 053 ms en 1.10 ; moyennes d'environ 630 et 585 ms) : test instable dans cet environnement, pas de régression constatée.
+
+---
+
+## Étape 3 — Contrats avec les particuliers (C2, C3, C15)
+
+Nouvelle couche `next-particuliers.js` (chargée après `next-emission.js`), plus des retouches ciblées dans `next-emission.js` (crochet `nxAvantEmission`), `next-signature.js`, `signer.html` et la fonction serveur `signature` (copie préparée, **non déployée**).
+
+Textes relus pour cette étape (Légifrance, 02/10/2026) :
+- art. L221-10 (aucun paiement avant 7 jours, contrat hors établissement, et ses exceptions) : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000032226864
+- art. L242-7 (sanction : 2 ans et 150 000 €) : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000034072627
+- art. L221-9 (exemplaire daté, papier signé ou, avec l'accord du client, autre support durable, avec le formulaire de rétractation) : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000044563126
+- art. L221-18 (délai de 14 jours) : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000032226842
+- art. L221-20 (délai prolongé de 12 mois si l'information manque) : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000044563199
+- art. L221-25 (demande expresse de commencement anticipé, sur papier ou support durable hors établissement, et reconnaissance de la perte du droit après exécution complète) : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000044563179
+- art. L221-28 (exceptions au droit de rétractation, dont 8° : réparations urgentes demandées par le client) : https://www.legifrance.gouv.fr/codes/article_lc/LEGIARTI000044563170
+- chapitre L221-1 à L221-29 (définitions « à distance » et « hors établissement ») : https://www.legifrance.gouv.fr/codes/section_lc/LEGITEXT000006069565/LEGISCTA000032221319/
+- arrêté du 24/01/2017 (dépannage, réparation, entretien) : https://www.legifrance.gouv.fr/jorf/id/JORFTEXT000033935513 — art. 2 (information préalable) : https://www.legifrance.gouv.fr/loda/article_lc/LEGIARTI000033959889 — art. 4 (contrat détaillé avant travaux) : https://www.legifrance.gouv.fr/jorf/article_jo/JORFARTI000033935526
+
+### 3.1 Mode de conclusion et urgence : deux informations distinctes, saisies par Gabriel
+- **État** : implémenté ; testé localement (suite J).
+- **Problème reproduit** (avant) : l'appli ne savait pas où le contrat était signé. Le texte de rétractation n'existait que pour le devis envoyé en ligne, toujours intitulé « contrat conclu à distance ». La date retenue était celle du passage en « Accepté ».
+- **Correction** :
+  - chaque devis, intervention, location ou contrat d'un particulier porte un objet `conclusion` : **mode** (signé chez le client / à distance / dans les locaux / **à préciser**, valeur par défaut), **date réelle** de signature, **preuve** (signature en ligne, papier signé, accord écrit, autre + référence), **urgence** (case à part, avec ce qui était urgent), **demande expresse** de commencement anticipé, **remise** de l'exemplaire ;
+  - fenêtre « Contrat avec un particulier » (bouton « Préciser / modifier » dans la facturation du devis, « Lieu / urgence » sur l'intervention) ;
+  - signature en ligne : la **date** (jour à Paris de l'horodatage du serveur) et la **preuve** sont remplies automatiquement ; le **mode n'est jamais deviné** (une signature en ligne après une visite chez le client reste un contrat hors établissement) ; une conclusion déjà saisie n'est pas écrasée.
+- **Client professionnel** : aucun de ces contrôles.
+
+### 3.2 Aucun paiement avant 7 jours (L221-10), sur tous les parcours
+- **État** : implémenté ; testé localement (suite J) ; calcul du délai **à confirmer**.
+- **Problème reproduit** (avant) : un devis signé chez le client le jour J pouvait recevoir une facture d'acompte payable « à la commande » et un encaissement le jour même, sans avertissement.
+- **Règle appliquée** :
+  - « **à préciser** » → aucune demande de paiement : pas de facture (la fenêtre s'ouvre), pas de relance ;
+  - **hors établissement, sans urgence** → paiement possible à partir de **J+8** (le jour de la signature n'est pas compté : lecture prudente de « avant l'expiration d'un délai de sept jours à compter de la conclusion ») ;
+  - urgence expressément demandée, contrat dans les locaux, à distance, client professionnel → pas de délai (L221-10 ne vise que le hors établissement, et exclut les réparations urgentes).
+- **Parcours couverts** :
+
+  | Parcours | Comportement |
+  |---|---|
+  | Facture (devis acompte/solde, intervention, location, contrat) | crochet `nxAvantEmission` **avant** toute demande de numéro : arrêt si « à préciser », sinon date d'exigibilité J+8 |
+  | Version figée | `fac.exigibleLe` dans le document enregistré sur le serveur ; échéance du XML (BT-9) = J+8 avec le texte « Paiement exigible à partir du … (art. L221-10) » ; même mention imprimée sur le PDF figé |
+  | Encaissement (`payerFacture`) et bascule « payée » d'une intervention (`payDep`) | avertissement (L221-10, L242-7) ; « non » = rien n'est enregistré |
+  | Relance de paiement par mail | bloquée tant que le délai court ou que le contrat est « à préciser » |
+  | Devis papier | encadré « aucun paiement ni acompte avant 7 jours » (et la date J+8 si la signature est connue) |
+  | Mail de location (chèque de caution) | avertissement : la caution pourrait être une « contrepartie » — **à confirmer** |
+
+- **Paiement reçu malgré tout** : il est enregistré tel quel (date, mode), jamais refusé en silence, avec :
+  - un indicateur `paiementIrregulier` (« irrégulier » si le délai courait, « à vérifier » si le contrat était à préciser) ;
+  - un événement `paiement_irregulier` dans le registre du serveur (déjà prévu par la migration) ;
+  - une tâche prioritaire « Régulariser / Vérifier » dans « À faire ». Que faire ensuite (remboursement…) est **à voir avec un conseil** : l'appli ne le décide pas.
+- **Anciennes factures** (avant 1.10) d'un particulier : elles sont « à préciser » ; l'encaissement propose d'abord de préciser le contrat, sinon il est enregistré « à vérifier ».
+- **Limites** :
+  - le calcul J+8 est prudent ; un jour plus tôt pourrait être permis selon la lecture du texte — **à confirmer** ;
+  - la caution de location (chèque non encaissé) : **à confirmer** ;
+  - un contrat d'entretien pluriannuel est contrôlé par rapport à sa date de conclusion (le délai ne concerne en pratique que la première facture).
+
+### 3.3 Information sur la rétractation selon le mode
+- **État** : implémenté ; testé localement (suite J).
+- **Correction** :
+  - le texte de `next-signature.js` est exposé (`nxRetractationHTML(d, mode)`) et intitulé selon le mode : « hors établissement », « à distance », ou « à distance ou hors établissement » tant que c'est à préciser ; rien pour un contrat conclu dans les locaux ;
+  - il est imprimé sur le **devis papier** d'un particulier (et donc aussi dans le devis envoyé en ligne, qui en est la capture) avec le formulaire de rétractation, sans doublon ;
+  - case de **demande expresse** de commencement anticipé, avec la **reconnaissance** qu'après exécution complète il n'y a plus de droit de rétractation (L221-25, L221-28) — sur le papier, sur la page de signature et dans le consentement enregistré par le serveur ;
+  - pour un contrat signé chez le client : rappel qu'aucun paiement n'est dû avant 7 jours.
+- **Limites** :
+  - pour un chantier avec **fourniture de matériel**, le point de départ du délai de 14 jours (signature ou réception des biens) dépend de la qualification du contrat — **à confirmer** ; le texte actuel parle de la signature ;
+  - le formulaire reprend le modèle de l'annexe à l'article R221-1 ; sa formulation exacte n'a pas été recomparée mot à mot dans cette étape — **à confirmer**.
+
+### 3.4 Dépannage chez un particulier : contrat écrit **avant** les travaux, dès le premier euro (C15)
+- **État** : implémenté ; testé localement (suite J).
+- **Correction** :
+  - à l'ouverture d'une intervention d'un particulier, **bandeau rouge** « À faire AVANT de commencer » tant qu'aucun contrat n'est enregistré ;
+  - bouton **« Contrat d'intervention à signer »** : document imprimé à partir des données de l'intervention, contenant ce que demandent les art. 2 et 4 de l'arrêté : date, entreprise (nom, adresse, SIRET, téléphone), client et lieu d'intervention, nature exacte des travaux, taux horaire TTC et mode de décompte du temps, frais de déplacement, décompte détaillé (quantité × prix unitaire), totaux HT/TTC et TVA (ou mention de franchise), gratuité du document, durée de validité, zones « bon pour accord » et « exemplaire remis » ; texte de rétractation si signé chez le client hors urgence ;
+  - bouton **« Contrat signé par le client »** : date + type de preuve enregistrés (`contratAvant`) ; le bandeau passe au vert ;
+  - facturer **sans** contrat préalable reste possible (la prestation faite doit être facturée), mais demande une confirmation et laisse une **trace** (`contratAvantManquant`) visible sur l'intervention.
+- **Écart avec le plan** : le plan prévoyait de verrouiller la saisie des travaux tant que le contrat n'est pas signé. Je ne l'ai pas fait : la saisie sert aussi à préparer le contrat (pièces, temps estimé) et le verrou empêcherait de facturer un travail déjà fait. Le contrôle est donc un avertissement fort + une trace. **À confirmer** si tu préfères un blocage.
+- **Limites** :
+  - la phrase « le temps est compté sur place, de l'arrivée à la fin de l'intervention » est une valeur par défaut — **à confirmer** selon ta pratique (l'arrêté demande d'indiquer les modalités de décompte) ;
+  - « offre valable le jour de son établissement » — **à confirmer**.
+
+### 3.5 Remise de l'exemplaire : « remis » seulement avec une preuve
+- **État** : implémenté ; testé localement (suite J, test de la fonction) ; fonction serveur **non déployée**.
+- **Papier** : zone « exemplaire client remis le … — signature du client » sur le devis et le contrat d'intervention ; bouton « Exemplaire papier remis (accusé signé) ».
+- **Électronique** :
+  - page de signature : case facultative « j'accepte de recevoir mon exemplaire sur support durable » ; après signature, bouton **« Télécharger mon exemplaire »** (document + preuve de signature dans un fichier autonome) ;
+  - fonction `signature` (copie dans `supabase/functions/signature/index.ts`, établie à partir de la version 3 déployée, lue en lecture seule) : nouvelle action `copie` qui enregistre la date du premier téléchargement et le nombre de téléchargements, et dépose une note dans la boîte de Gabriel ; si la migration n'est pas appliquée, la signature fonctionne comme avant (repli testé) ;
+  - l'appli relit `copie_le` lors de la synchro des signatures (repli sans ces colonnes si la migration manque) et affiche « téléchargé par le client le … (enregistré par le serveur) ».
+- **Sans preuve**, l'appli affiche « Exemplaire client : **non confirmé** ».
+- **Limite** : un téléchargement prouve que le fichier a été récupéré, pas qu'il a été conservé ; la valeur de cette preuve est **à confirmer**.
+
+### Tests exécutés pour l'étape 3 (02/10/2026)
+- **Suite J** (`tests/suiteJ-particuliers.mjs`) : **50/50** — « à préciser » bloquant ; J+8 sur la facture, le PDF figé, le XML et le document du serveur ; frontière J+7 / J+8 ; urgence, locaux, distance, professionnel sans délai ; encaissement et bascule « payée » (« non » = rien, « oui » = irrégulier + tâche) ; relance bloquée puis permise ; rétractation selon le mode sans doublon ; contrat de dépannage (mentions des art. 2 et 4) ; remise papier et électronique ; date de conclusion depuis la signature en ligne (fuseau de Paris) ; mode réel : aucun appel au serveur si « à préciser » ; page de signature (case, téléchargement, remise enregistrée).
+- **Fonction `signature`** (`tests/functions/test-signature.mjs`, Node 22, base simulée) : **10/10**.
+- **Régression** : A 14/14, B 54/54, C 17/17, D 18/18, E 19/19, F 9/9, G 10/10, H 33/33, I 24/24.
+  - Les jeux de données des suites B, C, E, H, I et `genxml.mjs` précisent désormais le mode de conclusion de leurs clients particuliers (« dans les locaux », ou dépannage signé il y a 10 jours) : sans cela, la 1.10 refuse — à juste titre — leurs factures.
+- **Non testé** : la fonction déployée sur Supabase, la page de signature contre le vrai serveur.

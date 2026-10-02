@@ -140,6 +140,7 @@
     if(String(dateDoc||'')>='2027-01-01') html=html.replace(/(art(?:icle|\.)\s*)293\s*B\s*du\s*CGI/gi,'art. L. 233-3 du CIBS');
     return html;
   }
+  function exigibleHTML(t){ return '<div data-exigible="1" style="font-family:Arial,Helvetica,sans-serif;font-size:11px;color:#7a1020;border:1px solid #e5484d;background:#fff5f5;padding:6px 8px;margin-top:8px"><b>'+String(t).replace(/[&<>]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;'}[c]; })+'</b></div>'; }
   function filigrane(html){
     return '<div style="border:3px solid #c8102e;color:#c8102e;font:700 13px Arial,Helvetica,sans-serif;text-align:center;padding:8px;margin-bottom:10px;letter-spacing:.04em">DOCUMENT DE TEST — ClimPilot en mode démonstration — sans valeur comptable ni fiscale</div>'+html;
   }
@@ -215,6 +216,9 @@
     if(window.__cpLectureSeule){ alert('Cet onglet est en lecture seule : rien ne peut y être émis.'); return Promise.resolve(null); }
     if(BUSY){ say('Émission en cours… patiente.'); return Promise.resolve(null); }
     var S=SORTES[sorte];
+    /* contrôles propres aux particuliers (next-particuliers.js) : arrêt, date d'exigibilité, trace */
+    var av={}; try{ if(typeof window.nxAvantEmission==='function') av=window.nxAvantEmission(sorte,args)||{}; }catch(e){ av={}; }
+    if(av.stop){ relire(sorte); return Promise.resolve(null); }
     var essai=aBlanc(function(prov){ return S.essai(args,prov); });
     var d=essai.out;
     if(!d||d.deja){ /* refus de la fonction d'origine (déjà facturé, rien à facturer…) : on la rejoue telle quelle pour ses messages */
@@ -222,6 +226,13 @@
       essai.toasts.forEach(say); return Promise.resolve(null);
     }
     d.prov=essai.prov;
+    if(av.marque) Object.assign(d.res,cl(av.marque));
+    if(av.echeance){
+      d.exigible={date:av.echeance,texte:av.echeanceTexte||''};
+      if(sorte==='dep') d.res.facExigibleLe=av.echeance;
+      d.fac.exigibleLe=av.echeance;
+      if(d.model){ if(!d.model.echeance||String(d.model.echeance)<av.echeance){ d.model.echeance=av.echeance; d.model.echeanceTexte=av.echeanceTexte||''; } }
+    }
     var mo=mode();
     if(mo==='demo'){ return Promise.resolve(finir(S,d,numTest(d.type==='avoir'?'AV':'F'),'demo',null)); }
     BUSY=true; say('🔐 Émission de la facture… (numéro attribué par le serveur)');
@@ -266,6 +277,7 @@
     S.appliquer(d,res);
     var model=d.model?remplacer(d.model,d.prov,num):null; if(model){ model.id=num; if(doc&&doc.payload&&doc.payload.vendeur) model.seller=cl(doc.payload.vendeur); }
     var html=capturer(function(){ S.imprimer(d); },d.date);
+    if(d.exigible&&d.exigible.texte) html+=exigibleHTML(d.exigible.texte);
     if(mo==='demo') html=filigrane(html);
     var xml=null; try{ if(model) xml=window.nxEinvXMLOf(model); }catch(e){}
     var fac=remplacer(d.fac,d.prov,num);

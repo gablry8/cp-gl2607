@@ -11,7 +11,9 @@ const out=await p.evaluate(()=>{
   const d1=acc[0]; d1.acompteOn=true; d1.acomptePct=30; facturerDevis(d1.id,'acompte'); close(); facturerDevis(d1.id,'solde'); close();
   const d2=acc[1]; facturerDevis(d2.id,'solde'); close();
   const pro=CLIENTS.find(c=>c.type==='Professionnel'); d2.cSiren='552100554';
-  const x={id:'depX',cNom:'M. "Jojo" Martin',cAdr:'10 Rue de Grenelle',cVille:'75007 Paris',cType:'Particulier',date:dISO(new Date()),itype:'dep',statut:'brouillon',heures:2,pieces:[],rateChoice:'custom',rateCustom:90};
+  const x={id:'depX',cNom:'M. "Jojo" Martin',cAdr:'10 Rue de Grenelle',cVille:'75007 Paris',cType:'Particulier',date:dISO(new Date()),itype:'dep',statut:'brouillon',heures:2,pieces:[],rateChoice:'custom',rateCustom:90,
+    /* 1.10 : dépannage chez un particulier — contrat signé avant travaux, conclu chez lui il y a 10 jours (suite J) */
+    conclusion:{mode:'hors_etablissement',date:dISO(new Date(Date.now()-10*86400000)),preuve:{type:'papier',ref:'jeu de test'}},contratAvant:{date:dISO(new Date(Date.now()-10*86400000)),preuve:'papier'}};
   DEP.push(x); curDep=x; try{ loadDepForm(); }catch(e){} factureDep();
   const av1=nxCreateAvoir({facNum:d2.facSolde.num,montant:d2.facSolde.montant,motif:'Erreur sur le montant facturé',liberer:false});
   const av2=nxCreateAvoir({facNum:DEP.find(o=>o.id==='depX').facNum,montant:40,motif:'Geste commercial & <test>'});
