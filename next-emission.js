@@ -84,6 +84,13 @@
   window.nxEmisModele=function(num){ var e=entree(num); return e&&e.model?e.model:null; };
   window.nxEmisXmlFige=function(num){ var f=fichiers()[num]; return f&&f.xml?f.xml:null; };
   window.nxEmisEntree=entree;
+  /* le XML émis doit être sur l'appareil avant un envoi : sinon on le reprend du serveur */
+  window.nxEmisAssurerFichiers=function(num){
+    var f=fichiers()[num]; if(f&&f.xml) return Promise.resolve(true);
+    var e=entree(num); if(!e||!e.sid||!cloud()) return Promise.resolve(false);
+    return window.sb.from('climpilot_documents').select('html,xml').eq('id',e.sid).maybeSingle().then(function(r){
+      var d=r&&r.data; if(d&&(d.xml||d.html)){ fichiersPut(num,{html:d.html||'',xml:d.xml||null,at:Date.now(),mode:e.mode}); return true; } return false; },function(){ return false; });
+  };
   function ajouterRegistre(e){
     var a=reg(); e.id=(e.mode==='demo'?'demo|':'')+e.num+'|'+srcCle(e.src);
     var i=a.findIndex(function(x){ return x.id===e.id; }); if(i>=0) a[i]=Object.assign(a[i],e); else a.push(e);

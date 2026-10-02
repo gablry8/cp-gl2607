@@ -126,3 +126,51 @@ Les tests réussis ne valent **pas** certification : ils prouvent seulement que 
 - `tests/suiteI-emission.mjs` (navigateur, serveur simulé avec les mêmes règles) : **24/24**.
 - Suites existantes, adaptées à la série de démonstration TEST : A 14/14, B 54/54, C 17/17, D 18/18, E 19/19, F 6/6, G 10/10, H 27/27.
 - **Non exécuté** : essai sur un projet Supabase de test (condition de déploiement).
+
+---
+
+## Étape 2 — Facture électronique (C1, C12, C19)
+
+### 2.1 Facture déjà payée à l'émission (C1)
+- **État** : implémenté ; testé localement (validateurs officiels) ; **non testé** sur le bac à sable SUPER PDP.
+- **Problème reproduit** (avant) : cadre B2/S2/M2 avec un net à payer égal au total et aucun montant déjà payé → `BR-FR-CO-09_BT-23-1` et `BR-FR-CO-09_BT-23-2` (bloquants). La date d'échéance, elle, était bien présente (voir l'erratum).
+- **Correction** (`next-einvoice.js`) : en situation « 2 », montant déjà payé (BT-113) = total TTC, net à payer (BT-115) = 0, et **date d'échéance (BT-9) conservée** et égale à la date de paiement, avec la mention « Facture acquittée le … ». BR-FR-CO-07 autorise une échéance antérieure à la facture dans ce cadre.
+- **Avant / après** : avant, 2 erreurs bloquantes ; après, 0 (XSD + CEN + BR-FR).
+- **À savoir** : avec les factures figées (étape 1), le XML est celui de l'émission. Une facture émise puis payée garde le cadre « 1 » ; le paiement est un événement à part (statut « encaissée » sur la plateforme). Le cadre « 2 » ne concerne que les factures déjà payées au moment de l'émission (cas des anciennes factures recalculées).
+
+### 2.2 XML produit depuis la version figée ; date de prestation (C19)
+- **État** : implémenté ; testé localement.
+- **XML et envoi** :
+  - le XML est généré à partir du modèle figé à l'émission (`nxEinvXMLOf`) ;
+  - en compte réel, c'est **le fichier émis** qui part sur la plateforme (récupéré sur le serveur s'il manque sur l'appareil) ;
+  - le bac à sable reprend la même version, avec les identités de test.
+- **BT-72** : la date de l'intervention est transmise pour un dépannage (`ActualDeliverySupplyChainEvent`).
+- **Limite** : pour les chantiers, locations et contrats, aucune date de prestation fiable n'est connue. Le bloc livraison reste vide, ce qui donne un simple **avertissement** `PEPPOL-EN16931-R008` sur 7 des 11 documents de la matrice (aucune erreur).
+
+### 2.3 Garde-fous d'envoi SUPER PDP (C12)
+- **État** : implémenté ; testé localement (plateforme simulée) ; **non testé** sur SUPER PDP.
+- **Problème reproduit** (avant) : le bouton « Renvoyer » renvoyait une facture déjà déposée sans rien vérifier.
+- **Correction** (`next-superpdp.js`, `verifierAvantEnvoi`) :
+  - **numéro porté par deux documents** : envoi bloqué ;
+  - **document de démonstration** (série TEST) : jamais sur la plateforme réelle ;
+  - **facture d'avant la 1.10** (non figée, reconstituée) : envoi réel bloqué, *à confirmer* avec le comptable ;
+  - **déjà déposée en réel** : le dernier statut est **relu sur la plateforme** avant toute décision ;
+    - renvoi permis seulement après un rejet technique (`fr:213`, `api:invalid`, `api:rejected`) ;
+    - `fr:210` (refusée par le client) : pas de renvoi, message « traiter selon le motif — à confirmer » ;
+    - autre statut : renvoi bloqué ;
+    - statut illisible : renvoi bloqué par prudence ;
+  - la nature de l'opération (cadre BT-23) est figée à l'émission ; un changement à l'envoi est refusé et expliqué.
+- **Ce qui n'est pas affirmé** : rien n'affirme qu'un double dépôt imposerait un avoir. Le traitement des doublons par SUPER PDP (même `external_id`) reste **à confirmer** auprès de SUPER PDP (documentation non accessible depuis l'environnement de préparation).
+
+### Tests exécutés pour l'étape 2 (02/10/2026)
+- **Matrice de 11 XML** (`tests/genxml2.mjs`) : factures figées de chaque sorte (dépannage, location, contrat, acompte, solde après acompte, avoir partiel, TVA 10 % et 20 %), versions bac à sable, ancienne facture payée le jour même. Résultat : **0 erreur bloquante** avec :
+  - le XSD Factur-X EN16931 (bibliothèque `factur-x` 7.1) ;
+  - le schematron **CEN EN 16931** 1.3.16 (https://github.com/ConnectingEurope/eInvoicing-EN16931, commit `b6c9e06`, moteur Saxon-HE 13.0.0) ;
+  - le schematron **FNFE-MPE BR-FR** 1.4.0.04 (https://github.com/fnfempe/France_RFE, commit `97ba0f3` du 05/09/2026).
+- **Suite F** : 9/9 (dont le contrôle BR-FR-CO-09 et la date BT-72). **Suite H** : 33/33 (dont 6 nouveaux garde-fous).
+- **Ce qui distingue les niveaux** :
+  - validation **locale** = ces trois validateurs ;
+  - **bac à sable SUPER PDP** : non testé depuis cet environnement (pas d'identifiants, pas d'accès réseau à la plateforme) ;
+  - **plateforme réelle** : non testée (pas de SIRET).
+- **Régression complète** : A 14/14, B 53/54, C 17/17, D 18/18, E 19/19, F 9/9, G 10/10, H 33/33, I 24/24, SQL 13/13.
+  - Le contrôle B en échec est le test de **volume** (temps d'affichage de moins de 0,8 s avec 1 500 devis). Mesuré côte à côte, il varie autant en 1.9.1 qu'en 1.10 (registre des documents : 346 à 880 ms en 1.9.1, 399 à 1 053 ms en 1.10 ; moyennes d'environ 630 et 585 ms) : test instable dans cet environnement, pas de régression constatée.

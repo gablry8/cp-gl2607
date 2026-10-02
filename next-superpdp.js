@@ -104,6 +104,8 @@
         modal('Envoi par la plateforme','<div class="nxd2-warn">'+(pro?'Ce client professionnel n\'a pas de <b>SIREN</b> dans ClimPilot : ajoute-le sur sa fiche (ou dans le devis), il sert à trouver sa plateforme.':'Client <b>particulier</b> : une facture à un particulier ne passe pas par la plateforme. Envoie-lui le PDF comme d\'habitude.<br><span class="sub2">À partir du 01/09/2027, ses montants seront déclarés automatiquement (« e-reporting »).</span>')+'</div>');
         return;
       }
+      return verifierAvantEnvoi(num,sandbox).then(function(stop){
+      if(stop){ modal('Envoi impossible — '+num,'<div class="nxd2-warn red">'+stop+'</div>'); return; }
       var ov=sandbox?testOverrides(co,num):null;
       var xml=window.nxEinvXML?nxEinvXML(num,ov):null;
       var cadre=(/<ram:BusinessProcessSpecifiedDocumentContextParameter><ram:ID>([A-Z]\d)</.exec(xml||'')||[])[1]||'';
@@ -131,8 +133,33 @@
           });
         };
       });
+      });
     });
   };
+  /* 1.10 — garde-fous avant tout envoi (réponse : texte d'arrêt, ou null pour continuer) */
+  var REJET=/^(fr:213|api:invalid|api:rejected)$/;
+  function verifierAvantEnvoi(num,sandbox){
+    var dbl=window.nxEmisDoublons?nxEmisDoublons():{};
+    if(dbl[num]) return Promise.resolve('Le numéro <b>'+esc(num)+'</b> est porté par <b>deux documents différents</b> : envoi bloqué tant que le doublon n\'est pas tranché (registre des documents).');
+    var e=window.nxEmisEntree?nxEmisEntree(num):null;
+    if(!sandbox){
+      if(/^TEST-/.test(num)||(e&&e.mode==='demo')) return Promise.resolve('Document de <b>démonstration</b> (série TEST) : il ne part jamais sur la plateforme réelle.');
+      if(!e||e.origine!=='emis'||e.mode!=='reel') return Promise.resolve('Facture émise avant ClimPilot 1.10 (version <b>non figée</b>, reconstituée) : envoi réel bloqué. À voir avec ton comptable avant tout envoi (<i>à confirmer</i>).');
+    }
+    var prev=((M().docs[num]||{}).envois||[]).filter(function(x){ return sandbox?x.env==='sandbox':x.env==='production'; });
+    if(sandbox||!prev.length) return assurer(num);
+    /* déjà déposée en production : on relit le dernier statut avant d'autoriser quoi que ce soit */
+    var last=prev[prev.length-1];
+    busy('Vérification du statut du dépôt précédent…');
+    return api({action:'invoice',id:last.id}).then(function(r){
+      if(r&&!r.erreur){ var le=lastEv(r.events); if(le){ last.code=le.status_code; last.texte=le.status_text; last.maj=new Date().toISOString(); var mm=M(); mm.docs[num].envois[mm.docs[num].envois.length-1]=last; saveM(mm); } }
+      else return 'Impossible de relire le statut du dépôt précédent ('+esc((r&&(r.message||r.erreur))||'réseau')+') : renvoi bloqué par prudence.';
+      if(REJET.test(last.code||'')) return assurer(num);
+      if(last.code==='fr:210') return 'Facture <b>refusée par le client</b> (fr:210). Ne pas la renvoyer telle quelle : traiter selon le motif du refus (correction, avoir ou échange avec le client — <i>à confirmer avec ton comptable</i>).';
+      return 'Cette facture est <b>déjà déposée</b> sur la plateforme (statut : '+esc(lab(last.code,last.texte))+'). Un nouvel envoi créerait un second dépôt : renvoi bloqué. Seul un rejet technique (fr:213) permet de la renvoyer.';
+    },function(){ return 'Statut du dépôt précédent illisible : renvoi bloqué par prudence.'; });
+  }
+  function assurer(num){ return (window.nxEmisAssurerFichiers?nxEmisAssurerFichiers(num):Promise.resolve()).then(function(){ return null; },function(){ return null; }); }
   var SITU={'1':'facture normale','2':'déjà payée','4':'définitive après acompte'};
   function natureSel(num,cadre){
     var n=cadre.charAt(0), s=cadre.charAt(1), T=window.nxEinvNatureTxt||{B:'livraison de biens',S:'prestation de services',M:'livraison de biens et prestation de services'};
