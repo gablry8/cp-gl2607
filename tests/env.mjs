@@ -44,7 +44,11 @@ async function mandataireRefus() {
     noter('navigateur-mandataire', { methode: req.method, hote: hote(req.url) });
     res.writeHead(403, { 'x-cp-isolation': 'refus', 'access-control-allow-origin': '*', 'access-control-expose-headers': 'x-cp-isolation' }); res.end('CP_ISOLATION');
   });
-  srv.on('connect', (req, sock) => { noter('navigateur-mandataire', { methode: 'CONNECT', hote: String(req.url).slice(0, 80) }); sock.end('HTTP/1.1 403 Forbidden\r\n\r\n'); });
+  srv.on('connect', (req, sock) => {
+    sock.on('error', () => {}); // le navigateur peut couper le tunnel refusé (ECONNRESET) : sans effet
+    noter('navigateur-mandataire', { methode: 'CONNECT', hote: String(req.url).slice(0, 80) }); sock.end('HTTP/1.1 403 Forbidden\r\n\r\n');
+  });
+  srv.on('clientError', (e, sock) => { try { sock.destroy(); } catch (_) {} });
   await new Promise((r) => srv.listen(0, '127.0.0.1', r)); srv.unref();
   portMandataire = srv.address().port; return portMandataire;
 }
@@ -64,10 +68,23 @@ export function surveiller(ctx) {
   ctx.on('page', (p) => p.on('websocket', (ws) => { if (!estLocale(ws.url())) noter('navigateur-websocket', { hote: hote(ws.url()) }); }));
   return ctx;
 }
+/* Dans l'espace réseau isolé (unshare -n), seule la boucle locale existe : Chromium se croit alors HORS LIGNE
+   (navigator.onLine = false) et l'appli refuse, à juste titre, d'émettre en mode réel. On rétablit l'état
+   « en ligne » par le protocole DevTools, comme un appareil connecté dont le serveur est simulé. Le réseau
+   reste coupé ; ctx.setOffline(true) continue de simuler une vraie coupure. */
+const NETNS = process.env.CP_DANS_NETNS === '1';
+async function enLigne(ctx, p) {
+  const s = await ctx.newCDPSession(p);
+  await s.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1, connectionType: 'ethernet' });
+}
 export async function lancerNavigateur() {
   const b = await chromium.launch(await optionsLancement());
   const nc = b.newContext.bind(b);
-  b.newContext = async (o) => surveiller(await nc(o));
+  b.newContext = async (o) => {
+    const ctx = surveiller(await nc(o));
+    if (NETNS) { const np = ctx.newPage.bind(ctx); ctx.newPage = async () => { const p = await np(); await enLigne(ctx, p); return p; }; }
+    return ctx;
+  };
   return b;
 }
 export function ecrireResultats(nom, RES) { fs.writeFileSync(out(nom), JSON.stringify(RES, null, 1)); }

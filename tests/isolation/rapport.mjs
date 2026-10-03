@@ -63,7 +63,10 @@ const tableau = ETAPES.map(([nom, fichier]) => {
 
 /* isolation */
 const compter = (l, cle) => Object.entries(l.reduce((o, x) => ((o[x[cle]] = (o[x[cle]] || 0) + 1), o), {})).sort((a, b) => b[1] - a[1]);
+const PROD = ((/var SUPA_URL='https:\/\/([a-z0-9.-]+)'/.exec(fs.readFileSync(path.join(RACINE, 'index.html'), 'utf8')) || [])[1]) || '(introuvable)';
 const iso = {
+  prod_playwright: lignes('navigateur-requetes').filter((x) => x.hote === PROD).length,
+  prod_reseau: [...lignes('navigateur-mandataire'), ...lignes('node'), ...lignes('python')].filter((x) => String(x.hote).split(':')[0] === PROD).length,
   noyau: process.env.CP_DANS_NETNS === '1' ? 'OUI (unshare -n)' : 'NON (CP_SANS_NETNS=1 : gardes logicielles seulement)',
   interfaces: fs.existsSync(out('isolation', 'interfaces.txt')) ? fs.readFileSync(out('isolation', 'interfaces.txt'), 'utf8').trim() : 'non relevé',
   tentatives_vues_par_playwright: lignes('navigateur-requetes').length, par_hote_playwright: compter(lignes('navigateur-requetes'), 'hote'),
@@ -91,6 +94,7 @@ const sk = []; for (const [nom, f] of ETAPES) { const r = f.endsWith('.json') &&
 if (sk.length) md.push('', '### SKIP (non vérifié, jamais compté comme réussi)', ...sk);
 md.push('', '## Isolation réseau', '', `- Isolation du noyau : ${iso.noyau} ; ${iso.interfaces}`,
   `- Tentatives vues par Playwright (y compris celles simulées ou interrompues par les tests) : ${iso.tentatives_vues_par_playwright} — ${iso.par_hote_playwright.slice(0, 12).map(([h, n]) => h + ' ×' + n).join(', ') || 'aucune'}`,
+  `- dont vers le projet Supabase RÉEL (hôte lu dans index.html) : ${iso.prod_playwright} tentative(s) vue(s) par Playwright, ${iso.prod_reseau} arrivée(s) au réseau du navigateur${iso.prod_playwright && !iso.prod_reseau ? ' — toutes servies par une simulation ou interrompues par les tests, aucune n\'a quitté le navigateur' : ''}`,
   `- WebSockets non locaux ouverts par les pages : ${iso.websockets}`,
   `- Tentatives arrivées au réseau du navigateur, toutes refusées par le mandataire : ${iso.refus_mandataire_navigateur}`,
   ...[['autotest (volontaires)', (h) => /autotest-isolation|192\.0\.2\.1/.test(h)], ['trafic de fond de Chromium (services Google, pas l\'appli)', (h) => /(^|\.)(google\.com|gvt1\.com|googleapis\.com|gstatic\.com)(:\d+)?$/.test(h) && !/fonts\./.test(h)], ['appli et tests', null]].map(([lib, f], i, all) => {
