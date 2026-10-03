@@ -236,3 +236,13 @@ def test_preuve_de_remise_non_falsifiable_par_le_compte():
         s.execute("select set_config('request.jwt.claims','{\"role\":\"service_role\"}',false)")
         s.execute('update public.climpilot_signatures set copie_le=now(), copie_nb=copie_nb+1, support_durable_accord=true where token=%s', (tok,))
         assert s.execute('select copie_nb from public.climpilot_signatures where token=%s', (tok,)).fetchone()[0] == 1
+
+
+def test_preuve_de_remise_non_inscrite_a_la_creation_du_lien():
+    """Le compte de l'entreprise crée le lien : il ne peut pas y glisser d'avance l'accord « support durable »
+    ni une remise de l'exemplaire (déclencheur d'insertion de la production étendu par la migration)."""
+    with cnx(A) as c:
+        r = c.execute("insert into public.climpilot_signatures(user_id,doc_type,doc_id,doc_html,support_durable_accord,copie_le,copie_nb)"
+                      " values (%s,'devis','d2','<p>y</p>',true,now(),7) returning support_durable_accord,copie_le,copie_nb,doc_hash", (A,)).fetchone()
+        assert r[0] is None and r[1] is None and r[2] == 0
+        assert r[3] and len(r[3]) == 64  # l'empreinte du document reste calculée par le serveur

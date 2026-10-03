@@ -2,6 +2,9 @@
 -- connecteur Supabase : tables, règles RLS, fonctions et déclencheurs). Sert uniquement à
 -- vérifier que la migration s'applique sur l'existant. Les données ne sont pas reprises,
 -- ni le déclencheur de blocage des inscriptions (il contient l'adresse de Gabriel).
+-- 03/10/2026 : comparé à supabase/schema.sql (copie de lecture venue de main, 665161f) ; ajoutés :
+-- la rétention des sauvegardes (cp_state_backup_trg) et le déclencheur d'insertion cp_sig_insert.
+-- Non repris (sans lien avec la migration) : pdp_cred_* (coffre Vault) et cp_block_signup.
 
 create table public.climpilot_state (
   user_id uuid primary key references auth.users(id),
@@ -71,6 +74,14 @@ begin
                  and b.raison = 'quotidienne' and b.created_at > now() - interval '20 hours') then
     perform public.cp_backup_row(old.user_id, old.data, 'quotidienne');
   end if;
+  -- rétention : quotidiennes 45 j (+ 1 par mois gardée 13 mois), autres 120 j
+  delete from public.climpilot_backups b
+   where b.user_id = old.user_id and b.raison = 'quotidienne' and b.created_at < now() - interval '45 days'
+     and b.id not in (select distinct on (date_trunc('month', x.created_at)) x.id from public.climpilot_backups x
+                       where x.user_id = old.user_id and x.raison = 'quotidienne' order by date_trunc('month', x.created_at), x.created_at)
+     or (b.user_id = old.user_id and b.raison = 'quotidienne' and b.created_at < now() - interval '13 months');
+  delete from public.climpilot_backups b
+   where b.user_id = old.user_id and b.raison <> 'quotidienne' and b.created_at < now() - interval '120 days';
   return new;
 end $function$;
 revoke all on function public.cp_state_backup_trg() from public, anon, authenticated;
@@ -117,3 +128,13 @@ begin
   return new;
 end $function$;
 create trigger cp_sig_guard before update on public.climpilot_signatures for each row execute function public.cp_sig_guard();
+create function public.cp_sig_insert() returns trigger language plpgsql security definer set search_path to ''
+as $function$
+begin
+  new.doc_hash := encode(sha256(convert_to(new.doc_html, 'UTF8')), 'hex');
+  new.signed_at := null; new.signer_nom := null; new.signature_png := null; new.signer_ip := null;
+  new.signer_ua := null; new.consentement := null; new.vu_at := null; new.applique := false;
+  if new.expires_at > now() + interval '120 days' then new.expires_at := now() + interval '90 days'; end if;
+  return new;
+end $function$;
+create trigger cp_sig_insert before insert on public.climpilot_signatures for each row execute function public.cp_sig_insert();

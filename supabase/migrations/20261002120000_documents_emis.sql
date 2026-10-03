@@ -333,6 +333,18 @@ begin
   end if;
   return new;
 end $$;
+-- à la création du lien, le compte ne peut pas non plus inscrire d'avance l'accord ni une remise :
+-- déclencheur d'insertion de la production (copie dans supabase/schema.sql) + les trois nouvelles colonnes
+create or replace function public.cp_sig_insert() returns trigger
+language plpgsql security definer set search_path = '' as $$
+begin
+  new.doc_hash := encode(sha256(convert_to(new.doc_html, 'UTF8')), 'hex');
+  new.signed_at := null; new.signer_nom := null; new.signature_png := null; new.signer_ip := null;
+  new.signer_ua := null; new.consentement := null; new.vu_at := null; new.applique := false;
+  new.support_durable_accord := null; new.copie_le := null; new.copie_nb := 0;
+  if new.expires_at > now() + interval '120 days' then new.expires_at := now() + interval '90 days'; end if;
+  return new;
+end $$;
 
 -- ---------- 7. durcissement : TRUNCATE ne passe pas par RLS ----------
 revoke truncate on all tables in schema public from anon, authenticated;
