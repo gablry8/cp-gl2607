@@ -1,10 +1,9 @@
 // Batterie de tests ClimPilot — Playwright (Chromium), serveur local :8765
-import { chromium, devices } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
-const EXE='/opt/pw-browsers/chromium-1194/chrome-linux/chrome';
+import { devices, lancerNavigateur, URL_LOCALE } from './env.mjs';
 export const RES=[];
 export function rec(group,name,ok,detail){ RES.push({group,name,ok:ok===true?'PASS':ok===false?'FAIL':ok,detail:detail==null?'':String(detail).slice(0,400)}); }
 let browser=null;
-export async function getBrowser(){ if(!browser) browser=await chromium.launch({executablePath:EXE}); return browser; }
+export async function getBrowser(){ if(!browser) browser=await lancerNavigateur(); return browser; }
 export async function closeBrowser(){ if(browser) await browser.close(); browser=null; }
 
 export async function page(opts={}){
@@ -23,7 +22,7 @@ export async function page(opts={}){
   else if(opts.routeFail){ await p.route(/data\.geopf\.fr\/navigation/, r=>r.fulfill({status:503,body:'down'})); geoMock(p,true); }
   else geoMock(p,false);
   if(opts.init) await p.addInitScript(opts.init);
-  await p.goto('http://localhost:8765/index.html');
+  await p.goto(URL_LOCALE+'index.html');
   await p.waitForTimeout(opts.wait||2200);
   return {p,ctx,errs};
 }

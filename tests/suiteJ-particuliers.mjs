@@ -1,3 +1,4 @@
+import { ecrireResultats } from './env.mjs';
 // Suite J — contrats avec les particuliers (1.10, next-particuliers.js) :
 // mode de conclusion ≠ urgence, « à préciser » bloque toute demande de paiement, délai de 7 jours (L221-10)
 // sur tous les parcours (facture, encaissement, intervention, relance), paiement reçu malgré tout tracé,
@@ -274,6 +275,5 @@ await ctx.close();
 }
 
 await closeBrowser();
-fs.mkdirSync('/tmp/claude-0/sp',{recursive:true});
-fs.writeFileSync('/tmp/claude-0/sp/resJ.json',JSON.stringify(RES,null,1));
+ecrireResultats('resJ.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

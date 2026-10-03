@@ -1,14 +1,15 @@
+import { out } from './env.mjs';
 // Matrice XML 1.10 : factures FIGÉES (démonstration) de chaque sorte + cas « payée le jour même »
-// d'une facture ancienne (non figée) + version bac à sable. Écrit dans /tmp/claude-0/sp/xml2/.
+// d'une facture ancienne (non figée) + version bac à sable. Écrit dans $CP_TEST_OUT/xml2/.
 import {page,closeBrowser,seed} from './lib.mjs';
 import fs from 'fs';
-const OUT='/tmp/claude-0/sp/xml2/'; fs.mkdirSync(OUT,{recursive:true});
+const OUT=out('xml2')+'/'; fs.mkdirSync(OUT,{recursive:true});
 const {p,errs}=await page({mobile:false});
 p.removeAllListeners('dialog'); p.on('dialog',d=>d.accept().catch(()=>{}));
 await seed(p);
 const R=await p.evaluate(async()=>{
   const res={}; const close=()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.click(); };
-  Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:"12 rue de l'Hostellerie",cp:'60140',ville:'Bailleval',email:'contact@exemple.fr',rib:'FR76 3000 6000 0112 3456 7890 189'});
+  Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:"1 rue de l'Exemple",cp:'60140',ville:'Bailleval',email:'contact@exemple.fr',rib:'FR76 3000 6000 0112 3456 7890 189'});
   window.askMode=()=>'Virement';
   const X=(k,n,ov)=>{ res[k]=nxEinvXML(n,ov); };
   const pro={nom:'Boulangerie Dupré',siren:'552100554'}; const cl=CLIENTS.find(c=>c.nom===pro.nom); cl.siren=pro.siren; save(LS.clients,CLIENTS);

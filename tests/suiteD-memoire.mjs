@@ -1,6 +1,6 @@
 // Suite D — grande mémoire (IndexedDB) : migration, gros volume, secours, fusion
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
-import { chromium, devices } from '/home/claude/.npm-global/lib/node_modules/playwright/index.mjs';
+import { ecrireResultats, lancerNavigateur } from './env.mjs';
 import fs from 'fs';
 const clean=e=>[...new Set(e)].slice(0,6).join(' | ');
 const nat=`(function(){ const LS=window.localStorage; const g=Storage.prototype.__lookupGetter__?null:null; return {get:k=>Object.getPrototypeOf(LS).getItem.call(LS,k)}; })()`;
@@ -88,7 +88,7 @@ const nat=`(function(){ const LS=window.localStorage; const g=Storage.prototype.
 
 /* D7. Base qui ne répond pas ALORS que des données n'existent que dedans → écran « rouvre », pas d'appli incomplète */
 {
-  const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome'});
+  const b=await lancerNavigateur();
   const ctx=await b.newContext({viewport:{width:900,height:800}});
   const p=await ctx.newPage(); await p.route(/supabase|cdn\./,r=>r.abort());
   await p.goto('http://localhost:8765/index.html'); await p.waitForTimeout(2500);
@@ -114,5 +114,5 @@ const nat=`(function(){ const LS=window.localStorage; const g=Storage.prototype.
 }
 
 await closeBrowser();
-fs.writeFileSync('/tmp/claude-0/sp/resD.json',JSON.stringify(RES,null,1));
+ecrireResultats('resD.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

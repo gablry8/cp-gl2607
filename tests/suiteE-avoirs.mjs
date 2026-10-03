@@ -1,3 +1,4 @@
+import { ecrireResultats } from './env.mjs';
 // Suite E — avoirs
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
 import fs from 'fs';
@@ -89,5 +90,5 @@ const closePdf=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.
   await ctx.close();
 }
 await closeBrowser();
-fs.writeFileSync('/tmp/claude-0/sp/resE.json',JSON.stringify(RES,null,1));
+ecrireResultats('resE.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

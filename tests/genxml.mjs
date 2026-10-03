@@ -1,10 +1,11 @@
+import { out as sortie } from './env.mjs';
 import {page,closeBrowser,seed} from './lib.mjs';
 import fs from 'fs';
 const {p,errs}=await page({mobile:false});
 p.removeAllListeners('dialog'); p.on('dialog',d=>d.accept().catch(()=>{}));
 await seed(p);
 const out=await p.evaluate(()=>{
-  Object.assign(P.entreprise,{nom:'Gabriel Leroy — Froid & Climatisation',siret:'12345678900012',adresse:"12 rue de l'Hostellerie",cp:'60140',ville:'Bailleval',email:'contact@exemple.fr',tel:'0600000000',rib:'FR76 3000 6000 0112 3456 7890 189'});
+  Object.assign(P.entreprise,{nom:'Gabriel Leroy — Froid & Climatisation',siret:'12345678900012',adresse:"1 rue de l'Exemple",cp:'60140',ville:'Bailleval',email:'contact@exemple.fr',tel:'0600000000',rib:'FR76 3000 6000 0112 3456 7890 189'});
   window.askMode=()=>'Virement';
   const close=()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.click(); };
   const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0);
@@ -24,6 +25,6 @@ const out=await p.evaluate(()=>{
   const d3=acc[2]; facturerDevis(d3.id,'solde'); close(); res['TVA_'+d3.facSolde.num]={xml:nxEinvXML(d3.facSolde.num),chk:nxEinvChecks(d3.facSolde.num)};
   const av3=nxCreateAvoir({facNum:d3.facSolde.num,montant:50,motif:'Remise'}); res['TVA_'+av3.av.num]={xml:nxEinvXML(av3.av.num),chk:[]};
   return res; });
-for(const [k,v] of Object.entries(out)){ fs.writeFileSync('/tmp/claude-0/sp/xml/'+k+'.xml',v.xml); console.log(k,'checks:',JSON.stringify(v.chk)); }
+for(const [k,v] of Object.entries(out)){ fs.mkdirSync(sortie('xml'),{recursive:true}); fs.writeFileSync(sortie('xml',k+'.xml'),v.xml); console.log(k,'checks:',JSON.stringify(v.chk)); }
 console.log('ERRS',errs.join('|'));
 await closeBrowser();

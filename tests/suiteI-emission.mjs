@@ -1,3 +1,4 @@
+import { ecrireResultats } from './env.mjs';
 // Suite I — émission sécurisée (1.10) : modes, serveur simulé, reprise, fusion, rapprochement, onglets.
 // Le serveur simulé reprend la logique de la migration SQL (testée, elle, sur un vrai PostgreSQL :
 // tests/sql/test_migration.py). Cette suite vérifie le comportement de l'APPLI face à ce serveur.
@@ -41,7 +42,7 @@ const SERVEUR=`(function(){
     return q; }
   window.__srv=srv; window.sb={rpc:rpc,from:from,auth:{getSession:()=>Promise.resolve({data:{session:null}})}};
 })();`;
-const REEL=`(function(){ window.SESS={user:{id:'u1',email:'test@test'}}; Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:"12 rue de l'Hostellerie",cp:'60140',ville:'Bailleval',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); })();`;
+const REEL=`(function(){ window.SESS={user:{id:'u1',email:'test@test'}}; Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:"1 rue de l'Exemple",cp:'60140',ville:'Bailleval',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); })();`;
 const wait=(p,ms)=>p.waitForTimeout(ms);
 const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.click(); })()`;
 
@@ -183,6 +184,5 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
 }
 
 await closeBrowser();
-fs.mkdirSync('/tmp/claude-0/sp',{recursive:true});
-fs.writeFileSync('/tmp/claude-0/sp/resI.json',JSON.stringify(RES,null,1));
+ecrireResultats('resI.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

@@ -1,13 +1,25 @@
 # Tests de la migration « documents émis » sur un VRAI PostgreSQL (banc local, Supabase imité).
-# Lancer : PGHOST=<dossier du socket> PGPORT=54329 pytest -q tests/sql/test_migration.py
+# Lancer : PGHOST=<dossier du socket> PGPORT=54329 pytest -q tests/sql   (cluster démarré avec -c cluster_name=climpilot-test)
 # Chaque test repart d'une base neuve : 00_supabase_emul.sql + 01_base_actuelle.sql + la migration.
+# Avant toute écriture, cible_locale.py vérifie que la base visée est le banc de test local (sinon : arrêt).
 import json, os, uuid, datetime, threading, pathlib
 import psycopg, pytest
+from cible_locale import CibleRefusee, parametres, verifier_connexion
 
 ICI = pathlib.Path(__file__).resolve().parent
 RACINE = ICI.parent.parent
 MIGRATION = RACINE / 'supabase' / 'migrations' / '20261002120000_documents_emis.sql'
-ADMIN = dict(host=os.environ.get('PGHOST', '/var/lib/postgresql/cptest'), port=int(os.environ.get('PGPORT', 54329)), user='postgres', dbname='postgres')
+try:
+    ADMIN = parametres()
+except CibleRefusee as e:
+    if not os.environ.get('PGHOST'):
+        pytest.skip(str(e), allow_module_level=True)  # non exécuté (annoncé comme tel), jamais « réussi »
+    pytest.exit(f'CIBLE REFUSÉE : {e}', returncode=3)
+with psycopg.connect(**ADMIN, connect_timeout=5) as _c:
+    try:
+        verifier_connexion(_c)
+    except CibleRefusee as e:
+        pytest.exit(f'CIBLE REFUSÉE : {e}', returncode=3)
 A = str(uuid.UUID('11111111-1111-1111-1111-111111111111'))
 B = str(uuid.UUID('22222222-2222-2222-2222-222222222222'))
 V = '1.10.0-beta'

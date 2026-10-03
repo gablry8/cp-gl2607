@@ -1,7 +1,7 @@
 // Test de la fonction serveur « signature » (1.10, non déployée) avec une base simulée en mémoire.
 // Lancement : node tests/functions/test-signature.mjs   (Node ≥ 22.6 : --experimental-strip-types est ajouté automatiquement)
 import fs from 'fs'; import os from 'os'; import path from 'path'; import { execFileSync } from 'child_process'; import { fileURLToPath } from 'url';
-if (!process.env.__SIG_CHILD) { execFileSync(process.execPath, ['--experimental-strip-types', '--no-warnings', fileURLToPath(import.meta.url)], { stdio: 'inherit', env: { ...process.env, __SIG_CHILD: '1' } }); process.exit(0); }
+if (!process.env.__SIG_CHILD) { try { execFileSync(process.execPath, ['--experimental-strip-types', '--no-warnings', fileURLToPath(import.meta.url)], { stdio: 'inherit', env: { ...process.env, __SIG_CHILD: '1' } }); } catch (e) { process.exit(e.status || 1); } process.exit(0); }
 const src = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '../../supabase/functions/signature/index.ts'), 'utf8').replace(/^import .*npm:@supabase.*$/m, '');
 const tmp = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'sig-')), 'index.ts'); fs.writeFileSync(tmp, src);
 globalThis.__NO_SERVE = true;
@@ -56,4 +56,5 @@ const R = []; const rec = (n, ok, d) => R.push([ok ? 'PASS' : 'FAIL', n, ok ? ''
   rec('Sans la case : accord support durable = false', r.ok && T.climpilot_signatures[0].support_durable_accord === false && !/support durable/.test(T.climpilot_signatures[0].consentement), T.climpilot_signatures[0]);
 }
 R.forEach(x => console.log(x[0].padEnd(5), '[Signature]', x[1], x[2] ? '— ' + x[2] : ''));
+if (process.env.CP_TEST_OUT) { fs.mkdirSync(process.env.CP_TEST_OUT, { recursive: true }); fs.writeFileSync(path.join(process.env.CP_TEST_OUT, 'resFn-signature.json'), JSON.stringify(R.map(([ok, name, detail]) => ({ group: 'Signature', name, ok, detail })), null, 1)); }
 if (R.some(x => x[0] !== 'PASS')) process.exitCode = 1;

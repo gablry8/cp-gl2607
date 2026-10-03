@@ -1,3 +1,4 @@
+import { ecrireResultats } from './env.mjs';
 // Suite K — fiscalité et cotisations (1.10, next-taux.js) : taux unique daté et sourcé, profil fiscal,
 // ACRE selon la date, versement libératoire et CFP/CMA selon le profil, activité mixte, même taux sur tous
 // les écrans, plafonds micro 2026, franchise de TVA (année de création, suivante, courante), avertissement
@@ -126,6 +127,5 @@ const setP=o=>p.evaluate(o=>{ save('cp2_fiscal',o); },o);
 rec('Fiscal','Aucune erreur JavaScript',errs.length===0,errs.join(' | '));
 await ctx.close();
 await closeBrowser();
-fs.mkdirSync('/tmp/claude-0/sp',{recursive:true});
-fs.writeFileSync('/tmp/claude-0/sp/resK.json',JSON.stringify(RES,null,1));
+ecrireResultats('resK.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

@@ -1,3 +1,4 @@
+import { ecrireResultats } from './env.mjs';
 // Suite H — plateforme agréée SUPER PDP (écran « Facture électronique »), serveur simulé
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
 import fs from 'fs';
@@ -173,6 +174,5 @@ const wait=(p,ms=250)=>p.waitForTimeout(ms);
   await ctx.close();
 }
 await closeBrowser();
-fs.mkdirSync('/tmp/claude-0/sp',{recursive:true});
-fs.writeFileSync('/tmp/claude-0/sp/resH.json',JSON.stringify(RES,null,1));
+ecrireResultats('resH.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

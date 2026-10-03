@@ -1,3 +1,4 @@
+import { ecrireResultats } from './env.mjs';
 import {page,rec,RES,closeBrowser,seed,SEED} from './lib.mjs';
 import fs from 'fs';
 const clean=e=>[...new Set(e)].slice(0,6).join(' | ');
@@ -226,5 +227,5 @@ for(const tz of ['Europe/Paris','Pacific/Kiritimati','America/Los_Angeles']){
   await ctx.close();
 }
 await closeBrowser();
-fs.writeFileSync('/tmp/claude-0/sp/resB.json',JSON.stringify(RES,null,1));
+ecrireResultats('resB.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

@@ -1,3 +1,4 @@
+import { ecrireResultats, out } from './env.mjs';
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
 import fs from 'fs';
 
@@ -10,7 +11,7 @@ import fs from 'fs';
     FLU.push({id:'fl1',num:'FF-2026-001',date:dISO(new Date()),client:'Boulangerie Dupré',desc:'Split',fluide:'R32',charge:0.9,qv:0.2}); save('cp2_fluides',FLU);
     localStorage.setItem('cpnext_refs',JSON.stringify({ftxm25:{ref:'FTXM25',fluide:'R32',charge:0.9}})); });
   const [dl]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>exportJSON())]);
-  const path='/tmp/claude-0/sp/bk.json'; await dl.saveAs(path);
+  const path=out('bk.json'); await dl.saveAs(path);
   const bk=JSON.parse(fs.readFileSync(path,'utf8'));
   const has=k=>bk.all&&bk.all[k]!=null;
   rec('Sauvegarde','Contient parc, contrats, fiches fluides, références',has('cp2_equip')&&has('cp2_contrats')&&has('cp2_fluides')&&has('cpnext_refs'),Object.keys(bk.all||{}).join(','));
@@ -113,5 +114,5 @@ import fs from 'fs';
   await ctx.close();
 }
 await closeBrowser();
-fs.writeFileSync('/tmp/claude-0/sp/resC.json',JSON.stringify(RES,null,1));
+ecrireResultats('resC.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

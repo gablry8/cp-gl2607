@@ -1,3 +1,4 @@
+import { ecrireResultats } from './env.mjs';
 // Suite L — mentions des documents (1.10, next-documents.js + retouches index.html) : dénomination « EI »,
 // pied de facture ≠ pied de devis, validité unique, nature S/M selon le réglage, contrôles assurance /
 // médiateur selon les travaux et le client (blocage en mode réel), factures à 0 € refusées, RGPD,
@@ -172,6 +173,5 @@ await ctx.close();
 }
 
 await closeBrowser();
-fs.mkdirSync('/tmp/claude-0/sp',{recursive:true});
-fs.writeFileSync('/tmp/claude-0/sp/resL.json',JSON.stringify(RES,null,1));
+ecrireResultats('resL.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));
