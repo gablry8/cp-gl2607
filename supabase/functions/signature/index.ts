@@ -1,5 +1,9 @@
 // ClimPilot — Edge Function « signature » (publique, protégée par un jeton aléatoire par document)
 // Actions : lire (affiche le document), signer, refuser, copie (1.10).
+// Version déployée aujourd'hui : v3 (verify_jwt = false) — sa copie de lecture est dans l'historique de main
+// (commit 665161f, même chemin). La version 1.10 ci-dessous reprend toute sa logique (comparaison faite
+// ligne à ligne le 03/10/2026) ; seules différences : celles décrites plus bas et la phrase « anticipe » du
+// consentement, complétée (perte du droit de rétractation une fois le contrat entièrement exécuté).
 // Preuve conservée : horodatage serveur, nom saisi, signature manuscrite (image), adresse IP,
 // navigateur, empreinte SHA-256 du document calculée à l'envoi, texte de consentement.
 //

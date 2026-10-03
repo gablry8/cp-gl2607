@@ -124,7 +124,7 @@
       var ft=document.getElementById('f_type'); c.types=ft?[].map.call(ft.options,function(o){return o.value;}):Object.keys(TYPEUNITS);
       c.typeUnits=TYPEUNITS; c.splitPowers=SPLIT_POWERS; c.splitCables=SPLIT_CABLES; c.groupCables=GROUP_CABLES;
       c.zones=Object.keys(P.zone); c.acces={'0':'Facile','moyen':'Moyen','diff':'Difficile'};
-      c.tests={'0':'Aucun','vide':'Tirage au vide','azote':'Test azote','etanch':'Contrôle étanchéité'};
+      c.tests={'0':'Aucun','vide':'Tirage au vide','azote':'Test azote','etanch':'Contrôle étanchéité','azote+vide':'Test azote + tirage au vide','azote+vide+etanch':'Azote + vide + étanchéité'};
       c.taille=['auto','petit','moyen','gros']; c.mes=Object.keys(P.mes||{}); c.brasure=Object.keys(P.bras||{});
       c.tauxHoraire=P.defaultRate; c.taux=P.rates||[];
       c.liaisons=PRIX.filter(function(p){return p.cat==='Cuivre';}).map(function(p){return p.nom;});

@@ -205,15 +205,25 @@
     return K.sec(title||'Périphériques et fournitures',(hint?'<div class="nxd2-hint">'+hint+'</div>':'')+rows);
   };
   K.perLines=function(B,d,PER){ PER.forEach(function(x){ var s=K.perState(d,x); if(!s.on) return; var nom=typeof x.nom==='function'?x.nom(d):x.nom; B.add(nom,s.q,x.cat||'posemat',x.label||null); }); };
+  /* contrôles cumulables : d.tests = 'azote+vide' (ancienne valeur simple 'vide' toujours lue) */
+  K.TESTK=['azote','vide','etanch'];
+  K.TESTL={azote:'Test azote (mise en pression)',vide:'Tirage au vide',etanch:'Contrôle d\'étanchéité'};
+  K.testKeys=function(t){ return String(t==null?'0':t).split('+').filter(function(k){ return K.TESTK.indexOf(k)>=0; }); };
+  K.testsHTML=function(d){ var on=K.testKeys(d.tests), T=P.tests||{};
+    return '<div class="nxd2-tests"><div style="font-size:12.5px;font-weight:600;margin:6px 0 2px">Contrôles <span class="sub2">(cumulables)</span></div>'+K.TESTK.map(function(k){
+      return '<label class="nxd2-chk"><input type="checkbox" data-k="data._tk.'+k+'" data-t="b" data-on="testsSet"'+(on.indexOf(k)>=0?' checked':'')+'> <span>'+K.TESTL[k]+' — '+A.money(T[k])+'</span></label>'; }).join('')+'</div>'; };
+  A.hook('testsSet',function(li,el,v){ var c=A.cur(), l=c&&c.lots[li]; if(!l) return; var k=String(el.dataset.k||'').split('.').pop(), on=K.testKeys(l.data.tests);
+    if(v&&on.indexOf(k)<0) on.push(k); if(!v) on=on.filter(function(x){ return x!==k; }); on=K.TESTK.filter(function(x){ return on.indexOf(x)>=0; });
+    l.data.tests=on.length?on.join('+'):'0'; delete l.data._tk; });
   K.secMes=function(d,opt){
     opt=opt||{}; var mesK=Object.keys(P.mes||{}), brK=Object.keys(P.bras||{});
     return K.sec(opt.title||'Mise en service et contrôles','<div class="frm">'+
       A.fSel('Mise en service','data.mes',d.mes,mesK.map(function(x){ return [x,x==='Aucune'?'Aucune':x+' — '+A.money(P.mes[x])]; }))+
       (opt.brasure===false?'':A.fSel('Brasure','data.brasure',d.brasure,brK.map(function(x){ return [x,x==='Aucune'?'Aucune':x+' — '+A.money(P.bras[x])]; })))+
-      (opt.tests===false?'':A.fSel('Contrôle','data.tests',d.tests,[['0','Aucun'],['vide','Tirage au vide — '+A.money((P.tests||{}).vide)],['azote','Test azote — '+A.money((P.tests||{}).azote)],['etanch','Contrôle d\'étanchéité — '+A.money((P.tests||{}).etanch)]]))+
+
       A.fSel('Accès','data.acces',d.acces,[['0','Normal'],['diff','Difficile (+'+A.money((P.acces||{}).diff)+')']])+
       A.fIn('Suppléments chantier (€ HT)','data.supp',d.supp,{t:'n',step:1})+
-      A.fSel('Consommables','data.taille',d.taille||'petit',[['petit','Petit chantier'],['moyen','Chantier moyen'],['gros','Gros chantier']])+'</div>');
+      A.fSel('Consommables','data.taille',d.taille||'petit',[['petit','Petit chantier'],['moyen','Chantier moyen'],['gros','Gros chantier']])+'</div>'+(opt.tests===false?'':K.testsHTML(d)));
   };
   K.secExtras=function(d,i){
     var dl='<datalist id="nxd2PrixDL">'+K.names(function(){ return true; }).map(function(x){ return '<option value="'+esc(x)+'">'; }).join('')+'</datalist>';

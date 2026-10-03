@@ -65,7 +65,7 @@
     if(d.legacyCopy){ var b=K.base(d,ctx,{type:'Maintenance',mode:d.moMode==='heures'?'heures':'forfait',heures:d.heures,catLabel:'Main-d’œuvre — entretien'}); K.legacyWarn(b.lines,warn); return {lines:b.lines,mat:b.mat,heures:b.heures,detailH:0,warnings:warn}; }
     var B=K.builder(warn), rows=hoursOf(d), v=d.format==='visite'?1:Math.max(1,Math.round(num(d.visites))||1), heures=0;
     if(d.format==='contrat'&&!lot.option&&((ctx.d&&ctx.d.lots)||[]).some(function(q){ return q!==lot&&q&&!q.option&&q.module!==MOD; }))
-      warn.push('Contrat d\'entretien dans un devis avec d\'autres travaux : son prix annuel reprend le taux horaire de ce devis et seulement une part du déplacement et des frais. Pour un prix de contrat juste chaque année, fais-en un devis séparé.');
+      warn.push('Contrat d\'entretien dans un devis avec d\'autres travaux : son prix annuel reprend le taux horaire de ce devis et seulement une part du déplacement et des frais. Pour un prix de contrat juste chaque année, mets-le dans un devis séparé (bouton dans le lot, ou réglage automatique dans Paramètres).');
     rows.forEach(function(r,j){
       var e=r.e, lab='Entretien — '+(TLAB[e.type]||'équipement')+([e.marque,e.modele].filter(Boolean).length?' '+[e.marque,e.modele].filter(Boolean).join(' '):'');
       var l=B.raw('Pose & main-d’œuvre',lab,A.fq(A.r2(r.h1))+' h × '+v+' visite'+(v>1?'s':'')+' × '+A.money(rate)+'/h',r.h*rate,0,{qte:r.h,unite:'h',pu:rate,mo:true},'entr'); heures+=r.h;
@@ -86,6 +86,8 @@
     if(d.legacyCopy) return '<div class="nxd2-banner">Copie d\'un ancien devis de maintenance : montants repris tels quels.<br>'+K.btn('Passer au format entretien détaillé','convert',i,null,'btn-pri btn-sm')+'</div>'+K.secMachines(d,i,{title:'Machines (ancien devis)',add:true})+K.secExtras(d,i)+
       K.sec('Main-d\'œuvre','<div class="frm">'+A.fSel('Mode','data.moMode',d.moMode,[['forfait','Forfait'],['heures','Heures × taux']],{re:'lot'})+A.fIn('Heures','data.heures',d.heures,{t:'n',step:0.5})+'</div>');
     var u=K.units(d,UNITS_DEF), cur=A.cur()||{};
+    if(d.format==='contrat'&&!lot.option&&(cur.lots||[]).some(function(q){ return q!==lot&&q&&!q.option&&q.module!==MOD; }))
+      h+='<div class="nxd2-warn">Contrat dans un devis de travaux : chaque année, son prix garde une part des frais de ce devis (préparation, achat, SAV). <button type="button" class="btn-ghost btn-sm" onclick="nxd2.sepCtr()">Mettre le contrat dans un devis séparé</button></div>';
     h+=K.sec('Formule','<div class="frm nxk2">'+A.fSel('Formule','data.format',d.format,[['contrat','Contrat annuel'],['visite','Visite ponctuelle']],{re:'lot'})+
       (d.format==='contrat'?A.fIn('Visites par an','data.visites',d.visites,{t:'n',step:1,min:1,re:'lot',on:'enVisites'})+A.fIn('Première visite prévue','data.premiere',d.premiere,{date:true}):'')+
       A.fIn('Dégressivité équipements suivants (%)','data.degr',d.degr,{t:'n',step:5,note:'0 = même temps pour chacun'})+'</div>'+
