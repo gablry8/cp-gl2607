@@ -1,6 +1,10 @@
 # ClimPilot 1.10 — corrections après audit (préparation, NON déployée)
 
 Branche : `claude/quirky-pasteur-ds9m47`. Point de départ : 1.9.1 (`fe99011`, tag local `avant-1.10`).
+**Base `main` intégrée le 03/10/2026** : `7deb19188de320c53f088224181bbc92b904b952` (1.5.1 « contrôles cumulables,
+arrondis, contrat séparé » et copies de lecture du serveur), fusionnée dans la branche par un commit de fusion.
+**Correction** : les comptes rendus du 02/10 disaient « `main` est toujours à `fe99011` ». C'était faux : deux
+commits d'autres sessions (`665161f`, `7deb191`) y avaient été ajoutés le 01/10. Ils sont maintenant intégrés.
 La production (`main`, site en ligne, base Supabase) n'a **pas** été modifiée.
 
 **États utilisés pour chaque point**
@@ -12,7 +16,7 @@ La production (`main`, site en ligne, base Supabase) n'a **pas** été modifiée
 
 Les tests réussis ne valent **pas** certification : ils prouvent seulement que les cas décrits se comportent comme attendu.
 
-**Résumé** : étapes 0 à 5 implémentées et testées localement ; rien n'est déployé (ni la migration, ni la fonction `signature`, ni le site). La section **Livraison**, en fin de document, donne l'état de chaque point, les points à confirmer et les conditions avant toute mise en production.
+**Résumé** : étapes 0 à 5 implémentées et testées localement ; rien n'est déployé (ni la migration, ni les fonctions `signature`, `assistant`, `superpdp`, ni le site). La section **Livraison**, en fin de document, donne l'état de chaque point, les points à confirmer, l'ordre de déploiement **envisagé** (à confirmer sur un projet de test) et la reprise par Codex.
 
 ---
 
@@ -415,7 +419,7 @@ Légende : **I** implémenté · **TL** testé localement · **TS** testé sur l
 
 | Point | Sujet | État | Preuve |
 |---|---|---|---|
-| C7, C8 | Numéro + facture enregistrés ensemble côté serveur, même demande = même facture, pas de facture hors ligne, document figé | I, TL (PostgreSQL 16 + navigateur) ; **TS non fait** (Supabase de test) | SQL 13/13, suite I |
+| C7, C8 | Numéro + facture enregistrés ensemble côté serveur, même demande = même facture, pas de facture hors ligne, document figé | I, TL (PostgreSQL 16 + navigateur) ; **TS non fait** (Supabase de test) | SQL 14/14, suite I |
 | — | Synchronisation : rien de perdu, doublons gardés et envoi bloqué, deux onglets, ancienne version, restauration | I, TL | suites I, D |
 | — | Sauvegarde des données avant la 1.10 (copie locale + invitation au téléchargement) | I, TL ; sauvegarde serveur **à faire par Gabriel** | suite L |
 | C1 | Facture payée le jour même (BR-FR-CO-09) | I, TL (XSD + CEN + BR-FR) ; **TS non fait** (SUPER PDP) | suite F, matrice 11 XML |
@@ -423,7 +427,7 @@ Légende : **I** implémenté · **TL** testé localement · **TS** testé sur l
 | C19 | Date de prestation (BT-72) | I, TL ; avertissement R008 restant pour les chantiers | suite F |
 | C2, C3 | Mode de conclusion ≠ urgence, date réelle + preuve, « à préciser » bloquant, 7 jours (J+8) sur tous les parcours, paiement irrégulier tracé | I, TL ; AC (calcul J+8, caution) | suite J |
 | C15 | Contrat de dépannage **avant** les travaux (fenêtre bloquante, report tracé) | I, TL ; AC (formulations par défaut) | suite J |
-| — | Remise de l'exemplaire et des annexes (papier déclaré avec accusé ; électronique enregistré par le serveur) | I, TL ; fonction `signature` **non déployée** | suite J, test de la fonction 10/10 |
+| — | Remise de l'exemplaire et des annexes (papier déclaré avec accusé ; électronique enregistré par le serveur ; preuve non inscriptible par le compte, ni à la création du lien depuis le 03/10) | I, TL ; fonction `signature` **non déployée** | suite J, test de la fonction 10/10, SQL |
 | C4 | Taux unique daté et sourcé, profil fiscal, hypothèses | I, TL ; AC (ACRE, VL, CMA, CFE) | suite K |
 | C5, C6 | Plafond micro, compteur de franchise | I, TL | suite K |
 | C21 | Activité mixte | analyse ; AC (comptable) | — |
@@ -450,16 +454,113 @@ Légende : **I** implémenté · **TL** testé localement · **TS** testé sur l
 9. Traitement des doublons par SUPER PDP ; anciennes factures (avant 1.10) envoyées ou non à la plateforme.
 10. Valeur de preuve du téléchargement de l'exemplaire ; e-mail de confirmation pour les gros montants.
 
-### Conditions avant toute mise en production (toutes à faire ou valider par Gabriel)
-1. **Sauvegardes** : télécharger une sauvegarde complète (JSON) depuis **chaque** appareil ; vérifier qu'une sauvegarde serveur récente existe (tableau de bord Supabase › Database › Backups, ou `pg_dump`).
-2. **Projet Supabase de test** : appliquer la migration `supabase/migrations/20261002120000_documents_emis.sql`, déployer la fonction `signature` préparée, et refaire les parcours (émission, coupure réseau, double clic, deux appareils, restauration) avec la branche.
-3. Avec ton accord seulement : appliquer la migration sur le projet réel, puis déployer la fonction `signature`.
-4. Fermer tous les anciens onglets et mettre à jour chaque appareil (une version < 1.10 ne peut plus écrire après la migration).
-5. Trancher les points « à confirmer » ci-dessus (au minimum : nature S/M, assurance, médiateur, profil fiscal).
-6. Activer la protection des mots de passe divulgués et la double authentification.
-7. Fusionner la branche `claude/quirky-pasteur-ds9m47` dans `main` : décision et geste de Gabriel.
+### Ordre de déploiement envisagé — à confirmer sur un projet Supabase de test
+**Rien de cette liste n'est à faire maintenant ; aucune action n'a été faite en production.** Cet ordre est
+une hypothèse de travail, à confirmer sur un projet de test **avec les versions correspondantes**. Il remplace
+la liste du 02/10, qui se contredisait : elle plaçait la migration avant la publication de l'appli.
+
+0. **Sauvegardes** : une sauvegarde complète (JSON) depuis **chaque** appareil, et une sauvegarde serveur
+   récente vérifiée (tableau de bord Supabase › Database › Backups, ou `pg_dump`).
+1. **Projet Supabase de test** : y reproduire chaque étape ci-dessous et vérifier, pour chaque couple de versions :
+   - **synchronisation** :
+     - appli 1.10 / serveur non migré (repli sans `p_client_version`) ;
+     - appli 1.10 / serveur migré ;
+     - appli 1.9.x / serveur migré (doit être refusée : observer le message affiché et vérifier que les données restent sur l'appareil) ;
+     - deux appareils de versions différentes ;
+   - **facturation** :
+     - 1.10 sans migration → « Facture NON émise », la facture reste en brouillon ;
+     - 1.10 avec migration → numéro donné par le serveur, coupure réseau, double clic, avoir ;
+   - **signature** : `lire`, `signer`, `refuser` et `copie`, avec la page 1.10 face à la fonction v3, puis face à la fonction 1.10 avant et après la migration ;
+   - **mise à jour des appareils** :
+     - nouveau cache du service worker (`climpilot-next-154-fusion-192`) ;
+     - anciens onglets ouverts ;
+     - iPhone avec l'appli installée sur l'écran d'accueil ;
+   - **assistant et superpdp** : sans `ALLOWED_USER_IDS`, refus 503 ; avec la variable, accès comme aujourd'hui.
+2. **Publier l'appli** : fusion de la branche dans `main` (GitHub Pages), décision et geste de Gabriel.
+3. **Mettre à jour tous les appareils** (version 1.10 affichée) et fermer les anciens onglets.
+4. **Appliquer la migration** `supabase/migrations/20261002120000_documents_emis.sql` sur le projet réel, avec l'accord de Gabriel.
+5. **Déployer la fonction `signature` 1.10**.
+   - Pour `assistant` et `superpdp`, **si** les versions préparées doivent être déployées : poser d'abord le secret `ALLOWED_USER_IDS`, puis déployer.
+6. **Activer la protection des mots de passe divulgués et la double authentification**, et trancher les points « à confirmer » (au minimum : nature S/M, assurance, médiateur, profil fiscal).
+
+**Pourquoi cet ordre (appli → migration → fonction)** : l'ordre inverse, migration d'abord, couperait la
+synchronisation des appareils encore en version inférieure à 1.10.
+
+À l'inverse, la 1.10 sait écrire son état sur un serveur pas encore migré : `cpStatePushRpc` (`next-emission.js`) se replie sur l'ancien appel, testé par la suite I. **Ce repli ne démontre la compatibilité que pour cet appel**, pas pour toute l'appli. Le reste se vérifie au point 1.
+
+#### Ce qui est temporairement indisponible
+Ce tableau est tiré de la lecture du code ; il est à confirmer au point 1.
+
+| Période | Effet | Origine dans le code |
+|---|---|---|
+| Entre 2 et 4 (appli 1.10, serveur non migré) | **Facturation réelle bloquée**. Avec SIRET et cloud, l'appli passe en mode « bloqué » : la facture n'est pas émise et reste en brouillon. Sans SIRET, c'est le mode démonstration (série TEST). | `next-emission.js` : `cp_serveur_info` absente → raison « migration » → `mode()` = `bloque` |
+| Entre 2 et 4 | La synchronisation fonctionne, par le repli. | `cpStatePushRpc` |
+| Entre 2 et 5 (page 1.10, fonction v3) | **Signature** : l'accord « support durable » n'est pas enregistré. Le client peut télécharger son exemplaire, mais la remise n'est **pas** enregistrée (un message le lui dit). La phrase « commencement anticipé » reste celle de la v3. | `signer.html` (action `copie` refusée par la v3 → téléchargement local) ; fonction v3 |
+| Après 4, appareil encore en version < 1.10 | **Synchronisation refusée** : `cp_state_push` exige `p_client_version` ≥ 1.10 et l'écriture directe est retirée. Ce qui est saisi sur cet appareil n'atteint plus le serveur tant qu'il n'est pas mis à jour. | migration, § 5 |
+| Entre 4 et 5 | La fonction v3 fonctionne sur la base migrée : elle n'écrit aucune nouvelle colonne. L'accord « support durable » et la remise ne sont toujours pas enregistrés. | lecture de la v3 ; à confirmer |
+
+→ Garder la fenêtre 2 → 4 **courte** (une même séance), à un moment où aucune facture n'est à émettre.
+
+#### Retour arrière : possibilités et limites
+- **Appli** : on peut revenir à la version précédente de `main` **tant que la migration n'est pas appliquée**. Après la migration, une appli antérieure à 1.10 ne synchronise plus : revenir en arrière sur l'appli seule n'est donc plus une solution.
+- **Migration** : **il n'existe pas de script d'annulation**.
+  - Revenir en arrière, c'est restaurer une sauvegarde du serveur, et donc **perdre tout ce qui a été écrit depuis** : état, factures émises, signatures.
+  - Les numéros de facture déjà émis ne doivent **jamais** être réutilisés (continuité de la numérotation) : après une restauration, la numérotation doit repartir au-dessus du dernier numéro émis.
+  - La migration est donc le **point de non-retour**.
+- **Fonction `signature`** : la v3 reste redéployable (copie de lecture dans l'historique de `main`, commit `665161f`).
+- **Fonctions `assistant` et `superpdp`** : on peut redéployer les versions actuelles.
+
+### Livraison du 03/10/2026 — fusion de `main`, accès, isolation des tests
+- **Fusion de `main` (`7deb191…`)**, sans réécriture d'historique. Quatre conflits ont été résolus :
+  - version : la 1.10 garde son numéro ;
+  - service worker : liste complète et nouveau cache ;
+  - `tests/LISEZMOI.md` : les deux textes sont gardés ;
+  - fonction `signature` : la copie v3 de `main` et la 1.10 ont été comparées **ligne à ligne**. La 1.10 reprend toute la logique de la v3. Seules différences : 3 champs de plus pour `lire`, l'action `copie`, l'accord « support durable » (avec repli si la colonne manque) et la phrase « commencement anticipé » complétée.
+  - Les changements 1.5.1 de `main` (contrôles cumulables, arrondis au centime, contrat séparé) s'intègrent sans conflit. Toutes les suites ont été relancées après la fusion.
+- **Schéma serveur** : `supabase/schema.sql`, venu de `main`, a été comparé à la base de test `tests/sql/01_base_actuelle.sql`, qui a été complétée (rétention des sauvegardes, déclencheur `cp_sig_insert`).
+  - **Défaut trouvé** : ce déclencheur laissait le compte de l'entreprise créer un lien de signature avec l'accord « support durable » et la remise **déjà remplis**.
+  - **Correction** : la migration remet ces trois colonnes à zéro à la création. Un test SQL le prouve ; il échouait avant la correction.
+- **Accès aux fonctions `assistant` et `superpdp`** : l'identifiant de Gabriel n'est plus écrit dans le code.
+  - Il servait de **contrôle d'accès** : liste blanche, après la vérification du JWT.
+  - La liste est maintenant lue dans le secret serveur `ALLOWED_USER_IDS`. Si elle est absente, vide ou invalide, **tout le monde est refusé** (503). Le contrôle JWT et le refus 403 sont inchangés.
+  - Voir `supabase/functions/assistant/.env.example` et le test `tests/functions/test-liste-blanche.mjs` (20 contrôles, sans réseau).
+  - Les versions **déployées** gardent leur liste dans le code : il faut poser `ALLOWED_USER_IDS` **avant** de déployer les nouvelles.
+  - **Limite** : l'identifiant reste visible dans l'historique public de `main`, et sur `main` tant que la branche n'y est pas fusionnée. L'historique n'a pas été réécrit.
+- **Ce qui est secret et ce qui ne l'est pas** :
+  - **identifiants**, qui ne donnent aucun accès mais sont des données personnelles : identifiant Supabase de Gabriel, référence du projet, identifiants Notion de `index.html` ;
+  - **clés publiques**, faites pour être dans l'appli et protégées par les règles RLS : adresse du projet et clé `anon` (`SUPA_URL`, `SUPA_KEY`) ;
+  - **secrets**, qui ne sont **jamais** dans le dépôt et dont aucun n'y a été trouvé : clé `service_role`, `ANTHROPIC_API_KEY`, identifiants SUPER PDP (coffre Vault), mot de passe de la base.
+  - `.gitignore` exclut désormais les fichiers `.env*`, sauf les exemples sans valeur.
+- **Tests portables et isolés** : `tests/run-all.sh` ; voir `tests/LISEZMOI.md`, qui donne l'installation, les versions, les variables et l'isolation réseau.
+
+#### État des tests
+| Catégorie | Contenu |
+|---|---|
+| **Testé localement (réel)** | Suites A à L dans Chromium sur le code de la branche ; migration sur PostgreSQL 16 local ; garde « base de test locale » ; fonctions `signature`, `assistant` et `superpdp` exécutées par Node ; XML validés par le XSD Factur-X, le schematron CEN 1.3.16 et les règles FNFE 1.4.0.04 ; aperçu ; autotest d'isolation. |
+| **Simulé** | Serveur Supabase des suites H, I et J (mêmes règles que le SQL) ; authentification et base des fonctions ; plateforme SUPER PDP ; géocodage et itinéraires ; horloge 2027 ; coupures réseau. |
+| **À valider sur le projet de test** | Migration sur PostgreSQL 17 Supabase ; règles RLS réelles ; fonctions sous Deno avec leurs secrets ; ordre de déploiement et indisponibilités ci-dessus ; mise à jour du service worker sur iPhone. |
+| **Non exécuté** | SUPER PDP en bac à sable réel ; assistant avec une vraie clé API ; appareils réels ; impression PDF réelle. |
+
+Résultats exacts : `tests/run-all.sh` écrit un rapport (`rapport.md`) avec le commit testé. Le rapport de la
+copie propre du commit livré est remis **à part** : un commit ne peut pas contenir son propre identifiant.
+
+#### Points relevés hors du périmètre (non corrigés)
+1. **Presse-papiers** : `navigator.clipboard.writeText` est appelé sans traiter son refus (`next-assistant.js`, `next-signature.js`, `index.html`). L'erreur n'est pas interceptée et « Copié » s'affiche même si la copie a échoué. C'est visible avec un navigateur qui refuse le presse-papiers.
+2. **Données personnelles dans le dépôt public**, déjà présentes sur `main` : l'adresse de départ des calculs de distance (`HOME_DEF`, `next-adresse.js`) et les identifiants Notion (`index.html`). À décider par Gabriel ; l'aperçu publié les neutralise.
+
+### Reprise par Codex
+1. `git clone --branch claude/quirky-pasteur-ds9m47 https://github.com/gablry8/cp-gl2607`.
+2. Installer les outils (`tests/LISEZMOI.md`, « Installation »), démarrer le banc PostgreSQL avec le marqueur, puis : `PGHOST=… PGPORT=… EN16931_XSLT=… BRFR_DIR=… tests/run-all.sh`.
+3. Lire `rapport.md` : verdict, échecs, SKIP, non exécutés, isolation.
+4. Règles :
+   - ne pas modifier `main` ;
+   - ne rien déployer ;
+   - aucune action sur le projet Supabase réel ;
+   - pas de poussée forcée ;
+   - aucune donnée client ni secret dans le dépôt.
+5. Prochaine étape utile : un **projet Supabase de test**, pour dérouler le point 1 de l'ordre envisagé.
 
 ### Aperçu isolé
 Une copie de la branche est publiée en page privée claude.ai : mode démonstration, **aucune connexion au cloud** (la bibliothèque Supabase n'y est pas chargée), données fictives à charger par le bouton « Charger des exemples ». Les fenêtres de confirmation du navigateur étant désactivées dans une page publiée, un bandeau d'aperçu les remplace : chaque message ou question s'affiche et va dans un journal ; la réponse (Oui / Non) se règle dans le bandeau. Les données restent dans le navigateur de la personne qui ouvre la page.
 
-Limites de l'aperçu, propres à une page publiée : l'impression (PDF des devis et factures) et les téléchargements (sauvegarde JSON, exports CSV, XML) n'y fonctionnent pas ; l'adresse de départ des calculs de distance est une adresse d'exemple ; la police IBM Plex est chargée depuis Google Fonts. L'aperçu sert à parcourir les écrans et les contrôles (mode démonstration, série TEST, blocages « contrat avant travaux », mentions), pas à produire de vrais documents. Testé : ouverture sans erreur à 1280 px et 400 px de large, sans défilement horizontal, facture de démonstration TEST-F-2026-001, blocage d'un client particulier « à préciser ».
+Limites de l'aperçu, propres à une page publiée : l'impression (PDF des devis et factures) et les téléchargements (sauvegarde JSON, exports CSV, XML) n'y fonctionnent pas ; l'adresse de départ des calculs de distance est une adresse d'exemple ; la police IBM Plex est chargée depuis Google Fonts. Construction et test reproductibles : `tools/apercu/build.sh` puis `tools/apercu/test-apercu.mjs` (lancés par `tests/run-all.sh`). L'aperçu sert à parcourir les écrans et les contrôles (mode démonstration, série TEST, blocages « contrat avant travaux », mentions), pas à produire de vrais documents. Testé : ouverture sans erreur à 1280 px et 400 px de large, sans défilement horizontal, facture de démonstration TEST-F-2026-001, blocage d'un client particulier « à préciser ».
