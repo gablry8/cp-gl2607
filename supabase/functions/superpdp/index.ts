@@ -1,13 +1,20 @@
 // ClimPilot — Edge Function « superpdp »
 // Pont entre ClimPilot et la plateforme agréée SUPER PDP (API v1.beta).
 // - Identifiants OAuth (client_credentials) chiffrés dans Supabase Vault : jamais renvoyés à l'appli.
-// - JWT ClimPilot obligatoire + liste blanche (un seul utilisateur).
+// - JWT ClimPilot obligatoire + liste blanche lue dans la configuration serveur ALLOWED_USER_IDS
+//   (identifiants séparés par des virgules ; absente ou vide → refus de tous, 503 « config »).
+//   1.10, PRÉPARÉ, NON DÉPLOYÉ : la version déployée a encore sa liste écrite dans le code ; poser
+//   ALLOWED_USER_IDS sur le serveur AVANT de déployer celle-ci (docs/CORRECTIONS-1.10.md).
 // - Actions : status, connect, disconnect, validate, send, invoice, events, list, download,
 //   directory, test_invoice, set_vat_regime, event.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const API = Deno.env.get('SUPERPDP_API') || 'https://api.superpdp.tech';
-const ALLOWED_USERS = ['925080a9-1eaa-4fcf-9fa9-af6ffb214552']; // Gabriel
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// ALLOWED_USER_IDS → liste des identifiants autorisés (valeurs invalides ignorées ; liste vide = personne)
+export function listeBlanche(brut: string | null | undefined): string[] {
+  return String(brut ?? '').split(',').map((x) => x.trim().toLowerCase()).filter((x) => UUID.test(x));
+}
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -77,15 +84,16 @@ function summarizeReport(rep: any) {
   return { is_valid: isValid, format: first.format || null, profil: first.conformance_level || null, erreurs: errs.slice(0, 40), avertissements: warns.slice(0, 40) };
 }
 
-Deno.serve(async (req: Request) => {
+export async function handle(req: Request, service: any, env: (k: string) => string | undefined): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ erreur: 'methode' }, 405);
-  const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
   const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const { data: ud, error: ue } = await service.auth.getUser(jwt);
   const user = ud && ud.user;
   if (ue || !user) return json({ erreur: 'non_connecte', message: 'Connecte-toi à ClimPilot (cloud) pour utiliser la plateforme.' }, 401);
-  if (!ALLOWED_USERS.includes(user.id)) return json({ erreur: 'interdit' }, 403);
+  const autorises = listeBlanche(env('ALLOWED_USER_IDS'));
+  if (!autorises.length) return json({ erreur: 'config', message: 'Accès à la plateforme non configuré sur le serveur (ALLOWED_USER_IDS).' }, 503);
+  if (!autorises.includes(String(user.id).toLowerCase())) return json({ erreur: 'interdit' }, 403);
 
   let body: any = {};
   try { body = await req.json(); } catch (_) { return json({ erreur: 'requete' }, 400); }
@@ -186,4 +194,11 @@ Deno.serve(async (req: Request) => {
     const msg = e && (e.message || e.name) || String(e);
     return json({ erreur: 'reseau', message: /timeout|abort/i.test(msg) ? 'SUPER PDP ne répond pas (délai dépassé) — réessaie dans un instant.' : ('Erreur : ' + msg) });
   }
-});
+}
+
+if (typeof Deno !== 'undefined' && (Deno as any).serve && !(globalThis as any).__NO_SERVE) {
+  Deno.serve((req: Request) => {
+    const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+    return handle(req, service, (k) => Deno.env.get(k));
+  });
+}

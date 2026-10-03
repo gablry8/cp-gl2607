@@ -30,7 +30,7 @@ const MOCK=`(function(env){
       }
       return {data:{erreur:'action'}};
     }}};
-  window.SESS={user:{id:'925080a9-1eaa-4fcf-9fa9-af6ffb214552',email:'g@x.fr'}};
+  window.SESS={user:{id:'99999999-9999-4999-8999-999999999999',email:'g@x.fr'}};
 })`;
 
 async function setup(env,opts={}){
