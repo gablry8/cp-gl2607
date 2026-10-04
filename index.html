@@ -3551,8 +3551,12 @@ function renderPlanning(){
    :'<div class="empty">Rien à planifier — tous tes chantiers signés ont une date (ou aucun signé pour l\'instant).</div>';
 }
 /* ============ MAILS AUTOMATIQUES ============ */
+window.cpCopier=function(t){ t=String(t==null?'':t);
+  function repli(){ try{ var a=document.createElement('textarea'); a.value=t; a.setAttribute('readonly',''); a.style.position='fixed'; a.style.top='-1000px'; document.body.appendChild(a); a.select(); var ok=document.execCommand&&document.execCommand('copy'); a.remove(); return !!ok; }catch(e){ return false; } }
+  try{ if(navigator.clipboard&&navigator.clipboard.writeText) return navigator.clipboard.writeText(t).then(function(){ return true; },function(){ return repli(); }); }catch(e){}
+  return Promise.resolve(repli()); };
 function buildMail(to,subject,body){
-  try{if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(body);}catch(e){}
+  window.cpCopier(body);
   const a=document.createElement('a');
   a.href='mailto:'+encodeURIComponent(to||'')+'?subject='+encodeURIComponent(subject)+'&body='+encodeURIComponent(body);
   document.body.appendChild(a);a.click();document.body.removeChild(a);

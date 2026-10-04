@@ -410,7 +410,7 @@
     var x=findRow(id); if(!x) return;
     var p=x.payload||{}, ta=document.getElementById('nxaMsg_'+id), body=ta?ta.value:(p.corps||'');
     var subj=p.objet||'';
-    if(how==='copy'){ try{ navigator.clipboard.writeText((subj?subj+'\n\n':'')+body); toastX('📋 Copié','ok'); }catch(e){ toastX('Copie impossible','warn'); } return; }
+    if(how==='copy'){ window.cpCopier((subj?subj+'\n\n':'')+body).then(function(ok){ toastX(ok?'📋 Copié':'Copie impossible', ok?'ok':'warn'); }); return; }
     if(how==='mail'){ location.href='mailto:'+encodeURIComponent(p.email||'')+'?subject='+encodeURIComponent(subj)+'&body='+encodeURIComponent(body); }
     if(how==='sms'){ location.href='sms:'+encodeURIComponent(p.tel||'')+(/iPhone|iPad/.test(navigator.userAgent)?'&':'?')+'body='+encodeURIComponent(body); }
     mark(id,'valide').then(fetchInbox);

@@ -65,7 +65,7 @@
         '<a class="nx-sbtn" href="'+esc(o.url)+'" target="_blank" rel="noopener">Voir la page client</a></div>'+
       '<p class="nxs-sub" style="margin-top:10px">Valable 90 jours. Tu seras prévenu ici dès que le client signe ou décline.</p></div>';
     document.body.appendChild(m);
-    document.getElementById('nxsCopy').onclick=function(){ try{ navigator.clipboard.writeText(o.url); toastX('📋 Lien copié','ok'); }catch(e){ toastX('Copie impossible','warn'); } };
+    document.getElementById('nxsCopy').onclick=function(){ window.cpCopier(o.url).then(function(ok){ toastX(ok?'📋 Lien copié':'Copie impossible', ok?'ok':'warn'); }); };
   }
 
   /* Contrat conclu à distance avec un particulier : information sur le droit de rétractation (14 jours)

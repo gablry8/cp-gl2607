@@ -136,7 +136,7 @@
     remember(to.trim());
     try{ buildMail(to.trim(),s,b); }catch(e){ location.href='mailto:'+encodeURIComponent(to)+'?subject='+encodeURIComponent(s)+'&body='+encodeURIComponent(b); }
   };
-  window.nxfoCopy=function(){ var b=(document.getElementById('nxfoBody')||{}).value||''; try{ navigator.clipboard.writeText(b).then(function(){ say('Texte copié'); }); }catch(e){ var t=document.getElementById('nxfoBody'); t.select(); document.execCommand('copy'); say('Texte copié'); } };
+  window.nxfoCopy=function(){ var b=(document.getElementById('nxfoBody')||{}).value||''; window.cpCopier(b).then(function(ok){ if(ok) say('Texte copié'); else { var t=document.getElementById('nxfoBody'); if(t){ t.focus(); t.select(); } say('Copie impossible : texte sélectionné, copie-le à la main'); } }); };
   window.nxfoBuild=build;
 
   /* ---------- bouton dans l'en-tête du devis ---------- */
