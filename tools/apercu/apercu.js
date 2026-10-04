@@ -6,6 +6,8 @@
 (function(){
   'use strict';
   var J=[], REP=true;
+  /* point de départ des trajets : adresse d'exemple (l'appli n'en contient aucune par défaut) */
+  try{ if(!localStorage.getItem('cpnext_home')) localStorage.setItem('cpnext_home',JSON.stringify({adr:"1 Rue de l'Exemple 60000 Beauvais",lon:2.0807,lat:49.4295,source:'manuel'})); }catch(e){}
   try{ REP=localStorage.getItem('apercu_rep')!=='non'; }catch(e){}
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
   function note(type,msg,rep){

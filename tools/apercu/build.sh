@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Construit l'aperçu isolé de l'appli (mode démonstration, sans cloud) : une page autonome publiable,
-# sans service worker, sans bibliothèque Supabase, sans identifiants du projet ni adresse de départ réelle.
+# sans service worker, sans bibliothèque Supabase, sans identifiants du projet ; adresse de départ d'exemple.
 # Usage : tools/apercu/build.sh [dossier de sortie]   (défaut : $CP_TEST_OUT/apercu, hors du dépôt)
 set -euo pipefail
 ICI=$(cd "$(dirname "$0")" && pwd); SRC=$(cd "$ICI/../.." && pwd)
@@ -36,22 +36,12 @@ for interdit in ('@supabase', '<body>', '.supabase.co', ref, 'eyJhbGci', 'servic
 assert 'apercu.js' in s and s.lstrip().startswith('<title>') and 'fonts.googleapis.com' in s
 open(sys.argv[2], 'w', encoding='utf-8').write(s)
 PY
-# adresse de départ par défaut remplacée par une adresse d'exemple ; l'adresse réelle est lue dans la source
-# (jamais écrite dans ce script) et on vérifie qu'il n'en reste aucune trace
+# point de départ des trajets : le code n'en contient plus (il vient des données de l'utilisateur) ;
+# l'aperçu pose une adresse d'exemple (apercu.js). Vérification : aucun point écrit en dur ne réapparaît.
 python3 - "$OUT/next-adresse.js" <<'PY'
-import sys, re
-p = sys.argv[1]; s = open(p, encoding='utf-8').read()
-m = re.search(r"var HOME_DEF=\{adr:'((?:[^'\\]|\\.)*)',lon:[-0-9.]+,lat:[-0-9.]+\};", s)
-assert m, 'HOME_DEF introuvable'
-adr = m.group(1).replace("\\'", "'")
-s = s.replace(m.group(0), "var HOME_DEF={adr:'1 Rue de l\\'Exemple 60000 Beauvais',lon:2.0807,lat:49.4300}; /* aperçu : adresse d\\'exemple */")
-mots = [w for w in re.split(r"[\s,]+", adr) if w]
-motif = r"[\s,]+".join(re.escape(w).replace("\\'", "\\\\?'") for w in mots)
-s = re.sub(motif, "une adresse d'exemple", s, flags=re.I)
-for w in mots:
-    if len(w) >= 6 and not w.isdigit():
-        assert w.lower() not in s.lower(), 'adresse réelle encore présente dans next-adresse.js'
-open(p, 'w', encoding='utf-8').write(s)
+import sys
+s = open(sys.argv[1], encoding='utf-8').read()
+assert 'HOME_DEF' not in s, 'un point de départ écrit en dur est revenu dans next-adresse.js'
 PY
 # polices : pas de fichiers binaires publiés, IBM Plex Sans chargée depuis Google Fonts (autorisé par la page)
 python3 - "$OUT/next-da.css" <<'PY'

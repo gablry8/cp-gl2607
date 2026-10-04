@@ -5,7 +5,7 @@ const {p,errs}=await page({mobile:false});
 p.removeAllListeners('dialog'); p.on('dialog',d=>d.accept().catch(()=>{}));
 await seed(p);
 const out=await p.evaluate(()=>{
-  Object.assign(P.entreprise,{nom:'Gabriel Leroy — Froid & Climatisation',siret:'12345678900012',adresse:"1 rue de l'Exemple",cp:'60140',ville:'Bailleval',email:'contact@exemple.fr',tel:'0600000000',rib:'FR76 3000 6000 0112 3456 7890 189'});
+  Object.assign(P.entreprise,{nom:'Gabriel Leroy — Froid & Climatisation',siret:'12345678900012',adresse:"1 rue de l'Exemple",cp:'60000',ville:'Beauvais',email:'contact@exemple.fr',tel:'0600000000',rib:'FR76 3000 6000 0112 3456 7890 189'});
   window.askMode=()=>'Virement';
   const close=()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.click(); };
   const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0);

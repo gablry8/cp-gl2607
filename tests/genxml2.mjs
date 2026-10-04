@@ -9,7 +9,7 @@ p.removeAllListeners('dialog'); p.on('dialog',d=>d.accept().catch(()=>{}));
 await seed(p);
 const R=await p.evaluate(async()=>{
   const res={}; const close=()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.click(); };
-  Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:"1 rue de l'Exemple",cp:'60140',ville:'Bailleval',email:'contact@exemple.fr',rib:'FR76 3000 6000 0112 3456 7890 189'});
+  Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:"1 rue de l'Exemple",cp:'60000',ville:'Beauvais',email:'contact@exemple.fr',rib:'FR76 3000 6000 0112 3456 7890 189'});
   window.askMode=()=>'Virement';
   const X=(k,n,ov)=>{ res[k]=nxEinvXML(n,ov); };
   const pro={nom:'Boulangerie Dupré',siren:'552100554'}; const cl=CLIENTS.find(c=>c.nom===pro.nom); cl.siren=pro.siren; save(LS.clients,CLIENTS);
