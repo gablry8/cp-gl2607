@@ -1,9 +1,9 @@
-# ClimPilot — reprise du travail (Cowork ou Codex)
+# ClimPilot — reprise du travail (Cowork ou Codex) — mise à jour du 05/10/2026
 
 Ce fichier suffit pour reprendre le travail sans l'historique des conversations. Le détail est dans
 `docs/CORRECTIONS-1.10.md` (ce qui a été fait et pourquoi) et `tests/LISEZMOI.md` (comment tester).
 
-## Où en est-on (04/10/2026)
+## Où en est-on (05/10/2026)
 - Dépôt : https://github.com/gablry8/cp-gl2607 — branche de travail **`claude/quirky-pasteur-ds9m47`**.
 - La version **1.10 n'est pas déployée**. La production, c'est `main` : site GitHub Pages et projet Supabase réel, inchangés.
   `main` est à `7deb19188de320c53f088224181bbc92b904b952` et la branche le contient.
@@ -18,8 +18,9 @@ Ce fichier suffit pour reprendre le travail sans l'historique des conversations.
   - point de départ des trajets retiré du code ;
   - copie dans le presse-papiers fiable ;
   - registre des documents rapide, avec recherche ;
+  - facturation réelle démarrée seulement par une décision explicite et datée, anciennes factures « essais » par défaut ; en production, envoi à la plateforme depuis le registre (relecture R1 à R4) ;
   - tests portables et isolés du réseau.
-- Tests : `tests/run-all.sh`, environ 400 contrôles, hors réseau. Le dernier rapport complet est remis à part (SHA du commit testé).
+- Tests : `tests/run-all.sh`, environ 460 contrôles, hors réseau. Le dernier rapport complet est remis à part (SHA du commit testé).
 
 ## Règles (à respecter sans exception)
 1. Travailler **uniquement** sur `claude/quirky-pasteur-ds9m47` (ou une branche dérivée). **Ne jamais** modifier `main`, ni pousser en force, ni réécrire l'historique.
@@ -46,10 +47,7 @@ Sans droit `unshare -n` (isolation réseau du noyau), lancer avec `CP_SANS_NETNS
 
 ## Ce qui reste à faire, dans l'ordre
 
-1. **Décision « début de la facturation réelle »** (bloquant). Aujourd'hui `importerAnciens()` (`next-emission.js`) importe automatiquement toutes les anciennes factures F- et AV- comme « reconstituées » dans le registre du serveur, où rien ne se supprime, dès qu'un SIRET est saisi et que le serveur est migré. Or ce sont des **factures d'essai**, faites avant que l'entreprise existe.
-   - Il faut un écran de décision explicite : « démarrer la facturation réelle à partir du … », avec le choix des anciennes factures à importer et de celles à classer en essais.
-   - Rien ne doit se déclencher automatiquement parce qu'un SIRET est saisi.
-   - À concevoir avec Gabriel, puis à tester (suite I et tests SQL).
+1. ~~Décision « début de la facturation réelle »~~ : **fait le 05/10** (relecture R1). Le mode réel ne démarre que par l'action explicite et datée de Paramètres › Facturation réelle. Les anciennes factures sont des essais par défaut (ESSAI-…). Voir `docs/CORRECTIONS-1.10.md`, « Relecture indépendante du 05/10/2026 ». En production, l'envoi à la plateforme part du registre (R2).
 2. **Projet Supabase de test**, distinct du réel :
    - appliquer `supabase/migrations/20261002120000_documents_emis.sql` ;
    - déployer les fonctions `signature`, `assistant` et `superpdp` préparées, avec `ALLOWED_USER_IDS` ;

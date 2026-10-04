@@ -493,7 +493,7 @@ Ce tableau est tiré de la lecture du code ; il est à confirmer au point 1.
 
 | Période | Effet | Origine dans le code |
 |---|---|---|
-| Entre 2 et 4 (appli 1.10, serveur non migré) | **Facturation réelle bloquée**. Avec SIRET et cloud, l'appli passe en mode « bloqué » : la facture n'est pas émise et reste en brouillon. Sans SIRET, c'est le mode démonstration (série TEST). | `next-emission.js` : `cp_serveur_info` absente → raison « migration » → `mode()` = `bloque` |
+| Entre 2 et 4 (appli 1.10, serveur non migré) | Tant que la facturation réelle n'est pas **démarrée** (décision explicite, relecture R1) : mode démonstration (série TEST), sans conséquence. Si elle a été démarrée : **facturation réelle bloquée**, la facture n'est pas émise et reste en brouillon. D'où l'intérêt de migrer **avant** de démarrer la facturation réelle. | `next-emission.js` : `cp_serveur_info` absente → raison « migration » → `mode()` = `bloque` |
 | Entre 2 et 4 | La synchronisation fonctionne, par le repli. | `cpStatePushRpc` |
 | Entre 2 et 5 (page 1.10, fonction v3) | **Signature** : l'accord « support durable » n'est pas enregistré. Le client peut télécharger son exemplaire, mais la remise n'est **pas** enregistrée (un message le lui dit). La phrase « commencement anticipé » reste celle de la v3. | `signer.html` (action `copie` refusée par la v3 → téléchargement local) ; fonction v3 |
 | Après 4, appareil encore en version < 1.10 | **Synchronisation refusée** : `cp_state_push` exige `p_client_version` ≥ 1.10 et l'écriture directe est retirée. Ce qui est saisi sur cet appareil n'atteint plus le serveur tant qu'il n'est pas mis à jour. | migration, § 5 |
@@ -556,12 +556,42 @@ copie propre du commit livré est remis **à part** : un commit ne peut pas cont
 3. **Registre des documents** : la recherche (n°, client, type, statut, date), les filtres (année, dont « Toutes les années », et type), le tri, les indicateurs, les contrôles de série et l'export portent sur **tous** les documents. Seul l'affichage est limité : 200 lignes, puis « Afficher plus ».
    Ouverture avec 1 500 devis : 240 à 440 ms (5 mesures), contre 374 à 835 ms avant. Le seuil de la suite B est inchangé.
 
-#### Bloquant avant le passage en facturation réelle (non corrigé, décision de Gabriel)
-`importerAnciens()` (`next-emission.js`) est appelée par `rapprocher()` au démarrage dès qu'il y a un **SIRET**, le cloud et un serveur migré. Elle importe **automatiquement** toutes les anciennes factures F- et AV- comme « reconstituées », dans le registre du serveur, où **rien ne se supprime**.
+### Relecture indépendante du 05/10/2026 : corrections R1 à R4
+Relecture faite sur `57fedaa` : 401/401 tests et aucune connexion externe. Les constats ont été corrigés sur la branche ; rien n'a été mis en ligne.
 
-Or ce sont des factures **d'essai**, faites avant que l'entreprise existe.
+**R1 — la saisie d'un SIRET ne fait plus passer les factures d'essai en factures permanentes.**
+- Le mode réel ne se déclenche plus avec le seul SIRET. Il faut une **décision explicite et datée** : Paramètres › « Facturation réelle » › « Démarrer la facturation réelle à partir du … ».
+  - La décision est confirmée par un dialogue, définitive et synchronisée (`cp2_facturation`).
+  - La date peut être future, jamais passée. Un SIRET est exigé.
+  - Avant la date : mode démonstration (TEST).
+- **Anciennes factures F- et AV- : des essais par défaut.**
+  - Elles sont renommées ESSAI-… partout : factures, factures annulées, avoirs et facture d'origine des avoirs.
+  - Elles ne sont **jamais** importées au registre du serveur. Seules celles choisies une par une le sont, et un avoir suit sa facture.
+  - Après le démarrage, une ancienne facture inconnue (venue d'un autre appareil) est classée en essai, mais seulement après une lecture réussie du registre du serveur.
+- **`p_min_numero`** ne compte que les vrais numéros : registre du serveur et factures choisies. Jamais les essais. Sans import, la première vraie facture est donc F-…-001.
+- **Chiffre d'affaires** (seuils de franchise et du régime micro), **livre des recettes**, **impayés** (relances) et **doublons** : les essais en sont exclus, ainsi que, une fois la facturation réelle démarrée, les factures TEST de la période de démonstration.
+- **Limite** : une fois démarrée, la facturation réelle ne s'annule pas depuis l'appli.
+- **Tests** : suite N (30 contrôles). Vérifiée par mutation : si le mode réel redevient « SIRET seul », 6 contrôles échouent.
 
-À faire avant la migration en production : une décision explicite, du type « démarrer la facturation réelle à partir du … », avec le choix, facture par facture, de celles à importer et de celles à classer en essais. Le passage ne doit pas être automatique parce qu'un SIRET a été saisi.
+**R2 — en production, la facture déposée sur la plateforme est celle du registre.**
+- La fonction `superpdp` (préparée, non déployée) reçoit l'identifiant du document et lit le XML figé dans `climpilot_documents` : propriétaire vérifié, document émis, XML présent. La référence envoyée est le numéro du registre.
+- Le bac à sable est inchangé.
+- Tests : `tests/functions/test-superpdp-envoi.mjs` (7 contrôles) et suite H.
+
+**R3 — demande rejouée après une modification du document.** Si la réponse a été perdue, puis le devis modifié et le bouton cliqué de nouveau :
+- la facture **enregistrée** est appliquée telle quelle, sans être recalculée ;
+- le registre est mis à jour ;
+- un message indique qu'un avoir est nécessaire pour corriger.
+
+Test : suite N.
+
+**R4 — changement d'année.** Le numéro minimal et la série TEST prennent l'année de la **date du document**, comme le serveur, et non l'année de l'horloge. Test : suite N.
+
+**Défaut trouvé au passage** : après chaque synchronisation, un avoir réel était signalé « en double », parce que sa source était enregistrée de deux façons. C'est corrigé (suite I).
+
+**R5 — moment du déploiement** (rien à coder) :
+- Gabriel n'a pas encore de SIRET, donc la période « appli publiée, migration pas encore faite » est sans conséquence aujourd'hui. Il vaut mieux déployer la 1.10 **bien avant** la création de l'entreprise.
+- Sur l'iPhone où l'appli est installée, vérifier que le **nouveau cache** (`climpilot-next-156-…`) est bien pris **avant** d'appliquer la migration.
 
 ### Reprise par Codex ou Cowork (voir aussi `docs/REPRISE.md`)
 1. `git clone --branch claude/quirky-pasteur-ds9m47 https://github.com/gablry8/cp-gl2607`.

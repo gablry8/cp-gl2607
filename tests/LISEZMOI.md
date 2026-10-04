@@ -152,3 +152,13 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   - presse-papiers : « Copié » seulement après une vraie copie, et aucune erreur non interceptée en cas de refus ;
   - registre : affichage par 200, recherche et filtres sur tous les documents, compteurs, vitesse (médiane de 5 mesures).
 - lib.mjs pose un point de départ **fictif** dans chaque page de test (`depart:false` pour s'en passer).
+
+## Ajouts 05/10/2026 (relecture R1 à R4)
+- suiteN-passage-reel.mjs (30 contrôles) :
+  - sans démarrage explicite, aucun passage en réel ni import, même avec un SIRET ;
+  - démarrage par l'écran : anciennes factures ESSAI- par défaut, import seulement si choisi, `p_min_numero` sans les essais ;
+  - chiffre d'affaires, recettes et impayés sans les essais ; date future ; refus sans SIRET ou avec une date passée ;
+  - R3 : réponse perdue puis devis modifié ;
+  - R4 : année du document au 31/12.
+- serveur-simule.mjs : serveur Supabase simulé, partagé par les suites I et N.
+- functions/test-superpdp-envoi.mjs (7 contrôles) : en production, envoi depuis le registre (R2).
