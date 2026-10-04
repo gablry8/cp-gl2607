@@ -138,8 +138,21 @@ export async function handle(req: Request, service: any, env: (k: string) => str
       return json({ rapport: summarizeReport(r.data) });
     }
     if (action === 'send') {
-      const xml = String(body.xml || ''); if (xml.length < 200) return json({ erreur: 'saisie', message: 'Fichier vide' }, 400);
-      const r = await call(K, cred, 'POST', 'invoices', { raw: xml, rawType: 'application/xml', query: { external_id: String(body.external_id || '').slice(0, 64), processing_rule: body.processing_rule || undefined } });
+      let xml = String(body.xml || ''), ext = String(body.external_id || '').slice(0, 64);
+      /* 1.10 (relecture R2) — compte de PRODUCTION : la facture déposée est exactement celle du registre figé
+         (climpilot_documents, écrite une seule fois) ; on reçoit son identifiant, jamais le XML de l'appareil.
+         Bac à sable : XML de test fabriqué par l'appli (identités de test), comme avant. */
+      if (cred.env === 'production') {
+        const id = String(body.document_id || '');
+        if (!UUID.test(id)) return json({ erreur: 'registre', message: 'En production, la facture part du registre du serveur : identifiant du document manquant.' }, 400);
+        const { data: doc, error: de } = await service.from('climpilot_documents').select('id, num, origine, xml').eq('id', id).eq('user_id', user.id).maybeSingle();
+        if (de || !doc) return json({ erreur: 'registre', message: 'Document introuvable dans ton registre.' }, 404);
+        if (doc.origine !== 'emis') return json({ erreur: 'registre', message: 'Seule une facture émise par ClimPilot (numéro donné par le serveur) part sur la plateforme.' }, 409);
+        if (!doc.xml) return json({ erreur: 'fichiers', message: 'Le XML de cette facture n’est pas encore enregistré sur le serveur : réessaie dans un instant.' }, 409);
+        xml = String(doc.xml); ext = String(doc.num).slice(0, 64);
+      }
+      if (xml.length < 200) return json({ erreur: 'saisie', message: 'Fichier vide' }, 400);
+      const r = await call(K, cred, 'POST', 'invoices', { raw: xml, rawType: 'application/xml', query: { external_id: ext, processing_rule: body.processing_rule || undefined } });
       if (r.status >= 300) return json(errOf(r));
       const d = r.data || {};
       return json({ id: d.id, direction: d.direction, processing_rule: d.processing_rule, events: d.events || [], env: cred.env });

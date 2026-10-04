@@ -547,6 +547,8 @@
     wr(FR,o); say('🧪 '+Object.keys(m).length+' ancienne(s) facture(s) classée(s) en essais (renommées ESSAI-…)');
     return Object.keys(m).length;
   }
+  /* avant un envoi en production : le XML figé doit être sur le serveur (dépôt en retard rejoué) */
+  window.nxEmisDeposer=function(num){ var f=fichiers()[num]; if(!f||!f.aDeposer) return Promise.resolve(true); /* sinon le serveur dit lui-même si le XML manque */ return deposerFichiers(f.aDeposer,num,f.html,f.xml); };
   function deposerEnRetard(){ var all=fichiers(); Object.keys(all).forEach(function(num){ var f=all[num]; if(f&&f.aDeposer) deposerFichiers(f.aDeposer,num,f.html,f.xml); }); }
 
   /* ---------- synchro : version envoyée au serveur ---------- */

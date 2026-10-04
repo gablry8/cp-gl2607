@@ -145,6 +145,8 @@ const wait=(p,ms=250)=>p.waitForTimeout(ms);
   await p.click('#nxpdpGo'); await wait(p,300);
   const ext=await p.evaluate(()=>__state.lastSend.external_id);
   rec('Super PDP','Compte réel : référence = numéro de facture',ext===nums.pro,ext);
+  const env=await p.evaluate(n=>{ const e=nxEmisEntree(n), s=__state.lastSend||{}; return {doc:s.document_id,sid:e&&e.sid,xml:!!s.xml}; },nums.pro);
+  rec('Super PDP','1.10 (R2) : compte réel → identifiant du document du registre envoyé, jamais le XML de l\'appareil',env.doc&&env.doc===env.sid&&!env.xml,JSON.stringify(env));
   rec('Super PDP','1.10 : facture du compte réel émise avec le numéro du serveur (F-)',/^F-\d{4}-\d{3}$/.test(nums.pro),nums.pro);
   /* renvoi : bloqué si le dépôt précédent est accepté, permis après un rejet technique (fr:213) */
   await p.evaluate(()=>closeModal('mPdp')); await p.evaluate(n=>nxPdpSend(n),nums.pro); await wait(p,500);

@@ -54,11 +54,12 @@ etape() { # etape <nom> <commande…> : journal dans journaux/<nom>.log, code de
 }
 
 etape autotest-isolation node "$ICI/isolation/autotest.mjs"
-for s in ${CP_SUITES:-suiteA suiteB suiteC suiteD-memoire suiteE-avoirs suiteF-einvoice suiteG-virgule suiteH-superpdp suiteI-emission suiteJ-particuliers suiteK-fiscal suiteL-documents suiteM-adresse-copie}; do
+for s in ${CP_SUITES:-suiteA suiteB suiteC suiteD-memoire suiteE-avoirs suiteF-einvoice suiteG-virgule suiteH-superpdp suiteI-emission suiteJ-particuliers suiteK-fiscal suiteL-documents suiteM-adresse-copie suiteN-passage-reel}; do
   etape "$s" timeout 1200 node "$ICI/$s.mjs"
 done
 etape fn-signature node "$ICI/functions/test-signature.mjs"
 etape fn-liste-blanche node "$ICI/functions/test-liste-blanche.mjs"
+etape fn-superpdp-envoi node "$ICI/functions/test-superpdp-envoi.mjs"
 if [ -n "${PGHOST:-}" ]; then
   etape sql python3 -m pytest -q -p no:cacheprovider --junitxml="$CP_TEST_OUT/sql-junit.xml" "$ICI/sql"
 else

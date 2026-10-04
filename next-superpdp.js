@@ -122,7 +122,11 @@
           '<button class="btn-ghost" onclick="closeModal(\'mPdp\')">Annuler</button><button class="btn-pri" id="nxpdpGo">'+(sandbox?'Envoyer le test':'Envoyer')+'</button>');
         document.getElementById('nxpdpGo').onclick=function(){
           busy('Envoi…');
-          api({action:'send',xml:xml,external_id:(num+(ov&&ov.suffix||'')).slice(0,64)}).then(function(s){
+          /* production : la plateforme reçoit la facture du REGISTRE du serveur (identifiant), pas le XML de l'appareil */
+          var ent=window.nxEmisEntree?nxEmisEntree(num):null;
+          var envoi=sandbox?Promise.resolve({action:'send',xml:xml,external_id:(num+(ov&&ov.suffix||'')).slice(0,64)})
+            :(window.nxEmisDeposer?nxEmisDeposer(num):Promise.resolve(true)).then(function(ok){ return ok&&ent&&ent.sid?{action:'send',document_id:ent.sid,external_id:num}:null; });
+          envoi.then(function(b){ if(!b) return {erreur:'fichiers',message:'Le XML de '+num+' n\'est pas encore enregistré sur le serveur : réessaie quand le réseau répond.'}; return api(b); }).then(function(s){
             if(s.erreur){ modal('Envoi refusé','<div class="nxd2-warn red">'+esc(s.message||s.erreur)+(s.status?' <span class="sub2">(HTTP '+s.status+')</span>':'')+'</div>'); return; }
             var m=M(), le=lastEv(s.events);
             m.docs[num]=m.docs[num]||{envois:[]};
@@ -143,7 +147,7 @@
     if(dbl[num]) return Promise.resolve('Le numéro <b>'+esc(num)+'</b> est porté par <b>deux documents différents</b> : envoi bloqué tant que le doublon n\'est pas tranché (registre des documents).');
     var e=window.nxEmisEntree?nxEmisEntree(num):null;
     if(!sandbox){
-      if(/^TEST-/.test(num)||(e&&e.mode==='demo')) return Promise.resolve('Document de <b>démonstration</b> (série TEST) : il ne part jamais sur la plateforme réelle.');
+      if(/^(TEST|ESSAI)-/.test(num)||(e&&e.mode==='demo')) return Promise.resolve('Document de <b>démonstration</b> ou <b>d\'essai</b> (série TEST ou ESSAI) : il ne part jamais sur la plateforme réelle.');
       if(!e||e.origine!=='emis'||e.mode!=='reel') return Promise.resolve('Facture émise avant ClimPilot 1.10 (version <b>non figée</b>, reconstituée) : envoi réel bloqué. À voir avec ton comptable avant tout envoi (<i>à confirmer</i>).');
     }
     var prev=((M().docs[num]||{}).envois||[]).filter(function(x){ return sandbox?x.env==='sandbox':x.env==='production'; });
