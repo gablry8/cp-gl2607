@@ -3028,7 +3028,8 @@ function allRecettes(){
     out.push({date:x.payeLe,client:x.cNom||'—',nature:x.itype==='mes'?'Mise en service':'Dépannage',num:x.facNum||'',montant:Math.round(c.totalHT*100)/100,mode:x.modeReg||''});}});
   LOC.forEach(l=>{if(l.fac&&l.fac.payeLe)out.push({date:l.fac.payeLe,client:l.cNom||'—',nature:'Location adiabatique',num:l.fac.num,montant:l.fac.montant,mode:l.fac.mode||''});});
   CTR.forEach(c=>{(c.facs||[]).forEach(f=>{if(f.payeLe)out.push({date:f.payeLe,client:c.clientNom||'—',nature:'Contrat entretien '+(c.type||''),num:f.num,montant:f.montant,mode:f.mode||''});});});
-  return out.sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
+  /* essais (ESSAI-…) et période de démonstration une fois la facturation réelle démarrée : hors livre des recettes */
+  return out.filter(r=>!(window.nxNumEssai&&nxNumEssai(r.num))).sort((a,b)=>a.date<b.date?-1:a.date>b.date?1:0);
 }
 function allImpayes(){
   const out=[],now=Date.now(),age=s=>s?Math.floor((now-new Date(s+'T00:00:00').getTime())/86400000):0;
@@ -3039,7 +3040,7 @@ function allImpayes(){
   LOC.forEach(l=>{if(l.fac&&!l.fac.payeLe)out.push({kind:'loc',id:l.id,which:'',client:l.cNom||'—',num:l.fac.num,montant:l.fac.montant,date:l.fac.date,days:age(l.fac.date),mail:l.cMail||''});});
   CTR.forEach(c=>{const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(c.clientNom||'').toLowerCase())||{};
     (c.facs||[]).forEach(f=>{if(!f.payeLe)out.push({kind:'ctr',id:c.id,which:String(f.annee),client:c.clientNom||'—',num:f.num,montant:f.montant,date:f.date,days:age(f.date),mail:cl.mail||''});});});
-  return out.sort((a,b)=>b.days-a.days);
+  return out.filter(r=>!(window.nxNumEssai&&nxNumEssai(r.num))).sort((a,b)=>b.days-a.days); /* pas de relance pour un essai */
 }
 function mailRelancePaiement(kind,id,which){
   const f=allImpayes().find(x=>x.kind===kind&&x.id===id&&x.which===which);if(!f)return;

@@ -24,7 +24,7 @@ const SRV=`(function(){ const srv={docs:[],appels:[],from:[]}; window.__srv=srv;
       return Promise.resolve({data:{ok:true}}); },
     from:t=>{ srv.from.push(t); const q={select(){return q;},order(){return q;},eq(){return q;},or(){return q;},in(){return q;},gte(){return q;},lte(){return q;},limit(){return q;},insert(){ srv.from.push('insert:'+t); return q;},update(){return q;},single(){return Promise.resolve({data:null});},maybeSingle(){return Promise.resolve({data:null});},then(ok,ko){ return Promise.resolve({data:[]}).then(ok,ko); }}; return q; },
     auth:{getSession:()=>Promise.resolve({data:{session:null}})}};
-  window.SESS={user:{id:'u1',email:'test@test'}}; Object.assign(P.entreprise,{siret:'12345678900012'}); })();`;
+  window.SESS={user:{id:'u1',email:'test@test'}}; localStorage.setItem('cp2_facturation',JSON.stringify({debut:todayISO(),decideLe:'test',anciens:{},renommes:{},v:1})); /* 1.10 : facturation réelle démarrée explicitement */ Object.assign(P.entreprise,{siret:'12345678900012'}); })();`;
 
 const {p,ctx,errs}=await page({mobile:false});
 await seed(p); await p.evaluate(PREP);

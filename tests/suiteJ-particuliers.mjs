@@ -241,7 +241,7 @@ await ctx.close();
       return Promise.resolve({data:{ok:true}}); },
       from:()=>{ const q={select(){return q;},order(){return q;},eq(){return q;},or(){return q;},in(){return q;},gte(){return q;},lte(){return q;},limit(){return q;},maybeSingle(){return Promise.resolve({data:null});},then(ok,ko){ return Promise.resolve({data:[]}).then(ok,ko); }}; return q; },
       auth:{getSession:()=>Promise.resolve({data:{session:null}})}};
-    window.SESS={user:{id:'u1',email:'test@test'}}; Object.assign(P.entreprise,{nom:'Entreprise Test',siret:'12345678900012',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); })();`);
+    window.SESS={user:{id:'u1',email:'test@test'}}; localStorage.setItem('cp2_facturation',JSON.stringify({debut:todayISO(),decideLe:'test',anciens:{},renommes:{},v:1})); /* 1.10 : facturation réelle démarrée explicitement */ Object.assign(P.entreprise,{nom:'Entreprise Test',siret:'12345678900012',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); })();`);
   const r=await p.evaluate(async c=>{ J.reset(); const a=J.devis(null); await facturerDevis(a.id,'solde'); eval(c); const appels0=__srv.appels.filter(x=>x==='cp_emettre_document').length;
     J.reset(); const b=J.devis({mode:'hors_etablissement',date:todayISO()}); await facturerDevis(b.id,'solde'); eval(c);
     const f=DEVIS.find(x=>x.id===b.id).facSolde, sd=__srv.docs[0];

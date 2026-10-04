@@ -38,7 +38,7 @@ async function setup(env,opts={}){
   const {p,ctx,errs}=await page({mobile:opts.mobile!==false?true:false});
   await p.evaluate(MOCK+'('+JSON.stringify(env)+')');
   await seed(p);
-  if(env==='production') await p.evaluate(()=>{ Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:'12 rue A',cp:'60000',ville:'Beauvais',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); });
+  if(env==='production') await p.evaluate(()=>{ localStorage.setItem('cp2_facturation',JSON.stringify({debut:todayISO(),decideLe:'test',anciens:{},renommes:{},v:1})); /* 1.10 : facturation réelle démarrée explicitement */ Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:'12 rue A',cp:'60000',ville:'Beauvais',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); });
   /* une facture pro (SIREN) et une facture particulier */
   const nums=await p.evaluate(async()=>{
     const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0);

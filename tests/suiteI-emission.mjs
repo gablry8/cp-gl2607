@@ -3,46 +3,10 @@ import { ecrireResultats } from './env.mjs';
 // Le serveur simulé reprend la logique de la migration SQL (testée, elle, sur un vrai PostgreSQL :
 // tests/sql/test_migration.py). Cette suite vérifie le comportement de l'APPLI face à ce serveur.
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
+import { SERVEUR } from './serveur-simule.mjs';
 import fs from 'fs';
 
-/* serveur simulé, injecté dans la page (même règles que cp_emettre_document & co) */
-const SERVEUR=`(function(){
-  const srv={docs:[],seq:{},events:[],fichiers:{},appels:[],fail:{}};
-  const jour=()=>todayISO();
-  function doc(d){ return {id:d.id,request_id:d.request_id,serie:d.serie,annee:d.annee,numero:d.numero,num:d.num,type:d.type,origine:d.origine,date_doc:d.date_doc,payload:d.payload,payload_hash:'h'+d.id,fichiers_hash:d.fichiers_hash||null}; }
-  function rpc(name,p){ srv.appels.push(name);
-    if(srv.fail.horsService) return Promise.reject(new Error('Failed to fetch'));
-    if(name==='cp_serveur_info'){ if(srv.fail.migration) return Promise.resolve({error:{code:'PGRST202',message:'Could not find the function public.cp_serveur_info'}}); return Promise.resolve({data:{documents:true,version:'1.10'}}); }
-    if(name==='cp_state_push'){ if(srv.fail.ancienServeur&&p.p_client_version) return Promise.resolve({error:{code:'PGRST202',message:'Could not find the function public.cp_state_push(p_client_version, ...)'}}); srv.dernierPush=p; return Promise.resolve({data:{ok:true,updated_at:new Date().toISOString()}}); }
-    if(name==='cp_emettre_document'){
-      if(srv.fail.migration) return Promise.resolve({error:{code:'PGRST202',message:'Could not find the function'}});
-      if(!/^1\\.(1\\d|[2-9]\\d)/.test(p.p_client_version||'')) return Promise.resolve({error:{message:'ClimPilot doit être mis à jour'}});
-      const ex=srv.docs.find(d=>d.request_id===p.p_request_id); if(ex) return Promise.resolve({data:{ok:true,deja:true,doc:doc(ex)}});
-      const an=+String(p.p_date).slice(0,4), k=p.p_serie+'|'+an;
-      const mx=Math.max(srv.seq[k]||0,...srv.docs.filter(d=>d.serie===p.p_serie&&d.annee===an).map(d=>d.numero),p.p_min_numero||0)+1; srv.seq[k]=mx;
-      const d={id:'doc'+(srv.docs.length+1),request_id:p.p_request_id,serie:p.p_serie,annee:an,numero:mx,num:p.p_serie+'-'+an+'-'+String(mx).padStart(3,'0'),type:p.p_type,origine:'emis',date_doc:p.p_date,payload:JSON.parse(JSON.stringify(p.p_payload))};
-      srv.docs.push(d);
-      if(srv.fail.perdreReponse){ srv.fail.perdreReponse=false; return Promise.reject(new Error('connexion coupée après l\\'enregistrement')); }
-      return Promise.resolve({data:{ok:true,deja:false,doc:doc(d)}});
-    }
-    if(name==='cp_document_fichiers'){ const d=srv.docs.find(x=>x.id===p.p_id); if(!d) return Promise.resolve({error:{message:'introuvable'}});
-      if(d.fichiers_hash&&d.fichiers_hash!==(p.p_html+'|'+p.p_xml).length+'') return Promise.resolve({error:{message:'déjà enregistrés'}});
-      d.html=p.p_html; d.xml=p.p_xml; d.fichiers_hash=(p.p_html+'|'+p.p_xml).length+''; return Promise.resolve({data:{ok:true}}); }
-    if(name==='cp_document_evenement'){ if(!srv.events.some(e=>e.rid===p.p_request_id)) srv.events.push({rid:p.p_request_id,doc:p.p_document_id,type:p.p_type,donnees:p.p_donnees}); return Promise.resolve({data:{ok:true}}); }
-    if(name==='cp_importer_ancien'){ const ex=srv.docs.find(d=>d.request_id===p.p_request_id); if(ex) return Promise.resolve({data:{ok:true,deja:true,doc:doc(ex)}});
-      const m=/^(F|AV)-(\\d{4})-(\\d+)$/.exec(p.p_num); const d={id:'doc'+(srv.docs.length+1),request_id:p.p_request_id,serie:m[1],annee:+m[2],numero:+m[3],num:p.p_num,type:p.p_type,origine:'reconstitue',date_doc:p.p_date,payload:p.p_payload};
-      srv.docs.push(d); return Promise.resolve({data:{ok:true,deja:false,doc:doc(d)}}); }
-    return Promise.resolve({error:{message:'rpc inconnue '+name}});
-  }
-  function from(t){ const q={_eq:null,select(){return q;},order(){return q;},eq(c,v){ q._eq=[c,v]; return q;},
-      or(){return q;},in(){return q;},gte(){return q;},lte(){return q;},lt(){return q;},gt(){return q;},is(){return q;},neq(){return q;},limit(){return q;},range(){return q;},
-      update(){return q;},insert(){return q;},upsert(){return q;},delete(){return q;},single(){ return Promise.resolve({data:null}); },
-      maybeSingle(){ const d=srv.docs.find(x=>x[q._eq[0]]===q._eq[1]); return Promise.resolve({data:d?{html:d.html||null,data:null}:null}); },
-      then(ok,ko){ return Promise.resolve(t==='climpilot_documents'?{data:srv.docs.map(doc)}:{data:[]}).then(ok,ko); } };
-    return q; }
-  window.__srv=srv; window.sb={rpc:rpc,from:from,auth:{getSession:()=>Promise.resolve({data:{session:null}})}};
-})();`;
-const REEL=`(function(){ window.SESS={user:{id:'u1',email:'test@test'}}; Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:"1 rue de l'Exemple",cp:'60000',ville:'Beauvais',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); })();`;
+const REEL=`(function(){ window.SESS={user:{id:'u1',email:'test@test'}}; localStorage.setItem('cp2_facturation',JSON.stringify({debut:todayISO(),decideLe:'test',anciens:{},renommes:{},v:1})); /* 1.10 : facturation réelle démarrée explicitement */ Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:"1 rue de l'Exemple",cp:'60000',ville:'Beauvais',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); })();`;
 const wait=(p,ms)=>p.waitForTimeout(ms);
 const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.click(); })()`;
 
@@ -124,13 +88,14 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
     /* la facture disparaît de l'appareil (fusion ou restauration d'une vieille sauvegarde) */
     delete d.facSolde; save(LS.devis,DEVIS);
     const rp=await nxEmisRapprocher();
-    /* données anciennes : deux factures F-2026-050 différentes */
+    /* anciennes factures arrivées APRÈS le démarrage (autre appareil) : deux F-…-050 différentes, jamais choisies */
     const y=new Date().getFullYear(); DEP.push({id:'dx1',cNom:'A',date:todayISO(),statut:'facturee',facNum:'F-'+y+'-050',facDate:todayISO(),itype:'dep',heures:1,pieces:[]},{id:'dx2',cNom:'B',date:todayISO(),statut:'facturee',facNum:'F-'+y+'-050',facDate:todayISO(),itype:'dep',heures:1,pieces:[]}); save(LS.dep,DEP);
     const rp2=await nxEmisRapprocher();
-    return {num,av:av&&av.av&&av.av.num,restaure:d.facSolde&&d.facSolde.num,rp,dbl:Object.keys(nxEmisDoublons()),recon:__srv.docs.filter(x=>x.origine==='reconstitue').map(x=>x.num)}; },close);
+    return {num,av:av&&av.av&&av.av.num,restaure:d.facSolde&&d.facSolde.num,rp,rp2,dbl:Object.keys(nxEmisDoublons()),recon:__srv.docs.filter(x=>x.origine==='reconstitue').map(x=>x.num),
+      essais:DEP.filter(x=>/^dx/.test(x.id)).map(x=>x.facNum)}; },close);
   rec('Émission','Avoir en mode réel : numéro AV- du serveur',/^AV-\d{4}-001$/.test(r.av||''),JSON.stringify(r));
   rec('Émission','Rapprochement : facture disparue de l\'appareil remise en place depuis le serveur',r.restaure===r.num&&r.rp.restaures.includes(r.num),JSON.stringify(r.rp));
-  rec('Émission','Anciennes factures importées comme « reconstituées », doublon historique signalé',r.recon.length>=2&&r.dbl.some(n=>/-050$/.test(n)),JSON.stringify({recon:r.recon,dbl:r.dbl}));
+  rec('Émission','Anciennes factures non choisies : jamais importées, classées en essais (ESSAI-…) ; aucun faux doublon (avoir réel compris)',r.recon.length===0&&r.rp2.essais>=1&&r.essais.length===2&&r.essais.every(n=>/^ESSAI-F-\d{4}-050$/.test(n))&&!r.dbl.length,JSON.stringify({recon:r.recon,essais:r.essais,dbl:r.dbl,rp2:r.rp2}));
   await ctx.close();
 }
 

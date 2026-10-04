@@ -129,8 +129,9 @@
   /* chiffre d'affaires HT de l'année : facturé (date de facture, avoirs déduits) et encaissé (date de paiement) */
   function caAnnee(y){
     var f=0,e=0,yy=String(y);
-    try{ (window.nxInvoices?nxInvoices():[]).forEach(function(i){ if(String(i.date||'').slice(0,4)===yy) f+=Number(i.montant)||0; /* factures annulées comprises : leur avoir est déduit ci-dessous */ }); }catch(_){}
-    try{ (window.nxAvoirs?nxAvoirs():[]).forEach(function(a){ if(String(a.date||'').slice(0,4)===yy) f-=Number(a.montant)||0; }); }catch(_){}
+    var essai=function(n){ try{ return !!(window.nxNumEssai&&nxNumEssai(n)); }catch(_){ return false; } }; /* essais et période de démonstration : hors chiffre d'affaires */
+    try{ (window.nxInvoices?nxInvoices():[]).forEach(function(i){ if(String(i.date||'').slice(0,4)===yy&&!essai(i.num)) f+=Number(i.montant)||0; /* factures annulées comprises : leur avoir est déduit ci-dessous */ }); }catch(_){}
+    try{ (window.nxAvoirs?nxAvoirs():[]).forEach(function(a){ if(String(a.date||'').slice(0,4)===yy&&!essai(a.num)) f-=Number(a.montant)||0; }); }catch(_){}
     try{ (typeof allRecettes==='function'?allRecettes():[]).forEach(function(r){ if(String(r.date||'').slice(0,4)===yy) e+=Number(r.montant)||0; }); }catch(_){}
     return {facture:r2(f),encaisse:r2(e),retenu:r2(Math.max(f,e))};
   }

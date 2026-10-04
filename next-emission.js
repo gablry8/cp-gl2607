@@ -3,7 +3,9 @@
    ÉMISSION SÉCURISÉE DES FACTURES ET DES AVOIRS — chargé en dernier.
 
    Trois modes :
-   - RÉEL : cloud connecté + SIRET renseigné + fonctions serveur installées
+   - RÉEL : facturation réelle DÉMARRÉE par une action explicite et datée
+     (Paramètres › Facturation réelle : « Démarrer la facturation réelle à
+     partir du … »), cloud connecté, SIRET renseigné, fonctions serveur installées
      (migration supabase/migrations/20261002120000_documents_emis.sql).
      Le numéro est donné par le serveur EN MÊME TEMPS que la facture y est
      enregistrée (cp_emettre_document, une transaction). Une même demande
@@ -11,7 +13,8 @@
    - BLOQUÉ : cloud connecté + SIRET, mais serveur injoignable, hors ligne
      ou migration absente → la facture N'EST PAS émise (le chantier reste
      « à facturer ») ; jamais de compteur local pour une vraie facture.
-   - DÉMONSTRATION : pas de cloud ou pas de SIRET → numéros TEST-F-AAAA-NNN
+   - DÉMONSTRATION : facturation réelle pas encore démarrée, pas de cloud ou
+     pas de SIRET → numéros TEST-F-AAAA-NNN
      et TEST-AV-AAAA-NNN, séparés des séries réelles, document marqué
      « DOCUMENT DE TEST ».
 
@@ -26,12 +29,16 @@
    Paiements et statuts : événements à part, l'original n'est pas réécrit.
    Synchronisation : un champ de facture émise n'est jamais perdu par une
    fusion ; rapprochement avec le registre du serveur au démarrage.
+   Démarrage de la facturation réelle : les anciennes factures F-/AV- sont des
+   ESSAIS par défaut (renommées ESSAI-…, jamais envoyées au serveur, hors chiffre
+   d'affaires) ; seules celles choisies explicitement sont importées au registre
+   du serveur, et seules elles comptent pour le numéro minimal (p_min_numero).
    ============================================================ */
 (function(){
   'use strict';
   var VERSION='1.10.0-beta'; window.CP_VERSION=VERSION;
-  var REG='cp2_docs', FIL='cpnext_docs_fichiers', ATT='cpnext_emission_attente', EVQ='cpnext_events_attente', TSEQ='cp2_testseq';
-  try{ [REG,TSEQ].forEach(function(k){ if(Array.isArray(window.SYNC_KEYS)&&SYNC_KEYS.indexOf(k)<0) SYNC_KEYS.push(k); }); }catch(e){}
+  var REG='cp2_docs', FIL='cpnext_docs_fichiers', ATT='cpnext_emission_attente', EVQ='cpnext_events_attente', TSEQ='cp2_testseq', FR='cp2_facturation';
+  try{ [REG,TSEQ,FR].forEach(function(k){ if(Array.isArray(window.SYNC_KEYS)&&SYNC_KEYS.indexOf(k)<0) SYNC_KEYS.push(k); }); }catch(e){}
 
   /* ---------- outils ---------- */
   function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -68,9 +75,17 @@
     },function(e){ INFO={t:Date.now(),ok:false,raison:'serveur',detail:String(e&&e.message||e)}; return INFO; });
   }
   var RAISON={cloud:'connecte le cloud (Paramètres)',horsligne:'pas de réseau',migration:'le serveur n\'a pas encore la mise à jour 1.10 (migration à appliquer)',serveur:'serveur injoignable'};
-  /* mode d'après le dernier sondage (synchrone) */
-  function mode(){ if(!siretOk()||!cloud()) return 'demo'; if(INFO.ok===true) return 'reel'; return 'bloque'; }
-  window.nxEmisMode=function(){ return {mode:mode(),raison:INFO.raison,detail:INFO.detail}; };
+  /* ---------- décision « facturation réelle » (synchronisée) ----------
+     {debut:'AAAA-MM-JJ', decideLe, anciens:{num:'essai'|'importer'}, renommes:{ancien:nouveau}} */
+  function decision(){ var o=rd(FR,null); return o&&typeof o==='object'&&/^\d{4}-\d{2}-\d{2}$/.test(o.debut||'')?o:null; }
+  function reelDemarre(){ var o=decision(); return !!(o&&today()>=o.debut); }
+  function choix(num){ var o=decision(); return o&&o.anciens&&o.anciens[num]==='importer'?'importer':'essai'; }
+  /* numéro d'essai : ESSAI-… toujours ; TEST-… une fois la facturation réelle démarrée (période de démonstration) */
+  function numEssai(n){ n=String(n||''); return /^ESSAI-/.test(n)||(/^TEST-/.test(n)&&reelDemarre()); }
+  window.nxNumEssai=numEssai; window.nxEmisDecision=decision;
+  /* mode d'après le dernier sondage (synchrone) : jamais réel sans démarrage explicite, même avec un SIRET */
+  function mode(){ if(!siretOk()||!cloud()||!reelDemarre()) return 'demo'; if(INFO.ok===true) return 'reel'; return 'bloque'; }
+  window.nxEmisMode=function(){ var o=decision(); return {mode:mode(),raison:INFO.raison,detail:INFO.detail,demarre:reelDemarre(),debut:o?o.debut:null}; };
   window.nxEmisSonde=sonde;
 
   /* ---------- registre local des documents émis (synchronisé) + fichiers figés (appareil) ---------- */
@@ -98,19 +113,24 @@
   }
   /* doublons : un même numéro porté par deux documents différents */
   function doublons(){
-    var by={}; reg().forEach(function(e){ if(e.mode==='demo') return; (by[e.num]=by[e.num]||{})[srcCle(e.src)||e.id]=1; });
-    try{ (window.nxFacNumsAll?nxFacNumsAll():[]).forEach(function(n){ by[n]=by[n]||{}; }); }catch(e){}
+    /* avoir : la source s'écrit « facture » à l'émission et « facture|montant|motif » (clé de demande) au rapprochement :
+       même avoir, donc une seule source (la facture d'origine) — sinon faux doublon après chaque synchro */
+    var cleSrc=function(e){ return e.src&&e.src.k==='avoir'?'avoir|'+String(e.src.w||'').split('|')[0]:(srcCle(e.src)||e.id); };
+    var by={}; reg().forEach(function(e){ if(e.mode==='demo'||numEssai(e.num)) return; (by[e.num]=by[e.num]||{})[cleSrc(e)]=1; });
+    try{ (window.nxFacNumsAll?nxFacNumsAll():[]).forEach(function(n){ if(!numEssai(n)) by[n]=by[n]||{}; }); }catch(e){}
     var d={}; Object.keys(by).forEach(function(n){ if(Object.keys(by[n]).length>1) d[n]=true; });
     /* numéros présents deux fois dans les données de l'appareil */
-    var vus={}; (function(){ try{ (window.nxInvoices?nxInvoices():[]).forEach(function(i){ var k=i.num; if(vus[k]&&vus[k]!==(i.kind+'|'+i.id+'|'+(i.which||''))) d[k]=true; vus[k]=i.kind+'|'+i.id+'|'+(i.which||''); }); }catch(e){} })();
-    (function(){ try{ var v2={}; (window.nxAvoirs?nxAvoirs():[]).forEach(function(a){ if(v2[a.num]&&v2[a.num]!==a.id) d[a.num]=true; v2[a.num]=a.id; }); }catch(e){} })();
+    var vus={}; (function(){ try{ (window.nxInvoices?nxInvoices():[]).forEach(function(i){ var k=i.num; if(numEssai(k)) return; if(vus[k]&&vus[k]!==(i.kind+'|'+i.id+'|'+(i.which||''))) d[k]=true; vus[k]=i.kind+'|'+i.id+'|'+(i.which||''); }); }catch(e){} })();
+    (function(){ try{ var v2={}; (window.nxAvoirs?nxAvoirs():[]).forEach(function(a){ if(numEssai(a.num)) return; if(v2[a.num]&&v2[a.num]!==a.id) d[a.num]=true; v2[a.num]=a.id; }); }catch(e){} })();
     return d;
   }
   window.nxEmisDoublons=doublons;
 
   /* ---------- série TEST (démonstration) ---------- */
-  function numTest(serie){
-    var y=new Date().getFullYear(), sq=rd(TSEQ,{}); if(!sq||sq.year!==y) sq={year:y,F:0,AV:0};
+  /* année = celle de la DATE DU DOCUMENT (comme le serveur), pas celle de l'horloge (factures autour du 31/12) */
+  function anDe(dateDoc){ var y=parseInt(String(dateDoc||'').slice(0,4),10); return y>1999?y:new Date().getFullYear(); }
+  function numTest(serie,dateDoc){
+    var y=anDe(dateDoc||today()), sq=rd(TSEQ,{}); if(!sq||sq.year!==y) sq={year:y,F:0,AV:0};
     var re=new RegExp('^TEST-'+serie+'-'+y+'-(\\d+)$'), mx=0;
     reg().forEach(function(e){ var m=String(e.num).match(re); if(m) mx=Math.max(mx,parseInt(m[1],10)); });
     var n=Math.max(mx,Number(sq[serie])||0)+1; sq[serie]=n; wr(TSEQ,sq);
@@ -234,11 +254,13 @@
       if(d.model){ if(!d.model.echeance||String(d.model.echeance)<av.echeance){ d.model.echeance=av.echeance; d.model.echeanceTexte=av.echeanceTexte||''; } }
     }
     var mo=mode();
-    if(mo==='demo'){ return Promise.resolve(finir(S,d,numTest(d.type==='avoir'?'AV':'F'),'demo',null)); }
+    if(mo==='demo'){ return Promise.resolve(finir(S,d,numTest(d.type==='avoir'?'AV':'F',d.date),'demo',null)); }
     BUSY=true; say('🔐 Émission de la facture… (numéro attribué par le serveur)');
     return sonde(true).then(function(info){
       if(!info.ok){ BUSY=false; bloque(info); relire(sorte); return null; }
-      return demanderServeur(d,'F',d.type).then(function(r){ BUSY=false; if(!r){ relire(sorte); return null; } return finir(S,d,r.doc.num,'reel',r.doc); });
+      return demanderServeur(d,'F',d.type).then(function(r){ BUSY=false; if(!r){ relire(sorte); return null; }
+        if(r.differe) return reprendreServeur(sorte,d,r.doc);
+        return finir(S,d,r.doc.num,'reel',r.doc); });
     }).catch(function(e){ BUSY=false; bloque({raison:'serveur',detail:String(e&&e.message||e)}); relire(sorte); return null; });
   }
   function relire(sorte){ try{ if(sorte==='dep') loadDepForm(); if(sorte==='devis') renderFBloc(); }catch(e){} }
@@ -253,24 +275,34 @@
   function demanderServeur(d,serie,type){
     var cle=srcCle(d.src), a=attentes()[cle], r0=(a&&a.rid)||rid();
     attentePut(cle,{rid:r0,at:Date.now(),serie:serie});
-    var pl=payloadDe(d), mini=maxLocal(serie);
+    var pl=payloadDe(d), mini=maxLocal(serie,d.date);
     return rpc('cp_emettre_document',{p_request_id:r0,p_serie:serie,p_type:type,p_date:d.date,p_payload:pl,p_min_numero:mini,p_client_version:VERSION}).then(function(r){
       if(r&&r.error){ bloque({raison:absente(r.error)?'migration':'serveur',detail:String(r.error.message||'')}); return null; }
       var out=r&&r.data; if(!out||!out.ok||!out.doc){ bloque({raison:'serveur',detail:'réponse vide'}); return null; }
-      if(out.deja&&out.doc.payload&&JSON.stringify(out.doc.payload.fac||{})!==JSON.stringify(pl.fac||{})){
-        /* la demande avait déjà été servie avec un autre contenu : le document du serveur fait foi */
-        d.fac=cl(out.doc.payload.fac); if(out.doc.payload.model) d.model=cl(out.doc.payload.model);
-        say('ℹ️ Cette facture avait déjà été émise ('+out.doc.num+') : on reprend celle du serveur.');
-      }
+      /* la demande avait déjà été servie avec un autre contenu (réponse perdue, puis document modifié) :
+         le document du serveur fait foi — rien n'est recalculé sur l'appareil (voir reprendreServeur) */
+      if(out.deja&&out.doc.payload&&JSON.stringify(out.doc.payload.fac||{})!==JSON.stringify(pl.fac||{})) out.differe=true;
       return out;
     });
   }
-  function maxLocal(serie){
-    var y=new Date().getFullYear(), re=new RegExp('^'+serie+'-'+y+'-(\\d+)$'), mx=0;
-    try{ if(serie==='F'&&window.nxFacNumsAll) nxFacNumsAll().forEach(function(n){ var m=String(n).match(re); if(m) mx=Math.max(mx,+m[1]); }); }catch(e){}
-    try{ if(serie==='AV'&&window.nxAvoirs) nxAvoirs().forEach(function(a){ var m=String(a.num).match(re); if(m) mx=Math.max(mx,+m[1]); }); }catch(e){}
-    reg().forEach(function(e){ var m=String(e.num).match(re); if(m) mx=Math.max(mx,+m[1]); });
+  /* numéro minimal envoyé au serveur (p_min_numero) : seulement les VRAIS numéros de l'année du document —
+     registre du serveur (émis ou reconstitués) et anciennes factures choisies pour l'import ; jamais les essais */
+  function maxLocal(serie,dateDoc){
+    var y=anDe(dateDoc||today()), re=new RegExp('^'+serie+'-'+y+'-(\\d+)$'), mx=0, o=decision();
+    reg().forEach(function(e){ if(e.mode!=='reel') return; var m=String(e.num).match(re); if(m) mx=Math.max(mx,+m[1]); });
+    if(o&&o.anciens) Object.keys(o.anciens).forEach(function(n){ if(o.anciens[n]!=='importer') return; var m=String(n).match(re); if(m) mx=Math.max(mx,+m[1]); });
     return mx;
+  }
+  window.nxEmisNumeros={maxLocal:maxLocal,numTest:function(s,d){ return numTest(s,d); }};
+  function reprendreServeur(sorte,d,doc){
+    var p=doc.payload||{}, fac=p.fac?remplaceVide(p.fac,doc.num):null;
+    ajouterRegistre({num:doc.num,mode:'reel',origine:'emis',type:doc.type,serie:doc.serie,date:doc.date_doc,src:d.src,fac:fac,model:p.model?Object.assign(remplaceVide(p.model,doc.num),{id:doc.num}):null,sid:doc.id,ph:doc.payload_hash,at:Date.now()});
+    var res=restaurer(d.src,doc.num,fac); attentePut(srcCle(d.src),null); relire(sorte);
+    try{ updateBadges(); }catch(e){}
+    var t='La facture '+doc.num+' avait déjà été émise et enregistrée sur le serveur (réponse perdue).\n\nLe document a été modifié depuis : c\'est la facture ENREGISTRÉE qui fait foi'+(fac&&fac.montant!=null?' (montant '+fac.montant+' €)':'')+', elle n\'est pas recalculée. Pour corriger le montant, fais un avoir.';
+    try{ alert(t); }catch(e){ say(t); }
+    try{ window.nxEmisAssurerFichiers(doc.num).then(function(ok){ var f=fichiers()[doc.num]; if(ok&&f&&f.html) montrer(f.html,doc.date_doc); }); }catch(e){}
+    return {num:doc.num,mode:'reel',repris:true,restaure:res};
   }
   function finir(S,d,num,mo,doc){
     var res=remplacer(d.res,d.prov,num); d.num=num;
@@ -315,7 +347,7 @@
       montrer(html,r.av.date); r.imprime=true; return r;
     };
     var mo=mode();
-    if(mo==='demo') return Promise.resolve(fin(numTest('AV'),'demo',null));
+    if(mo==='demo') return Promise.resolve(fin(numTest('AV',b.av.date),'demo',null));
     if(BUSY) return Promise.resolve({err:'Émission en cours'});
     BUSY=true;
     return sonde(true).then(function(info){
@@ -424,7 +456,7 @@
           ajouterRegistre({num:doc.num,mode:'reel',origine:'reconstitue',type:doc.type,serie:doc.serie,date:doc.date_doc,src:src,fac:null,model:null,sid:doc.id,ph:doc.payload_hash,at:Date.now()});
         }
       });
-      return importerAnciens(docs).then(function(n){ viderEvenements(); deposerEnRetard(); return {fait:true,restaures:restaures,conflits:conflits,importes:n}; });
+      return importerAnciens(docs).then(function(n){ var es=classerInconnus(); viderEvenements(); deposerEnRetard(); return {fait:true,restaures:restaures,conflits:conflits,importes:n,essais:es}; });
     },function(e){ return {fait:false,erreur:String(e)}; });
   }
   window.nxEmisRapprocher=rapprocher;
@@ -448,18 +480,72 @@
     }catch(e){}
     return 'ok';
   }
-  /* anciennes factures (avant 1.10) : importées une fois comme « reconstituées » */
+  /* anciennes factures (avant le démarrage de la facturation réelle) : importées comme « reconstituées »
+     SEULEMENT si elles ont été choisies explicitement au démarrage (choix « importer ») ; sinon ce sont des essais */
   function importerAnciens(docs){
     var surServeur={}; docs.forEach(function(d){ surServeur[d.num+'|'+srcCle((d.payload||{}).src)]=1; surServeur['N|'+d.num]=1; });
     var a=[];
-    try{ (window.nxInvoices?nxInvoices():[]).forEach(function(i){ if(!/^F-\d{4}-\d+$/.test(i.num)) return; var src={k:i.kind,id:i.id,w:i.which||(i.kind==='ctr'?i.which:'')}; if(surServeur[i.num+'|'+srcCle(src)]) return;
+    try{ (window.nxInvoices?nxInvoices():[]).forEach(function(i){ if(!/^F-\d{4}-\d+$/.test(i.num)||choix(i.num)!=='importer') return; var src={k:i.kind,id:i.id,w:i.which||(i.kind==='ctr'?i.which:'')}; if(surServeur[i.num+'|'+srcCle(src)]) return;
       if(entree(i.num)&&entree(i.num).origine==='emis'&&entree(i.num).mode==='reel') return;
       a.push({serie:'F',type:(i.kind==='devis'&&i.which==='acompte')?'acompte':'facture',num:i.num,date:i.date,src:src,payload:{v:1,app:VERSION,reconstitue:true,src:src,inv:{num:i.num,date:i.date,montant:i.montant,cli:i.cli,label:i.label,kind:i.kind}}}); }); }catch(e){}
-    try{ (window.nxAvoirs?nxAvoirs():[]).forEach(function(v){ if(!/^AV-\d{4}-\d+$/.test(v.num)) return; var src={k:'avoir',id:v.id,w:v.facNum}; if(surServeur[v.num+'|'+srcCle(src)]) return;
+    try{ (window.nxAvoirs?nxAvoirs():[]).forEach(function(v){ if(!/^AV-\d{4}-\d+$/.test(v.num)||choix(v.num)!=='importer') return; var src={k:'avoir',id:v.id,w:v.facNum}; if(surServeur[v.num+'|'+srcCle(src)]) return;
       a.push({serie:'AV',type:'avoir',num:v.num,date:v.date,src:src,payload:{v:1,app:VERSION,reconstitue:true,src:src,avoir:cl(v)}}); }); }catch(e){}
     return a.reduce(function(p,x){ return p.then(function(n){
       return rpc('cp_importer_ancien',{p_request_id:uuidDe(x.num+'|'+srcCle(x.src)),p_serie:x.serie,p_type:x.type,p_num:x.num,p_date:x.date||null,p_payload:x.payload}).then(function(r){
         if(!(r&&r.error)){ ajouterRegistre({num:x.num,mode:'reel',origine:'reconstitue',type:x.type,serie:x.serie,date:x.date,src:x.src,fac:null,model:null,sid:r.data&&r.data.doc&&r.data.doc.id,at:Date.now()}); return n+1; } return n; },function(){ return n; }); }); },Promise.resolve(0));
+  }
+  /* ---------- anciennes factures : liste, renommage en essais, démarrage explicite ---------- */
+  /* factures et avoirs à l'ancien format (F-/AV-) qui ne sont pas des documents du registre du serveur */
+  function anciennes(){
+    var reelles={}; reg().forEach(function(e){ if(e.mode==='reel') reelles[e.num]=1; });
+    var out=[];
+    try{ (window.nxInvoices?nxInvoices():[]).forEach(function(i){ if(/^F-\d{4}-\d+$/.test(i.num)&&!reelles[i.num]) out.push({num:i.num,date:i.date||'',montant:i.montant,cli:i.cli||i.client||'',type:'facture'}); }); }catch(e){}
+    try{ (window.nxAvoirs?nxAvoirs():[]).forEach(function(v){ if(/^AV-\d{4}-\d+$/.test(v.num)&&!reelles[v.num]) out.push({num:v.num,date:v.date||'',montant:v.montant,cli:'',type:'avoir',facNum:v.facNum}); }); }catch(e){}
+    var vus={}; return out.filter(function(x){ if(vus[x.num]) return false; vus[x.num]=1; return true; });
+  }
+  window.nxEmisAnciennes=anciennes;
+  /* renomme des numéros partout sur l'appareil (factures, factures annulées, avoirs et leur facture d'origine) */
+  function renommer(map){
+    var n=function(v){ return map[v]||v; }, nb=0, fx=function(f){ if(f&&f.num&&map[f.num]){ f.num=map[f.num]; nb++; } };
+    try{ (DEVIS||[]).forEach(function(d){ fx(d.facAcompte); fx(d.facSolde); (d.facAnnulees||[]).forEach(fx); }); save(LS.devis,DEVIS); }catch(e){}
+    try{ (DEP||[]).forEach(function(x){ if(x.facNum&&map[x.facNum]){ x.facNum=map[x.facNum]; nb++; } (x.facAnnulees||[]).forEach(fx); }); save(LS.dep,DEP); }catch(e){}
+    try{ (LOC||[]).forEach(function(l){ fx(l.fac); (l.facAnnulees||[]).forEach(fx); }); save(LS.loc,LOC); }catch(e){}
+    try{ (CTR||[]).forEach(function(c){ (c.facs||[]).forEach(fx); (c.facsAnnulees||[]).forEach(fx); }); save('cp2_contrats',CTR); }catch(e){}
+    try{ var AV=window.nxAvoirs?nxAvoirs():null; if(AV){ AV.forEach(function(a){ if(map[a.num]){ a.num=map[a.num]; nb++; } if(a.facNum) a.facNum=n(a.facNum); }); save('cp2_avoirs',AV); } }catch(e){}
+    return nb;
+  }
+  /* un avoir suit sa facture d'origine : essai si elle est un essai */
+  function classement(liste,choisis){
+    var c={}; liste.forEach(function(x){ c[x.num]=choisis&&choisis[x.num]==='importer'?'importer':'essai'; });
+    liste.forEach(function(x){ if(x.type==='avoir'&&x.facNum&&c[x.facNum]) c[x.num]=c[x.facNum]; });
+    return c;
+  }
+  function renommesDe(c){ var m={}; Object.keys(c).forEach(function(n){ if(c[n]==='essai') m[n]='ESSAI-'+n; }); return m; }
+  /* décision explicite : « démarrer la facturation réelle à partir du … » */
+  function demarrer(debut,choisis){
+    if(decision()) return {err:'La facturation réelle est déjà décidée (à partir du '+fr(decision().debut)+').'};
+    if(!siretOk()) return {err:'Saisis d\'abord le SIRET de l\'entreprise (14 chiffres) dans Paramètres › Entreprise.'};
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(debut||'')) return {err:'Date de début invalide.'};
+    if(debut<today()) return {err:'La date de début ne peut pas être passée.'};
+    var liste=anciennes(), c=classement(liste,choisis||{}), m=renommesDe(c), nb=renommer(m), dec={};
+    Object.keys(c).forEach(function(n){ dec[c[n]==='essai'?m[n]:n]=c[n]; });
+    wr(FR,{debut:debut,decideLe:new Date().toISOString(),anciens:dec,renommes:m,v:1});
+    var imp=Object.keys(c).filter(function(n){ return c[n]==='importer'; });
+    if(reelDemarre()&&cloud()) sonde(true).then(function(){ badge(); return rapprocher(); }).then(function(){ badge(); },function(){});
+    try{ badge(); updateBadges(); }catch(e){}
+    return {ok:true,debut:debut,essais:Object.keys(m).length,renommes:nb,importes:imp};
+  }
+  window.nxEmisDemarrer=demarrer;
+  /* après le démarrage, une ancienne facture inconnue (arrivée d'un autre appareil) est un essai par défaut ;
+     appelé seulement après lecture réussie du registre du serveur (rapprocher) */
+  function classerInconnus(){
+    var o=decision(); if(!o) return 0;
+    var inconnues=anciennes().filter(function(x){ return !(o.anciens&&o.anciens[x.num]==='importer'); });
+    if(!inconnues.length) return 0;
+    var c=classement(inconnues,{}), m=renommesDe(c); renommer(m);
+    o.anciens=o.anciens||{}; o.renommes=o.renommes||{}; Object.keys(m).forEach(function(n){ o.anciens[m[n]]='essai'; o.renommes[n]=m[n]; });
+    wr(FR,o); say('🧪 '+Object.keys(m).length+' ancienne(s) facture(s) classée(s) en essais (renommées ESSAI-…)');
+    return Object.keys(m).length;
   }
   function deposerEnRetard(){ var all=fichiers(); Object.keys(all).forEach(function(num){ var f=all[num]; if(f&&f.aDeposer) deposerFichiers(f.aDeposer,num,f.html,f.xml); }); }
 
@@ -493,7 +579,7 @@
         if(mode()!=='demo') return {err:'Avoir à émettre depuis l\'écran Avoirs (numéro attribué par le serveur).'};
         var b=window.nxAvoirBuild(o,'PROVISOIRE-AV'); if(b.err) return b;
         var model=null; try{ var AVL=nxAvoirs(); AVL.push(b.av); try{ model=window.nxEinvModelLive('PROVISOIRE-AV'); } finally{ AVL.splice(AVL.indexOf(b.av),1); } }catch(e){}
-        var num=numTest('AV'); b.av.num=num; var r=window.nxAvoirCommit(b,o);
+        var num=numTest('AV',b.av.date); b.av.num=num; var r=window.nxAvoirCommit(b,o);
         var mdl=model?remplacer(model,'PROVISOIRE-AV',num):null; if(mdl) mdl.id=num;
         var html=capturer(function(){ window.nxPrintAvoir(r.av.id); },r.av.date);
         var xml=null; try{ if(mdl) xml=window.nxEinvXMLOf(mdl); }catch(e){}
@@ -506,7 +592,9 @@
     /* une facture enregistrée sur le serveur ne se « corrige » plus : avoir */
     var un=window.nxfUnlockDep; if(typeof un==='function'&&!un._nxem){ var wu=function(){ try{ var e=curDep&&entree(curDep.facNum); if(e&&e.mode==='reel'&&e.origine==='emis'){ alert('La facture '+curDep.facNum+' est émise et enregistrée sur le serveur : elle ne se modifie plus. Pour la corriger, fais un avoir (écran Avoirs).'); return; } }catch(_){} return un.apply(this,arguments); }; wu._nxem=true; window.nxfUnlockDep=wu; }
     /* défense en profondeur : un appel direct à l'ancien compteur ne peut plus produire un vrai numéro */
-    var nf=window.nextFacNum; if(typeof nf==='function'&&!nf._nxem){ var g=function(){ if(mode()==='demo') return numTest('F'); throw new Error('Numéro de facture réservé au serveur (ClimPilot 1.10).'); }; g._nxem=true; window.nextFacNum=g; }
+    var nf=window.nextFacNum; if(typeof nf==='function'&&!nf._nxem){ var g=function(){ if(mode()==='demo') return numTest('F',today()); throw new Error('Numéro de facture réservé au serveur (ClimPilot 1.10).'); }; g._nxem=true; window.nextFacNum=g; }
+    /* l'indicateur de mode suit les mises à jour de l'appli (SIRET saisi, démarrage, émission) */
+    var ub=window.updateBadges; if(typeof ub==='function'&&!ub._nxem){ var wb=function(){ var r=ub.apply(this,arguments); try{ badge(); }catch(e){} return r; }; wb._nxem=true; window.updateBadges=wb; }
     /* fusion de synchro protégée */
     var mg=window.cpMerge; if(typeof mg==='function'&&!mg._nxem){ var wm=function(B,L,R){ var out=mg.apply(this,arguments); try{ return protegerFusion(B||{},L||{},R||{},out); }catch(e){ return out; } }; wm._nxem=true; window.cpMerge=wm; }
     /* onglet en lecture seule : pas de synchro */
@@ -525,14 +613,49 @@
     var foot=document.querySelector('.side .foot'); if(!foot) return;
     var b=document.getElementById('nxEmisBadge'); if(!b){ b=document.createElement('div'); b.id='nxEmisBadge'; b.style.cssText='margin-top:6px;font-size:11px;line-height:1.4'; foot.insertBefore(b,foot.firstChild); }
     var m=mode(), n=Object.keys(attentes()).length, dbl=Object.keys(doublons());
-    b.innerHTML=(m==='reel'?'<span style="color:#7de3a0">● Facturation réelle (numéros du serveur)</span>':m==='bloque'?'<span style="color:#ff9d9d">● Facturation bloquée : '+esc(RAISON[INFO.raison]||'serveur')+'</span>':'<span style="color:#ffd58a">● Mode démonstration : numéros TEST</span>')+
+    b.innerHTML=(m==='reel'?'<span style="color:#7de3a0">● Facturation réelle (numéros du serveur)</span>':m==='bloque'?'<span style="color:#ff9d9d">● Facturation bloquée : '+esc(RAISON[INFO.raison]||'serveur')+'</span>':'<span style="color:#ffd58a">● Mode démonstration : numéros TEST'+(siretOk()?(decision()?' — facturation réelle à partir du '+esc(fr(decision().debut)):' — facturation réelle à démarrer (Paramètres)'):'')+'</span>')+
       (n?'<br><span style="color:#ffd58a">'+n+' facture(s) en attente d\'émission</span>':'')+(dbl.length?'<br><span style="color:#ff9d9d">Numéros en double : '+esc(dbl.join(', '))+'</span>':'');
   }
   window.nxEmisBadge=badge;
+
+  /* ---------- Paramètres › Facturation réelle ---------- */
+  function carteParams(){
+    var v=document.getElementById('v-params'); if(!v) return;
+    var c=document.getElementById('nxReelCard'); if(!c){ c=document.createElement('div'); c.className='card'; c.id='nxReelCard'; v.insertBefore(c,v.firstChild); }
+    var o=decision(), eur=function(x){ try{ return money(Number(x)||0); }catch(e){ return (Number(x)||0).toFixed(2)+' €'; } };
+    if(o){
+      var es=Object.keys(o.anciens||{}).filter(function(n){ return o.anciens[n]==='essai'; }).length, im=Object.keys(o.anciens||{}).filter(function(n){ return o.anciens[n]==='importer'; });
+      c.innerHTML='<h2>🧾 Facturation réelle</h2><div class="sub">'+(reelDemarre()?'Démarrée le <b>'+esc(fr(o.debut))+'</b>':'Démarrage prévu le <b>'+esc(fr(o.debut))+'</b> (d\'ici là : mode démonstration, numéros TEST)')+
+        ' — décidée le '+esc(fr(String(o.decideLe||'').slice(0,10)))+'.<br>Anciennes factures : '+es+' classée(s) en essais (renommées ESSAI-…, hors registre et hors chiffre d\'affaires)'+(im.length?', '+im.length+' importée(s) au registre : '+esc(im.join(', ')):'')+'.</div>';
+      return;
+    }
+    var l=anciennes(), lignes=l.filter(function(x){ return x.type==='facture'; }).map(function(x){
+      return '<tr><td class="l"><b>'+esc(x.num)+'</b></td><td class="l">'+esc(fr(x.date))+'</td><td class="l">'+esc(x.cli||'—')+'</td><td>'+(x.montant!=null?eur(x.montant):'—')+'</td><td class="l"><select data-reel-num="'+esc(x.num)+'"><option value="essai" selected>Essai (par défaut)</option><option value="importer">Vraie facture : l\'importer</option></select></td></tr>'; }).join('');
+    c.innerHTML='<h2>🧾 Facturation réelle</h2>'+
+      '<div class="sub">Tant qu\'elle n\'est pas démarrée, ClimPilot reste en <b>mode démonstration</b> (numéros TEST, sans valeur), même avec un SIRET. Le démarrage est une décision : il est <b>définitif</b>.</div>'+
+      (lignes?'<div class="sub" style="margin-top:8px">Anciennes factures trouvées sur cet appareil : par défaut ce sont des <b>essais</b> (renommées ESSAI-…, jamais envoyées au registre du serveur, hors chiffre d\'affaires). N\'importe que les vraies factures, une par une.</div><div class="scroll"><table><thead><tr><th class="l">N°</th><th class="l">Date</th><th class="l">Client</th><th>Montant</th><th class="l">Classement</th></tr></thead><tbody>'+lignes+'</tbody></table></div>':'<div class="sub" style="margin-top:8px">Aucune ancienne facture sur cet appareil.</div>')+
+      '<div class="row-actions" style="margin-top:10px"><label>À partir du <input type="date" id="nxReelDebut" value="'+esc(today())+'" min="'+esc(today())+'"></label>'+
+      '<button class="btn-pri btn-sm" onclick="nxEmisDemarrerUI()">Démarrer la facturation réelle</button></div><div class="sub" id="nxReelMsg"></div>';
+  }
+  window.nxEmisCarteParams=carteParams;
+  window.nxEmisDemarrerUI=function(){
+    var debut=(document.getElementById('nxReelDebut')||{}).value||'', choisis={}, msg=document.getElementById('nxReelMsg');
+    [].forEach.call(document.querySelectorAll('#nxReelCard select[data-reel-num]'),function(s){ choisis[s.getAttribute('data-reel-num')]=s.value; });
+    var l=anciennes(), c=classement(l,choisis), im=Object.keys(c).filter(function(n){ return c[n]==='importer'; }), es=Object.keys(c).length-im.length;
+    if(!siretOk()){ if(msg) msg.textContent='⚠ Saisis d\'abord le SIRET (Paramètres › Entreprise).'; return; }
+    if(!confirm('Démarrer la facturation réelle à partir du '+fr(debut)+' ?\n\n'+
+      '• '+es+' ancienne(s) facture(s) ou avoir(s) classé(s) en ESSAIS : renommés ESSAI-…, jamais envoyés au registre du serveur, hors chiffre d\'affaires.\n'+
+      '• '+im.length+' importé(s) DÉFINITIVEMENT au registre du serveur'+(im.length?' : '+im.join(', '):'')+'.\n\n'+
+      'À partir de cette date, les numéros de facture sont donnés par le serveur. Cette décision est définitive.')) return;
+    var r=demarrer(debut,choisis);
+    if(r.err){ if(msg) msg.textContent='⚠ '+r.err; return; }
+    say('🧾 Facturation réelle '+(reelDemarre()?'démarrée':'prévue le '+fr(debut))); carteParams();
+  };
   function boot(){
     envelopper();
+    var og=window.go; if(typeof og==='function'&&!og._nxreel){ window.go=function(v){ var r=og.apply(this,arguments); try{ if(v==='params') carteParams(); }catch(e){} return r; }; window.go._nxreel=true; }
     var t=0; var tick=function(){ badge(); t++; if(t<3) setTimeout(tick,1500); };
-    setTimeout(function(){ tick(); if(cloud()&&siretOk()) sonde(true).then(function(){ badge(); return rapprocher(); }).then(function(r){ badge(); if(r&&r.restaures&&r.restaures.length) say('🛟 '+r.restaures.length+' facture(s) remise(s) en place depuis le registre du serveur : '+r.restaures.join(', ')); if(r&&r.conflits&&r.conflits.length) alert('⚠ Conflit de numéros de facture à vérifier : '+r.conflits.join(', ')+'\nRien n\'a été renuméroté. Ouvre le registre des documents.'); }); },2500);
+    setTimeout(function(){ tick(); if(cloud()&&siretOk()&&reelDemarre()) sonde(true).then(function(){ badge(); return rapprocher(); }).then(function(r){ badge(); if(r&&r.restaures&&r.restaures.length) say('🛟 '+r.restaures.length+' facture(s) remise(s) en place depuis le registre du serveur : '+r.restaures.join(', ')); if(r&&r.conflits&&r.conflits.length) alert('⚠ Conflit de numéros de facture à vérifier : '+r.conflits.join(', ')+'\nRien n\'a été renuméroté. Ouvre le registre des documents.'); }); },2500);
     window.addEventListener('online',function(){ viderEvenements(); deposerEnRetard(); });
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,0); }); else setTimeout(boot,0);
