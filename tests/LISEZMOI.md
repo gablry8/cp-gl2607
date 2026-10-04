@@ -145,3 +145,10 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   remise non inscriptible à la création du lien (déclencheur cp_sig_insert de la production, complété).
 - 01_base_actuelle.sql comparé à supabase/schema.sql (copie de lecture venue de main) et complété.
 - tools/apercu/ : construction (`build.sh`) et test (`test-apercu.mjs`) de l'aperçu isolé.
+
+## Ajouts 04/10/2026
+- suiteM-adresse-copie.mjs (23 contrôles) :
+  - point de départ des trajets absent du code : adresse de l'entreprise géocodée une fois, recalcul après un déménagement, point saisi à la main jamais écrasé, message si rien n'est réglé ;
+  - presse-papiers : « Copié » seulement après une vraie copie, et aucune erreur non interceptée en cas de refus ;
+  - registre : affichage par 200, recherche et filtres sur tous les documents, compteurs, vitesse (médiane de 5 mesures).
+- lib.mjs pose un point de départ **fictif** dans chaque page de test (`depart:false` pour s'en passer).

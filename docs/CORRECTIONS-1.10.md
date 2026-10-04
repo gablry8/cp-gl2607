@@ -544,11 +544,26 @@ Ce tableau est tiré de la lecture du code ; il est à confirmer au point 1.
 Résultats exacts : `tests/run-all.sh` écrit un rapport (`rapport.md`) avec le commit testé. Le rapport de la
 copie propre du commit livré est remis **à part** : un commit ne peut pas contenir son propre identifiant.
 
-#### Points relevés hors du périmètre (non corrigés)
-1. **Presse-papiers** : `navigator.clipboard.writeText` est appelé sans traiter son refus (`next-assistant.js`, `next-signature.js`, `index.html`). L'erreur n'est pas interceptée et « Copié » s'affiche même si la copie a échoué. C'est visible avec un navigateur qui refuse le presse-papiers.
-2. **Données personnelles dans le dépôt public**, déjà présentes sur `main` : l'adresse de départ des calculs de distance (`HOME_DEF`, `next-adresse.js`) et les identifiants Notion (`index.html`). À décider par Gabriel ; l'aperçu publié les neutralise.
+#### Points relevés le 03/10 et corrigés le 04/10
+1. **Presse-papiers** : une seule fonction `cpCopier()` (`index.html`) remplace les 4 appels. « Copié » ne s'affiche que si la copie a réellement eu lieu ; sinon « Copie impossible ». Un refus ne provoque plus d'erreur non interceptée. Testé par la suite M.
+2. **Adresse de départ des calculs de distance** : elle n'est plus écrite dans le code public. Elle vit dans les données de Gabriel, synchronisées entre ses appareils par Supabase (`cpnext_home`). Elle est choisie ainsi :
+   - point saisi à la main dans Paramètres › Point de départ des trajets : gardé tel quel ;
+   - sinon, l'adresse de l'entreprise (Paramètres › Entreprise), géocodée **une fois**. Le point garde l'adresse qui a servi au calcul et il est **recalculé si l'adresse de l'entreprise change** (déménagement) ;
+   - sinon, pas de calcul, avec le message « point de départ des trajets non réglé ».
 
-### Reprise par Codex
+   Pour Gabriel, rien à faire si l'adresse de l'entreprise est remplie. Elle reste dans l'**historique** Git public : seul un dépôt privé ou une réécriture de l'historique de `main` l'en retirerait, et c'est sa décision.
+   Les identifiants Notion de `index.html` sont **gardés** : ils servent aux tarifs dans Cowork et ne sont pas des secrets. Les ville et code postal réels sont retirés des données de test.
+3. **Registre des documents** : la recherche (n°, client, type, statut, date), les filtres (année, dont « Toutes les années », et type), le tri, les indicateurs, les contrôles de série et l'export portent sur **tous** les documents. Seul l'affichage est limité : 200 lignes, puis « Afficher plus ».
+   Ouverture avec 1 500 devis : 240 à 440 ms (5 mesures), contre 374 à 835 ms avant. Le seuil de la suite B est inchangé.
+
+#### Bloquant avant le passage en facturation réelle (non corrigé, décision de Gabriel)
+`importerAnciens()` (`next-emission.js`) est appelée par `rapprocher()` au démarrage dès qu'il y a un **SIRET**, le cloud et un serveur migré. Elle importe **automatiquement** toutes les anciennes factures F- et AV- comme « reconstituées », dans le registre du serveur, où **rien ne se supprime**.
+
+Or ce sont des factures **d'essai**, faites avant que l'entreprise existe.
+
+À faire avant la migration en production : une décision explicite, du type « démarrer la facturation réelle à partir du … », avec le choix, facture par facture, de celles à importer et de celles à classer en essais. Le passage ne doit pas être automatique parce qu'un SIRET a été saisi.
+
+### Reprise par Codex ou Cowork (voir aussi `docs/REPRISE.md`)
 1. `git clone --branch claude/quirky-pasteur-ds9m47 https://github.com/gablry8/cp-gl2607`.
 2. Installer les outils (`tests/LISEZMOI.md`, « Installation »), démarrer le banc PostgreSQL avec le marqueur, puis : `PGHOST=… PGPORT=… EN16931_XSLT=… BRFR_DIR=… tests/run-all.sh`.
 3. Lire `rapport.md` : verdict, échecs, SKIP, non exécutés, isolation.

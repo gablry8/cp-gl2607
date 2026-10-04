@@ -54,7 +54,7 @@ etape() { # etape <nom> <commande…> : journal dans journaux/<nom>.log, code de
 }
 
 etape autotest-isolation node "$ICI/isolation/autotest.mjs"
-for s in ${CP_SUITES:-suiteA suiteB suiteC suiteD-memoire suiteE-avoirs suiteF-einvoice suiteG-virgule suiteH-superpdp suiteI-emission suiteJ-particuliers suiteK-fiscal suiteL-documents}; do
+for s in ${CP_SUITES:-suiteA suiteB suiteC suiteD-memoire suiteE-avoirs suiteF-einvoice suiteG-virgule suiteH-superpdp suiteI-emission suiteJ-particuliers suiteK-fiscal suiteL-documents suiteM-adresse-copie}; do
   etape "$s" timeout 1200 node "$ICI/$s.mjs"
 done
 etape fn-signature node "$ICI/functions/test-signature.mjs"
