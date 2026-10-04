@@ -150,6 +150,7 @@
       for(let i=1;i<=max;i++){if(!set.has(i))gaps.push(key+'-'+String(i).padStart(3,'0'));}});
     return {gaps,dups};
   }
+  const NX_DOCS_PAGE=200;
   function nxRenderDocs(){
     const box=document.getElementById('nxDocs');if(!box)return;
     const docs=nxAllDocs();
@@ -157,12 +158,18 @@
     const y=(document.getElementById('nxDocsYear')||{}).value||years[0]||String(new Date().getFullYear());
     const ty=(document.getElementById('nxDocsType')||{}).value||'';
     const tri=(document.getElementById('nxDocsTri')||{}).value||'num';
-    let rows=docs.filter(d=>(!y||(d.date||'').slice(0,4)===y)&&(!ty||d.type===ty));
+    /* recherche, filtres et tri portent sur TOUS les documents ; seul l'affichage est limité (NX_DOCS_PAGE lignes, puis « Afficher plus ») */
+    const q=nxDocsNorm(window._nxDocsQ||''), mots=q?q.split(' '):[];
+    const trouve=d=>!mots.length||mots.every(m=>nxDocsNorm([d.num,d.stype||d.type,d.client,d.statut,d.date?nxDate(d.date):''].join(' ')).indexOf(m)>=0);
+    const anneeOk=d=>y==='*'||(d.date||'').slice(0,4)===y;
+    let rows=docs.filter(d=>anneeOk(d)&&(!ty||d.type===ty)&&trouve(d));
+    const ailleurs=mots.length&&y!=='*'?docs.filter(d=>!anneeOk(d)&&(!ty||d.type===ty)&&trouve(d)).length:0;
+    const max=Math.max(NX_DOCS_PAGE,window._nxDocsMax||NX_DOCS_PAGE), vus=rows.slice(0,max);
     rows.sort((a,b)=>tri==='date'?((b.date||'')<(a.date||'')?-1:1):tri==='montant'?((b.montant||0)-(a.montant||0)):String(a.num).localeCompare(String(b.num),undefined,{numeric:true}));
     const chk=nxSerieCheck(docs.filter(d=>d.type==='Facture').map(d=>d.num));
     const chkL=nxSerieCheck(docs.filter(d=>d.type==='Contrat location').map(d=>d.num));
     const chkA=nxSerieCheck(docs.filter(d=>d.type==='Avoir').map(d=>d.num));
-    const nFac=docs.filter(d=>d.type==='Facture'&&(d.date||'').slice(0,4)===y);
+    const nFac=docs.filter(d=>d.type==='Facture'&&anneeOk(d));
     const att=nFac.filter(d=>d.statut.indexOf('encaisser')>=0);
     box.innerHTML=
      '<div class="next-hero"><h2>📁 Registre des documents</h2><p>Chaque numéro à sa place : devis DV-, factures F- (série continue commune : chantiers, interventions, locations, entretien), contrats L-, fiches fluides FF-. Le registre contrôle la continuité tout seul.</p></div>'
@@ -176,14 +183,24 @@
      +'<div class="kpi good"><div class="lab">Factures '+(y||'—')+'<span>🧾</span></div><div class="val">'+nFac.length+'</div></div>'
      +'<div class="kpi warn"><div class="lab">À encaisser<span>⌛</span></div><div class="val">'+att.length+' ('+eur0(att.reduce((s,d)=>s+(d.montant||0),0))+')</div></div></div>'
      +'<div class="card"><div class="row-actions" style="margin-bottom:10px">'
-     +'<select id="nxDocsYear" style="max-width:110px" onchange="nxRenderDocs()">'+years.map(x=>'<option'+(x===y?' selected':'')+'>'+x+'</option>').join('')+'</select>'
-     +'<select id="nxDocsType" style="max-width:170px" onchange="nxRenderDocs()"><option value=""'+(ty===''?' selected':'')+'>Tous les types</option>'+['Devis','Facture','Avoir','Contrat location','Fiche fluides'].map(t=>'<option'+(t===ty?' selected':'')+'>'+t+'</option>').join('')+'</select>'
-     +'<select id="nxDocsTri" style="max-width:150px" onchange="nxRenderDocs()"><option value="num"'+(tri==='num'?' selected':'')+'>Tri : n° croissant</option><option value="date"'+(tri==='date'?' selected':'')+'>Tri : plus récents</option><option value="montant"'+(tri==='montant'?' selected':'')+'>Tri : montant ↓</option></select>'
+     +'<input id="nxDocsQ" type="search" placeholder="🔎 N°, client, statut…" style="max-width:220px" value="'+nxEsc(window._nxDocsQ||'')+'" oninput="nxDocsRecherche(this.value)">'
+     +'<select id="nxDocsYear" style="max-width:150px" onchange="window._nxDocsMax=0;nxRenderDocs()"><option value="*"'+(y==='*'?' selected':'')+'>Toutes les années</option>'+years.map(x=>'<option'+(x===y?' selected':'')+'>'+x+'</option>').join('')+'</select>'
+     +'<select id="nxDocsType" style="max-width:170px" onchange="window._nxDocsMax=0;nxRenderDocs()"><option value=""'+(ty===''?' selected':'')+'>Tous les types</option>'+['Devis','Facture','Avoir','Contrat location','Fiche fluides'].map(t=>'<option'+(t===ty?' selected':'')+'>'+t+'</option>').join('')+'</select>'
+     +'<select id="nxDocsTri" style="max-width:150px" onchange="window._nxDocsMax=0;nxRenderDocs()"><option value="num"'+(tri==='num'?' selected':'')+'>Tri : n° croissant</option><option value="date"'+(tri==='date'?' selected':'')+'>Tri : plus récents</option><option value="montant"'+(tri==='montant'?' selected':'')+'>Tri : montant ↓</option></select>'
      +'<button class="btn-ghost btn-sm" onclick="nxExportDocsCSV()">📊 Export CSV du registre</button></div>'
+     +'<div class="sub" id="nxDocsCompte" style="margin-bottom:6px">'+rows.length+' document(s)'+(rows.length>vus.length?' — '+vus.length+' affichés':'')+(ailleurs?' · '+ailleurs+' autre(s) résultat(s) dans d\'autres années : choisis « Toutes les années »':'')+'</div>'
      +(rows.length?'<div class="scroll"><table><thead><tr><th class="l">N°</th><th class="l">Type</th><th class="l">Date</th><th class="l">Client</th><th>Montant HT</th><th class="l">Statut</th></tr></thead><tbody>'
-       +rows.map(d=>'<tr style="cursor:pointer" onclick="'+d.open+'"><td class="l"><b>'+nxEsc(d.num||'—')+'</b></td><td class="l">'+nxEsc(d.stype||d.type)+'</td><td class="l">'+(d.date?nxDate(d.date):'—')+'</td><td class="l">'+nxEsc(d.client)+'</td><td>'+(d.montant!=null?eur(d.montant):'—')+'</td><td class="l">'+nxEsc(d.statut)+'</td></tr>').join('')
-       +'</tbody></table></div><div class="sub" style="margin-top:8px">Clique une ligne pour ouvrir le document. Astuce classement PC : enregistre chaque PDF sous « N°_Client.pdf » (ex. F-2026-012_GarageMartin.pdf) dans le dossier GL_Entreprise correspondant.</div>'
+       +vus.map(d=>'<tr style="cursor:pointer" onclick="'+d.open+'"><td class="l"><b>'+nxEsc(d.num||'—')+'</b></td><td class="l">'+nxEsc(d.stype||d.type)+'</td><td class="l">'+(d.date?nxDate(d.date):'—')+'</td><td class="l">'+nxEsc(d.client)+'</td><td>'+(d.montant!=null?eur(d.montant):'—')+'</td><td class="l">'+nxEsc(d.statut)+'</td></tr>').join('')
+       +'</tbody></table></div>'
+       +(rows.length>vus.length?'<div class="row-actions" style="justify-content:center;margin:12px 0"><button class="btn-ghost" id="nxDocsPlus" onclick="window._nxDocsMax='+(vus.length+NX_DOCS_PAGE)+';nxRenderDocs()">Afficher plus ('+(rows.length-vus.length)+' autres)</button></div>':'')
+       +'<div class="sub" style="margin-top:8px">Clique une ligne pour ouvrir le document. Astuce classement PC : enregistre chaque PDF sous « N°_Client.pdf » (ex. F-2026-012_GarageMartin.pdf) dans le dossier GL_Entreprise correspondant.</div>'
        :'<div class="next-empty">Aucun document pour ce filtre.</div>')+'</div>';
+  }
+  function nxDocsNorm(s){ return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); }
+  /* recherche : relance l'affichage après une courte pause et garde le curseur dans le champ */
+  function nxDocsRecherche(v){
+    window._nxDocsQ=v; window._nxDocsMax=0; clearTimeout(window._nxDocsT);
+    window._nxDocsT=setTimeout(()=>{ window.nxRenderDocs(); const i=document.getElementById('nxDocsQ'); if(i){ i.focus(); const n=i.value.length; try{ i.setSelectionRange(n,n); }catch(e){} } },150);
   }
   function nxExportDocsCSV(){
     const docs=nxAllDocs();if(!docs.length){nxToast('Aucun document');return;}
@@ -196,7 +213,7 @@
     const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ClimPilot_registre_documents_'+nxToday()+'.csv';a.click();
     nxToast('📁 Registre exporté — archive-le avec ta compta','ok');
   }
-  Object.assign(window,{nxRenderDocs,nxExportDocsCSV});
+  Object.assign(window,{nxRenderDocs,nxExportDocsCSV,nxDocsRecherche});
 
   const nxRenderers={
     nx_cockpit:nxRenderCockpit,nx_tasks:nxRenderTasks,nx_templates:nxRenderTemplates,
