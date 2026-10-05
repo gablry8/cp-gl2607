@@ -346,5 +346,13 @@ begin
   return new;
 end $$;
 
+-- fonctions de déclencheur : jamais appelables directement par l'API (alerte du conseiller Supabase
+-- relevée sur le projet de test le 05/10/2026 ; déjà le cas en production, rappelé ici par sécurité)
+revoke all on function public.cp_sig_guard() from public, anon, authenticated;
+revoke all on function public.cp_sig_insert() from public, anon, authenticated;
+revoke all on function public.cp_docs_guard() from public, anon, authenticated;
+revoke all on function public.cp_events_guard() from public, anon, authenticated;
+revoke all on function public.cp_seq_guard() from public, anon, authenticated;
+
 -- ---------- 7. durcissement : TRUNCATE ne passe pas par RLS ----------
 revoke truncate on all tables in schema public from anon, authenticated;

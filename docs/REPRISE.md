@@ -48,9 +48,10 @@ Sans droit `unshare -n` (isolation réseau du noyau), lancer avec `CP_SANS_NETNS
 ## Ce qui reste à faire, dans l'ordre
 
 1. ~~Décision « début de la facturation réelle »~~ : **fait le 05/10** (relecture R1). Le mode réel ne démarre que par l'action explicite et datée de Paramètres › Facturation réelle. Les anciennes factures sont des essais par défaut (ESSAI-…). Voir `docs/CORRECTIONS-1.10.md`, « Relecture indépendante du 05/10/2026 ». En production, l'envoi à la plateforme part du registre (R2).
-2. **Projet Supabase de test**, distinct du réel :
-   - appliquer `supabase/migrations/20261002120000_documents_emis.sql` ;
-   - déployer les fonctions `signature`, `assistant` et `superpdp` préparées, avec `ALLOWED_USER_IDS` ;
+2. **Projet Supabase de test**, distinct du réel — **en partie fait le 05/10** (`docs/ESSAIS-SUPABASE-TEST.md`, 52/52) :
+   - ~~appliquer la migration~~ : fait sur « ClimPilot-TEST » (PostgreSQL 17), 36 essais réussis ; migration durcie (droits des fonctions de déclencheur) ;
+   - ~~fonction `signature`~~ : déployée sur le projet de test, 14 essais de bout en bout réussis ;
+   - reste : `assistant` et `superpdp` (Gabriel doit poser `ALLOWED_USER_IDS` dans le tableau de bord), et l'appli elle-même pointée sur le projet de test ;
    - dérouler l'**ordre de déploiement envisagé** (`docs/CORRECTIONS-1.10.md`, « Ordre de déploiement envisagé ») : synchronisation entre versions, facturation, signature, mise à jour des appareils.
 3. **SUPER PDP en bac à sable** : jusqu'ici, la plateforme est seulement simulée.
 4. **Appareils réels** (iPhone, appli installée sur l'écran d'accueil) : mise à jour du service worker et impression des PDF.
