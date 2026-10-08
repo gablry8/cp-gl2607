@@ -173,13 +173,22 @@
   function vendeur(){ var e={}; try{ e=cl(P.entreprise||{}); }catch(_){} Object.keys(e).forEach(function(k){ if(typeof e[k]==='string'&&e[k].length>20000) delete e[k]; }); return e; }
 
   /* ---------- les quatre sortes de factures ---------- */
+  /* objets « devis ouvert à l'écran » (éditeur 1.9 et ancien formulaire) pour un devis donné */
+  function ecrans(id){ var l=[];
+    try{ var cu=window.NXD2&&NXD2.api.cur&&NXD2.api.cur(); if(cu&&cu.id===id) l.push(cu); }catch(e){}
+    try{ if(typeof cur!=='undefined'&&cur&&cur.id===id&&l.indexOf(cur)<0) l.push(cur); }catch(e){}
+    return l.filter(function(o){ return !(DEVIS||[]).some(function(x){ return x===o; }); }); }
   var SORTES={
     devis:{ fn:'facturerDevis',
       essai:function(args,prov){ var id=args[0], which=args[1]; var i=(DEVIS||[]).findIndex(function(x){ return x.id===id; }); if(i<0) return null;
         var real=DEVIS[i], f=which==='acompte'?'facAcompte':'facSolde'; if(real[f]) return {deja:true};
         var c=cl(real); DEVIS[i]=c; var m=null;
+        /* le devis ouvert à l'écran (cur) est recopié depuis DEVIS par la couche next-devis2 pendant l'essai :
+           on le remet tel qu'il était, sinon le numéro PROVISOIRE resterait affiché (et serait enregistré) si l'émission échoue */
+        var ecr=ecrans(id), avant=ecr.map(function(o){ var s={}; ['facAcompte','facSolde','figEnv','statut'].forEach(function(k){ s[k]=Object.prototype.hasOwnProperty.call(o,k)?cl(o[k]):undefined; }); return s; });
         try{ ORIG.facturerDevis(id,which); if(c[f]&&c[f].num===prov){ try{ m=window.nxEinvModelLive(prov); }catch(e){} } }
-        finally{ DEVIS[i]=real; }
+        finally{ DEVIS[i]=real;
+          ecr.forEach(function(o,j){ Object.keys(avant[j]).forEach(function(k){ if(avant[j][k]===undefined) delete o[k]; else o[k]=avant[j][k]; }); }); }
         if(!c[f]||c[f].num!==prov) return null;
         return {real:real,res:c,fac:c[f],model:m,src:{k:'devis',id:id,w:which},type:which==='acompte'?'acompte':'facture',date:c[f].date};
       },
@@ -239,6 +248,8 @@
     /* contrôles propres aux particuliers (next-particuliers.js) : arrêt, date d'exigibilité, trace */
     var av={}; try{ if(typeof window.nxAvantEmission==='function') av=window.nxAvantEmission(sorte,args)||{}; }catch(e){ av={}; }
     if(av.stop){ relire(sorte); return Promise.resolve(null); }
+    /* devis ouvert et modifié à l'écran : enregistré AVANT l'essai à blanc (sinon l'enregistrement se ferait pendant l'essai, sur la copie) */
+    if(sorte==='devis'&&typeof window.nxDevisAvantFacture==='function'&&!window.nxDevisAvantFacture(args[0])) return Promise.resolve(null);
     var essai=aBlanc(function(prov){ return S.essai(args,prov); });
     var d=essai.out;
     if(!d||d.deja){ /* refus de la fonction d'origine (déjà facturé, rien à facturer…) : on la rejoue telle quelle pour ses messages */

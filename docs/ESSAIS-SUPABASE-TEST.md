@@ -59,9 +59,23 @@ Le conseiller de sécurité de Supabase signalait, sur le projet de test, des fo
 - Tests SQL locaux après ce changement : **28/28**.
 - Script 1 rejoué en local : **36/36**.
 
+## Essais de l'appli sur les appareils de Gabriel (06 au 08/10/2026)
+Copie d'essai de la 1.10 (bandeau rouge « VERSION D'ESSAI », hébergée à part) branchée sur le projet de test, faux SIRET.
+- Connexion et synchronisation avec le serveur migré : OK.
+- Mode démonstration : facture TEST-F-2026-001 : OK.
+- Passage en facturation réelle par décision explicite : OK. La facture est bloquée tant que la nature S/M n'est pas choisie (garde-fou voulu).
+- Facture réelle : **F-2026-001** numérotée par le serveur, fichiers déposés : OK (vérifié dans `climpilot_documents` et `climpilot_seq`).
+- Double clic : une seule **F-2026-002**, compteur à 2 : OK.
+- Envoi d'un devis à un particulier sans médiateur renseigné : bloqué (garde-fou voulu).
+- **Coupure réseau pendant la facturation d'un devis OUVERT à l'écran : bug trouvé.** Le serveur restait propre (aucun numéro consommé), mais le numéro interne `PROVISOIRE-…` de l'essai à blanc restait affiché sur le devis. Un clic sur « Enregistrer » l'aurait enregistré comme une vraie facture, ce qui aurait bloqué la facturation ensuite.
+  - Cause : la couche `next-devis2.js` recopie la facture dans le devis ouvert pendant l'essai à blanc.
+  - Corrigé : l'essai remet le devis ouvert dans son état d'avant. Un devis modifié à l'écran est enregistré avant l'essai à blanc, pas pendant (sinon la facture n'était pas émise).
+  - Test ajouté (suite I, I3b), qui échouait avant la correction (4 échecs). Batterie complète après la correction : tout réussi.
+- Message « Serveur injoignable » trompeur quand on envoie un document TEST- vers la plateforme alors que la fonction `superpdp` n'est pas installée : à améliorer.
+
 ## Pas encore essayé
 - **Fonctions `superpdp` et `assistant`** sur le projet de test. Il faut que Gabriel pose la configuration `ALLOWED_USER_IDS` et `ANTHROPIC_API_KEY` dans le tableau de bord, car la session ne peut pas le faire. En attendant, leur comportement est couvert par les tests locaux (`fn-liste-blanche`, `fn-superpdp-envoi`).
-- **L'appli elle-même** (navigateur, PostgREST, onglets, iPhone) contre le projet de test. Il faudrait une copie de l'appli pointant vers le projet de test, ouverte sur les appareils de Gabriel.
+- Avec la copie d'essai : retour du réseau (F-2026-003), synchronisation entre deux appareils, signature d'un devis, iPhone (écran d'accueil, mise à jour, impression).
 - **SUPER PDP** en bac à sable avec la 1.10.
 
 ## Nettoyage

@@ -61,6 +61,36 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   await ctx.close();
 }
 
+/* I3b devis OUVERT à l'écran, serveur injoignable : rien de PROVISOIRE ne reste sur l'écran ni n'est enregistré ;
+   puis devis modifié à l'écran et facturé : modification gardée ET facture émise (essai du 08/10 sur la copie d'essai) */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  p.removeAllListeners('dialog'); const dlg=[]; p.on('dialog',d=>{ dlg.push(d.message()); d.accept().catch(()=>{}); });
+  await seed(p); await p.evaluate(SERVEUR); await p.evaluate(REEL);
+  const r=await p.evaluate(async c=>{ const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0); const d=acc[0];
+    NXD2.open(JSON.parse(JSON.stringify(d)),{tab:'recap'}); await new Promise(r=>setTimeout(r,80));
+    __srv.fail.horsService=true; await facturerDevis(d.id,'solde'); eval(c);
+    const cu=NXD2.api.cur(); const ecran=cu&&cu.facSolde?cu.facSolde.num:null;
+    const bloc=(document.body.textContent||'').includes('PROVISOIRE');
+    nxd2.save(); const stocke=(DEVIS.find(x=>x.id===d.id)||{}).facSolde||null;
+    const ls=(localStorage.getItem('cp2_devis')||'').includes('PROVISOIRE');
+    __srv.fail.horsService=false; await facturerDevis(d.id,'solde'); eval(c);
+    const apres=(DEVIS.find(x=>x.id===d.id)||{}).facSolde, cu2=NXD2.api.cur();
+    /* devis modifié à l'écran puis facturé directement */
+    const d2=acc[1]; NXD2.open(JSON.parse(JSON.stringify(d2)),{tab:'recap'}); await new Promise(r=>setTimeout(r,80));
+    const cu3=NXD2.api.cur(); cu3.cNom=(cu3.cNom||'')+' MODIF'; NXD2.api.markDirty();
+    await facturerDevis(d2.id,'solde'); eval(c);
+    const s2=DEVIS.find(x=>x.id===d2.id)||{};
+    return {ecran,bloc,stocke:stocke&&stocke.num,ls,apres:apres&&apres.num,ecranApres:cu2&&cu2.facSolde&&cu2.facSolde.num,docs:__srv.docs.map(x=>x.num),
+      modif:/ MODIF$/.test(s2.cNom||''),fac2:s2.facSolde&&s2.facSolde.num}; },close);
+  rec('Émission','Devis ouvert + serveur injoignable : aucun numéro PROVISOIRE à l\'écran',!r.ecran&&!r.bloc,JSON.stringify(r));
+  rec('Émission','Devis ouvert + serveur injoignable : « Enregistrer » n\'enregistre aucune fausse facture',!r.stocke&&!r.ls,JSON.stringify(r));
+  rec('Émission','Réseau revenu : la facture est émise normalement (F-AAAA-001), écran à jour',/^F-\d{4}-001$/.test(r.apres||'')&&r.ecranApres===r.apres&&r.docs[0]===r.apres,JSON.stringify(r));
+  rec('Émission','Devis modifié à l\'écran puis facturé : modification enregistrée ET facture émise',r.modif&&/^F-\d{4}-002$/.test(r.fac2||''),JSON.stringify(r));
+  rec('Émission','Aucune erreur JavaScript (devis ouvert)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
 /* I4 réponse perdue puis nouvelle tentative : même facture ; double clic : une seule */
 {
   const {p,ctx}=await page({mobile:false});

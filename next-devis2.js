@@ -264,19 +264,26 @@
     }catch(err){}
   }
   /* correctif ancien formulaire : facturer depuis le récap puis enregistrer ne perd plus la facture */
+  /* enregistre le devis ouvert à l'écran avant de le facturer (false = enregistrement refusé : ne pas facturer).
+     Exposé pour next-emission.js, qui l'appelle AVANT son essai à blanc : l'essai travaille alors sur le devis enregistré. */
+  function avantFacture(id){
+    try{
+      if(cur&&cur.id===id){
+        var saved=(DEVIS||[]).some(function(x){ return x.id===cur.id; });
+        if(cur.v===2){ if((dirty||!saved)&&!saveV2(true)) return false; }
+        else if(window._curView==='wizard'){ /* ancien formulaire : on enregistre l'écran tel quel, sans quitter */
+          formToDevis(); protect(cur); var i=DEVIS.findIndex(function(x){ return x.id===cur.id; }); var cp=clone(cur);
+          if(i>=0) DEVIS[i]=cp; else DEVIS.push(cp); persist(LS.devis,DEVIS);
+        }
+      }
+    }catch(e){}
+    return true;
+  }
+  window.nxDevisAvantFacture=avantFacture;
   ['facturerDevis','payerFacture'].forEach(function(fn){
     var o=window[fn]; if(typeof o!=='function') return;
     window[fn]=function(){
-      try{
-        if(fn==='facturerDevis'&&cur&&cur.id===arguments[0]){
-          var saved=(DEVIS||[]).some(function(x){ return x.id===cur.id; });
-          if(cur.v===2){ if((dirty||!saved)&&!saveV2(true)) return; }
-          else if(window._curView==='wizard'){ /* ancien formulaire : on enregistre l'écran tel quel, sans quitter */
-            formToDevis(); protect(cur); var i=DEVIS.findIndex(function(x){ return x.id===cur.id; }); var cp=clone(cur);
-            if(i>=0) DEVIS[i]=cp; else DEVIS.push(cp); persist(LS.devis,DEVIS);
-          }
-        }
-      }catch(e){}
+      if(fn==='facturerDevis'&&!avantFacture(arguments[0])) return;
       var r=o.apply(this,arguments); try{ syncCurFromStore(); if(typeof renderFBloc==='function') renderFBloc(); if(window._curView===VIEW) refreshLive(); }catch(e){} return r; };
   });
 
