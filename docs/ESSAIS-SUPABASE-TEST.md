@@ -71,11 +71,15 @@ Copie d'essai de la 1.10 (bandeau rouge « VERSION D'ESSAI », hébergée à par
   - Cause : la couche `next-devis2.js` recopie la facture dans le devis ouvert pendant l'essai à blanc.
   - Corrigé : l'essai remet le devis ouvert dans son état d'avant. Un devis modifié à l'écran est enregistré avant l'essai à blanc, pas pendant (sinon la facture n'était pas émise).
   - Test ajouté (suite I, I3b), qui échouait avant la correction (4 échecs). Batterie complète après la correction : tout réussi.
+- Après la correction : coupure réseau puis retour du réseau, F-2026-003 à 005 émises, suite continue, aucune trace de PROVISOIRE dans l'état synchronisé : OK.
+- Synchronisation entre deux appareils (PC et téléphone) : un devis créé sur un appareil, puis facturé (F-2026-006), est retrouvé sur le serveur : OK.
+- Signature en ligne d'un devis depuis le téléphone : statut « signé », horodatage et empreinte enregistrés, devis passé « accepté », note « signé » dans ClimPilot : OK. Le client d'essai n'a pas coché l'accord « support durable » et n'a pas téléchargé son exemplaire : en réel, il faut alors lui remettre un exemplaire papier (bouton « Exemplaire papier remis »).
+- À regarder : une facture (F-2026-002) a pu être émise sur un devis encore au statut « brouillon ».
 - Message « Serveur injoignable » trompeur quand on envoie un document TEST- vers la plateforme alors que la fonction `superpdp` n'est pas installée : à améliorer.
 
 ## Pas encore essayé
 - **Fonctions `superpdp` et `assistant`** sur le projet de test. Il faut que Gabriel pose la configuration `ALLOWED_USER_IDS` et `ANTHROPIC_API_KEY` dans le tableau de bord, car la session ne peut pas le faire. En attendant, leur comportement est couvert par les tests locaux (`fn-liste-blanche`, `fn-superpdp-envoi`).
-- Avec la copie d'essai : retour du réseau (F-2026-003), synchronisation entre deux appareils, signature d'un devis, iPhone (écran d'accueil, mise à jour, impression).
+- Avec la copie d'essai : iPhone (écran d'accueil, mise à jour, impression des PDF).
 - **SUPER PDP** en bac à sable avec la 1.10.
 
 ## Nettoyage
