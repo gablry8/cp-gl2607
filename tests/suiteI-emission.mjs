@@ -170,7 +170,7 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   await p.evaluate(SERVEUR);
   const r=await p.evaluate(async()=>{ const a=await cpStatePushRpc({x:1},null,false); const v=__srv.dernierPush&&__srv.dernierPush.p_client_version;
     __srv.fail.ancienServeur=true; __srv.dernierPush=null; const b=await cpStatePushRpc({x:2},null,false); return {a:a.data&&a.data.ok,v,b:b.data&&b.data.ok,sansVersion:__srv.dernierPush&&!('p_client_version' in __srv.dernierPush)}; });
-  rec('Synchro','Envoi de la version (1.10) ; serveur pas encore migré : repli sur l\'ancien appel',r.a&&r.v==='1.10.0-beta'&&r.b&&r.sansVersion,JSON.stringify(r));
+  rec('Synchro','Envoi de la version (1.10) ; serveur pas encore migré : repli sur l\'ancien appel',r.a&&r.v==='1.10.0'&&r.b&&r.sansVersion,JSON.stringify(r));
   await ctx.close();
 }
 

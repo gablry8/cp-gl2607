@@ -36,7 +36,7 @@
    ============================================================ */
 (function(){
   'use strict';
-  var VERSION='1.10.0-beta'; window.CP_VERSION=VERSION;
+  var VERSION='1.10.0'; window.CP_VERSION=VERSION;
   var REG='cp2_docs', FIL='cpnext_docs_fichiers', ATT='cpnext_emission_attente', EVQ='cpnext_events_attente', TSEQ='cp2_testseq', FR='cp2_facturation';
   try{ [REG,TSEQ,FR].forEach(function(k){ if(Array.isArray(window.SYNC_KEYS)&&SYNC_KEYS.indexOf(k)<0) SYNC_KEYS.push(k); }); }catch(e){}
 
