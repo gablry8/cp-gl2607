@@ -45,6 +45,17 @@ tests/run-all.sh          # puis lire $CP_TEST_OUT/rapport.md
 ```
 Sans droit `unshare -n` (isolation réseau du noyau), lancer avec `CP_SANS_NETNS=1` : le rapport l'indiquera.
 
+## EN PRODUCTION depuis le 08/10/2026 (accord explicite de Gabriel)
+- Sauvegarde serveur avant mise en production : `climpilot_backups` id 13, raison `avant-mise-en-production-1.10` (20 devis, 15 clients).
+- Appli **1.10.0** publiée : PR #1 fusionnée par Gabriel (`main` = `1c91cca`), vérifiée en ligne.
+- Migration `20261002120000_documents_emis.sql` appliquée sur le projet réel. Gabriel l'a collée dans le SQL Editor, car `apply_migration` est annulé depuis la session. Vérifié : tables, 6 fonctions, colonnes de signature, écriture directe de l'état retirée, 0 document.
+- Fonction `signature` v4 (1.10) déployée, `verify_jwt` = false.
+- **Pas encore mises à jour** : `assistant` (v4) et `superpdp` (v1). Il faut d'abord que Gabriel pose `ALLOWED_USER_IDS` (et `ANTHROPIC_API_KEY` pour assistant) dans Edge Functions › Secrets.
+- Facturation réelle **non démarrée** : mode démonstration, numéros TEST.
+- Conseiller de sécurité Supabase :
+  - fonctions SECURITY DEFINER appelables par `authenticated` : voulu, elles vérifient `auth.uid()` ;
+  - « protection des mots de passe divulgués » désactivée : à voir par Gabriel.
+
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
 Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).
