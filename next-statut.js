@@ -66,11 +66,11 @@
     try{
       var c = compute(d);
       var E = (typeof P!=='undefined' && P.entreprise) || {};
-      var validite = (typeof P!=='undefined' && P.validiteJours) || 30;
+      var validite = (typeof devisValidite==='function') ? devisValidite(E) : (((typeof P!=='undefined' && P.validiteJours) || 30)+' jours'); /* 1.10 : validité unique */
       var body = 'Bonjour' + (d.cNom ? ' '+d.cNom : '') + ',\n\n' +
         'Suite à notre échange, voici notre devis ' + d.num + ' (' + d.type + ') pour un montant de ' +
         eur(c.totalHT) + ' HT — TVA non applicable, art. 293 B du CGI.\n\n' +
-        'Il est valable ' + validite + ' jours. Je reste disponible pour toute question ou ajustement.\n\n' +
+        'Il est valable ' + validite + '. Je reste disponible pour toute question ou ajustement.\n\n' +
         'Cordialement,\n' + (E.nom||'') + (E.tel ? '\n'+E.tel : '') +
         '\n\n(Pense à joindre le PDF généré par « Aperçu / PDF »)';
       if(typeof buildMail==='function')

@@ -1,4 +1,5 @@
 import {page,closeBrowser} from './lib.mjs';
+import { ecrireResultats } from './env.mjs';
 const {p,errs}=await page({mobile:true});
 const R=[]; const ok=(n,c,x)=>R.push((c?'PASS ':'FAIL ')+n+(x?' — '+x:''));
 // devis dépannage: recharge kg
@@ -32,5 +33,7 @@ ok('Saisie invalide signalée',/n'est pas un nombre/.test(bad),bad);
 // fiche fluide
 await p.evaluate(()=>{ go('fluides'); openFlu(); }); await p.waitForTimeout(300);
 await p.locator('#fl_charge').fill('0,9'); const fc=await p.evaluate(()=>document.getElementById('fl_charge').value); ok('Fiche fluide charge 0,9 → 0.9',fc==='0.9',fc);
+ok('Aucune erreur dans la page pendant la suite',!errs.length,errs.slice(0,4).join(' | '));
 console.log(R.join('\n')); console.log(errs.join('\n'));
 await closeBrowser();
+ecrireResultats('resG.json',R.map(l=>{ const m=/^(PASS|FAIL) (.*?)(?: — (.*))?$/s.exec(l); return {group:'Virgule',name:m[2],ok:m[1],detail:m[3]||''}; }));

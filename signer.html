@@ -69,14 +69,36 @@
     f.onload=function(){try{f.style.height=(f.contentDocument.documentElement.scrollHeight+20)+'px';}catch(e){}};}
   function proof(){return '<div class="card"><h2>✅ Signé électroniquement</h2><p>Par <b>'+esc(DOC.signer_nom)+'</b> le <b>'+esc(fmtDate(DOC.signed_at))+'</b>.</p>'+(DOC.signature_png?'<img class="sigimg" alt="Signature" src="'+esc(DOC.signature_png)+'">':'')+
     '<p class="small">Empreinte du document signé (SHA-256) :</p><p class="hash">'+esc(DOC.doc_hash)+'</p>'+
-    '<div class="row noprint"><button class="ghost" onclick="window.print()">🖨️ Imprimer / enregistrer une copie (PDF)</button></div></div>';}
+    '<div class="row noprint"><button class="pri" type="button" id="dl">⬇️ Télécharger mon exemplaire</button><button class="ghost" onclick="window.print()">🖨️ Imprimer / enregistrer une copie (PDF)</button></div>'+
+    '<div id="dlm" class="small">'+(DOC.copie_le?'Exemplaire déjà téléchargé le '+esc(fmtDate(DOC.copie_le))+'.':'Conservez ce fichier : c’est votre exemplaire du contrat signé.')+'</div></div>';}
+  /* exemplaire du client : fichier autonome (document + preuve de signature) ; le serveur enregistre la remise */
+  function fichier(d){
+    var h='<!doctype html><html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Exemplaire '+esc(d.doc_num||'')+'</title>'+
+      '<style>body{margin:16px;font-family:Arial,Helvetica,sans-serif;color:#16263a}img{max-width:100%}.p{margin-top:18px;border:1.5px solid #1e7a4c;border-radius:8px;padding:10px 12px;font-size:12px}</style></head><body>'+
+      (d.doc_html||'')+'<div class="p"><b>Exemplaire du client — signé électroniquement</b><br>Par <b>'+esc(d.signer_nom||'')+'</b> le '+esc(fmtDate(d.signed_at))+
+      (d.signature_png?'<br><img alt="Signature" style="max-height:110px" src="'+esc(d.signature_png)+'">':'')+
+      '<br>Empreinte du document (SHA-256) : '+esc(d.doc_hash||'')+(d.consentement?'<br>Consentement enregistré : '+esc(d.consentement):'')+
+      '<br>Annexes incluses dans ce fichier : '+(/data-retractation/.test(d.doc_html||'')?'information sur le droit de rétractation et formulaire de rétractation':'aucune')+'</div></body></html>';
+    var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([h],{type:'text/html;charset=utf-8'}));
+    a.download='Exemplaire-'+String(d.doc_num||'document').replace(/[^\w.-]+/g,'_')+'.html'; document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); },1000);
+  }
+  function brancherCopie(){
+    var b=document.getElementById('dl'); if(!b) return;
+    b.onclick=function(){ b.disabled=true;
+      api({action:'copie'}).then(function(r){ b.disabled=false; var m=document.getElementById('dlm');
+        if(r&&r.ok){ DOC.copie_le=r.copie_le; fichier(r); if(m) m.textContent='Exemplaire téléchargé — remise enregistrée le '+fmtDate(r.copie_le)+'.'; }
+        else { fichier(DOC); if(m) m.textContent='Exemplaire téléchargé (la remise n’a pas pu être enregistrée : prévenez votre installateur si besoin).'; }
+      });
+    };
+  }
 
   function render(){
     head();
     var st=DOC.statut;
     if(st==='annule'){main.innerHTML='<div class="card"><h2>Ce lien n’est plus actif</h2><p>Le document a été remplacé ou retiré. Votre installateur vous enverra un nouveau lien si nécessaire.</p></div>';return;}
     if(st==='expire'){main.innerHTML=docFrame()+'<div class="card"><h2>Lien expiré</h2><p>Ce lien de signature a expiré. Contactez votre installateur pour en recevoir un nouveau.</p></div>';fillFrame();return;}
-    if(st==='signe'){main.innerHTML=docFrame()+proof();fillFrame();return;}
+    if(st==='signe'){main.innerHTML=docFrame()+proof();fillFrame();brancherCopie();return;}
     if(st==='refuse'){main.innerHTML='<div class="card"><h2>Réponse enregistrée</h2><p>Vous avez indiqué ne pas donner suite. Merci pour votre retour.</p></div>';return;}
     main.innerHTML=docFrame()+
       '<div class="card noprint" id="signcard"><h2>Votre accord</h2>'+
@@ -85,10 +107,16 @@
       '<div class="pad"><canvas id="cv" aria-label="Zone de signature"></canvas><div class="hint" id="hint">Signez ici</div></div>'+
       '<div class="row" style="margin-top:8px"><button class="ghost" type="button" id="clr">Effacer</button></div>'+
       '<label class="check"><input type="checkbox" id="acc"> <span>J’ai lu '+label()+(DOC.doc_num?' n° '+esc(DOC.doc_num):'')+' et je l’accepte sans réserve — « Bon pour accord ».</span></label>'+
-      (/data-retractation/.test(DOC.doc_html||'')?'<label class="check"><input type="checkbox" id="anti"> <span><b>Facultatif</b> — je demande expressément que les travaux commencent avant la fin de mon délai de rétractation de 14 jours (voir les informations en fin de devis).</span></label>':'')+
+      (/data-retractation/.test(DOC.doc_html||'')?'<label class="check"><input type="checkbox" id="anti"> <span><b>Facultatif</b> — je demande expressément que les travaux commencent avant la fin de mon délai de rétractation de 14 jours, et je reconnais qu’une fois le contrat entièrement exécuté je n’aurai plus de droit de rétractation (voir les informations en fin de devis).</span></label>':'')+
+      '<label class="check"><input type="checkbox" id="sd"> <span><b>Facultatif</b> — j’accepte de recevoir mon exemplaire du contrat signé sur support durable : un fichier à télécharger juste après la signature (sinon, demandez un exemplaire papier).</span></label>'+
       '<div class="row"><button class="pri" id="go" disabled>Signer '+label()+'</button></div>'+
       '<div id="m"></div>'+
       '<p class="small" style="margin-top:14px">Signature électronique (articles 1366 et 1367 du Code civil). Sont enregistrés avec votre signature : la date et l’heure, le nom saisi, l’adresse IP, le navigateur utilisé et l’empreinte numérique du document, qui garantit qu’il n’a pas été modifié.</p>'+
+      '<details class="small" style="margin-top:8px"><summary>Données personnelles</summary><p>Responsable du traitement : l’entreprise qui vous a adressé ce document (ses coordonnées figurent sur le document). '+
+      'Données traitées : vos nom et prénom, votre signature, la date et l’heure, l’adresse IP et le navigateur, et, si vous le téléchargez, la date de téléchargement de votre exemplaire. '+
+      'Finalité : prouver votre accord sur le document et sa remise (exécution du contrat, intérêt légitime à conserver la preuve). '+
+      'Hébergement : Supabase, région Union européenne (Irlande). Durée : le temps de la relation commerciale puis la durée de prescription des actions liées au contrat. '+
+      'Vous pouvez accéder à vos données, les faire rectifier ou effacer, ou vous opposer à leur traitement, en écrivant à l’entreprise ; réclamation possible auprès de la CNIL (www.cnil.fr).</p></details>'+
       '<button class="link" type="button" id="no">Je ne souhaite pas donner suite</button><div id="refus"></div></div>';
     fillFrame();pad();
   }
@@ -109,9 +137,9 @@
     go.onclick=function(){
       go.disabled=true;go.textContent='Envoi…';
       var out=document.createElement('canvas');out.width=500;out.height=190;var o=out.getContext('2d');o.fillStyle='#fff';o.fillRect(0,0,500,190);o.drawImage(cv,0,0,500,190);
-      var anti=document.getElementById('anti');
-      api({action:'signer',nom:nom.value.trim(),accepte:acc.checked===true,anticipe:!!(anti&&anti.checked),signature:out.toDataURL('image/png')}).then(function(r){
-        if(r&&r.ok){DOC.statut='signe';DOC.signed_at=r.signed_at;DOC.signer_nom=nom.value.trim();DOC.signature_png=out.toDataURL('image/png');DOC.doc_hash=r.doc_hash||DOC.doc_hash;render();window.scrollTo(0,document.body.scrollHeight);}
+      var anti=document.getElementById('anti'),sd=document.getElementById('sd');
+      api({action:'signer',nom:nom.value.trim(),accepte:acc.checked===true,anticipe:!!(anti&&anti.checked),support_durable:!!(sd&&sd.checked),signature:out.toDataURL('image/png')}).then(function(r){
+        if(r&&r.ok){DOC.statut='signe';DOC.signed_at=r.signed_at;DOC.signer_nom=nom.value.trim();DOC.signature_png=out.toDataURL('image/png');DOC.doc_hash=r.doc_hash||DOC.doc_hash;DOC.consentement=r.consentement||'';render();window.scrollTo(0,document.body.scrollHeight);}
         else{document.getElementById('m').innerHTML='<div class="msg err">'+esc((r&&r.message)||'Erreur, réessayez.')+'</div>';go.textContent='Signer '+label();upd();}
       });
     };

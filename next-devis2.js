@@ -180,7 +180,7 @@
     var moAchat=heures*(Number(P.coutInterne)||0);
     var coutReel=matAchat+moAchat, benefice=totalHT-coutReel;
     var margePct=totalHT>0?benefice/totalHT*100:0, gainH=heures>0?benefice/heures:0;
-    var cotis=totalHT*(Number(P.cotisTaux)||0)/100, benefNet=benefice-cotis, gainHNet=heures>0?benefNet/heures:0;
+    var cotis=totalHT*(typeof cotisPct==='function'?cotisPct():(Number(P.cotisTaux)||0))/100, /* 1.10 : taux unique (next-taux.js) */ benefNet=benefice-cotis, gainHNet=heures>0?benefNet/heures:0;
     /* un contrat d'entretien se facture chaque année depuis l'onglet Contrats : il ne fait pas partie de ce qui se facture sur le devis */
     var ctrLots=lots.filter(function(x){ var l=(d.lots||[])[x.i]; return l&&l.module==='entretien'&&l.data&&!l.data.legacyCopy&&l.data.format==='contrat'; });
     var ctrTTC=sum(ctrLots,function(x){ return (x.ht||0)+(x.commonShare||0)+(x.tva||0); }), billTTC=Math.max(0,totalTTC-ctrTTC);
@@ -264,19 +264,26 @@
     }catch(err){}
   }
   /* correctif ancien formulaire : facturer depuis le récap puis enregistrer ne perd plus la facture */
+  /* enregistre le devis ouvert à l'écran avant de le facturer (false = enregistrement refusé : ne pas facturer).
+     Exposé pour next-emission.js, qui l'appelle AVANT son essai à blanc : l'essai travaille alors sur le devis enregistré. */
+  function avantFacture(id){
+    try{
+      if(cur&&cur.id===id){
+        var saved=(DEVIS||[]).some(function(x){ return x.id===cur.id; });
+        if(cur.v===2){ if((dirty||!saved)&&!saveV2(true)) return false; }
+        else if(window._curView==='wizard'){ /* ancien formulaire : on enregistre l'écran tel quel, sans quitter */
+          formToDevis(); protect(cur); var i=DEVIS.findIndex(function(x){ return x.id===cur.id; }); var cp=clone(cur);
+          if(i>=0) DEVIS[i]=cp; else DEVIS.push(cp); persist(LS.devis,DEVIS);
+        }
+      }
+    }catch(e){}
+    return true;
+  }
+  window.nxDevisAvantFacture=avantFacture;
   ['facturerDevis','payerFacture'].forEach(function(fn){
     var o=window[fn]; if(typeof o!=='function') return;
     window[fn]=function(){
-      try{
-        if(fn==='facturerDevis'&&cur&&cur.id===arguments[0]){
-          var saved=(DEVIS||[]).some(function(x){ return x.id===cur.id; });
-          if(cur.v===2){ if((dirty||!saved)&&!saveV2(true)) return; }
-          else if(window._curView==='wizard'){ /* ancien formulaire : on enregistre l'écran tel quel, sans quitter */
-            formToDevis(); protect(cur); var i=DEVIS.findIndex(function(x){ return x.id===cur.id; }); var cp=clone(cur);
-            if(i>=0) DEVIS[i]=cp; else DEVIS.push(cp); persist(LS.devis,DEVIS);
-          }
-        }
-      }catch(e){}
+      if(fn==='facturerDevis'&&!avantFacture(arguments[0])) return;
       var r=o.apply(this,arguments); try{ syncCurFromStore(); if(typeof renderFBloc==='function') renderFBloc(); if(window._curView===VIEW) refreshLive(); }catch(e){} return r; };
   });
 
@@ -702,7 +709,7 @@
       '<div class="recap-line"><div class="lbl">Bénéfice brut estimé</div><div style="color:var(--green);font-weight:700">'+money(c.benefice)+'</div></div>'+
       '<div class="recap-line"><div class="lbl">Marge</div><div style="font-weight:700;color:'+(low?'var(--red)':'var(--green)')+'">'+pct(c.margePct)+'</div></div>'+
       '<div class="recap-line"><div class="lbl">Gain / heure ('+fq(r2(c.heures))+' h)</div><div style="font-weight:700;color:'+(lowH?'var(--red)':'inherit')+'">'+money(c.gainH)+'/h</div></div>'+
-      '<div class="recap-line"><div class="lbl">Cotisations micro ('+P.cotisTaux+' %)</div><div style="color:var(--red)">− '+money(c.cotis)+'</div></div>'+
+      '<div class="recap-line"><div class="lbl">Cotisations micro ('+(typeof cotisLbl==='function'?cotisLbl():P.cotisTaux)+' %)</div><div style="color:var(--red)">− '+money(c.cotis)+'</div></div>'+
       '<div class="recap-line tot"><div class="lbl">Reste net avant charges fixes</div><div>'+money(c.benefNet)+'</div></div>'+
       alerts(c).join('')+'</div>';
     /* matériel */
@@ -865,7 +872,7 @@
         '<div style="display:flex;justify-content:space-between;gap:14px;margin:8px 0 12px;flex-wrap:wrap"><div><div style="font-size:20px;font-weight:800;color:'+NV+'">Estimation indicative</div><div style="font-size:11px;color:#555"><b>Objet :</b> '+esc(objetOf(d))+'</div></div>'+clientBox+'</div>'+
         '<div style="background:#fff7e6;border:1px solid #f0dcae;border-radius:8px;padding:10px 13px;font-size:11px;color:#7a5a12;margin-bottom:12px"><b>Document non contractuel.</b> Montant indicatif — il ne vaut pas devis. Un devis détaillé sera établi après visite technique.</div>'+
         '<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #dce3ec"><thead><tr style="background:'+NV+';color:#fff"><th style="text-align:left;padding:9px 12px">Poste</th><th style="text-align:right;padding:9px 12px">Montant estimé HT</th></tr></thead><tbody>'+rows.map(function(r){ return '<tr><td style="padding:10px 12px;border-top:1px solid #e6ebf2">'+esc(r[0])+'</td><td style="padding:10px 12px;border-top:1px solid #e6ebf2;text-align:right;font-weight:600">'+money(r[1])+'</td></tr>'; }).join('')+'</tbody></table>'+
-        totalsHTML(c)+'<div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">'+esc(E.piedNote||'')+'</div>'+legal+'</div>';
+        totalsHTML(c)+'<div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">'+esc(typeof piedDevis==='function'?piedDevis(E):(E.piedNote||''))+'</div>'+legal+'</div>';
       doc.innerHTML=cellsWrap(doc.innerHTML); window.print(); return;
     }
     var body='';
@@ -912,7 +919,7 @@
       (reduit?'<br>Taux réduit de TVA appliqué sous réserve des conditions d\'éligibilité en vigueur (logement achevé depuis plus de deux ans, équipement éligible).':'')+(!fr&&c.tvaBreak.some(function(t){ return t.rate===5.5; })?'<br>TVA à 5,5 % (art. 278-0 bis A du CGI) : le client certifie que le logement est à usage d\'habitation et achevé depuis plus de deux ans ; l\'entreprise certifie que les travaux et équipements remplissent les conditions d\'application de ce taux.':'')+'</div>'+
       '<div style="display:flex;gap:14px;margin-top:14px"><div style="flex:1;border:1px solid #cfd6e0;border-radius:6px;padding:10px 12px"><div style="font-weight:700;color:'+NV+';font-size:11px">Bon pour accord — le client</div><div style="font-size:9.5px;color:#666;margin-top:2px">Date et signature, précédées de la mention « Bon pour accord ».'+(c.options.length?(c.options.every(function(x){ return x.alt; })?' Cochez la solution retenue si ce n\'est pas celle du total.':' Cochez les options ou la solution retenues.'):'')+'</div><div style="height:54px"></div></div>'+
       '<div style="flex:1;border:1px solid #cfd6e0;border-radius:6px;padding:10px 12px"><div style="font-weight:700;color:'+NV+';font-size:11px">L\'entreprise</div><div style="font-size:9.5px;color:#666;margin-top:2px">'+esc(E.nom||'—')+(E.ville?' — '+esc(E.ville):'')+', le '+today+'</div><div style="height:54px"></div></div></div>'+
-      '<div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">'+esc(E.piedNote||'')+'</div>'+
+      '<div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">'+esc(typeof piedDevis==='function'?piedDevis(E):(E.piedNote||''))+'</div>'+
       (d.cType!=='Professionnel'&&E.mediateur?'<div style="margin-top:4px;font-size:9.5px;color:#777">Médiation de la consommation : '+esc(E.mediateur)+(E.mediateurSite?' — '+esc(E.mediateurSite):'')+'. En cas de litige non résolu, le client consommateur peut saisir gratuitement ce médiateur.</div>':'')+
       legal+'</div>';
     doc.innerHTML=cellsWrap(doc.innerHTML);

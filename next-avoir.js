@@ -120,23 +120,36 @@
     }
     return false;
   }
-  function createAvoir(o){
+  /* 1.10 : préparation (aucun effet) puis enregistrement — le numéro peut ainsi venir du serveur
+     AVANT que l'avoir n'existe (next-emission.js) ; sans cette couche, comportement inchangé. */
+  function buildAvoir(o,numero){
     var inv=findInv(o.facNum); if(!inv) return {err:'Facture introuvable'};
     if(inv.annulee) return {err:'Cette facture est déjà annulée'};
     var m=r2(o.montant);
     if(!(m>0)) return {err:'Montant de l\'avoir à saisir (plus que 0)'};
     if(m>inv.reste+0.005) return {err:'Montant supérieur à ce qui reste sur la facture ('+money(inv.reste)+')'};
     var total=Math.abs(m-inv.reste)<0.006;
-    var av={id:'av'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),num:nextAvNum(),date:today(),
+    var av={id:'av'+Date.now().toString(36)+Math.random().toString(36).slice(2,6),num:numero,date:today(),
       facNum:inv.num,facDate:inv.date,kind:inv.kind,refId:inv.id,which:inv.which,label:inv.label,
       cli:JSON.parse(JSON.stringify(inv.cli||{})),montant:m,factMontant:inv.montant,total:total,basis:inv.basis,
       franchise:franchise(),taux:(function(){ try{ return num(P.tva); }catch(e){ return 0; } })(),tvaR:inv.tvaR||null,
       motif:String(o.motif||'').trim(),factPayee:!!inv.payeLe,rembourse:null,libere:false,created:Date.now()};
     if(av.factPayee&&o.rembDate) av.rembourse={date:o.rembDate,mode:o.rembMode||''};
+    return {av:av,inv:inv,total:total};
+  }
+  function commitAvoir(b,o){
+    var av=b.av;
     AV.push(av); put(AK,AV);
-    if(total&&o.liberer){ av.libere=release(inv,av.num); put(AK,AV); }
+    if(b.total&&o.liberer){ av.libere=release(b.inv,av.num); put(AK,AV); }
     try{ updateBadges(); }catch(e){}
     return {av:av};
+  }
+  window.nxAvoirBuild=buildAvoir;
+  window.nxAvoirCommit=commitAvoir;
+  function createAvoir(o){
+    var b=buildAvoir(o,null); if(b.err) return b;
+    b.av.num=nextAvNum();                       /* numéro pris seulement si tout est valable, comme avant */
+    return commitAvoir(b,o);
   }
   window.nxCreateAvoir=createAvoir;
 
@@ -165,7 +178,7 @@
       '<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+esc(lib)+(av.motif?'<div style="color:#666;margin-top:4px">Motif : '+esc(av.motif)+'</div>':'')+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+money(-(av.franchise?T.ttc:(av.basis==='ttc'?T.ht:num(av.montant))))+'</td></tr></tbody></table>'+
       tva+'<div style="display:flex;justify-content:flex-end;margin-top:14px"><table style="border-collapse:collapse;font-size:12px;min-width:270px">'+tot+'</table></div>'+
       '<div style="margin-top:12px;font-size:11px;color:#333"><b>'+esc(etat)+'</b></div>'+ment+
-      '<div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">'+esc(E.piedNote||'')+'</div>'+legal+'</div>';
+      '<div style="margin-top:14px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">'+esc(E.piedFacture||'')+'</div>'+legal+'</div>'; /* 1.10 : jamais le pied de devis sur un avoir */
     window.print();
   }
   window.nxPrintAvoir=printAvoir;
@@ -219,11 +232,14 @@
     var o={facNum:CUR.num,montant:m,motif:motif,liberer:t!=='partiel'&&!!(document.getElementById('avLib')||{}).checked};
     if((document.getElementById('avRembOk')||{}).checked){ o.rembDate=document.getElementById('avRembD').value||today(); o.rembMode=document.getElementById('avRembM').value; }
     if(!confirm('Émettre un avoir de '+money(m)+' sur la facture '+CUR.num+' ?\n\nC\'est définitif (un avoir ne se supprime pas).')) return;
-    var r=createAvoir(o);
-    if(r.err){ err.innerHTML='<div class="nxd2-warn red">'+esc(r.err)+'</div>'; return; }
-    closeModal('mAvoir'); CUR=null;
-    say('Avoir '+r.av.num+' émis'+(r.av.libere?' — tu peux refaire la facture corrigée':''));
-    refreshAll(); printAvoir(r.av.id);
+    var fin=function(r){
+      if(!r||r.err){ err.innerHTML='<div class="nxd2-warn red">'+esc((r&&r.err)||'Avoir non émis')+'</div>'; return; }
+      closeModal('mAvoir'); CUR=null;
+      say('Avoir '+r.av.num+' émis'+(r.av.libere?' — tu peux refaire la facture corrigée':''));
+      refreshAll(); if(!r.imprime) window.nxPrintAvoir(r.av.id);
+    };
+    if(typeof window.nxAvoirEmit==='function') Promise.resolve(window.nxAvoirEmit(o)).then(fin,function(e){ fin({err:String(e&&e.message||e)}); });
+    else fin(createAvoir(o));
   };
   window.nxavRembourse=function(id){
     var av=AV.find(function(a){ return a.id===id; }); if(!av||av.rembourse) return;

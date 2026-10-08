@@ -5,9 +5,8 @@
      Nationale, service public IGN Géoplateforme, gratuit, sans clé) dans
      le devis, le bon d'intervention, la location et la fiche client ;
      un choix remplit l'adresse ET la ville.
-   - Distance et temps de route depuis ton domicile (par défaut :
-     12 rue de l'Hostellerie, 60140 Bailleval — modifiable dans
-     Paramètres) via le calcul d'itinéraire IGN ; si le service ne répond
+   - Distance et temps de route depuis ton point de départ (Paramètres ›
+     Point de départ des trajets, sinon l'adresse de l'entreprise) via le calcul d'itinéraire IGN ; si le service ne répond
      pas : distance à vol d'oiseau × 1,3, affichée « ≈ estimée ».
    - La zone de déplacement du devis se règle toute seule d'après les km
      (toujours modifiable à la main).
@@ -20,7 +19,6 @@
 (function(){
   'use strict';
   var HOMEK='cpnext_home', GEOK='cpnext_geo';
-  var HOME_DEF={adr:'12 Rue de l\'Hostellerie 60140 Bailleval',lon:2.447507,lat:49.350006};
   var GEO_URL='https://data.geopf.fr/geocodage/search', ROUTE_URL='https://data.geopf.fr/navigation/itineraire';
   try{ [HOMEK,GEOK].forEach(function(k){ if(Array.isArray(window.SYNC_KEYS)&&SYNC_KEYS.indexOf(k)<0) SYNC_KEYS.push(k); }); }catch(e){}
 
@@ -31,8 +29,6 @@
   function persist(k,v){ try{ if(typeof save==='function') save(k,v); else localStorage.setItem(k,JSON.stringify(v)); }catch(e){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(_){} } }
   function say(m){ try{ toast(m); }catch(e){} }
   function fq(n){ try{ return fmtQ(n); }catch(e){ return String(Math.round(n*10)/10).replace('.',','); } }
-  function home(){ var h=lsGet(HOMEK,null); return (h&&h.lat&&h.lon)?h:HOME_DEF; }
-  window.nxadHome=home;
 
   /* ---------------- géocodage & itinéraire ---------------- */
   var GEO=lsGet(GEOK,{})||{};
@@ -60,9 +56,34 @@
       var c=f.geometry.coordinates; GEO[k]={lon:c[0],lat:c[1],label:f.properties.label,ts:Date.now()}; saveGeo(); return GEO[k];
     });
   }
+  /* ---------------- point de départ des trajets ----------------
+     Jamais écrit dans le code (le dépôt est public). Il vient, dans l'ordre :
+     1. du point enregistré, synchronisé avec le cloud (donc commun à tes appareils) :
+        - saisi à la main (source « manuel », ou ancien point sans source) : gardé tel quel ;
+        - déduit de l'adresse de l'entreprise (source « entreprise ») : recalculé si cette adresse change (déménagement) ;
+     2. sinon de l'adresse de l'entreprise (Paramètres › Entreprise), géocodée une fois puis enregistrée ;
+     3. sinon : pas de calcul de distance, avec un message qui dit quoi régler. */
+  function adrEntreprise(){ try{ var e=(typeof P!=='undefined'&&P&&P.entreprise)||{}; /* P : réglages globaux (let, pas sur window) */ return [e.adresse,[e.cp,e.ville].filter(Boolean).join(' ')].map(function(x){ return String(x||'').trim(); }).filter(Boolean).join(' '); }catch(e){ return ''; } }
+  function homeSync(){
+    var h=lsGet(HOMEK,null); if(!(h&&h.lat&&h.lon)) return null;
+    if(h.source==='entreprise'){ var a=adrEntreprise(); if(a&&key(a)!==key(h.adresseSource||'')) return null; } /* déménagement : à recalculer */
+    return h;
+  }
+  var HOME_EN_COURS=null;
+  function home(){
+    var h=homeSync(); if(h) return Promise.resolve(h);
+    var a=adrEntreprise();
+    if(a.length<5) return Promise.reject(new Error('point de départ des trajets non réglé (Paramètres › Point de départ des trajets, ou adresse de l\'entreprise)'));
+    if(HOME_EN_COURS&&HOME_EN_COURS.a===a) return HOME_EN_COURS.p;
+    var pr=geocode(a).then(function(g){ var n={adr:g.label||a,lon:g.lon,lat:g.lat,source:'entreprise',adresseSource:a,le:Date.now()}; persist(HOMEK,n); HOME_EN_COURS=null; return n; },
+      function(e){ HOME_EN_COURS=null; throw new Error('adresse de l\'entreprise introuvable pour le point de départ ('+(e.message||'erreur')+')'); });
+    HOME_EN_COURS={a:a,p:pr}; return pr;
+  }
+  window.nxadHome=homeSync; window.nxadDepart=home;
   function hav(a,b){ var R=6371, t=Math.PI/180, dLa=(b.lat-a.lat)*t, dLo=(b.lon-a.lon)*t, x=Math.sin(dLa/2)*Math.sin(dLa/2)+Math.cos(a.lat*t)*Math.cos(b.lat*t)*Math.sin(dLo/2)*Math.sin(dLo/2); return 2*R*Math.asin(Math.sqrt(x)); }
-  function route(g){
-    var h=home(), hk=key(h.adr);
+  function route(g){ return home().then(function(h){ return routeDepuis(h,g); }); }
+  function routeDepuis(h,g){
+    var hk=key(h.adr);
     if(g.route&&g.route.from===hk) return Promise.resolve(g.route);
     var url=ROUTE_URL+'?resource=bdtopo-osrm&profile=car&optimization=fastest&getSteps=false&geometryFormat=polyline&distanceUnit=kilometer&timeUnit=minute&start='+h.lon+','+h.lat+'&end='+g.lon+','+g.lat;
     return fetchJSON(url,9000).then(function(j){
@@ -74,7 +95,7 @@
   }
   /* distance d'une adresse complète depuis le domicile → {km,min,est,label} */
   function distance(adr){ return geocode(adr).then(function(g){ return route(g).then(function(r){ return {km:r.km,min:r.min,est:r.est,label:g.label}; }); }); }
-  function cachedDist(adr){ var g=GEO[key(adr)]; if(g&&g.route&&g.route.from===key(home().adr)) return {km:g.route.km,min:g.route.min,est:false,label:g.label}; return null; }
+  function cachedDist(adr){ var g=GEO[key(adr)], h=homeSync(); if(h&&g&&g.route&&g.route.from===key(h.adr)) return {km:g.route.km,min:g.route.min,est:false,label:g.label}; return null; }
   window.nxadDistance=distance; window.nxadCached=cachedDist;
   function fmtDur(m){ m=Math.round(m||0); return m<60?m+' min':Math.floor(m/60)+' h '+('0'+(m%60)).slice(-2); }
   function distTxt(r){ return (r.est?'≈ ':'')+fq(r.km)+' km · '+fmtDur(r.min)+(r.est?' (estimé)':''); }
@@ -163,7 +184,7 @@
     var kk=src+'|'+key(adr); if(lastAA.k===kk&&Date.now()-lastAA.t<2000) return; lastAA={k:kk,t:Date.now()};
     showBox(src,'<div class="nxd2-hint">📍 Calcul de la distance depuis chez toi…</div>');
     distance(adr).then(function(r){
-      var h='<div class="nxad-dist">📍 <b>'+esc(distTxt(r))+'</b> depuis '+esc(home().adr.split(' ').slice(-1)[0])+' (aller) · <a href="'+esc(mapsLink(adr))+'" target="_blank" rel="noopener">itinéraire</a></div>';
+      var h='<div class="nxad-dist">📍 <b>'+esc(distTxt(r))+'</b> depuis '+esc(((homeSync()||{}).adr||'chez toi').split(' ').slice(-1)[0])+' (aller) · <a href="'+esc(mapsLink(adr))+'" target="_blank" rel="noopener">itinéraire</a></div>';
       showBox(src,h);
       applyZone(src,r);
     }).catch(function(e){ showBox(src,'<div class="nxd2-warn">Distance non calculée : '+esc(e.message||'erreur')+'. Vérifie l\'adresse (numéro, rue, ville).</div>'); });
@@ -199,17 +220,25 @@
   function paramsCard(){
     var v=document.getElementById('v-params'); if(!v||document.getElementById('nxadHomeCard')) return;
     var c=document.createElement('div'); c.className='card'; c.id='nxadHomeCard';
-    c.innerHTML='<h2>🏠 Point de départ des trajets</h2><div class="frm"><label class="full">Adresse (domicile / dépôt)<input id="nxad_home" data-home="1" autocomplete="off" value="'+esc(home().adr)+'"></label></div>'+
+    c.innerHTML='<h2>🏠 Point de départ des trajets</h2><div class="frm"><label class="full">Adresse (domicile / dépôt)<input id="nxad_home" data-home="1" autocomplete="off" placeholder="vide = adresse de l\'entreprise" value="'+esc((homeSync()||{}).adr||'')+'"></label></div>'+
+      '<div class="sub" id="nxadHomeSrc">'+esc(origineDepart())+'</div>'+
       '<div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" onclick="nxadSaveHome()">Enregistrer</button><span class="sub" id="nxadHomeMsg"></span></div>'+
       '<div class="sub" style="margin-top:6px">Sert au calcul des distances (devis, interventions, planning). Service d\'adresses et d\'itinéraire de l\'IGN (gratuit, public).</div>';
     v.insertBefore(c,v.firstChild);
   }
+  function origineDepart(){
+    var h=lsGet(HOMEK,null);
+    if(h&&h.lat&&h.source==='entreprise') return 'Déduit de l\'adresse de l\'entreprise (recalculé si elle change).';
+    if(h&&h.lat) return 'Saisi à la main (l\'adresse de l\'entreprise n\'est pas utilisée). Vide le champ et enregistre pour revenir à l\'adresse de l\'entreprise.';
+    return adrEntreprise().length>=5?'Pas encore calculé : l\'adresse de l\'entreprise servira au premier calcul de distance.':'Non réglé : saisis une adresse ici, ou l\'adresse de l\'entreprise dans les paramètres.';
+  }
   window.nxadSaveHome=function(){
-    var el=document.getElementById('nxad_home'), q=(el&&el.value||'').trim(), msg=document.getElementById('nxadHomeMsg'); if(!q) return;
+    var el=document.getElementById('nxad_home'), q=(el&&el.value||'').trim(), msg=document.getElementById('nxadHomeMsg'), src=document.getElementById('nxadHomeSrc');
+    if(!q){ persist(HOMEK,null); if(msg) msg.textContent='✔ Point de départ : adresse de l\'entreprise'; if(src) src.textContent=origineDepart(); return; }
     if(msg) msg.textContent='Recherche…';
     fetchJSON(GEO_URL+'?q='+encodeURIComponent(q)+'&limit=1',7000).then(function(j){
       var f=(j.features||[])[0]; if(!f) throw new Error('adresse introuvable');
-      var h={adr:f.properties.label,lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1]}; persist(HOMEK,h);
+      var h={adr:f.properties.label,lon:f.geometry.coordinates[0],lat:f.geometry.coordinates[1],source:'manuel',le:Date.now()}; persist(HOMEK,h); if(src) src.textContent=origineDepart();
       if(el) el.value=h.adr; if(msg) msg.textContent='✔ '+h.adr; say('Point de départ enregistré');
     }).catch(function(e){ if(msg) msg.textContent='⚠ '+(e.message||'erreur'); });
   };

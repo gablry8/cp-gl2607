@@ -49,9 +49,23 @@
   function api(body){
     if(!cloudOk()) return Promise.resolve({erreur:'hors_ligne',message:'Connecte-toi au cloud ClimPilot (identifiant en haut) pour utiliser la plateforme.'});
     return sb.functions.invoke('superpdp',{body:body}).then(function(r){
-      if(r&&r.error){ var c=r.error.context; if(c&&typeof c.json==='function') return c.json().catch(function(){ return {erreur:'http',message:r.error.message||'Erreur'}; }); return {erreur:'reseau',message:'Serveur injoignable — vérifie ta connexion.'}; }
-      return r.data||{erreur:'vide',message:'Réponse vide'};
-    }).catch(function(){ return {erreur:'reseau',message:'Serveur injoignable — vérifie ta connexion.'}; });
+      if(r&&r.error){ var c=r.error.context;
+        if(c&&typeof c.json==='function'){ var st=Number(c.status)||0;
+          return c.json().catch(function(){ return null; }).then(function(j){
+            if(j&&j.erreur) return j;
+            if(st===404) return absent();
+            return {erreur:'http',status:st||undefined,message:'Le service de la plateforme a répondu par une erreur'+(st?' (HTTP '+st+')':'')+(j&&(j.message||j.msg)?' : '+(j.message||j.msg):'')+'.'};
+          }); }
+        return injoignable(); }
+      return r.data||{erreur:'vide',message:'Réponse vide du service de la plateforme.'};
+    }).catch(function(){ return injoignable(); });
+  }
+  /* messages d'erreur précis (avant : toujours « Serveur injoignable », même quand le service n'est pas installé) */
+  function absent(){ return {erreur:'service_absent',message:'Le service « superpdp » n\'est pas installé sur ton serveur ClimPilot (Supabase › Edge Functions). Rien n\'a été envoyé.'}; }
+  function injoignable(){
+    var horsLigne=false; try{ horsLigne=navigator.onLine===false; }catch(e){}
+    if(horsLigne) return {erreur:'reseau',message:'Pas de connexion internet : rien n\'a été envoyé. Réessaie quand le réseau revient.'};
+    return {erreur:'reseau',message:'Le service de la plateforme ne répond pas. Rien n\'a été envoyé. Causes possibles : réseau coupé, ou service « superpdp » pas installé sur ton serveur ClimPilot (Supabase › Edge Functions).'};
   }
   window.nxPdpApi=api;
   var STATUS=null;
@@ -92,10 +106,11 @@
   function sirenOf(c){ var d=String((c&&c.siren)||'').replace(/\D/g,''); return d.length>=9?d.slice(0,9):''; }
   window.nxPdpSend=function(num,nat){
     var d=docInfo(num); if(!d){ say('Document introuvable'); return; }
-    if(/^[BSM]$/.test(nat||'')){ var mm=M(); mm.docs[num]=mm.docs[num]||{envois:[]}; mm.docs[num].nature=nat; saveM(mm); }
+    var figee=!!(window.nxEmisModele&&nxEmisModele(num));   /* 1.10 : facture figée à l'émission → nature fixée */
+    if(/^[BSM]$/.test(nat||'')&&!figee){ var mm=M(); mm.docs[num]=mm.docs[num]||{envois:[]}; mm.docs[num].nature=nat; saveM(mm); }
     busy('Connexion à la plateforme…');
     status(true).then(function(st){
-      if(st.erreur){ modal('Plateforme agréée','<div class="nxd2-warn red">'+esc(st.message||st.erreur)+'</div>'); return; }
+      if(st.erreur){ modal('Plateforme agréée','<div class="nxd2-warn red">'+esc(st.message||st.erreur)+'</div>'+(/^(TEST|ESSAI)-/.test(num)?'<div class="sub2" style="margin-top:6px">'+esc(num)+' est un document de <b>démonstration</b> : il ne peut partir que vers le bac à sable de la plateforme, jamais vers un vrai client.</div>':'')); return; }
       if(!st.connecte){ modal('Plateforme agréée','<p>La plateforme n\'est pas encore connectée.</p>','<button class="btn-ghost" onclick="closeModal(\'mPdp\')">Annuler</button><button class="btn-pri" onclick="closeModal(\'mPdp\');go(\'nx_pdp\')">Connecter SUPER PDP</button>'); return; }
       var sandbox=st.env!=='production', co=st.company||{};
       var pro=String(d.cli.type||'')==='Professionnel', siren=sirenOf(d.cli);
@@ -103,6 +118,8 @@
         modal('Envoi par la plateforme','<div class="nxd2-warn">'+(pro?'Ce client professionnel n\'a pas de <b>SIREN</b> dans ClimPilot : ajoute-le sur sa fiche (ou dans le devis), il sert à trouver sa plateforme.':'Client <b>particulier</b> : une facture à un particulier ne passe pas par la plateforme. Envoie-lui le PDF comme d\'habitude.<br><span class="sub2">À partir du 01/09/2027, ses montants seront déclarés automatiquement (« e-reporting »).</span>')+'</div>');
         return;
       }
+      return verifierAvantEnvoi(num,sandbox).then(function(stop){
+      if(stop){ modal('Envoi impossible — '+num,'<div class="nxd2-warn red">'+stop+'</div>'); return; }
       var ov=sandbox?testOverrides(co,num):null;
       var xml=window.nxEinvXML?nxEinvXML(num,ov):null;
       var cadre=(/<ram:BusinessProcessSpecifiedDocumentContextParameter><ram:ID>([A-Z]\d)</.exec(xml||'')||[])[1]||'';
@@ -119,7 +136,11 @@
           '<button class="btn-ghost" onclick="closeModal(\'mPdp\')">Annuler</button><button class="btn-pri" id="nxpdpGo">'+(sandbox?'Envoyer le test':'Envoyer')+'</button>');
         document.getElementById('nxpdpGo').onclick=function(){
           busy('Envoi…');
-          api({action:'send',xml:xml,external_id:(num+(ov&&ov.suffix||'')).slice(0,64)}).then(function(s){
+          /* production : la plateforme reçoit la facture du REGISTRE du serveur (identifiant), pas le XML de l'appareil */
+          var ent=window.nxEmisEntree?nxEmisEntree(num):null;
+          var envoi=sandbox?Promise.resolve({action:'send',xml:xml,external_id:(num+(ov&&ov.suffix||'')).slice(0,64)})
+            :(window.nxEmisDeposer?nxEmisDeposer(num):Promise.resolve(true)).then(function(ok){ return ok&&ent&&ent.sid?{action:'send',document_id:ent.sid,external_id:num}:null; });
+          envoi.then(function(b){ if(!b) return {erreur:'fichiers',message:'Le XML de '+num+' n\'est pas encore enregistré sur le serveur : réessaie quand le réseau répond.'}; return api(b); }).then(function(s){
             if(s.erreur){ modal('Envoi refusé','<div class="nxd2-warn red">'+esc(s.message||s.erreur)+(s.status?' <span class="sub2">(HTTP '+s.status+')</span>':'')+'</div>'); return; }
             var m=M(), le=lastEv(s.events);
             m.docs[num]=m.docs[num]||{envois:[]};
@@ -130,11 +151,38 @@
           });
         };
       });
+      });
     });
   };
+  /* 1.10 — garde-fous avant tout envoi (réponse : texte d'arrêt, ou null pour continuer) */
+  var REJET=/^(fr:213|api:invalid|api:rejected)$/;
+  function verifierAvantEnvoi(num,sandbox){
+    var dbl=window.nxEmisDoublons?nxEmisDoublons():{};
+    if(dbl[num]) return Promise.resolve('Le numéro <b>'+esc(num)+'</b> est porté par <b>deux documents différents</b> : envoi bloqué tant que le doublon n\'est pas tranché (registre des documents).');
+    var e=window.nxEmisEntree?nxEmisEntree(num):null;
+    if(!sandbox){
+      if(/^(TEST|ESSAI)-/.test(num)||(e&&e.mode==='demo')) return Promise.resolve('Document de <b>démonstration</b> ou <b>d\'essai</b> (série TEST ou ESSAI) : il ne part jamais sur la plateforme réelle.');
+      if(!e||e.origine!=='emis'||e.mode!=='reel') return Promise.resolve('Facture émise avant ClimPilot 1.10 (version <b>non figée</b>, reconstituée) : envoi réel bloqué. À voir avec ton comptable avant tout envoi (<i>à confirmer</i>).');
+    }
+    var prev=((M().docs[num]||{}).envois||[]).filter(function(x){ return sandbox?x.env==='sandbox':x.env==='production'; });
+    if(sandbox||!prev.length) return assurer(num);
+    /* déjà déposée en production : on relit le dernier statut avant d'autoriser quoi que ce soit */
+    var last=prev[prev.length-1];
+    busy('Vérification du statut du dépôt précédent…');
+    return api({action:'invoice',id:last.id}).then(function(r){
+      if(r&&!r.erreur){ var le=lastEv(r.events); if(le){ last.code=le.status_code; last.texte=le.status_text; last.maj=new Date().toISOString(); var mm=M(); mm.docs[num].envois[mm.docs[num].envois.length-1]=last; saveM(mm); } }
+      else return 'Impossible de relire le statut du dépôt précédent ('+esc((r&&(r.message||r.erreur))||'réseau')+') : renvoi bloqué par prudence.';
+      if(REJET.test(last.code||'')) return assurer(num);
+      if(last.code==='fr:210') return 'Facture <b>refusée par le client</b> (fr:210). Ne pas la renvoyer telle quelle : traiter selon le motif du refus (correction, avoir ou échange avec le client — <i>à confirmer avec ton comptable</i>).';
+      return 'Cette facture est <b>déjà déposée</b> sur la plateforme (statut : '+esc(lab(last.code,last.texte))+'). Un nouvel envoi créerait un second dépôt : renvoi bloqué. Seul un rejet technique (fr:213) permet de la renvoyer.';
+    },function(){ return 'Statut du dépôt précédent illisible : renvoi bloqué par prudence.'; });
+  }
+  function assurer(num){ return (window.nxEmisAssurerFichiers?nxEmisAssurerFichiers(num):Promise.resolve()).then(function(){ return null; },function(){ return null; }); }
   var SITU={'1':'facture normale','2':'déjà payée','4':'définitive après acompte'};
   function natureSel(num,cadre){
     var n=cadre.charAt(0), s=cadre.charAt(1), T=window.nxEinvNatureTxt||{B:'livraison de biens',S:'prestation de services',M:'livraison de biens et prestation de services'};
+    if(window.nxEmisModele&&nxEmisModele(num)) return '<div class="sub2" style="margin-top:8px">Nature de l\'opération : <b>'+esc(T[n]||n)+'</b> (cadre de facturation <b>'+esc(cadre)+'</b> — '+esc(SITU[s]||'')+'). '+
+      'Elle est <b>figée à l\'émission</b> : elle fait partie de la facture (PDF et XML) et ne se change plus à l\'envoi. En cas d\'erreur : avoir, puis nouvelle facture.</div>';
     return '<div class="frm" style="margin-top:8px"><label class="full">Nature de l\'opération (cadre de facturation <b>'+esc(cadre)+'</b> — '+esc(SITU[s]||'')+')'+
       '<select onchange="nxPdpSend(\''+esc(num)+'\',this.value)">'+['M','S','B'].map(function(k){ return '<option value="'+k+'"'+(k===n?' selected':'')+'>'+k+' — '+T[k]+'</option>'; }).join('')+'</select></label></div>'+
       '<div class="sub2">Par défaut, la même nature que sur ta facture PDF. Si tu la changes, le fichier est recontrôlé.</div>';
@@ -262,7 +310,7 @@
   /* ---------- boutons « Envoyer » ailleurs dans l'app ---------- */
   function decorate(){
     /* écran Avoirs : à côté de chaque facture / avoir */
-    document.querySelectorAll('#nxav table tr').forEach(function(tr){ var b=tr.querySelector('td b'); var t=b&&b.textContent; if(!t||!/^(F|AV)-\d{4}-\d+$/.test(t)||tr.querySelector('.nxpdp-x')) return;
+    document.querySelectorAll('#nxav table tr').forEach(function(tr){ var b=tr.querySelector('td b'); var t=b&&b.textContent; if(!t||!/^(TEST-)?(F|AV)-\d{4}-\d+$/.test(t)||tr.querySelector('.nxpdp-x')) return;
       var s=window.nxPdpLastStatus(t), td=tr.lastElementChild;
       td.insertAdjacentHTML('beforeend',' <button class="btn-ghost btn-sm nxpdp-x" onclick="nxPdpSend(\''+t+'\')">'+(s?'Renvoyer':'Envoyer')+'</button>'+(s?' <span class="nxpdp-st '+cls(s.code)+'">'+esc(lab(s.code,s.texte))+'</span>':'')); });
     /* bloc facturation du devis */

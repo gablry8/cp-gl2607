@@ -1,12 +1,22 @@
 // ClimPilot — Edge Function « assistant »
-// COPIE DE LECTURE de la version déployée (v4, verify_jwt = true) — la version déployée fait foi.
+// Base : copie de lecture de la version déployée (v4, verify_jwt = true), venue de main (commit 665161f).
+// PRÉPARÉ, NON DÉPLOYÉ (1.10, 03/10/2026) — seule différence de comportement avec la v4 :
+//  la liste des utilisateurs autorisés n'est plus écrite dans le code. Elle est lue dans la configuration
+//  serveur ALLOWED_USER_IDS (secret de la fonction : identifiants Supabase Auth séparés par des virgules).
+//  Absente, vide ou sans identifiant valide → l'assistant refuse tout le monde (503 « config »).
+//  La v4 déployée garde encore sa liste dans le code : poser ALLOWED_USER_IDS sur le serveur AVANT de
+//  déployer cette version (docs/CORRECTIONS-1.10.md, « Assistant »). Exemple sans valeur : .env.example.
 // Reçoit la dictée de Gabriel, interroge Claude, dépose les actions dans climpilot_inbox.
-// Sécurité : JWT obligatoire + liste blanche (un seul utilisateur) ; clé API dans les secrets Supabase.
+// Sécurité : JWT obligatoire + liste blanche (configuration serveur) ; clé API dans les secrets Supabase.
 // Budget : plafond mensuel BUDGET_EUR, journal dans climpilot_ai_usage.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { MODEL, BUDGET_EUR, MAX_PER_DAY, TOOLS, PLAQUE_TOOL, PLAQUE_SYSTEM, FACTURE_TOOL, FACTURE_SYSTEM, buildSystem, summarizeState, trimMessages, toRows, costEur, monthStartParis } from './logic.ts';
 
-const ALLOWED_USERS = ['925080a9-1eaa-4fcf-9fa9-af6ffb214552']; // Gabriel
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// ALLOWED_USER_IDS → liste des identifiants autorisés (valeurs invalides ignorées ; liste vide = personne)
+export function listeBlanche(brut: string | null | undefined): string[] {
+  return String(brut ?? '').split(',').map((x) => x.trim().toLowerCase()).filter((x) => UUID.test(x));
+}
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -14,21 +24,20 @@ const CORS = {
 };
 const json = (o: unknown, status = 200) => new Response(JSON.stringify(o), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
-Deno.serve(async (req: Request) => {
+export async function handle(req: Request, service: any, env: (k: string) => string | undefined): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ erreur: 'methode' }, 405);
-
-  const url = Deno.env.get('SUPABASE_URL')!;
-  const service = createClient(url, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
 
   // 1. Qui appelle ?
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const { data: ud, error: ue } = await service.auth.getUser(token);
   const user = ud && ud.user;
   if (ue || !user) return json({ erreur: 'non_connecte', message: 'Connecte-toi à ClimPilot.' }, 401);
-  if (!ALLOWED_USERS.includes(user.id)) return json({ erreur: 'interdit' }, 403);
+  const autorises = listeBlanche(env('ALLOWED_USER_IDS'));
+  if (!autorises.length) return json({ erreur: 'config', message: 'Accès à l’assistant non configuré sur le serveur (ALLOWED_USER_IDS).' }, 503);
+  if (!autorises.includes(String(user.id).toLowerCase())) return json({ erreur: 'interdit' }, 403);
 
-  const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
+  const apiKey = env('ANTHROPIC_API_KEY');
   if (!apiKey) return json({ erreur: 'cle_absente', message: "La clé API Claude n'est pas encore installée dans Supabase." });
 
   let body: any = {};
@@ -155,4 +164,11 @@ Deno.serve(async (req: Request) => {
   const { data: ins, error: ie } = await service.from('climpilot_inbox').insert(rows).select('id, kind, statut, titre');
   if (ie) return json({ erreur: 'depot', message: 'Enregistrement impossible : ' + ie.message, budget });
   return json({ type: 'depose', texte: String(tu.input?.reponse || 'C’est noté.'), elements: ins, budget });
-});
+}
+
+if (typeof Deno !== 'undefined' && (Deno as any).serve && !(globalThis as any).__NO_SERVE) {
+  Deno.serve((req: Request) => {
+    const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+    return handle(req, service, (k) => Deno.env.get(k));
+  });
+}

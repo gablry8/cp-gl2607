@@ -73,7 +73,8 @@
         var d=(DEVIS||[]).find(function(o){ return o.id===i.id; })||{};
         if(d.facAcompte&&f.total!=null){ total=num(f.total); prepaid=num(d.facAcompte.montant); }
       }
-      m={id:i.num,type:type,date:i.date,cli:i.cli||{},lines:linesOf(total,i.basis,f.tvaR,fr,label),prepaid:prepaid,franchise:fr,ref:null,payeLe:i.payeLe,label:label,kind:i.kind};
+      m={id:i.num,type:type,date:i.date,cli:i.cli||{},lines:linesOf(total,i.basis,f.tvaR,fr,label),prepaid:prepaid,franchise:fr,ref:null,payeLe:i.payeLe,label:label,kind:i.kind,
+        dateRealisation:(i.kind==='dep'&&f&&/^\d{4}-\d{2}-\d{2}/.test(String(f.date||'')))?String(f.date).slice(0,10):null};
     } else {
       var a=D.av;
       m={id:a.num,type:'381',date:a.date,cli:a.cli||{},lines:linesOf(num(a.montant),a.basis,a.tvaR,a.franchise,(a.total?'Annulation de la facture ':'Avoir sur la facture ')+a.facNum+(a.motif?' — '+a.motif:'')),prepaid:0,franchise:a.franchise,ref:{id:a.facNum,date:a.facDate},payeLe:null,label:a.label,kind:a.kind};
@@ -89,15 +90,18 @@
        1 = facture normale · 2 = déjà payée à l'émission · 4 = facture définitive après acompte */
     m.nature=defaultNature(m);
     m.situ=(m.type==='380'&&m.prepaid>0)?'4':(m.type!=='381'&&m.payeLe&&String(m.payeLe)<=String(m.date))?'2':'1';
+    if(m.situ==='2'){ m.prepaid=m.grand; m.due=0; }
     return m;
   }
-  /* même nature que celle écrite sur le PDF : devis (fourniture + pose) et dépannage avec pièces = mixte (M),
+  /* même nature que celle écrite sur le PDF : devis (fourniture + pose) et dépannage avec pièces = réglage (S ou M),
      le reste = services (S) ; un avoir reprend la nature de sa facture. Choix enregistré par document s'il a été changé. */
   function defaultNature(m){
     try{ var saved=((JSON.parse(localStorage.getItem('cpnext_pdp')||'{}')||{}).docs||{})[m.id]; if(saved&&/^[BSM]$/.test(saved.nature||'')) return saved.nature; }catch(e){}
     if(m.type==='381'&&m.ref&&m.ref.id&&m.ref.id!==m.id){ var o=model(m.ref.id); if(o) return o.nature; }
-    if(m.kind==='devis') return 'M';
-    if(m.kind==='dep'){ var inv=(window.nxInvoices?nxInvoices():[]).find(function(i){ return i.num===m.id; }); var f=inv&&inv.f; if(f&&f.pieces&&f.pieces.length) return 'M'; }
+    /* 1.10 : fourniture + pose et dépannage avec pièces = réglage des Paramètres (S tant que « à confirmer » ; C13 de l'audit) */
+    var nc=(E().natureChantier==='M')?'M':'S';
+    if(m.kind==='devis') return nc;
+    if(m.kind==='dep'){ var inv=(window.nxInvoices?nxInvoices():[]).find(function(i){ return i.num===m.id; }); var f=inv&&inv.f; if(f&&f.pieces&&f.pieces.length) return nc; }
     return 'S';
   }
   var NATURE_TXT={B:'livraison de biens',S:'prestation de services',M:'livraison de biens et prestation de services'};
@@ -123,7 +127,7 @@
   /* ---------- XML CII EN 16931 ---------- */
   function party(tag,p,isSeller){
     var sv=isSeller?{cp:p.cp||'',ville:p.ville||''}:splitVille(p.ville), adr=isSeller?p.adresse:p.adr, s=siren(isSeller?p.siret:p.siren);
-    var o='<ram:'+tag+'><ram:Name>'+x((isSeller?p.nom:p.nom)||'—')+'</ram:Name>';
+    var o='<ram:'+tag+'><ram:Name>'+x((isSeller&&window.nxDenomination?window.nxDenomination(p):p.nom)||'—')+'</ram:Name>'; /* 1.10 : « EI » (R526-27) */
     if(s) o+='<ram:SpecifiedLegalOrganization><ram:ID schemeID="0002">'+s+'</ram:ID></ram:SpecifiedLegalOrganization>';
     o+='<ram:PostalTradeAddress>'+(sv.cp?'<ram:PostcodeCode>'+x(sv.cp)+'</ram:PostcodeCode>':'')+(adr?'<ram:LineOne>'+x(adr)+'</ram:LineOne>':'')+(sv.ville?'<ram:CityName>'+x(sv.ville)+'</ram:CityName>':'')+'<ram:CountryID>FR</ram:CountryID></ram:PostalTradeAddress>';
     /* adresse électronique de facturation (BT-34 / BT-49) : le SIREN dans l'annuaire officiel (schéma 0225) ;
@@ -145,8 +149,16 @@
   }
   /* ov (facultatif) : identités de remplacement pour un envoi de TEST sur le bac à sable de la plateforme
      { seller:{nom,siret,adresse,cp,ville,email}, buyer:{nom,siren,adr,ville,type}, suffix:'-T1' } */
+  /* version figée à l'émission (next-emission.js) si elle existe, sinon calcul sur les données actuelles */
+  function frozenModel(n){ try{ if(typeof window.nxEmisModele==='function'){ var f=window.nxEmisModele(n); if(f) return JSON.parse(JSON.stringify(f)); } }catch(e){} return null; }
+  function modelOf(n){ return frozenModel(n)||model(n); }
   function xml(n,ov){
-    var m=model(n); if(!m) return null;
+    if(!ov){ try{ if(typeof window.nxEmisXmlFige==='function'){ var fx=window.nxEmisXmlFige(n); if(fx) return fx; } }catch(e){} }
+    var m=modelOf(n); if(!m) return null;
+    return xmlOf(m,ov);
+  }
+  function xmlOf(m,ov){
+    m=JSON.parse(JSON.stringify(m));
     if(ov&&/^[BSM]$/.test(ov.nature||'')) m.nature=ov.nature;
     if(ov){ if(ov.seller) m.seller=Object.assign({},m.seller,ov.seller); if(ov.buyer) m.cli=Object.assign({},m.cli,ov.buyer); if(ov.suffix){ m.id=m.id+ov.suffix; if(m.ref) m.ref=Object.assign({},m.ref,{id:m.ref.id+ov.suffix}); } }
     var e=m.seller, pro=String((m.cli||{}).type||'')==='Professionnel';
@@ -168,11 +180,12 @@
         '<ram:SpecifiedLineTradeSettlement>'+taxXML(l,m,true)+'<ram:SpecifiedTradeSettlementLineMonetarySummation><ram:LineTotalAmount>'+a2(l.ht)+'</ram:LineTotalAmount></ram:SpecifiedTradeSettlementLineMonetarySummation></ram:SpecifiedLineTradeSettlement>'+
         '</ram:IncludedSupplyChainTradeLineItem>'; }).join('')+
       '<ram:ApplicableHeaderTradeAgreement>'+party('SellerTradeParty',e,true)+party('BuyerTradeParty',m.cli||{},false)+'</ram:ApplicableHeaderTradeAgreement>'+
-      '<ram:ApplicableHeaderTradeDelivery/>'+
+      (m.dateRealisation?'<ram:ApplicableHeaderTradeDelivery><ram:ActualDeliverySupplyChainEvent><ram:OccurrenceDateTime><udt:DateTimeString format="102">'+d8(m.dateRealisation)+'</udt:DateTimeString></ram:OccurrenceDateTime></ram:ActualDeliverySupplyChainEvent></ram:ApplicableHeaderTradeDelivery>':'<ram:ApplicableHeaderTradeDelivery/>')+
       '<ram:ApplicableHeaderTradeSettlement><ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>'+
       (m.type!=='381'&&iban(e.rib)?'<ram:SpecifiedTradeSettlementPaymentMeans><ram:TypeCode>30</ram:TypeCode><ram:PayeePartyCreditorFinancialAccount><ram:IBANID>'+iban(e.rib)+'</ram:IBANID></ram:PayeePartyCreditorFinancialAccount></ram:SpecifiedTradeSettlementPaymentMeans>':'')+
       m.taxes.map(function(t){ return taxXML(t,m,false); }).join('')+
-      (m.due>0&&m.type!=='381'?'<ram:SpecifiedTradePaymentTerms><ram:Description>Paiement à réception de facture</ram:Description><ram:DueDateDateTime><udt:DateTimeString format="102">'+d8(m.date)+'</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>':'')+
+      (m.situ==='2'&&m.payeLe?'<ram:SpecifiedTradePaymentTerms><ram:Description>Facture acquittée le '+x(String(m.payeLe).slice(0,10).split('-').reverse().join('/'))+'</ram:Description><ram:DueDateDateTime><udt:DateTimeString format="102">'+d8(m.payeLe)+'</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>'
+        :(m.due>0&&m.type!=='381'?'<ram:SpecifiedTradePaymentTerms><ram:Description>'+x(m.echeanceTexte||'Paiement à réception de facture')+'</ram:Description><ram:DueDateDateTime><udt:DateTimeString format="102">'+d8(m.echeance||m.date)+'</udt:DateTimeString></ram:DueDateDateTime></ram:SpecifiedTradePaymentTerms>':''))+
       '<ram:SpecifiedTradeSettlementHeaderMonetarySummation><ram:LineTotalAmount>'+a2(m.lineTotal)+'</ram:LineTotalAmount><ram:TaxBasisTotalAmount>'+a2(m.lineTotal)+'</ram:TaxBasisTotalAmount>'+
         '<ram:TaxTotalAmount currencyID="EUR">'+a2(m.taxTotal)+'</ram:TaxTotalAmount><ram:GrandTotalAmount>'+a2(m.grand)+'</ram:GrandTotalAmount>'+(m.prepaid>0?'<ram:TotalPrepaidAmount>'+a2(m.prepaid)+'</ram:TotalPrepaidAmount>':'')+'<ram:DuePayableAmount>'+a2(m.due)+'</ram:DuePayableAmount></ram:SpecifiedTradeSettlementHeaderMonetarySummation>'+
       (m.ref?'<ram:InvoiceReferencedDocument><ram:IssuerAssignedID>'+x(m.ref.id)+'</ram:IssuerAssignedID>'+(m.ref.date?'<ram:FormattedIssueDateTime><qdt:DateTimeString format="102">'+d8(m.ref.date)+'</qdt:DateTimeString></ram:FormattedIssueDateTime>':'')+'</ram:InvoiceReferencedDocument>':'')+
@@ -180,7 +193,9 @@
     return h;
   }
   window.nxEinvXML=xml;
-  window.nxEinvModel=model;
+  window.nxEinvXMLOf=xmlOf;
+  window.nxEinvModel=modelOf;
+  window.nxEinvModelLive=model;
 
   function dl(name,content,type){ var b=new Blob([content],{type:type||'application/xml'}); var a=document.createElement('a'); a.href=URL.createObjectURL(b); a.download=name; document.body.appendChild(a); a.click(); setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} },2000); }
   window.nxEinvDownload=function(n){
@@ -202,7 +217,7 @@
   };
 
   /* ---------- mention de franchise : bascule automatique au 01/01/2027 ---------- */
-  function fixMention(){ if(today()<CIBS_DATE) return; var d=document.getElementById('devisDoc'); if(!d) return;
+  function fixMention(){ var dd=String(window.__nxDocDate||today()); if(dd<CIBS_DATE) return; var d=document.getElementById('devisDoc'); if(!d) return;
     var h=d.innerHTML, n=h.replace(/(art(?:icle|\.)\s*)293\s*B\s*du\s*CGI/gi,'art. L. 233-3 du CIBS'); if(n!==h) d.innerHTML=n; }
   function wrapPrint(){ var o=window.print; if(typeof o!=='function'||o._nxei) return; var w=function(){ try{ fixMention(); }catch(e){} return o.apply(this,arguments); }; w._nxei=true; window.print=w; }
   function wrapMail(){ var o=window.buildMail; if(typeof o!=='function'||o._nxei) return; var w=function(to,s,b){ try{ if(today()>=CIBS_DATE) b=String(b||'').replace(/(art(?:icle|\.)\s*)293\s*B\s*du\s*CGI/gi,'art. L. 233-3 du CIBS'); }catch(e){} return o.call(this,to,s,b); }; w._nxei=true; window.buildMail=w; }
@@ -226,7 +241,7 @@
     if(typeof window.nxRenderDocs==='function'&&!window.nxRenderDocs._nxei){ var o=window.nxRenderDocs; window.nxRenderDocs=function(){ var r=o.apply(this,arguments); try{ card(); }catch(e){} return r; }; window.nxRenderDocs._nxei=true; }
     /* bouton XML à côté de chaque facture dans l'écran Avoirs */
     if(typeof window.renderAvoirs==='function'&&!window.renderAvoirs._nxei){ var ra=window.renderAvoirs; window.renderAvoirs=function(){ var r=ra.apply(this,arguments); try{
-      document.querySelectorAll('#nxav table tr').forEach(function(tr){ var b=tr.querySelector('td b'); var t=b&&b.textContent; if(!t||!/^F-\d{4}-\d+$/.test(t)||tr.querySelector('.nxei-x')) return; var td=tr.lastElementChild; td.insertAdjacentHTML('beforeend',' <button class="btn-ghost btn-sm nxei-x" onclick="nxEinvDownload(\''+t+'\')">XML</button>'); }); }catch(e){} return r; }; window.renderAvoirs._nxei=true; }
+      document.querySelectorAll('#nxav table tr').forEach(function(tr){ var b=tr.querySelector('td b'); var t=b&&b.textContent; if(!t||!/^(TEST-)?F-\d{4}-\d+$/.test(t)||tr.querySelector('.nxei-x')) return; var td=tr.lastElementChild; td.insertAdjacentHTML('beforeend',' <button class="btn-ghost btn-sm nxei-x" onclick="nxEinvDownload(\''+t+'\')">XML</button>'); }); }catch(e){} return r; }; window.renderAvoirs._nxei=true; }
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,0); }); else setTimeout(boot,0);
 })();

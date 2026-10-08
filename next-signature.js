@@ -65,16 +65,20 @@
         '<a class="nx-sbtn" href="'+esc(o.url)+'" target="_blank" rel="noopener">Voir la page client</a></div>'+
       '<p class="nxs-sub" style="margin-top:10px">Valable 90 jours. Tu seras prévenu ici dès que le client signe ou décline.</p></div>';
     document.body.appendChild(m);
-    document.getElementById('nxsCopy').onclick=function(){ try{ navigator.clipboard.writeText(o.url); toastX('📋 Lien copié','ok'); }catch(e){ toastX('Copie impossible','warn'); } };
+    document.getElementById('nxsCopy').onclick=function(){ window.cpCopier(o.url).then(function(ok){ toastX(ok?'📋 Lien copié':'Copie impossible', ok?'ok':'warn'); }); };
   }
 
   /* Contrat conclu à distance avec un particulier : information sur le droit de rétractation (14 jours)
      + formulaire type (Code de la consommation, art. L221-5 et annexe de l'art. R221-1). Source : service-public.fr F10485 */
-  function retractation(d){
+  /* mode (1.10) : 'hors_etablissement' | 'distance' | 'a_preciser' — rien pour un contrat conclu dans les locaux */
+  function retractation(d,mode){
     var E=(P&&P.entreprise)||{}, pro=[E.nom,[E.adresse,E.cp,E.ville].filter(Boolean).join(' '),E.email].filter(Boolean).join(' — ');
     var st='font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#222;line-height:1.45';
+    if(mode==='locaux') return '';
+    var lib=mode==='hors_etablissement'?'contrat conclu hors établissement':mode==='distance'?'contrat conclu à distance':'contrat conclu à distance ou hors établissement';
     return '<div data-retractation="1" style="'+st+';margin-top:16px;border-top:2px solid #121417;padding-top:8px;page-break-before:auto">'+
-      '<b style="font-size:11px">Information sur le droit de rétractation (client particulier — contrat conclu à distance)</b><br>'+
+      '<b style="font-size:11px">Information sur le droit de rétractation (client particulier — '+lib+')</b><br>'+
+      (mode!=='distance'?'<b>Aucun paiement</b> ni contrepartie, sous quelque forme que ce soit, ne peut être exigé ou reçu avant l\'expiration d\'un délai de <b>7 jours</b> à compter de la conclusion d\'un contrat signé hors établissement (art. L221-10 du Code de la consommation), sauf travaux d\'entretien ou de réparation urgents expressément demandés par le client. ':'')+
       'Vous disposez d\'un délai de <b>14 jours</b> à compter de la signature du présent devis pour vous rétracter, sans avoir à justifier de motif ni à payer de pénalité. '+
       'Pour l\'exercer, notifiez votre décision par une déclaration dénuée d\'ambiguïté (courrier ou e-mail) à : '+esc(pro||'l\'entreprise')+', ou utilisez le formulaire ci-dessous. '+
       'Si vous demandez expressément que les travaux commencent avant la fin de ce délai, vous devrez, en cas de rétractation, payer un montant proportionnel aux travaux déjà réalisés ; '+
@@ -85,6 +89,7 @@
       'Signé le : ………………… &nbsp; Nom du consommateur : ………………………………<br>Adresse du consommateur : ……………………………………………………………<br>'+
       'Signature du consommateur (uniquement en cas de notification sur papier) : ………………… &nbsp; Date : …………………</div></div>';
   }
+  window.nxRetractationHTML=retractation;
 
   /* --------- devis --------- */
   window.nxsSendDevis = function(){
@@ -102,7 +107,7 @@
       save(LS.devis,DEVIS); try{ updateBadges(); }catch(e){}
       var st=document.getElementById('f_statut'); if(st) st.value=cur.statut;
       try{ document.getElementById('wizStatus').innerHTML=statusTag(cur.statut); }catch(e){}
-      if(cur.cType!=='Professionnel') html+=retractation(cur);
+      if(cur.cType!=='Professionnel'&&html.indexOf('data-retractation')<0) html+=retractation(cur,(cur.conclusion&&cur.conclusion.mode)||'a_preciser');
       var docId=cur.id;
       var o={type:'devis',docId:cur.id,num:cur.num,client:cur.cNom,titre:cur.type+(cur.cVille?' — '+cur.cVille:''),montant:c.totalTTC,html:html,email:cur.cMail,tel:cur.cTel};
       toastX('Préparation du lien…');
@@ -135,10 +140,13 @@
     var sig={at:s.signed_at,nom:s.signer_nom,hash:s.doc_hash,png:s.signature_png||null,token:s.token,ip:s.signer_ip||null};
     if(s.doc_type==='devis'){
       var d=(DEVIS||[]).find(function(x){ return x.id===s.doc_id; }); if(!d) return false;
-      if(s.statut==='signe'){ d.statut='accepte'; d.signature=sig; d.acceptedAt=Date.parse(s.signed_at)||Date.now(); }
+      if(s.statut==='signe'){ d.statut='accepte'; d.signature=sig; d.acceptedAt=Date.parse(s.signed_at)||Date.now();
+        /* 1.10 : date réelle de conclusion = horodatage du serveur (jour à Paris) + preuve ; le MODE n'est jamais deviné */
+        try{ var c0=d.conclusion||{}, dt=new Date(s.signed_at), jour=dt.toLocaleDateString('sv-SE',{timeZone:'Europe/Paris'});
+          if(!c0.date&&/^\d{4}-\d{2}-\d{2}$/.test(jour)) d.conclusion=Object.assign({mode:'a_preciser'},c0,{date:jour,preuve:{type:'signature_en_ligne',ref:'signature en ligne du '+dt.toLocaleString('fr-FR',{timeZone:'Europe/Paris'})+' (empreinte '+String(s.doc_hash||'').slice(0,12)+'…)',token:s.token}}); }catch(e){} }
       else if(s.statut==='refuse'){ d.statut='refuse'; d.refus={at:s.signed_at,nom:s.signer_nom,motif:s.motif_refus||''}; }
       save(LS.devis,DEVIS);
-      try{ if(typeof cur!=='undefined'&&cur&&cur.id===d.id){ cur.statut=d.statut; cur.signature=d.signature; cur.refus=d.refus; } }catch(e){}
+      try{ if(typeof cur!=='undefined'&&cur&&cur.id===d.id){ cur.statut=d.statut; cur.signature=d.signature; cur.refus=d.refus; if(d.conclusion) cur.conclusion=JSON.parse(JSON.stringify(d.conclusion)); } }catch(e){}
       try{ updateBadges(); }catch(e){}
       return true;
     }
@@ -149,10 +157,27 @@
     }
     return false;
   }
+  /* 1.10 : remise de l'exemplaire électronique (colonnes ajoutées par la migration 20261002120000 ;
+     si elles n'existent pas encore, on relit sans elles) */
+  var COLS='token,doc_type,doc_id,doc_num,client_nom,statut,created_at,vu_at,signed_at,signer_nom,signature_png,signer_ip,doc_hash,motif_refus,applique,expires_at', COLS2=true;
+  function lireSignatures(){
+    var q=function(cols){ return sb.from(TABLE).select(cols).in('statut',['en_attente','signe','refuse']).order('created_at',{ascending:false}).limit(100); };
+    if(!COLS2) return q(COLS);
+    return q(COLS+',support_durable_accord,copie_le').then(function(r){ if(r&&r.error&&/support_durable_accord|copie_le|column/i.test(String(r.error.message||''))){ COLS2=false; return q(COLS); } return r; });
+  }
+  function remises(rows){
+    var n=0;
+    rows.forEach(function(s){ if(s.statut!=='signe'||s.doc_type!=='devis'||!s.copie_le) return;
+      var d=(DEVIS||[]).find(function(x){ return x.id===s.doc_id; }); if(!d||!d.signature||d.signature.token!==s.token) return;
+      if(d.signature.copieLe!==s.copie_le){ d.signature.copieLe=s.copie_le; d.signature.supportDurable=!!s.support_durable_accord; n++;
+        try{ if(typeof cur!=='undefined'&&cur&&cur.id===d.id&&cur.signature) cur.signature.copieLe=s.copie_le; }catch(e){} } });
+    if(n) save(LS.devis,DEVIS);
+  }
+  window.nxsRemises=remises;
+  window.nxsApplySig=applySig;
   function refresh(){
     if(!cloudOk()) return Promise.resolve();
-    return sb.from(TABLE).select('token,doc_type,doc_id,doc_num,client_nom,statut,created_at,vu_at,signed_at,signer_nom,signature_png,signer_ip,doc_hash,motif_refus,applique,expires_at')
-      .in('statut',['en_attente','signe','refuse']).order('created_at',{ascending:false}).limit(100)
+    return lireSignatures()
       .then(function(r){
         if(!r || r.error) return;
         var rows=r.data||[], done=[];
@@ -160,6 +185,7 @@
           if(applySig(s)){ done.push(s.token);
             toastX(s.statut==='signe'?('✍️ '+(s.doc_type==='devis'?'Devis ':'Fiche ')+(s.doc_num||'')+' signé par '+s.signer_nom):('Devis '+(s.doc_num||'')+' décliné par '+s.signer_nom),s.statut==='signe'?'ok':'warn'); }
         });
+        try{ remises(rows); }catch(e){}
         PENDING=rows.filter(function(s){ return s.statut==='en_attente' && Date.parse(s.expires_at)>Date.now(); });
         render();
         if(done.length) return sb.from(TABLE).update({applique:true}).in('token',done);

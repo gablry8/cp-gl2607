@@ -1,14 +1,30 @@
+import { ecrireResultats, out as sortie } from './env.mjs';
 // Suite F — facture électronique : XML CII EN 16931 (XSD + règles officielles CEN), mention CIBS 2027, carte « prêt »
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
 import {execSync} from 'child_process';
 import fs from 'fs';
 /* F1 génération + validation */
 execSync('node '+new URL('./genxml.mjs',import.meta.url).pathname,{stdio:'ignore'});
-const out=execSync('python3 '+new URL('./validate-einvoice.py',import.meta.url).pathname).toString();
+/* jeu historique (particuliers compris, jamais envoyés à la plateforme) : règles CEN seulement */
+const out=execSync('python3 '+new URL('./validate-einvoice.py',import.meta.url).pathname,{env:{...process.env,BRFR_DIR:'',XML_DIR:sortie('xml')}}).toString();
+const CEN=/^CEN: OK/m.test(out);
 const lines=out.trim().split('\n'); const files=lines.filter(l=>/\.xml /.test(l));
 rec('Facture électronique','XML générés ('+files.length+' : factures, acompte, avoirs, franchise et TVA 20 %)',files.length>=8,'');
 rec('Facture électronique','Schéma XSD Factur-X / CII : tous valides',files.every(l=>/XSD ok/.test(l)),files.filter(l=>!/XSD ok/.test(l)).join(' | '));
-rec('Facture électronique','Règles officielles EN 16931 (CEN) : 0 erreur bloquante',/TOTAL BLOQUANTS 0/.test(out),lines.filter(l=>/fatal/.test(l)).slice(0,4).join(' | '));
+if(!CEN) rec('Facture électronique','Règles officielles EN 16931 (CEN) : validateur absent','SKIP','EN16931_XSLT=<dépôt eInvoicing-EN16931>/cii/xslt/EN16931-CII-validation.xslt');
+else rec('Facture électronique','Règles officielles EN 16931 (CEN) : 0 erreur bloquante',/TOTAL BLOQUANTS 0/.test(out),lines.filter(l=>/fatal/.test(l)).slice(0,4).join(' | '));
+/* F1b — 1.10 : matrice de factures FIGÉES (clients pros), bac à sable, ancienne facture payée le jour même,
+   contrôlée aussi par les règles FRANÇAISES officielles (schematron FNFE-MPE, si BRFR_DIR est fourni) */
+execSync('node '+new URL('./genxml2.mjs',import.meta.url).pathname,{stdio:'ignore'});
+const D2=sortie('xml2');
+if(process.env.BRFR_DIR&&CEN){
+  const out2=execSync('python3 '+new URL('./validate-einvoice.py',import.meta.url).pathname,{env:{...process.env,XML_DIR:D2}}).toString();
+  const l2=out2.trim().split('\n'), f2=l2.filter(l=>/\.xml /.test(l));
+  rec('Facture électronique','1.10 : '+f2.length+' factures figées / bac à sable / payée le jour même — XSD + CEN + règles françaises (BR-FR) : 0 erreur bloquante',/^BR-FR: OK/m.test(out2)&&/^CEN: OK/m.test(out2)&&f2.length>=10&&/TOTAL BLOQUANTS 0/.test(out2),l2.filter(l=>/fatal|FAIL/.test(l)).slice(0,4).join(' | '));
+} else rec('Facture électronique','1.10 : factures figées — XSD + CEN + règles françaises BR-FR ('+(CEN?'BRFR_DIR non fourni':'validateur CEN absent')+')','SKIP','git clone https://github.com/fnfempe/France_RFE ; BRFR_DIR=<dossier>');
+{ const x=fs.readFileSync(D2+'/ancienne_payee_jour_meme.xml','utf8'); const g=t=>(new RegExp('<ram:'+t+'[^>]*>([^<]+)<').exec(x)||[])[1];
+  rec('Facture électronique','Payée le jour même (BR-FR-CO-09) : déjà payé = total, net à payer 0, échéance = date de paiement',/<ram:ID>[BSM]2</.test(x)&&g('TotalPrepaidAmount')===g('GrandTotalAmount')&&g('DuePayableAmount')==='0.00'&&/DueDateDateTime/.test(x),JSON.stringify({p:g('TotalPrepaidAmount'),t:g('GrandTotalAmount'),d:g('DuePayableAmount')})); }
+{ const x=fs.readFileSync(D2+'/fige_depannage.xml','utf8'); rec('Facture électronique','Intervention : date de prestation (BT-72) transmise',/ActualDeliverySupplyChainEvent><ram:OccurrenceDateTime><udt:DateTimeString format="102">\d{8}</.test(x)); }
 /* F2 mention CIBS au 1er janvier 2027 */
 {
   const {p,ctx}=await page({mobile:false,init:()=>{ const D=Date; const T=new D('2027-01-05T10:00:00').getTime(); const off=T-D.now(); class FD extends D{ constructor(...a){ if(a.length) super(...a); else super(D.now()+off); } static now(){ return D.now()+off; } } window.Date=FD; }});
@@ -27,5 +43,5 @@ rec('Facture électronique','Règles officielles EN 16931 (CEN) : 0 erreur bloqu
   await ctx.close();
 }
 await closeBrowser();
-fs.writeFileSync('/tmp/claude-0/sp/resF.json',JSON.stringify(RES,null,1));
+ecrireResultats('resF.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

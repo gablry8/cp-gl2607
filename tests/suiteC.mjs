@@ -1,3 +1,4 @@
+import { ecrireResultats, out } from './env.mjs';
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
 import fs from 'fs';
 
@@ -10,7 +11,7 @@ import fs from 'fs';
     FLU.push({id:'fl1',num:'FF-2026-001',date:dISO(new Date()),client:'Boulangerie Dupré',desc:'Split',fluide:'R32',charge:0.9,qv:0.2}); save('cp2_fluides',FLU);
     localStorage.setItem('cpnext_refs',JSON.stringify({ftxm25:{ref:'FTXM25',fluide:'R32',charge:0.9}})); });
   const [dl]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>exportJSON())]);
-  const path='/tmp/claude-0/sp/bk.json'; await dl.saveAs(path);
+  const path=out('bk.json'); await dl.saveAs(path);
   const bk=JSON.parse(fs.readFileSync(path,'utf8'));
   const has=k=>bk.all&&bk.all[k]!=null;
   rec('Sauvegarde','Contient parc, contrats, fiches fluides, références',has('cp2_equip')&&has('cp2_contrats')&&has('cp2_fluides')&&has('cpnext_refs'),Object.keys(bk.all||{}).join(','));
@@ -59,10 +60,12 @@ import fs from 'fs';
   const r=await p.evaluate(()=>{ const d=DEVIS.find(x=>x.statut==='accepte'&&compute(x).totalHT>0); facturerDevis(d.id,'solde'); const c=document.getElementById('nx-pdf-close'); if(c) c.click();
     window.confirm=()=>true; const n0=DEVIS.length; try{ delDevis(d.id); }catch(e){} const still=DEVIS.some(x=>x.id===d.id);
     /* compteur en retard (autre appareil) */
-    const max=d.facSolde.num; save(LS.facseq,{year:new Date().getFullYear(),seq:0}); const nx=nextFacNum();
-    return {still,max,nx}; });
+    const max=d.facSolde.num; save(LS.facseq,{year:new Date().getFullYear(),seq:0}); save('cp2_testseq',{year:new Date().getFullYear(),F:0,AV:0});
+    const d2=DEVIS.find(x=>x.statut==='accepte'&&x.id!==d.id&&compute(x).totalHT>0&&!x.facSolde); facturerDevis(d2.id,'solde'); const c2=document.getElementById('nx-pdf-close'); if(c2) c2.click();
+    const n=s=>+String(s).match(/(\d+)$/)[1]; const nx=d2.facSolde&&d2.facSolde.num;
+    return {still,max,nx,ok:!!nx&&nx!==max&&n(nx)>n(max)}; });
   rec('Factures','Devis facturé impossible à supprimer',r.still);
-  rec('Factures','Compteur en retard : jamais de numéro déjà utilisé',r.nx>r.max,r.max+' puis '+r.nx);
+  rec('Factures','Compteur en retard : jamais de numéro déjà utilisé',r.ok,r.max+' puis '+r.nx);
   await ctx.close();
 }
 
@@ -111,5 +114,5 @@ import fs from 'fs';
   await ctx.close();
 }
 await closeBrowser();
-fs.writeFileSync('/tmp/claude-0/sp/resC.json',JSON.stringify(RES,null,1));
+ecrireResultats('resC.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

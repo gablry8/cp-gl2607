@@ -1,0 +1,16 @@
+# Fichiers de configuration avec des valeurs réelles : jamais dans le dépôt (seuls les exemples sans valeur)
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+# Fichiers générés
+__pycache__/
+*.pyc
+.pytest_cache/
+node_modules/
+*.log
+# Sorties des tests et de l'aperçu (écrites hors du dépôt par défaut)
+/climpilot-tests*/
+/tools/apercu/out/

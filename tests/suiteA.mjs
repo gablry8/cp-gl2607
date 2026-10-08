@@ -1,6 +1,7 @@
+import { ecrireResultats, RACINE } from './env.mjs';
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
 import fs from 'fs';
-const ROOT='/home/claude/cp-gl2607/';
+const ROOT=RACINE;
 
 /* A1. service worker : tous les fichiers précachés existent, et tous les scripts chargés sont précachés */
 {
@@ -76,5 +77,5 @@ for(const mobile of [true,false]){
   await ctx.close();
 }
 await closeBrowser();
-fs.writeFileSync('/tmp/claude-0/sp/resA.json',JSON.stringify(RES,null,1));
+ecrireResultats('resA.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

@@ -29,7 +29,12 @@
   var KS='__nxks', DBN='climpilot-store', ST='kv', OPEN_MS=3500;
   var MAP=null, SEQ=0, KSM={}, db=null, mode='init', pending={}, flushT=null, flushP=Promise.resolve(), failed=0;
   W.__native={get:NATIVE.getItem,set:NATIVE.setItem,remove:NATIVE.removeItem}; /* accès direct (diagnostic / tests) */
-  var STORE=W.nxStore={mode:'init',flush:function(){ return doFlush(); },info:function(){ return {mode:mode,keys:MAP?MAP.size:null,seq:SEQ}; }};
+  var STORE=W.nxStore={mode:'init',flush:function(){ return doFlush(); },info:function(){ return {mode:mode,keys:MAP?MAP.size:null,seq:SEQ,lectureSeule:!!RO}; }};
+  /* 1.10 — écritures suspendues : pendant fn(), ce qui est écrit reste en mémoire puis est jeté
+     (essai « à blanc » d'une fonction de facturation, voir next-emission.js) */
+  var OVL=null, RO=false;
+  STORE.suspend=function(fn){ var prev=OVL; OVL=new Map(); try{ return fn(); } finally{ OVL=prev; } };
+  STORE.lectureSeule=function(){ return RO; };
 
   function nGet(k){ try{ return NATIVE.getItem.call(LSO,k); }catch(e){ return null; } }
   function nSet(k,v){ NATIVE.setItem.call(LSO,k,v); }
@@ -84,11 +89,15 @@
   /* ---------- localStorage redirigé ---------- */
   function isLS(o){ return LSO&&o===LSO; }
   function install(){
-    SP.getItem=function(k){ if(!isLS(this)) return NATIVE.getItem.call(this,k); k=String(k); if(internal(k)) return NATIVE.getItem.call(this,k); var v=MAP.get(k); return v===undefined?null:v; };
+    SP.getItem=function(k){ if(!isLS(this)) return NATIVE.getItem.call(this,k); k=String(k); if(internal(k)) return NATIVE.getItem.call(this,k); if(OVL&&OVL.has(k)){ var o=OVL.get(k); return o===undefined?null:o; } var v=MAP.get(k); return v===undefined?null:v; };
     SP.setItem=function(k,v){ if(!isLS(this)) return NATIVE.setItem.call(this,k,v); k=String(k); v=String(v); if(internal(k)) return NATIVE.setItem.call(this,k,v);
+      if(OVL){ OVL.set(k,v); return; }
+      if(RO){ MAP.set(k,v); return; } /* onglet en lecture seule : rien n'est enregistré */
       if(mode==='local'){ nSet(k,v); MAP.set(k,v); SEQ++; KSM[k]={s:SEQ,h:h(v)}; saveKS(); return; } /* secours : erreurs de place transmises telles quelles */
       MAP.set(k,v); track(k,v,false); queue(k,v); };
     SP.removeItem=function(k){ if(!isLS(this)) return NATIVE.removeItem.call(this,k); k=String(k); if(internal(k)) return NATIVE.removeItem.call(this,k);
+      if(OVL){ OVL.set(k,undefined); return; }
+      if(RO){ MAP.delete(k); return; }
       MAP.delete(k); if(mode==='local'){ nDel(k); SEQ++; KSM[k]={s:SEQ,d:1}; saveKS(); return; } track(k,null,true); queue(k,null); };
     SP.key=function(i){ if(!isLS(this)) return NATIVE.key.call(this,i); var a=Array.from(MAP.keys()); return a[i]===undefined?null:a[i]; };
     SP.clear=function(){ if(!isLS(this)) return NATIVE.clear.call(this); Array.from(MAP.keys()).forEach(function(k){ SP.removeItem.call(LSO,k); }); };
@@ -209,7 +218,46 @@
     var mx=0; Object.keys(KSM).forEach(function(k){ mx=Math.max(mx,(KSM[k]&&KSM[k].s)||0); }); SEQ=mx;
     install(); whenParsed(runApp);
   }
+  /* ---------- 1.10 : un seul onglet actif à la fois ----------
+     Le nouvel onglet demande s'il existe déjà un onglet actif (BroadcastChannel, 300 ms). Si oui, il démarre
+     en LECTURE SEULE (rien n'est enregistré, voile explicatif) ; « Utiliser cet onglet » met l'autre en lecture
+     seule puis recharge celui-ci. Un onglet qui voit le stockage modifié par un autre (ancienne version sans
+     ce mécanisme, par ex.) passe aussi en lecture seule. */
+  var BC=null, TAB=Math.random().toString(36).slice(2), ACTIF=false;
+  function voile(msg){
+    whenParsed(function(){
+      var o=document.getElementById('nxRoVoile'); if(o) o.remove();
+      var d=document.createElement('div'); d.id='nxRoVoile';
+      d.style.cssText='position:fixed;inset:0;z-index:299999;background:rgba(15,27,45,.92);color:#fff;display:flex;align-items:center;justify-content:center;padding:24px;font:16px/1.5 system-ui,sans-serif;text-align:center';
+      d.innerHTML='<div style="max-width:440px"><div style="font-size:38px">🗂️</div><h2 style="margin:8px 0">Onglet en lecture seule</h2><p>'+msg+'</p><p>Rien de ce qui est fait ici n\'est enregistré, pour ne pas écraser le travail de l\'autre onglet.</p>'+
+        '<button id="nxRoPrendre" style="margin-top:10px;padding:12px 20px;border:0;border-radius:10px;background:#fff;color:#0f1b2d;font-weight:700;font-size:16px">Utiliser cet onglet</button></div>';
+      document.body.appendChild(d);
+      document.getElementById('nxRoPrendre').onclick=function(){ try{ if(BC) BC.postMessage({t:'prise',id:TAB}); }catch(e){} setTimeout(function(){ location.reload(); },400); };
+    });
+  }
+  function passerLectureSeule(msg){ if(RO) return; RO=true; STORE.mode=mode+'-lecture'; W.__cpLectureSeule=true; try{ doFlush(); }catch(e){} voile(msg); }
+  STORE.passerLectureSeule=passerLectureSeule;
+  function ecouteOnglets(){
+    try{ if(!W.BroadcastChannel) return Promise.resolve(false); BC=new BroadcastChannel('climpilot-onglets'); }catch(e){ return Promise.resolve(false); }
+    BC.onmessage=function(ev){ var m=ev&&ev.data||{}; if(m.id===TAB) return;
+      if(m.t==='bonjour'&&ACTIF&&!RO) BC.postMessage({t:'actif',id:TAB});
+      if(m.t==='prise'&&!RO){ passerLectureSeule('ClimPilot est maintenant utilisé dans un autre onglet.'); } };
+    return new Promise(function(res){ var vu=false; var h=function(ev){ if(ev&&ev.data&&ev.data.t==='actif'&&ev.data.id!==TAB) vu=true; };
+      BC.addEventListener('message',h); BC.postMessage({t:'bonjour',id:TAB});
+      setTimeout(function(){ BC.removeEventListener('message',h); res(vu); },300); });
+  }
+  W.addEventListener('storage',function(e){
+    /* écriture faite par un AUTRE onglet (les nôtres ne déclenchent pas cet évènement) */
+    if(!e||!e.key||internal(e.key)||e.key==='cp2_dirty'||RO||mode==='init') return;
+    if(/^(cp2_|cpnext_)/.test(e.key)) passerLectureSeule('Les données ont été modifiées dans un autre onglet ou une autre version de ClimPilot. Recharge pour repartir des données à jour.');
+  });
   function start(attempt){
+    if(attempt===0&&!start._ok){ start._ok=true;
+      return ecouteOnglets().then(function(autre){ if(autre){ RO=true; W.__cpLectureSeule=true; voile('ClimPilot est déjà ouvert dans un autre onglet de ce navigateur.'); } else ACTIF=true; start(0); });
+    }
+    return start2(attempt);
+  }
+  function start2(attempt){
     if(!LSO){ mode='none'; STORE.mode='none'; whenParsed(runApp); return; }
     openDB().then(function(d){ db=d; db.onversionchange=function(){ try{ db.close(); }catch(e){} };
       return readAll(d).then(function(idb){

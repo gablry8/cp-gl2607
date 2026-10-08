@@ -1,3 +1,4 @@
+import { ecrireResultats } from './env.mjs';
 // Suite H — plateforme agréée SUPER PDP (écran « Facture électronique »), serveur simulé
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
 import fs from 'fs';
@@ -6,7 +7,15 @@ import fs from 'fs';
 const MOCK=`(function(env){
   const chain=()=>{ const f=function(){ return P; }; const P=new Proxy(f,{get(t,k){ if(k==='then') return (res)=>Promise.resolve({data:[],error:null}).then(res); return chain(); },apply(){ return P; }}); return P; };
   window.__calls=[]; window.__state={connecte:false,env:env,valid:true,sent:0};
-  window.sb={from:()=>chain(),channel:()=>({on(){return this;},subscribe(){return this;}}),removeChannel(){},auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange(){return {data:{subscription:{unsubscribe(){}}}};},signOut:async()=>({})},
+  const docs=[], seq={};
+  const rpc=async(name,p)=>{ if(name==='cp_serveur_info') return {data:{documents:true}};
+    if(name==='cp_emettre_document'){ const ex=docs.find(d=>d.request_id===p.p_request_id); if(ex) return {data:{ok:true,deja:true,doc:ex}};
+      const an=+String(p.p_date).slice(0,4), k=p.p_serie+an, n=(seq[k]=Math.max(seq[k]||0,p.p_min_numero||0)+1);
+      const d={id:'d'+(docs.length+1),request_id:p.p_request_id,num:p.p_serie+'-'+an+'-'+String(n).padStart(3,'0'),type:p.p_type,origine:'emis',payload:p.p_payload,payload_hash:'h'}; docs.push(d); return {data:{ok:true,deja:false,doc:d}}; }
+    if(name==='cp_document_fichiers'||name==='cp_document_evenement'||name==='cp_importer_ancien') return {data:{ok:true,doc:{id:'x'}}};
+    if(name==='cp_state_push') return {data:{ok:true,updated_at:new Date().toISOString()}};
+    return {data:null}; };
+  window.sb={rpc,from:()=>chain(),channel:()=>({on(){return this;},subscribe(){return this;}}),removeChannel(){},auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange(){return {data:{subscription:{unsubscribe(){}}}};},signOut:async()=>({})},
     functions:{invoke:async(name,{body})=>{ __calls.push(body); const S=__state; const co={id:7,nom:env==='sandbox'?'Tricatel':'Gabriel Leroy',siren:env==='sandbox'?'000000001':'123456789'};
       switch(body.action){
         case 'status': return {data:S.connecte?{connecte:true,env:S.env,company:co,client_id:'abc123…'}:{connecte:false}};
@@ -14,7 +23,7 @@ const MOCK=`(function(env){
         case 'disconnect': S.connecte=false; return {data:{connecte:false}};
         case 'validate': S.lastXml=body.xml; return {data:{rapport:S.valid?{is_valid:true,profil:'EN16931',erreurs:[],avertissements:[]}:{is_valid:false,erreurs:[{message:'BR-FR-12 : adresse électronique du vendeur manquante',location:'/rsm:CrossIndustryInvoice'}],avertissements:[]}}};
         case 'send': S.sent++; S.lastSend=body; return {data:{id:1000+S.sent,direction:'out',events:[{status_code:'api:uploaded',status_text:'uploaded',created_at:'2026-10-01T10:00:00Z'}],env:S.env}};
-        case 'invoice': return {data:{id:body.id,events:[{status_code:'api:uploaded',created_at:'2026-10-01T10:00:00Z'},{status_code:'fr:205',status_text:'Approuvée',created_at:'2026-10-01T11:00:00Z'}]}};
+        case 'invoice': return {data:{id:body.id,events:[{status_code:'api:uploaded',created_at:'2026-10-01T10:00:00Z'},{status_code:S.codeInvoice||'fr:205',status_text:S.codeInvoice==='fr:213'?'Rejetée':'Approuvée',created_at:'2026-10-01T11:00:00Z'}]}};
         case 'list': return {data:{items:[{id:55,direction:'in',numero:'FA-889',date:'2026-09-28',vendeur:'Clim Distribution',total:1250.4,events:[{code:'fr:203',texte:'Mise à disposition',at:'2026-09-28T09:00:00Z'}]}],has_after:false}};
         case 'event': S.lastEvent=body; return {data:{ok:true}};
         case 'directory': return {data:{entreprises:[{formal_name:'BOULANGERIE DUPRE'}],entrees:body.number==='552100554'?[{id:1}]:[],erreur_annuaire:null}};
@@ -22,20 +31,22 @@ const MOCK=`(function(env){
       }
       return {data:{erreur:'action'}};
     }}};
-  window.SESS={user:{id:'925080a9-1eaa-4fcf-9fa9-af6ffb214552',email:'g@x.fr'}};
+  window.SESS={user:{id:'99999999-9999-4999-8999-999999999999',email:'g@x.fr'}};
 })`;
 
 async function setup(env,opts={}){
   const {p,ctx,errs}=await page({mobile:opts.mobile!==false?true:false});
   await p.evaluate(MOCK+'('+JSON.stringify(env)+')');
   await seed(p);
+  if(env==='production') await p.evaluate(()=>{ localStorage.setItem('cp2_facturation',JSON.stringify({debut:todayISO(),decideLe:'test',anciens:{},renommes:{},v:1})); /* 1.10 : facturation réelle démarrée explicitement */ Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:'12 rue A',cp:'60000',ville:'Beauvais',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); });
   /* une facture pro (SIREN) et une facture particulier */
   const nums=await p.evaluate(async()=>{
     const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0);
     const pro=acc.find(d=>d.cType==='Professionnel'), part=acc.find(d=>d.cType!=='Professionnel')||acc[1];
-    pro.cSiren='552100554'; part.cType='Particulier';
-    facturerDevis(pro.id,'solde'); await new Promise(r=>setTimeout(r,150)); const c1=document.getElementById('nx-pdf-close'); if(c1) c1.click();
-    facturerDevis(part.id,'solde'); await new Promise(r=>setTimeout(r,150)); const c2=document.getElementById('nx-pdf-close'); if(c2) c2.click();
+    P.entreprise.natureChantier='M'; /* 1.10 : nature des chantiers choisie explicitement dans Paramètres (défaut : à confirmer → S) */
+    pro.cSiren='552100554'; part.cType='Particulier'; if(!part.conclusion) part.conclusion={mode:'locaux',date:todayISO(),preuve:{type:'papier',ref:'jeu de test'}}; /* 1.10 : contrat précisé (suite J) */
+    await facturerDevis(pro.id,'solde'); await new Promise(r=>setTimeout(r,150)); const c1=document.getElementById('nx-pdf-close'); if(c1) c1.click();
+    await facturerDevis(part.id,'solde'); await new Promise(r=>setTimeout(r,150)); const c2=document.getElementById('nx-pdf-close'); if(c2) c2.click();
     return {pro:pro.facSolde.num,part:part.facSolde.num};
   });
   return {p,ctx,errs,nums};
@@ -69,8 +80,8 @@ const wait=(p,ms=250)=>p.waitForTimeout(ms);
   const cad=await p.evaluate(n=>{ const x=__state.lastXml||''; const m=/BusinessProcessSpecifiedDocumentContextParameter><ram:ID>([A-Z]\d)</.exec(x); return {cadre:m&&m[1],avant:x.indexOf('BusinessProcess')<x.indexOf('GuidelineSpecified'),txt:/opération : livraison de biens et prestation de services/.test(x),modal:/cadre de facturation M1/.test(document.getElementById('mPdp').textContent)}; });
   rec('Super PDP','Cadre de facturation BT-23 (BR-FR-08) : M1 pour une facture de devis, affiché',cad.cadre==='M1'&&cad.avant&&cad.txt&&cad.modal,JSON.stringify(cad));
   await p.evaluate(n=>nxPdpSend(n,'S'),nums.pro); await wait(p,500);
-  const cadS=await p.evaluate(()=>{ const x=__state.lastXml||''; return (/BusinessProcessSpecifiedDocumentContextParameter><ram:ID>([A-Z]\d)</.exec(x)||[])[1]+'|'+/prestation de services\./.test(x)+'|'+(nxPdpMap().docs[Object.keys(nxPdpMap().docs)[0]]||{}).nature; });
-  rec('Super PDP','Changer la nature : fichier refait (S1) et choix mémorisé',cadS==='S1|true|S',cadS);
+  const cadS=await p.evaluate(()=>{ const x=__state.lastXml||''; return (/BusinessProcessSpecifiedDocumentContextParameter><ram:ID>([A-Z]\d)</.exec(x)||[])[1]+'|'+/figée à l.émission/.test((document.getElementById('mPdp')||{}).innerText||'')+'|'+(nxPdpMap().docs[Object.keys(nxPdpMap().docs)[0]]||{}).nature; });
+  rec('Super PDP','1.10 : nature figée à l\'émission (changement refusé à l\'envoi, M1 conservé, expliqué)',/^M1\|true\|(undefined|M)$/.test(cadS),cadS);
   rec('Super PDP','XML de test : vendeur 000000001, acheteur 000000002, adresses 0225, pas le vrai client',xmlChk.seller&&xmlChk.buyer&&!xmlChk.realCli&&xmlChk.sch,JSON.stringify(xmlChk));
   await p.click('#nxpdpGo'); await wait(p,400);
   m=await T(p);
@@ -134,6 +145,29 @@ const wait=(p,ms=250)=>p.waitForTimeout(ms);
   await p.click('#nxpdpGo'); await wait(p,300);
   const ext=await p.evaluate(()=>__state.lastSend.external_id);
   rec('Super PDP','Compte réel : référence = numéro de facture',ext===nums.pro,ext);
+  const env=await p.evaluate(n=>{ const e=nxEmisEntree(n), s=__state.lastSend||{}; return {doc:s.document_id,sid:e&&e.sid,xml:!!s.xml}; },nums.pro);
+  rec('Super PDP','1.10 (R2) : compte réel → identifiant du document du registre envoyé, jamais le XML de l\'appareil',env.doc&&env.doc===env.sid&&!env.xml,JSON.stringify(env));
+  rec('Super PDP','1.10 : facture du compte réel émise avec le numéro du serveur (F-)',/^F-\d{4}-\d{3}$/.test(nums.pro),nums.pro);
+  /* renvoi : bloqué si le dépôt précédent est accepté, permis après un rejet technique (fr:213) */
+  await p.evaluate(()=>closeModal('mPdp')); await p.evaluate(n=>nxPdpSend(n),nums.pro); await wait(p,500);
+  m=await T(p);
+  rec('Super PDP','Renvoi bloqué : facture déjà déposée (statut relu sur la plateforme)',/déjà déposée/.test(m)&&!(await p.$('#nxpdpGo'))&&(await p.evaluate(()=>__state.sent))===1,m.slice(0,200));
+  await p.evaluate(()=>{ closeModal('mPdp'); __state.codeInvoice='fr:213'; }); await p.evaluate(n=>nxPdpSend(n),nums.pro); await wait(p,500);
+  rec('Super PDP','Renvoi permis après un rejet technique (fr:213)',!!(await p.$('#nxpdpGo')),(await T(p)).slice(0,160));
+  await p.evaluate(()=>{ closeModal('mPdp'); __state.codeInvoice='fr:210'; }); await p.evaluate(n=>nxPdpSend(n),nums.pro); await wait(p,500);
+  m=await T(p);
+  rec('Super PDP','Refusée par le client (fr:210) : pas de renvoi, « à confirmer »',/refusée par le client/i.test(m)&&/à confirmer/.test(m)&&!(await p.$('#nxpdpGo')),m.slice(0,200));
+  /* document de démonstration : jamais sur la plateforme réelle */
+  const tnum=await p.evaluate(async()=>{ closeModal('mPdp'); const s=P.entreprise.siret; P.entreprise.siret=''; const d=DEVIS.find(x=>x.statut==='accepte'&&!x.facSolde&&compute(x).totalHT>0); d.cType='Professionnel'; d.cSiren='552100554';
+    await facturerDevis(d.id,'solde'); const c=document.getElementById('nx-pdf-close'); if(c) c.click(); P.entreprise.siret=s; return d.facSolde&&d.facSolde.num; });
+  await p.evaluate(n=>nxPdpSend(n),tnum); await wait(p,400);
+  m=await T(p);
+  rec('Super PDP','Document de démonstration (TEST) bloqué en compte réel',/^TEST-/.test(tnum||'')&&/démonstration/.test(m)&&!(await p.$('#nxpdpGo')),tnum+' '+m.slice(0,160));
+  /* numéro porté par deux documents : envoi bloqué */
+  await p.evaluate(()=>{ closeModal('mPdp'); const y=new Date().getFullYear(); DEP.push({id:'q1',cNom:'A',cType:'Professionnel',cSiren:'552100554',date:todayISO(),statut:'facturee',facNum:'F-'+y+'-077',facDate:todayISO(),itype:'dep',heures:1,pieces:[]},{id:'q2',cNom:'B',cType:'Professionnel',cSiren:'552100554',date:todayISO(),statut:'facturee',facNum:'F-'+y+'-077',facDate:todayISO(),itype:'dep',heures:1,pieces:[]}); save(LS.dep,DEP); });
+  await p.evaluate(()=>nxPdpSend('F-'+new Date().getFullYear()+'-077')); await wait(p,400);
+  m=await T(p);
+  rec('Super PDP','Numéro en double : envoi bloqué',/deux documents différents/.test(m)&&!(await p.$('#nxpdpGo')),m.slice(0,160));
   /* hors ligne / pas de session */
   await p.evaluate(()=>{ closeModal('mPdp'); window.SESS=null; go('nx_pdp'); }); await wait(p,300);
   const v=await V(p);
@@ -141,7 +175,27 @@ const wait=(p,ms=250)=>p.waitForTimeout(ms);
   rec('Super PDP','Aucune erreur JavaScript (compte réel)',errs.length===0,errs.join(' | '));
   await ctx.close();
 }
+/* H-erreurs — messages précis : service absent (404), service injoignable, hors ligne, erreur HTTP */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  await p.evaluate(MOCK+'("sandbox")'); await seed(p);
+  const r=await p.evaluate(async()=>{
+    const resp=(st,body)=>({status:st,json:async()=>{ if(body===undefined) throw new Error('pas de json'); return body; }});
+    const out={};
+    sb.functions.invoke=async()=>({data:null,error:{name:'FunctionsHttpError',context:resp(404,{code:'NOT_FOUND',message:'Requested function was not found'})}}); out.absent=await nxPdpApi({action:'status'});
+    sb.functions.invoke=async()=>({data:null,error:{name:'FunctionsFetchError',context:new TypeError('Failed to fetch')}}); out.injoignable=await nxPdpApi({action:'status'});
+    Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false}); out.horsLigne=await nxPdpApi({action:'status'}); Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>true});
+    sb.functions.invoke=async()=>({data:null,error:{name:'FunctionsHttpError',context:resp(500)}}); out.http=await nxPdpApi({action:'status'});
+    sb.functions.invoke=async()=>({data:null,error:{name:'FunctionsHttpError',context:resp(401,{erreur:'acces',message:'Compte non autorisé'})}}); out.metier=await nxPdpApi({action:'status'});
+    return out; });
+  rec('Super PDP','Service absent (404) : message « pas installé », plus « Serveur injoignable »',r.absent.erreur==='service_absent'&&/pas installé/.test(r.absent.message),JSON.stringify(r.absent));
+  rec('Super PDP','Service injoignable : causes possibles expliquées',r.injoignable.erreur==='reseau'&&/ne répond pas/.test(r.injoignable.message)&&/superpdp/.test(r.injoignable.message),JSON.stringify(r.injoignable));
+  rec('Super PDP','Appareil hors ligne : « Pas de connexion internet »',/Pas de connexion internet/.test(r.horsLigne.message),JSON.stringify(r.horsLigne));
+  rec('Super PDP','Erreur HTTP sans détail : code affiché',r.http.erreur==='http'&&/HTTP 500/.test(r.http.message),JSON.stringify(r.http));
+  rec('Super PDP','Erreur métier du service : message du service conservé',r.metier.erreur==='acces'&&r.metier.message==='Compte non autorisé',JSON.stringify(r.metier));
+  rec('Super PDP','Aucune erreur JavaScript (messages d\'erreur)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
 await closeBrowser();
-fs.mkdirSync('/tmp/claude-0/sp',{recursive:true});
-fs.writeFileSync('/tmp/claude-0/sp/resH.json',JSON.stringify(RES,null,1));
+ecrireResultats('resH.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));

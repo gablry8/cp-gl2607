@@ -1,13 +1,20 @@
 // ClimPilot — Edge Function « superpdp »
 // Pont entre ClimPilot et la plateforme agréée SUPER PDP (API v1.beta).
 // - Identifiants OAuth (client_credentials) chiffrés dans Supabase Vault : jamais renvoyés à l'appli.
-// - JWT ClimPilot obligatoire + liste blanche (un seul utilisateur).
+// - JWT ClimPilot obligatoire + liste blanche lue dans la configuration serveur ALLOWED_USER_IDS
+//   (identifiants séparés par des virgules ; absente ou vide → refus de tous, 503 « config »).
+//   1.10, PRÉPARÉ, NON DÉPLOYÉ : la version déployée a encore sa liste écrite dans le code ; poser
+//   ALLOWED_USER_IDS sur le serveur AVANT de déployer celle-ci (docs/CORRECTIONS-1.10.md).
 // - Actions : status, connect, disconnect, validate, send, invoice, events, list, download,
 //   directory, test_invoice, set_vat_regime, event.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const API = Deno.env.get('SUPERPDP_API') || 'https://api.superpdp.tech';
-const ALLOWED_USERS = ['925080a9-1eaa-4fcf-9fa9-af6ffb214552']; // Gabriel
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// ALLOWED_USER_IDS → liste des identifiants autorisés (valeurs invalides ignorées ; liste vide = personne)
+export function listeBlanche(brut: string | null | undefined): string[] {
+  return String(brut ?? '').split(',').map((x) => x.trim().toLowerCase()).filter((x) => UUID.test(x));
+}
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -77,15 +84,16 @@ function summarizeReport(rep: any) {
   return { is_valid: isValid, format: first.format || null, profil: first.conformance_level || null, erreurs: errs.slice(0, 40), avertissements: warns.slice(0, 40) };
 }
 
-Deno.serve(async (req: Request) => {
+export async function handle(req: Request, service: any, env: (k: string) => string | undefined): Promise<Response> {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ erreur: 'methode' }, 405);
-  const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
   const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
   const { data: ud, error: ue } = await service.auth.getUser(jwt);
   const user = ud && ud.user;
   if (ue || !user) return json({ erreur: 'non_connecte', message: 'Connecte-toi à ClimPilot (cloud) pour utiliser la plateforme.' }, 401);
-  if (!ALLOWED_USERS.includes(user.id)) return json({ erreur: 'interdit' }, 403);
+  const autorises = listeBlanche(env('ALLOWED_USER_IDS'));
+  if (!autorises.length) return json({ erreur: 'config', message: 'Accès à la plateforme non configuré sur le serveur (ALLOWED_USER_IDS).' }, 503);
+  if (!autorises.includes(String(user.id).toLowerCase())) return json({ erreur: 'interdit' }, 403);
 
   let body: any = {};
   try { body = await req.json(); } catch (_) { return json({ erreur: 'requete' }, 400); }
@@ -130,8 +138,21 @@ Deno.serve(async (req: Request) => {
       return json({ rapport: summarizeReport(r.data) });
     }
     if (action === 'send') {
-      const xml = String(body.xml || ''); if (xml.length < 200) return json({ erreur: 'saisie', message: 'Fichier vide' }, 400);
-      const r = await call(K, cred, 'POST', 'invoices', { raw: xml, rawType: 'application/xml', query: { external_id: String(body.external_id || '').slice(0, 64), processing_rule: body.processing_rule || undefined } });
+      let xml = String(body.xml || ''), ext = String(body.external_id || '').slice(0, 64);
+      /* 1.10 (relecture R2) — compte de PRODUCTION : la facture déposée est exactement celle du registre figé
+         (climpilot_documents, écrite une seule fois) ; on reçoit son identifiant, jamais le XML de l'appareil.
+         Bac à sable : XML de test fabriqué par l'appli (identités de test), comme avant. */
+      if (cred.env === 'production') {
+        const id = String(body.document_id || '');
+        if (!UUID.test(id)) return json({ erreur: 'registre', message: 'En production, la facture part du registre du serveur : identifiant du document manquant.' }, 400);
+        const { data: doc, error: de } = await service.from('climpilot_documents').select('id, num, origine, xml').eq('id', id).eq('user_id', user.id).maybeSingle();
+        if (de || !doc) return json({ erreur: 'registre', message: 'Document introuvable dans ton registre.' }, 404);
+        if (doc.origine !== 'emis') return json({ erreur: 'registre', message: 'Seule une facture émise par ClimPilot (numéro donné par le serveur) part sur la plateforme.' }, 409);
+        if (!doc.xml) return json({ erreur: 'fichiers', message: 'Le XML de cette facture n’est pas encore enregistré sur le serveur : réessaie dans un instant.' }, 409);
+        xml = String(doc.xml); ext = String(doc.num).slice(0, 64);
+      }
+      if (xml.length < 200) return json({ erreur: 'saisie', message: 'Fichier vide' }, 400);
+      const r = await call(K, cred, 'POST', 'invoices', { raw: xml, rawType: 'application/xml', query: { external_id: ext, processing_rule: body.processing_rule || undefined } });
       if (r.status >= 300) return json(errOf(r));
       const d = r.data || {};
       return json({ id: d.id, direction: d.direction, processing_rule: d.processing_rule, events: d.events || [], env: cred.env });
@@ -186,4 +207,11 @@ Deno.serve(async (req: Request) => {
     const msg = e && (e.message || e.name) || String(e);
     return json({ erreur: 'reseau', message: /timeout|abort/i.test(msg) ? 'SUPER PDP ne répond pas (délai dépassé) — réessaie dans un instant.' : ('Erreur : ' + msg) });
   }
-});
+}
+
+if (typeof Deno !== 'undefined' && (Deno as any).serve && !(globalThis as any).__NO_SERVE) {
+  Deno.serve((req: Request) => {
+    const service = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, { auth: { persistSession: false } });
+    return handle(req, service, (k) => Deno.env.get(k));
+  });
+}
