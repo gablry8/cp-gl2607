@@ -1,4 +1,4 @@
-# ClimPilot — reprise du travail (Cowork ou Codex) — mise à jour du 05/10/2026
+# ClimPilot — reprise du travail (Cowork ou Codex) — mise à jour du 08/10/2026
 
 Ce fichier suffit pour reprendre le travail sans l'historique des conversations. Le détail est dans
 `docs/CORRECTIONS-1.10.md` (ce qui a été fait et pourquoi) et `tests/LISEZMOI.md` (comment tester).
@@ -45,18 +45,36 @@ tests/run-all.sh          # puis lire $CP_TEST_OUT/rapport.md
 ```
 Sans droit `unshare -n` (isolation réseau du noyau), lancer avec `CP_SANS_NETNS=1` : le rapport l'indiquera.
 
-## Ce qui reste à faire, dans l'ordre
+## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
-1. ~~Décision « début de la facturation réelle »~~ : **fait le 05/10** (relecture R1). Le mode réel ne démarre que par l'action explicite et datée de Paramètres › Facturation réelle. Les anciennes factures sont des essais par défaut (ESSAI-…). Voir `docs/CORRECTIONS-1.10.md`, « Relecture indépendante du 05/10/2026 ». En production, l'envoi à la plateforme part du registre (R2).
-2. **Projet Supabase de test**, distinct du réel — **en partie fait le 05/10** (`docs/ESSAIS-SUPABASE-TEST.md`, 52/52) :
-   - ~~appliquer la migration~~ : fait sur « ClimPilot-TEST » (PostgreSQL 17), 36 essais réussis ; migration durcie (droits des fonctions de déclencheur) ;
-   - ~~fonction `signature`~~ : déployée sur le projet de test, 14 essais de bout en bout réussis ;
-   - reste : `assistant` et `superpdp` (Gabriel doit poser `ALLOWED_USER_IDS` dans le tableau de bord), et l'appli elle-même pointée sur le projet de test ;
-   - dérouler l'**ordre de déploiement envisagé** (`docs/CORRECTIONS-1.10.md`, « Ordre de déploiement envisagé ») : synchronisation entre versions, facturation, signature, mise à jour des appareils.
-3. **SUPER PDP en bac à sable** : jusqu'ici, la plateforme est seulement simulée.
-4. **Appareils réels** (iPhone, appli installée sur l'écran d'accueil) : mise à jour du service worker et impression des PDF.
-5. **Points « à confirmer »** (comptable, assureur, médiateur, profil fiscal), **sauvegardes**, **double authentification** : Gabriel (liste dans `docs/CORRECTIONS-1.10.md`).
-6. Ensuite seulement, avec l'accord de Gabriel : publication suivant l'ordre de déploiement envisagé.
+Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).
+
+1. **Copie d'essai : revérifier les corrections du 08/10.**
+   - Annuler la décision de facturation réelle : le refus est attendu, car des factures réelles existent sur la base de test.
+   - Facturer un devis « brouillon » : une question doit être posée.
+   - Message Super PDP sur la base de test : « service pas installé ».
+   - iPhone, si disponible : écran d'accueil, mise à jour, impression.
+2. **Fonctions `superpdp` et `assistant` sur le projet de test.**
+   - Gabriel pose `ALLOWED_USER_IDS` (son identifiant de test) dans le tableau de bord.
+   - Il saisit lui-même les identifiants **bac à sable** de Super PDP dans la copie d'essai.
+   - Ensuite : une facture à un client professionnel fictif (SIREN de test), contrôlée puis déposée dans le bac à sable avec la 1.10, et les statuts relus.
+3. **Points à confirmer par Gabriel**, avec sa comptable :
+   - nature S ou M ;
+   - part du matériel, en ventes ou en services ;
+   - profil fiscal ;
+   - attestation décennale (mentions d'assurance) ;
+   - **adhésion à un médiateur de la consommation** : obligatoire avant le premier devis à un particulier.
+4. **Sécurité avant la production** :
+   - double authentification sur GitHub et sur Supabase ;
+   - sauvegarde des données : export régulier, à définir ;
+   - vérifier l'absence de secrets dans le dépôt public.
+5. **Déploiement réel**, uniquement par Gabriel et avec son accord, dans l'ordre de `docs/CORRECTIONS-1.10.md` (« Ordre de déploiement envisagé ») :
+   - migration sur le projet réel ;
+   - fonctions ;
+   - fusion dans `main` (GitHub Pages) ;
+   - mise à jour de chaque appareil ;
+   - vérification avec un faux document avant le vrai SIRET.
+6. **Après la mise en service** : premières vraies factures suivies de près (registre, compteur, synchronisation), puis reprise des évolutions de ClimPilot.
 
 ## À savoir
 - La branche `claude/brfr-controle-local` est un brouillon séparé (contrôle local des règles BR-FR), partie de `665161f` et **non fusionné**. La 1.10 couvre déjà les règles BR-FR (suite F). Comparer avant toute reprise de ce brouillon.
