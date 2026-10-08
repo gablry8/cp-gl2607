@@ -248,6 +248,13 @@
     /* contrôles propres aux particuliers (next-particuliers.js) : arrêt, date d'exigibilité, trace */
     var av={}; try{ if(typeof window.nxAvantEmission==='function') av=window.nxAvantEmission(sorte,args)||{}; }catch(e){ av={}; }
     if(av.stop){ relire(sorte); return Promise.resolve(null); }
+    /* devis pas encore accepté (brouillon, envoyé, refusé…) : on demande confirmation avant de le facturer */
+    if(sorte==='devis'){ try{ var dv=(DEVIS||[]).find(function(x){ return x.id===args[0]; });
+      var stv=dv&&(typeof cur!=='undefined'&&cur&&cur.id===dv.id&&cur.statut?cur.statut:dv.statut);
+      if(dv&&!(args[1]==='solde'?dv.facSolde:dv.facAcompte)&&stv&&stv!=='accepte'){
+        var lib={brouillon:'brouillon (jamais envoyé)',verifier:'à vérifier',pret:'prêt, pas encore envoyé',envoye:'envoyé, pas encore accepté',refuse:'REFUSÉ par le client'}[stv]||stv;
+        if(!confirm('Ce devis n\'est pas accepté (statut : '+lib+').\n\nUne facture émise ne se supprime pas : seul un avoir l\'annule.\n\nFacturer quand même ?')) return Promise.resolve(null);
+      } }catch(e){} }
     /* devis ouvert et modifié à l'écran : enregistré AVANT l'essai à blanc (sinon l'enregistrement se ferait pendant l'essai, sur la copie) */
     if(sorte==='devis'&&typeof window.nxDevisAvantFacture==='function'&&!window.nxDevisAvantFacture(args[0])) return Promise.resolve(null);
     var essai=aBlanc(function(prov){ return S.essai(args,prov); });
@@ -547,6 +554,31 @@
     return {ok:true,debut:debut,essais:Object.keys(m).length,renommes:nb,importes:imp};
   }
   window.nxEmisDemarrer=demarrer;
+  /* revenir sur la décision : avant la date de début, ou après si AUCUN document réel n'existe (appareil ET serveur).
+     Les anciennes factures renommées ESSAI-… reprennent leur numéro. La décision annulée reste tracée (synchronisée). */
+  function annulable(){
+    var o=decision(); if(!o) return Promise.resolve({ok:false,err:'Aucune décision de facturation réelle à annuler.'});
+    if(!reelDemarre()) return Promise.resolve({ok:true});
+    if(reg().some(function(e){ return e.mode==='reel'; })) return Promise.resolve({ok:false,err:'Des factures réelles existent déjà (numéros du serveur) : la facturation réelle ne peut plus être annulée. Une facture émise se corrige par un avoir.'});
+    if(!cloud()) return Promise.resolve({ok:false,err:'Connecte-toi au cloud : il faut vérifier sur le serveur qu\'aucune facture réelle n\'a été émise (depuis un autre appareil).'});
+    return window.sb.from('climpilot_documents').select('id').limit(1).then(function(r){
+      if(r&&r.error) return {ok:false,err:'Vérification impossible sur le serveur ('+(r.error.message||'erreur')+') : rien n\'a été annulé.'};
+      if(r&&r.data&&r.data.length) return {ok:false,err:'Le serveur contient déjà des factures réelles : la facturation réelle ne peut plus être annulée.'};
+      return {ok:true};
+    },function(e){ return {ok:false,err:'Serveur injoignable : rien n\'a été annulé.'}; });
+  }
+  function annuler(){
+    return annulable().then(function(a){
+      if(!a.ok) return a;
+      var o=decision(), inv={}; Object.keys(o.renommes||{}).forEach(function(n){ inv[o.renommes[n]]=n; });
+      var nb=renommer(inv);
+      wr(FR,{annule:true,annuleLe:new Date().toISOString(),precedent:{debut:o.debut,decideLe:o.decideLe},v:1});
+      INFO={t:0,ok:null,raison:'',detail:''};
+      try{ badge(); updateBadges(); }catch(e){}
+      return {ok:true,restaures:nb};
+    });
+  }
+  window.nxEmisAnnulerDecision=annuler;
   /* après le démarrage, une ancienne facture inconnue (arrivée d'un autre appareil) est un essai par défaut ;
      appelé seulement après lecture réussie du registre du serveur (rapprocher) */
   function classerInconnus(){
@@ -639,7 +671,8 @@
     if(o){
       var es=Object.keys(o.anciens||{}).filter(function(n){ return o.anciens[n]==='essai'; }).length, im=Object.keys(o.anciens||{}).filter(function(n){ return o.anciens[n]==='importer'; });
       c.innerHTML='<h2>🧾 Facturation réelle</h2><div class="sub">'+(reelDemarre()?'Démarrée le <b>'+esc(fr(o.debut))+'</b>':'Démarrage prévu le <b>'+esc(fr(o.debut))+'</b> (d\'ici là : mode démonstration, numéros TEST)')+
-        ' — décidée le '+esc(fr(String(o.decideLe||'').slice(0,10)))+'.<br>Anciennes factures : '+es+' classée(s) en essais (renommées ESSAI-…, hors registre et hors chiffre d\'affaires)'+(im.length?', '+im.length+' importée(s) au registre : '+esc(im.join(', ')):'')+'.</div>';
+        ' — décidée le '+esc(fr(String(o.decideLe||'').slice(0,10)))+'.<br>Anciennes factures : '+es+' classée(s) en essais (renommées ESSAI-…, hors registre et hors chiffre d\'affaires)'+(im.length?', '+im.length+' importée(s) au registre : '+esc(im.join(', ')):'')+'.</div>'+
+        (reg().some(function(e){ return e.mode==='reel'; })?'':'<div class="row-actions" style="margin-top:10px"><button class="btn-ghost btn-sm" onclick="nxEmisAnnulerUI()">Annuler cette décision / changer la date</button></div><div class="sub" id="nxReelMsg"></div>');
       return;
     }
     var l=anciennes(), lignes=l.filter(function(x){ return x.type==='facture'; }).map(function(x){
@@ -651,6 +684,15 @@
       '<button class="btn-pri btn-sm" onclick="nxEmisDemarrerUI()">Démarrer la facturation réelle</button></div><div class="sub" id="nxReelMsg"></div>';
   }
   window.nxEmisCarteParams=carteParams;
+  window.nxEmisAnnulerUI=function(){
+    var msg=document.getElementById('nxReelMsg');
+    if(!confirm('Annuler la décision de facturation réelle ?\n\nClimPilot repasse en mode démonstration (numéros TEST). Les anciennes factures renommées ESSAI-… reprennent leur numéro. Tu pourras redémarrer la facturation réelle à la date de ton choix.\n\nC\'est possible seulement si aucune facture réelle n\'a été émise.')) return;
+    if(msg) msg.textContent='Vérification…';
+    annuler().then(function(r){
+      if(!r.ok){ if(msg) msg.textContent='⚠ '+r.err; else alert(r.err); return; }
+      say('↩️ Décision annulée : mode démonstration'+(r.restaures?' — '+r.restaures+' facture(s) reprennent leur numéro':'')); carteParams();
+    });
+  };
   window.nxEmisDemarrerUI=function(){
     var debut=(document.getElementById('nxReelDebut')||{}).value||'', choisis={}, msg=document.getElementById('nxReelMsg');
     [].forEach.call(document.querySelectorAll('#nxReelCard select[data-reel-num]'),function(s){ choisis[s.getAttribute('data-reel-num')]=s.value; });

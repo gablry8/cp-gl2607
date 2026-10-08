@@ -124,6 +124,36 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   rec('Année R4','Aucune erreur de page',!errs.length,errs.join(' | '));
   await ctx.close(); }
 
+/* N-annuler. revenir sur la décision : avant la date de début (renommages défaits), après le début sans aucune
+   facture réelle (vérifié sur le serveur), et refus dès qu'une facture réelle existe */
+{ const {p,ctx,errs}=await preparer();
+  const r=await p.evaluate(async c=>{ const y=new Date().getFullYear(); const out={};
+    const dem=new Date(Date.now()+86400000*3).toISOString().slice(0,10);
+    out.dec1=nxEmisDemarrer(dem,{}); out.essaiAvant=DEVIS.some(d=>d.facSolde&&/^ESSAI-F-/.test(d.facSolde.num));
+    out.ann1=await nxEmisAnnulerDecision(); out.mode1=nxEmisMode(); out.decApres=nxEmisDecision();
+    out.numsRendus=DEVIS.some(d=>d.facSolde&&d.facSolde.num==='F-'+y+'-001')&&DEP.some(x=>x.facNum==='F-'+y+'-005')&&nxAvoirs().some(a=>a.num==='AV-'+y+'-001'&&a.facNum==='F-'+y+'-002');
+    out.trace=JSON.parse(localStorage.getItem('cp2_facturation')||'null');
+    /* redémarrage aujourd'hui, aucune facture réelle : annulable (serveur vide) */
+    out.dec2=nxEmisDemarrer(todayISO(),{}); out.mode2=nxEmisMode().mode;
+    out.ann2=await nxEmisAnnulerDecision(); out.mode2b=nxEmisMode().mode;
+    /* redémarrage puis une facture réelle : plus annulable */
+    out.dec3=nxEmisDemarrer(todayISO(),{}); await nxEmisSonde(true);
+    const id=__dvLibre[0]; await facturerDevis(id,'solde'); eval(c);
+    out.fac=(DEVIS.find(x=>x.id===id).facSolde||{}).num;
+    out.ann3=await nxEmisAnnulerDecision(); out.mode3=nxEmisMode().mode;
+    /* facture réelle émise depuis un AUTRE appareil (absente du registre local) : refus aussi */
+    go('params'); await new Promise(r=>setTimeout(r,100)); out.bouton=!!document.querySelector('#nxReelCard [onclick="nxEmisAnnulerUI()"]');
+    localStorage.setItem('cp2_docs','[]'); out.ann4=await nxEmisAnnulerDecision();
+    return out; },close);
+  rec(G,'Annuler avant la date de début : retour en démonstration, décision tracée',r.ann1.ok&&r.mode1.mode==='demo'&&r.decApres===null&&r.trace&&r.trace.annule===true&&!!(r.trace.precedent&&r.trace.precedent.debut),JSON.stringify({ann1:r.ann1,mode1:r.mode1,trace:r.trace}));
+  rec(G,'Annuler : les anciennes factures renommées ESSAI-… reprennent leur numéro (avoir compris)',r.essaiAvant&&r.numsRendus&&r.ann1.restaures>0,JSON.stringify({essaiAvant:r.essaiAvant,numsRendus:r.numsRendus,restaures:r.ann1.restaures}));
+  rec(G,'Démarrée aujourd\'hui sans aucune facture réelle (serveur vérifié) : annulable',r.dec2.ok&&r.ann2.ok&&r.mode2b==='demo',JSON.stringify({dec2:r.dec2,ann2:r.ann2,mode2b:r.mode2b}));
+  rec(G,'Une facture réelle existe : annulation refusée, facturation réelle maintenue',/^F-\d{4}-\d{3}$/.test(r.fac||'')&&!r.ann3.ok&&/avoir/.test(r.ann3.err)&&r.mode3==='reel',JSON.stringify({fac:r.fac,ann3:r.ann3,mode3:r.mode3}));
+  rec(G,'Facture réelle seulement sur le serveur (autre appareil) : annulation refusée',!r.ann4.ok&&/serveur/.test(r.ann4.err),JSON.stringify(r.ann4));
+  rec(G,'Bouton « Annuler cette décision » caché dès qu\'une facture réelle existe',r.bouton===false,String(r.bouton));
+  rec(G,'Aucune erreur JavaScript (annulation)',errs.length===0,errs.join(' | '));
+  await ctx.close(); }
+
 await closeBrowser();
 ecrireResultats('resN.json',RES);
 RES.forEach(x=>console.log(x.ok.padEnd(5),'['+x.group+']',x.name,x.ok==='PASS'?'':'— '+x.detail));

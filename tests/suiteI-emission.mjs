@@ -91,6 +91,24 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   await ctx.close();
 }
 
+/* I3c devis non accepté : confirmation demandée ; refus = rien d'émis ; accord = facture émise */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  let repondre=false; const dlg=[]; p.removeAllListeners('dialog'); p.on('dialog',d=>{ dlg.push(d.message()); (d.type()==='confirm'&&!repondre?d.dismiss():d.accept()).catch(()=>{}); });
+  await seed(p); await p.evaluate(SERVEUR); await p.evaluate(REEL);
+  const r1=await p.evaluate(async c=>{ const d=DEVIS.find(x=>x.statut==='accepte'&&compute(x).totalHT>0); d.statut='brouillon'; window.__dId=d.id;
+    await facturerDevis(d.id,'solde'); eval(c); return {fac:d.facSolde&&d.facSolde.num,docs:__srv.docs.length}; },close);
+  repondre=true;
+  const r2=await p.evaluate(async c=>{ const d=DEVIS.find(x=>x.id===__dId); await facturerDevis(d.id,'solde'); eval(c); return {fac:d.facSolde&&d.facSolde.num,docs:__srv.docs.length}; },close);
+  const r3=await p.evaluate(async c=>{ const d=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0&&!x.facSolde)[0]; const n0=window.__nbConf=0; await facturerDevis(d.id,'solde'); eval(c); return {fac:d.facSolde&&d.facSolde.num}; },close);
+  const conf=dlg.filter(m=>/pas accepté/.test(m));
+  rec('Émission','Devis brouillon : confirmation demandée, « Annuler » = rien d\'émis',!r1.fac&&r1.docs===0&&conf.length>=1&&/brouillon/.test(conf[0]),JSON.stringify(r1)+' '+conf.join(' / ').slice(0,160));
+  rec('Émission','Devis brouillon confirmé : facture émise',/^F-\d{4}-001$/.test(r2.fac||'')&&r2.docs===1,JSON.stringify(r2));
+  rec('Émission','Devis accepté : aucune question supplémentaire',/^F-\d{4}-002$/.test(r3.fac||'')&&conf.length===2,JSON.stringify(r3)+' conf='+conf.length);
+  rec('Émission','Aucune erreur JavaScript (devis non accepté)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
 /* I4 réponse perdue puis nouvelle tentative : même facture ; double clic : une seule */
 {
   const {p,ctx}=await page({mobile:false});

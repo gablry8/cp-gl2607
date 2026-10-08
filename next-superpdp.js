@@ -49,9 +49,23 @@
   function api(body){
     if(!cloudOk()) return Promise.resolve({erreur:'hors_ligne',message:'Connecte-toi au cloud ClimPilot (identifiant en haut) pour utiliser la plateforme.'});
     return sb.functions.invoke('superpdp',{body:body}).then(function(r){
-      if(r&&r.error){ var c=r.error.context; if(c&&typeof c.json==='function') return c.json().catch(function(){ return {erreur:'http',message:r.error.message||'Erreur'}; }); return {erreur:'reseau',message:'Serveur injoignable — vérifie ta connexion.'}; }
-      return r.data||{erreur:'vide',message:'Réponse vide'};
-    }).catch(function(){ return {erreur:'reseau',message:'Serveur injoignable — vérifie ta connexion.'}; });
+      if(r&&r.error){ var c=r.error.context;
+        if(c&&typeof c.json==='function'){ var st=Number(c.status)||0;
+          return c.json().catch(function(){ return null; }).then(function(j){
+            if(j&&j.erreur) return j;
+            if(st===404) return absent();
+            return {erreur:'http',status:st||undefined,message:'Le service de la plateforme a répondu par une erreur'+(st?' (HTTP '+st+')':'')+(j&&(j.message||j.msg)?' : '+(j.message||j.msg):'')+'.'};
+          }); }
+        return injoignable(); }
+      return r.data||{erreur:'vide',message:'Réponse vide du service de la plateforme.'};
+    }).catch(function(){ return injoignable(); });
+  }
+  /* messages d'erreur précis (avant : toujours « Serveur injoignable », même quand le service n'est pas installé) */
+  function absent(){ return {erreur:'service_absent',message:'Le service « superpdp » n\'est pas installé sur ton serveur ClimPilot (Supabase › Edge Functions). Rien n\'a été envoyé.'}; }
+  function injoignable(){
+    var horsLigne=false; try{ horsLigne=navigator.onLine===false; }catch(e){}
+    if(horsLigne) return {erreur:'reseau',message:'Pas de connexion internet : rien n\'a été envoyé. Réessaie quand le réseau revient.'};
+    return {erreur:'reseau',message:'Le service de la plateforme ne répond pas. Rien n\'a été envoyé. Causes possibles : réseau coupé, ou service « superpdp » pas installé sur ton serveur ClimPilot (Supabase › Edge Functions).'};
   }
   window.nxPdpApi=api;
   var STATUS=null;
@@ -96,7 +110,7 @@
     if(/^[BSM]$/.test(nat||'')&&!figee){ var mm=M(); mm.docs[num]=mm.docs[num]||{envois:[]}; mm.docs[num].nature=nat; saveM(mm); }
     busy('Connexion à la plateforme…');
     status(true).then(function(st){
-      if(st.erreur){ modal('Plateforme agréée','<div class="nxd2-warn red">'+esc(st.message||st.erreur)+'</div>'); return; }
+      if(st.erreur){ modal('Plateforme agréée','<div class="nxd2-warn red">'+esc(st.message||st.erreur)+'</div>'+(/^(TEST|ESSAI)-/.test(num)?'<div class="sub2" style="margin-top:6px">'+esc(num)+' est un document de <b>démonstration</b> : il ne peut partir que vers le bac à sable de la plateforme, jamais vers un vrai client.</div>':'')); return; }
       if(!st.connecte){ modal('Plateforme agréée','<p>La plateforme n\'est pas encore connectée.</p>','<button class="btn-ghost" onclick="closeModal(\'mPdp\')">Annuler</button><button class="btn-pri" onclick="closeModal(\'mPdp\');go(\'nx_pdp\')">Connecter SUPER PDP</button>'); return; }
       var sandbox=st.env!=='production', co=st.company||{};
       var pro=String(d.cli.type||'')==='Professionnel', siren=sirenOf(d.cli);

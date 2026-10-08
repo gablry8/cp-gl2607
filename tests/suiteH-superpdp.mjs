@@ -175,6 +175,27 @@ const wait=(p,ms=250)=>p.waitForTimeout(ms);
   rec('Super PDP','Aucune erreur JavaScript (compte réel)',errs.length===0,errs.join(' | '));
   await ctx.close();
 }
+/* H-erreurs — messages précis : service absent (404), service injoignable, hors ligne, erreur HTTP */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  await p.evaluate(MOCK+'("sandbox")'); await seed(p);
+  const r=await p.evaluate(async()=>{
+    const resp=(st,body)=>({status:st,json:async()=>{ if(body===undefined) throw new Error('pas de json'); return body; }});
+    const out={};
+    sb.functions.invoke=async()=>({data:null,error:{name:'FunctionsHttpError',context:resp(404,{code:'NOT_FOUND',message:'Requested function was not found'})}}); out.absent=await nxPdpApi({action:'status'});
+    sb.functions.invoke=async()=>({data:null,error:{name:'FunctionsFetchError',context:new TypeError('Failed to fetch')}}); out.injoignable=await nxPdpApi({action:'status'});
+    Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>false}); out.horsLigne=await nxPdpApi({action:'status'}); Object.defineProperty(navigator,'onLine',{configurable:true,get:()=>true});
+    sb.functions.invoke=async()=>({data:null,error:{name:'FunctionsHttpError',context:resp(500)}}); out.http=await nxPdpApi({action:'status'});
+    sb.functions.invoke=async()=>({data:null,error:{name:'FunctionsHttpError',context:resp(401,{erreur:'acces',message:'Compte non autorisé'})}}); out.metier=await nxPdpApi({action:'status'});
+    return out; });
+  rec('Super PDP','Service absent (404) : message « pas installé », plus « Serveur injoignable »',r.absent.erreur==='service_absent'&&/pas installé/.test(r.absent.message),JSON.stringify(r.absent));
+  rec('Super PDP','Service injoignable : causes possibles expliquées',r.injoignable.erreur==='reseau'&&/ne répond pas/.test(r.injoignable.message)&&/superpdp/.test(r.injoignable.message),JSON.stringify(r.injoignable));
+  rec('Super PDP','Appareil hors ligne : « Pas de connexion internet »',/Pas de connexion internet/.test(r.horsLigne.message),JSON.stringify(r.horsLigne));
+  rec('Super PDP','Erreur HTTP sans détail : code affiché',r.http.erreur==='http'&&/HTTP 500/.test(r.http.message),JSON.stringify(r.http));
+  rec('Super PDP','Erreur métier du service : message du service conservé',r.metier.erreur==='acces'&&r.metier.message==='Compte non autorisé',JSON.stringify(r.metier));
+  rec('Super PDP','Aucune erreur JavaScript (messages d\'erreur)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
 await closeBrowser();
 ecrireResultats('resH.json',RES);
 RES.forEach(r=>console.log(r.ok.padEnd(5),'['+r.group+']',r.name,r.ok!=='PASS'?'— '+r.detail:''));
