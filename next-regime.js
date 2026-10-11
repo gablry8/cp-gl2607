@@ -426,31 +426,72 @@
     tva=montant*rate/100;return{ht:montant,tva:tva,ttc:montant+tva};
   }
 
-  /* Collecte TOUTES les factures émises (facturier) — payées ou non */
+  /* numéro d'essai (ESSAI-…, et TEST-… une fois la facturation réelle démarrée) : jamais dans les pièces comptables */
+  function nxrgEssai(num){ try{ return !!(window.nxNumEssai&&window.nxNumEssai(num)); }catch(e){ return false; } }
+
+  /* Collecte TOUTES les factures émises (facturier) — payées ou non.
+     1.11 (11/10/2026) : mêmes règles que le livre des recettes de l'appli et que le chiffre d'affaires (next-taux) :
+     essais exclus, factures annulées gardées (numéro émis, série continue), avoirs en lignes négatives
+     au taux de la facture d'origine. Chaque ligne garde son taux (_rate, 0 en franchise) et sa base (_isTTC). */
   function nxrgFactures(){
     var b=rg.bascule||RG_DEF.bascule,out=[];
-    function push(num,date,client,nature,montant,rate,isTTC,payeLe,mode){
-      if(!num)return;
-      var era=nxrgEra(date),s=nxrgSplit(Number(montant)||0,era?rate:0,era&&isTTC);
-      out.push({num:num,date:date||'',client:client||'—',nature:nature,ht:s.ht,tva:s.tva,ttc:s.ttc,payeLe:payeLe||'',mode:mode||''});
+    function push(num,date,client,nature,montant,rate,isTTC,payeLe,mode,statut){
+      if(!num||nxrgEssai(num))return;
+      var era=nxrgEra(date),r=era?(Number(rate)||0):0,t=!!(era&&isTTC),s=nxrgSplit(Number(montant)||0,r,t);
+      out.push({num:num,date:date||'',client:client||'—',nature:nature,ht:s.ht,tva:s.tva,ttc:s.ttc,payeLe:payeLe||'',mode:mode||'',statut:statut||'',_rate:r,_isTTC:t});
     }
+    function annulee(f){ return 'Annulée'+(f&&typeof f.avoir==='string'?' (avoir '+f.avoir+')':''); }
     (typeof DEVIS!=='undefined'?DEVIS:[]).forEach(function(d){
       if(d.facAcompte)push(d.facAcompte.num,d.facAcompte.date,d.cNom,'Travaux — acompte devis '+d.num,d.facAcompte.montant,nxrgEffRate(nxrgDevisParts(d,d.facAcompte)),true,d.facAcompte.payeLe,d.facAcompte.mode);
       if(d.facSolde)push(d.facSolde.num,d.facSolde.date,d.cNom,'Travaux — devis '+d.num,d.facSolde.montant,nxrgEffRate(nxrgDevisParts(d,d.facSolde)),true,d.facSolde.payeLe,d.facSolde.mode);
+      (d.facAnnulees||[]).forEach(function(f){ push(f.num,f.date,d.cNom,(f.which==='acompte'?'Travaux — acompte devis ':'Travaux — devis ')+d.num,f.montant,nxrgEffRate(nxrgDevisParts(d,f)),true,f.payeLe,f.mode,annulee(f)); });
     });
     (typeof DEP!=='undefined'?DEP:[]).forEach(function(x){
-      if(!x.facNum)return;var m=0;try{m=computeDep(x).totalHT;}catch(e){}
-      push(x.facNum,x.facDate||x.date,x.cNom,x.itype==='mes'?'Mise en service':'Dépannage',m,b.tvaDep,false,x.payeLe,x.modeReg);
+      var lab=x.itype==='mes'?'Mise en service':'Dépannage';
+      if(x.facNum){var m=0;try{m=computeDep(x).totalHT;}catch(e){}
+        push(x.facNum,x.facDate||x.date,x.cNom,lab,m,b.tvaDep,false,x.statut==='payee'?x.payeLe:'',x.modeReg);}
+      (x.facAnnulees||[]).forEach(function(f){ push(f.num,f.date,x.cNom,lab,f.montant,b.tvaDep,false,f.payeLe,f.mode,annulee(f)); });
     });
     (typeof LOC!=='undefined'?LOC:[]).forEach(function(l){
       if(l.fac)push(l.fac.num,l.fac.date,l.cNom,'Location adiabatique '+(l.num||''),l.fac.montant,b.tvaLoc,false,l.fac.payeLe,l.fac.mode);
+      (l.facAnnulees||[]).forEach(function(f){ push(f.num,f.date,l.cNom,'Location adiabatique '+(l.num||''),f.montant,b.tvaLoc,false,f.payeLe,f.mode,annulee(f)); });
     });
     (typeof CTR!=='undefined'?CTR:[]).forEach(function(c){
       (c.facs||[]).forEach(function(f){push(f.num,f.date,c.clientNom,'Contrat entretien '+(f.annee||''),f.montant,nxrgCtrRate(c),false,f.payeLe,f.mode);});
+      (c.facsAnnulees||[]).forEach(function(f){push(f.num,f.date,c.clientNom,'Contrat entretien '+(f.annee||''),f.montant,nxrgCtrRate(c),false,f.payeLe,f.mode,annulee(f));});
     });
-    return out.sort(function(a,b2){return String(a.date).localeCompare(String(b2.date));});
+    /* avoirs : document négatif, au taux et sur la base de la facture d'origine */
+    var parNum={};out.forEach(function(f){parNum[f.num]=f;});
+    (window.nxAvoirs?window.nxAvoirs():[]).forEach(function(a){
+      if(!a||!a.num||nxrgEssai(a.num))return;
+      var o=parNum[a.facNum],r=o?o._rate:0,t=o?o._isTTC:false,s=nxrgSplit(-(Number(a.montant)||0),r,t);
+      out.push({num:a.num,date:a.date||'',client:(a.cli&&a.cli.nom)||(o&&o.client)||'—',nature:'Avoir sur facture '+(a.facNum||'?'),ht:s.ht,tva:s.tva,ttc:s.ttc,payeLe:'',mode:'',statut:'Avoir',_rate:r,_isTTC:t,_avoir:true});
+    });
+    return out.sort(function(a,b2){return String(a.date).localeCompare(String(b2.date))||String(a.num).localeCompare(String(b2.num));});
   }
+  window.nxrgLignesFactures=function(){ return nxrgFactures().map(function(f){ return Object.assign({},f); }); };
+
+  /* Encaissements = le livre des recettes de l'appli (allRecettes : essais exclus, avoirs déduits, remboursements),
+     montants ventilés HT / TVA avec le taux de la facture d'origine. UNE seule source pour l'écran, le CSV, la synthèse. */
+  function nxrgLivreLignes(from,to){
+    var parNum={};nxrgFactures().forEach(function(f){parNum[f.num]=f;});
+    var rec=[];try{rec=typeof allRecettes==='function'?allRecettes():[];}catch(e){rec=[];}
+    return rec.filter(function(r){var d=String(r.date||'').slice(0,10);return d&&(!from||d>=from)&&(!to||d<=to);})
+      .map(function(r){var f=parNum[r.num],m=Number(r.montant)||0,s=f?nxrgSplit(m,f._rate,f._isTTC):{ht:m,tva:0,ttc:m};
+        return {date:String(r.date).slice(0,10),num:r.num||'',client:r.client||'—',nature:r.nature||'',mode:r.mode||'',ht:s.ht,tva:s.tva,ttc:s.ttc,sansFacture:!f};});
+  }
+  window.nxrgLignesRecettes=function(from,to){ return nxrgLivreLignes(from,to); };
+  /* impayés = ceux de l'appli (avoirs déduits, essais exclus), au montant réellement dû (TTC si assujetti) */
+  function nxrgImpayes(){
+    var parNum={};nxrgFactures().forEach(function(f){parNum[f.num]=f;});
+    var imp=[];try{imp=typeof allImpayes==='function'?allImpayes():[];}catch(e){imp=[];}
+    return imp.map(function(i){var f=parNum[i.num],m=Number(i.montant)||0,s=f?nxrgSplit(m,f._rate,f._isTTC):{ht:m,tva:0,ttc:m};
+      return {num:i.num,client:i.client||'—',date:i.date||'',days:i.days||0,ht:s.ht,tva:s.tva,ttc:s.ttc};});
+  }
+  window.nxrgLignesImpayes=function(){ return nxrgImpayes(); };
   function nxrgInPeriod(dateStr){var p=rg.pack;return dateStr&&(!p.from||dateStr>=p.from)&&(!p.to||dateStr<=p.to);}
+  /* facturation réelle pas encore démarrée : les exports ne contiennent que des documents de démonstration */
+  function nxrgDemo(){ try{ var m=window.nxEmisMode&&window.nxEmisMode(); return !!(m&&!m.demarre); }catch(e){ return false; } }
 
   function nxrgCsv(rows,header){
     var esc=function(v){v=String(v==null?'':v);return '"'+v.replace(/"/g,'""')+'"';};
@@ -477,69 +518,78 @@
   window.nxrgPackDate=function(field,value){rg.pack[field]=value;rgSave();};
 
   window.nxrgLivre=function(){
-    var rows=nxrgFactures().filter(function(f){return f.payeLe&&nxrgInPeriod(f.payeLe);})
-      .sort(function(a,b2){return String(a.payeLe).localeCompare(String(b2.payeLe));})
-      .map(function(f){return[f.payeLe,f.num,f.client,f.nature,f.mode||'—',f.ttc,f.tva,f.ht];});
+    var rows=nxrgLivreLignes(rg.pack.from,rg.pack.to)
+      .map(function(f){return[f.date,f.num||'—',f.client,f.nature,f.mode||'—',f.ttc,f.tva,f.ht];});
     if(!rows.length){nxrgToast('Aucun encaissement sur la période','err');return;}
-    nxrgDownload('livre-recettes_'+rg.pack.from+'_'+rg.pack.to+'.csv',
+    nxrgDownload((nxrgDemo()?'DEMONSTRATION_':'')+'livre-recettes_'+rg.pack.from+'_'+rg.pack.to+'.csv',
       nxrgCsv(rows,['Date encaissement','N° facture','Client','Nature','Mode de règlement','Montant encaissé','dont TVA collectée','Montant HT']));
-    nxrgToast('📥 Livre des recettes exporté ('+rows.length+' encaissements)','ok');
+    nxrgToast('📥 Livre des recettes exporté ('+rows.length+' encaissements)'+(nxrgDemo()?' — DÉMONSTRATION, à ne pas envoyer':''),nxrgDemo()?'err':'ok');
   };
   window.nxrgFacturier=function(){
     var rows=nxrgFactures().filter(function(f){return nxrgInPeriod(f.date);})
-      .map(function(f){return[f.date,f.num,f.client,f.nature,f.ht,f.tva,f.ttc,f.payeLe?'Payée le '+f.payeLe:'En attente',f.mode||'—'];});
+      .map(function(f){return[f.date,f.num,f.client,f.nature,f.ht,f.tva,f.ttc,f.statut==='Avoir'?'Avoir':f.statut?f.statut:f.payeLe?'Payée le '+f.payeLe:'En attente',f.mode||'—'];});
     if(!rows.length){nxrgToast('Aucune facture émise sur la période','err');return;}
-    nxrgDownload('facturier_'+rg.pack.from+'_'+rg.pack.to+'.csv',
+    nxrgDownload((nxrgDemo()?'DEMONSTRATION_':'')+'facturier_'+rg.pack.from+'_'+rg.pack.to+'.csv',
       nxrgCsv(rows,['Date émission','N° facture','Client','Nature','HT','TVA','TTC','Statut','Mode de règlement']));
-    nxrgToast('📥 Facturier exporté ('+rows.length+' factures)','ok');
+    nxrgToast('📥 Facturier exporté ('+rows.length+' documents)'+(nxrgDemo()?' — DÉMONSTRATION, à ne pas envoyer':''),nxrgDemo()?'err':'ok');
   };
   window.nxrgSynthese=function(){
     var all=nxrgFactures(),p=rg.pack;
-    var enc=all.filter(function(f){return f.payeLe&&nxrgInPeriod(f.payeLe);});
+    var enc=nxrgLivreLignes(p.from,p.to);
     var emises=all.filter(function(f){return nxrgInPeriod(f.date);});
-    var impayes=all.filter(function(f){return !f.payeLe&&f.date&&f.date<=(p.to||'9999');});
+    var impayes=nxrgImpayes().filter(function(f){return f.date&&f.date<=(p.to||'9999');});
     var sum=function(arr,k){return arr.reduce(function(s,x){return s+x[k];},0);};
-    var natures={};enc.forEach(function(f){var n=f.nature.split('—')[0].trim();if(!natures[n])natures[n]={ht:0,n:0};natures[n].ht+=f.ht;natures[n].n++;});
-    var cot=enc.reduce(function(s,f){ return s+f.ht*(typeof cotisPct==='function'?cotisPct(f.payeLe):(Number(P.cotisTaux)||0))/100; },0); /* 1.10 : taux à la date de chaque encaissement */
+    var natures={};enc.forEach(function(f){var n=String(f.nature||'—').split('—')[0].split('(')[0].trim()||'—';if(!natures[n])natures[n]={ht:0,n:0};natures[n].ht+=f.ht;natures[n].n++;});
+    var cot=enc.reduce(function(s,f){ return s+f.ht*(typeof cotisPct==='function'?cotisPct(f.date):(Number(P.cotisTaux)||0))/100; },0); /* 1.10 : taux à la date de chaque encaissement */
+    /* total des recettes tous les 3 mois (service-public F23266) */
+    var trims={};enc.forEach(function(f){var y=f.date.slice(0,4),q=Math.floor((Number(f.date.slice(5,7))-1)/3)+1,k=y+'-T'+q;if(!trims[k])trims[k]={ttc:0,ht:0,n:0};trims[k].ttc+=f.ttc;trims[k].ht+=f.ht;trims[k].n++;});
+    var trimRows=Object.keys(trims).sort().map(function(k){return '<tr><td style="padding:6px 10px;border:1px solid #eee">'+rgEsc(k.replace('-T',' — trimestre '))+'</td><td style="text-align:center;padding:6px 10px;border:1px solid #eee">'+trims[k].n+'</td><td style="text-align:right;padding:6px 10px;border:1px solid #eee">'+eur(trims[k].ttc)+'</td><td style="text-align:right;padding:6px 10px;border:1px solid #eee">'+eur(trims[k].ht)+'</td></tr>';}).join('');
+    var sansFac=enc.filter(function(f){return f.sansFacture;}).length;
     var E=P.entreprise||{};
     var natRows=Object.keys(natures).map(function(n){return '<tr><td style="padding:6px 10px;border:1px solid #eee">'+rgEsc(n)+'</td><td style="text-align:center;padding:6px 10px;border:1px solid #eee">'+natures[n].n+'</td><td style="text-align:right;padding:6px 10px;border:1px solid #eee">'+eur(natures[n].ht)+'</td></tr>';}).join('');
     var impRows=impayes.slice(0,15).map(function(f){return '<tr><td style="padding:5px 10px;border:1px solid #eee">'+rgEsc(f.num)+'</td><td style="padding:5px 10px;border:1px solid #eee">'+rgEsc(f.client)+'</td><td style="padding:5px 10px;border:1px solid #eee">'+rgEsc(f.date)+'</td><td style="text-align:right;padding:5px 10px;border:1px solid #eee">'+eur(f.ttc)+'</td></tr>';}).join('');
     var kv=function(l,v,strong){return '<tr><td style="padding:7px 10px;border:1px solid #eee'+(strong?';font-weight:800':'')+'">'+l+'</td><td style="text-align:right;padding:7px 10px;border:1px solid #eee'+(strong?';font-weight:800':'')+'">'+v+'</td></tr>';};
     document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">'
+      +(nxrgDemo()?'<div style="border:2px solid #b42318;color:#b42318;font-weight:800;text-align:center;padding:8px;margin-bottom:10px;font-size:12px">DÉMONSTRATION — facturation réelle pas encore démarrée : ce document ne contient pas de vraies pièces comptables.</div>':'')
       +'<div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">Synthèse comptable — '+rgEsc(E.nom||'GL Froid & Clim')+'</span></div>'
       +'<div style="text-align:center;font-size:12px;color:#555;margin-bottom:16px">Période du '+rgEsc(p.from)+' au '+rgEsc(p.to)+' · régime : '+(nxrgAssujetti()?'assujetti TVA':'franchise en base (art. 293 B)')+' · généré le '+new Date().toLocaleDateString('fr-FR')+'</div>'
       +'<table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:14px">'
-      +kv('Encaissements de la période ('+enc.length+' règlements)',eur(sum(enc,'ttc')),true)
+      +kv('Encaissements de la période ('+enc.length+' lignes du livre des recettes)',eur(sum(enc,'ttc')),true)
       +kv('dont TVA collectée (à reverser si assujetti)',eur(sum(enc,'tva')))
       +kv('Chiffre d’affaires HT encaissé',eur(sum(enc,'ht')))
       +kv('Cotisations à provisionner (profil fiscal, taux à la date de chaque encaissement)',eur(cot))
-      +kv('Factures émises sur la période ('+emises.length+')',eur(sum(emises,'ttc')))
-      +kv('Impayés en cours (toutes périodes : '+impayes.length+')',eur(sum(impayes,'ttc')))
+      +kv('Documents émis sur la période ('+emises.length+', avoirs déduits)',eur(sum(emises,'ttc')))
+      +kv('Impayés en cours (avoirs déduits : '+impayes.length+')',eur(sum(impayes,'ttc')))
       +'</table>'
+      +'<div style="font-weight:700;font-size:12px;margin:12px 0 4px">Total des recettes par trimestre</div>'
+      +'<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:10px"><tr style="background:#f4f4f4"><th style="text-align:left;padding:6px 10px;border:1px solid #eee">Trimestre</th><th style="padding:6px 10px;border:1px solid #eee">Lignes</th><th style="text-align:right;padding:6px 10px;border:1px solid #eee">Encaissé</th><th style="text-align:right;padding:6px 10px;border:1px solid #eee">dont HT</th></tr>'+(trimRows||'<tr><td colspan="4" style="padding:8px;text-align:center;color:#999">Aucun encaissement</td></tr>')+'</table>'
       +'<div style="font-weight:700;font-size:12px;margin:12px 0 4px">Répartition du CA HT encaissé par activité</div>'
       +'<table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="background:#f4f4f4"><th style="text-align:left;padding:6px 10px;border:1px solid #eee">Activité</th><th style="padding:6px 10px;border:1px solid #eee">Nb</th><th style="text-align:right;padding:6px 10px;border:1px solid #eee">CA HT</th></tr>'+(natRows||'<tr><td colspan="3" style="padding:8px;text-align:center;color:#999">Aucun encaissement</td></tr>')+'</table>'
-      +(impRows?'<div style="font-weight:700;font-size:12px;margin:14px 0 4px">Impayés en cours</div><table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="background:#f4f4f4"><th style="text-align:left;padding:5px 10px;border:1px solid #eee">Facture</th><th style="text-align:left;padding:5px 10px;border:1px solid #eee">Client</th><th style="text-align:left;padding:5px 10px;border:1px solid #eee">Émise le</th><th style="text-align:right;padding:5px 10px;border:1px solid #eee">Montant</th></tr>'+impRows+'</table>':'')
-      +'<div style="margin-top:16px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">Document de travail généré par ClimPilot — ne remplace pas une comptabilité. TVA déductible sur achats non suivie ici : transmettre les factures d’achat au comptable. Joindre les exports CSV « livre des recettes » et « facturier » de la même période.</div>'
+      +(impRows?'<div style="font-weight:700;font-size:12px;margin:14px 0 4px">Impayés en cours</div><table style="width:100%;border-collapse:collapse;font-size:11px"><tr style="background:#f4f4f4"><th style="text-align:left;padding:5px 10px;border:1px solid #eee">Facture</th><th style="text-align:left;padding:5px 10px;border:1px solid #eee">Client</th><th style="text-align:left;padding:5px 10px;border:1px solid #eee">Émise le</th><th style="text-align:right;padding:5px 10px;border:1px solid #eee">Reste dû</th></tr>'+impRows+'</table>':'')
+      +(sansFac?'<div style="margin-top:10px;font-size:11px;color:#b42318">⚠ '+sansFac+' encaissement(s) sans facture rattachée : à vérifier avant envoi.</div>':'')
+      +'<div style="margin-top:16px;font-size:9.5px;color:#777;border-top:1px solid #eee;padding-top:8px">Document de travail généré par ClimPilot — ne remplace pas une comptabilité. Encaissements = livre des recettes de l’appli (essais exclus, avoirs et remboursements compris). TVA déductible sur achats non suivie ici : transmettre les factures d’achat au comptable. Joindre les exports CSV « livre des recettes » et « facturier » de la même période.</div>'
       +'</div>';
     window.print();
   };
   window.nxrgMailComptable=function(){
-    var all=nxrgFactures(),p=rg.pack;
-    var enc=all.filter(function(f){return f.payeLe&&nxrgInPeriod(f.payeLe);});
+    var p=rg.pack,enc=nxrgLivreLignes(p.from,p.to);
     var sum=function(arr,k){return arr.reduce(function(s,x){return s+x[k];},0);};
+    if(nxrgDemo()&&!confirm('La facturation réelle n’est pas encore démarrée : tes exports ne contiennent que des documents de démonstration.\n\nOuvrir quand même le brouillon ?'))return;
     try{
       buildMail('','Pièces comptables '+p.from+' → '+p.to+' — '+((P.entreprise||{}).nom||'GL Froid & Clim'),
         'Bonjour,\n\nVeuillez trouver ci-joint les pièces de la période du '+p.from+' au '+p.to+' :\n'
-        +'- Livre des recettes (CSV) : '+enc.length+' encaissements, '+eur(sum(enc,'ttc'))+' encaissés dont '+eur(sum(enc,'tva'))+' de TVA collectée\n'
+        +'- Livre des recettes (CSV) : '+enc.length+' lignes, '+eur(sum(enc,'ttc'))+' encaissés dont '+eur(sum(enc,'tva'))+' de TVA collectée\n'
         +'- Facturier (CSV)\n- Synthèse (PDF)\n- Factures d’achat de la période (TVA déductible)\n\nRégime actuel : '+(nxrgAssujetti()?'assujetti TVA':'franchise en base 293 B')+'.\n\nJe reste disponible pour toute question.\n\nCordialement');
       nxrgToast('✉️ Brouillon ouvert — pense à JOINDRE les 3 fichiers téléchargés','ok');
     }catch(e){nxrgToast('Fonction mail indisponible','err');}
   };
+  window.nxrgPackPour=function(from,to){ rg.pack={from:from,to:to}; rgSave(); };
 
   function nxrgPackCard(){
     var p=rg.pack||nxrgPackDefaults();
     return '<div class="next-card" style="margin-top:14px"><h3>📦 Pack comptable</h3>'
       +'<div class="sub" style="margin-bottom:8px">Tout ce que ton comptable (ou ta banque) attend, sans ressaisie : exporte, joins au mail, c’est fini.</div>'
+      +(nxrgDemo()?'<div class="sub" style="margin-bottom:8px;color:var(--red,#b42318);font-weight:700">⚠ Facturation réelle pas encore démarrée : ces exports ne contiennent que des documents de démonstration (fichiers nommés « DEMONSTRATION_… »). Ne les envoie pas comme pièces comptables.</div>':'')
       +'<div class="row-actions" style="margin-bottom:8px">'
       +'<button class="btn-ghost btn-sm" onclick="nxrgPackPeriod(\'trim\')">Trimestre en cours</button>'
       +'<button class="btn-ghost btn-sm" onclick="nxrgPackPeriod(\'trimprec\')">Trimestre précédent</button>'
