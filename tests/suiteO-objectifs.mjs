@@ -296,6 +296,49 @@ async function preparer(opts){
   await ctx.close();
 }
 
+/* ================= O21 — synchro réelle entre deux appareils (vrai code pushState / pullState / cpMerge) =================
+   Deux navigateurs séparés (PC + téléphone), un serveur commun simulé côté Node avec la règle de cp_state_push :
+   écriture conditionnelle (p_expected = dernière version connue), sinon refus + renvoi de l'état serveur → fusion 3 voies. */
+{ let ligne=null, n=0;
+  const srvEtat=async(op,p)=>{ const c=v=>JSON.parse(JSON.stringify(v));
+    if(op==='get') return ligne?c(ligne):null;
+    const maintenant=new Date(Date.UTC(2027,10,12,10,0,++n)).toISOString();
+    if(!ligne){ ligne={data:c(p.p_data),updated_at:maintenant}; return {ok:true,updated_at:maintenant}; }
+    if(!p.p_force&&p.p_expected!==ligne.updated_at) return {ok:false,updated_at:ligne.updated_at,data:c(ligne.data)};
+    ligne={data:c(p.p_data),updated_at:maintenant}; return {ok:true,updated_at:maintenant}; };
+  const BRANCHER=`(function(){ window.todayISO=()=>'2027-11-12'; save('cpnext_objectifs',{debut:'2027-07-01'});
+    window.SESS={user:{id:'u-essai'}}; window.cpTestReload=()=>{ window.__rechargements=(window.__rechargements||0)+1; };
+    window.sb={ rpc:async(nom,p)=>nom==='cp_state_push'?{data:await __srvEtat('push',{p_data:p.p_data,p_expected:p.p_expected,p_force:p.p_force})}:{data:null},
+      from:(table)=>{ const q={}; ['select','eq','neq','or','in','gte','lte','lt','gt','is','order','limit','range','update','insert','upsert','delete'].forEach(m=>{ q[m]=()=>q; });
+        q.maybeSingle=async()=>({data:table==='climpilot_state'?await __srvEtat('get'):null}); q.single=async()=>({data:null});
+        q.then=(ok,ko)=>Promise.resolve({data:[]}).then(ok,ko); return q; },
+      auth:{getSession:()=>Promise.resolve({data:{session:null}})} }; })();`;
+  const A=await page({mobile:false}), B=await page({mobile:true});
+  for(const X of [A,B]){ await seed(X.p); await X.p.exposeFunction('__srvEtat',srvEtat); await X.p.evaluate(BRANCHER); }
+  const calme=`clearTimeout(window._pushT)`;
+  /* 1. le PC crée l'état sur le serveur, le téléphone s'y raccroche */
+  await A.p.evaluate(async c=>{ await pushState(); eval(c); },calme);
+  await B.p.evaluate(async c=>{ await pullState(); eval(c); },calme);
+  await A.p.evaluate(async c=>{ await pullState(); eval(c); },calme);
+  /* 2. sans se synchroniser entre-temps : le PC coche la déclaration du T3, le téléphone l'envoi d'octobre */
+  await A.p.evaluate(c=>{ nxobjDecl('2027-T3',true); eval(c); },calme);
+  await B.p.evaluate(c=>{ nxobjEnvoi('2027-10',true); eval(c); },calme);
+  /* 3. chacun synchronise : le PC d'abord, le téléphone tombe en conflit → fusion → le PC relit */
+  await A.p.evaluate(async c=>{ await pushState(); eval(c); },calme);
+  await B.p.evaluate(async c=>{ await pushState(); eval(c); },calme);
+  await A.p.evaluate(async c=>{ await pullState(); eval(c); },calme);
+  const lire=X=>X.p.evaluate(()=>{ const o=nxobjEtat(); return {decl:o.decl['2027-T3']||'',envoi:o.envois['2027-10']||''}; });
+  const a1=await lire(A), b1=await lire(B);
+  rec(G,'Synchro réelle PC + téléphone : case cochée sur chacun hors synchro → les deux cases sur les deux appareils',!!(a1.decl&&a1.envoi&&b1.decl&&b1.envoi),j({pc:a1,tel:b1}));
+  /* 4. une case décochée sur le PC disparaît aussi du téléphone */
+  await A.p.evaluate(async c=>{ nxobjDecl('2027-T3',false); eval(c); await pushState(); eval(c); },calme);
+  await B.p.evaluate(async c=>{ await pullState(); eval(c); },calme);
+  const b2=await lire(B);
+  rec(G,'Synchro réelle : une case décochée sur le PC est décochée sur le téléphone, l’autre reste cochée',!b2.decl&&!!b2.envoi,j(b2));
+  rec(G,'Aucune erreur JavaScript (deux appareils)',A.errs.length===0&&B.errs.length===0,A.errs.concat(B.errs).join(' | '));
+  await A.ctx.close(); await B.ctx.close();
+}
+
 /* ================= O19 — gros volume : 1 800 factures sur 3 ans ================= */
 { const {p,ctx,errs}=await page({mobile:false}); await seed(p);
   const r=await p.evaluate(()=>{ window.todayISO=()=>'2029-11-12'; save('cpnext_objectifs',{debut:'2027-07-01'});
@@ -320,6 +363,14 @@ async function preparer(opts){
     return {w:document.documentElement.scrollWidth,iw:window.innerWidth,ok:!!f,visible:!!(hit&&f.contains(hit))}; });
   await p.screenshot({path:out('suiteO-ecran-telephone.png')});
   rec(G,'Téléphone : écran affiché sans débordement horizontal, carte des feux visible une fois atteinte',r.ok&&r.visible&&r.w<=r.iw+1,j(r));
+  /* suivi Urssaf / comptable : la case « Déclaré » doit être dans l'écran, sans glisser de côté */
+  const rs=await p.evaluate(()=>{ const o=nxobjEtat(); o.debut='2026-01-01'; save('cpnext_objectifs',o); go('nx_obj');
+    const tabs=[...document.querySelectorAll('#nxobj table.nxo-suivi')], deb=tabs.map(t=>{ const c=t.parentElement; return c.scrollWidth-c.clientWidth; });
+    const cb=document.querySelector('#nxobj table.nxo-suivi tr[data-decl] input[type=checkbox]'), bt=document.querySelector('#nxobj table.nxo-suivi tr[data-envoi] button:last-of-type');
+    if(cb) cb.scrollIntoView({block:'center'}); const a=cb?cb.getBoundingClientRect():null, b=bt?bt.getBoundingClientRect():null;
+    return {tables:tabs.length,debordement:deb,cb:!!a&&a.right<=innerWidth&&a.left>=0,bt:!!b&&b.right<=innerWidth,iw:innerWidth}; });
+  await p.screenshot({path:out('suiteO-suivi-telephone.png')});
+  rec(G,'Téléphone : tableaux du suivi sans débordement, cases « Déclaré » et boutons des pièces dans l’écran',rs.tables===2&&rs.debordement.every(x=>x<=1)&&rs.cb&&rs.bt,j(rs));
   rec(G,'Aucune erreur JavaScript (téléphone)',errs.length===0,errs.join(' | '));
   await ctx.close();
 }

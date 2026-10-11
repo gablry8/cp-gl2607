@@ -418,6 +418,14 @@
     +'#v-nx_obj .nxo-form{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}#v-nx_obj .nxo-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted,#667085)}#v-nx_obj .nxo-form input,#v-nx_obj .nxo-form select{font-size:15px}'
     +'#v-nx_obj .nxo-note{font-size:12px;color:var(--muted,#667085);line-height:1.55;margin-top:8px}'
     +'#nxobjDash .nxo-l{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}#nxobjDash .nxo-l b{font-size:15px}'
+    +'#v-nx_obj .nxo-st{display:none;font-weight:800;font-size:13px;margin:16px 0 0;padding:6px 10px;border-radius:8px;background:var(--blue-soft,#eef4ff)}'
+    +'@media(max-width:640px){#v-nx_obj .nxo-st{display:block}#v-nx_obj table.nxo-suivi,#v-nx_obj table.nxo-suivi tbody{display:block;width:100%}#v-nx_obj table.nxo-suivi thead{display:none}'
+    +'#v-nx_obj table.nxo-suivi tr{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:10px 0;border-bottom:1px solid var(--line,#e5e7eb)}'
+    +'#v-nx_obj table.nxo-suivi td{display:block;border:0!important;padding:0!important;text-align:left!important;white-space:normal!important}'
+    +'#v-nx_obj table.nxo-suivi td:first-child{flex-basis:100%;font-weight:700}#v-nx_obj table.nxo-suivi td.nxo-pieces{flex-basis:100%;display:flex;gap:6px;flex-wrap:wrap}'
+    +'#v-nx_obj table.nxo-suivi td[data-l]::before{content:attr(data-l) " : ";font-weight:600;color:var(--muted,#667085);font-size:12px}'
+    +'#v-nx_obj table.nxo-suivi td[data-l="Déclaré"]::before,#v-nx_obj table.nxo-suivi td[data-l="Envoyé"]::before{content:attr(data-l) " ?"}'
+    +'#v-nx_obj table.nxo-suivi td[data-l="Déclaré"],#v-nx_obj table.nxo-suivi td[data-l="Envoyé"]{display:flex;gap:8px;align-items:center}}'
     +'@media(max-width:520px){#v-nx_obj table.nxo-t th:nth-child(5),#v-nx_obj table.nxo-t td:nth-child(5){display:none}#v-nx_obj table.nxo-t th,#v-nx_obj table.nxo-t td{padding:7px 4px}}';
   function css(){ if(document.getElementById('nxobjCss')) return; var s=document.createElement('style'); s.id='nxobjCss'; s.textContent=CSS; document.head.appendChild(s); }
 
@@ -445,12 +453,12 @@
     var aJourD=ajour(o.decl);
     var cb=function(fn,id,date,dis){ return '<label style="display:inline-flex;flex-direction:row;gap:6px;align-items:center;font-weight:600;white-space:nowrap;text-transform:none;letter-spacing:0;font-size:13px;color:inherit;margin:0"><input type="checkbox" '+(date?'checked':'')+(dis?' disabled':'')+' onchange="'+fn+'(\''+esc(id)+'\',this.checked)" aria-label="'+esc(id)+'">'+(date?'le '+fr(date):dis?'en cours':'à faire')+'</label>'; };
     var xb=function(type,lab,p){ return '<button class="btn-ghost btn-sm" onclick="nxobjExport(\''+type+'\',\''+p.from+'\',\''+p.to+'\')">'+lab+'</button>'; };
-    h+='<div class="nxo-scroll"><table class="nxo-t nxo-suivi" style="margin-top:8px"><thead><tr><th>Déclaration Urssaf</th><th>Encaissé</th><th>Échéance</th><th>Déclaré</th></tr></thead><tbody>'
+    h+='<div class="nxo-st">Déclarations à l’Urssaf</div><div class="nxo-scroll"><table class="nxo-t nxo-suivi" style="margin-top:8px"><thead><tr><th>Déclaration Urssaf</th><th>Encaissé</th><th>Échéance</th><th>Déclaré</th></tr></thead><tbody>'
       +D.map(function(p){ var fini=p.to<t, late=fini&&!o.decl[p.id]&&p.to>aJourD&&p.ech<t;
-        return '<tr data-decl="'+esc(p.id)+'"><td style="white-space:normal">'+esc(p.lab)+'</td><td>'+e0(encHT(p))+(fini?'':' <span style="font-weight:400">à ce jour</span>')+'</td><td'+(late?' style="color:var(--red,#b42318);font-weight:700"':'')+'>'+fr(p.ech)+(p.premiere?' <span style="font-weight:400">(à vérifier)</span>':'')+'</td><td>'+cb('nxobjDecl',p.id,o.decl[p.id],!fini)+'</td></tr>'; }).join('')
+        return '<tr data-decl="'+esc(p.id)+'"><td style="white-space:normal">'+esc(p.lab)+'</td><td data-l="Encaissé">'+e0(encHT(p))+(fini?'':' <span style="font-weight:400">à ce jour</span>')+'</td><td data-l="Échéance"'+(late?' style="color:var(--red,#b42318);font-weight:700"':'')+'>'+fr(p.ech)+(p.premiere?' <span style="font-weight:400">(à vérifier)</span>':'')+'</td><td data-l="Déclaré">'+cb('nxobjDecl',p.id,o.decl[p.id],!fini)+'</td></tr>'; }).join('')
       +'</tbody></table></div>'
-      +'<div class="nxo-scroll"><table class="nxo-t nxo-suivi" style="margin-top:8px"><thead><tr><th>Envoi à la comptable</th><th>Encaissé</th><th style="text-align:left">Pièces</th><th>Envoyé</th></tr></thead><tbody>'
-      +(E.length?E.map(function(p){ return '<tr data-envoi="'+esc(p.id)+'"><td>'+esc(p.lab)+'</td><td>'+e0(encHT(p))+'</td><td style="text-align:left">'+xb('livre','Livre',p)+' '+xb('facturier','Facturier',p)+' '+xb('synthese','Synthèse',p)+'</td><td>'+cb('nxobjEnvoi',p.id,o.envois[p.id],false)+'</td></tr>'; }).join('')
+      +'<div class="nxo-st">Envois à ta comptable</div><div class="nxo-scroll"><table class="nxo-t nxo-suivi" style="margin-top:8px"><thead><tr><th>Envoi à la comptable</th><th>Encaissé</th><th style="text-align:left">Pièces</th><th>Envoyé</th></tr></thead><tbody>'
+      +(E.length?E.map(function(p){ return '<tr data-envoi="'+esc(p.id)+'"><td>'+esc(p.lab)+'</td><td data-l="Encaissé">'+e0(encHT(p))+'</td><td class="nxo-pieces" style="text-align:left">'+xb('livre','Livre',p)+' '+xb('facturier','Facturier',p)+' '+xb('synthese','Synthèse',p)+'</td><td data-l="Envoyé">'+cb('nxobjEnvoi',p.id,o.envois[p.id],false)+'</td></tr>'; }).join('')
         :'<tr><td colspan="4" style="text-align:center;color:var(--muted,#667085)">Ta première période n’est pas encore terminée.</td></tr>')
       +'</tbody></table></div>'
       +'<div class="nxo-note">Coche le jour où c’est fait : ClimPilot garde la date et arrête de te le rappeler. « 1re déclaration » : elle regroupe tes premiers mois et se fait au plus tôt le '+fr(j90(o))+' (90 jours après le début) ; l’échéance exacte est sur ton espace Urssaf. Une période plus ancienne que la dernière cochée n’est plus rappelée. Une échéance un samedi, un dimanche ou un jour férié passe au jour ouvré suivant. Montants = encaissements (hors TVA si tu la factures, à confirmer avec ta comptable), essais exclus, avoirs et remboursements compris.</div>';

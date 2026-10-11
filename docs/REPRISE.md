@@ -74,7 +74,12 @@ Partie de `claude/quirky-pasteur-ds9m47` (= 1.10.0 en production). Côté appli 
   = fin de la plus récente période cochée, tous rythmes confondus (pas de faux retards après un changement mois ↔ trimestre) ;
   bouton « C'est envoyé » dans le rappel ; migration de l'ancien format sans écrasement ; part du plus gros client sur 6 mois glissants.
 - Performance : cache le temps d'un affichage (`avecCache`) + `nxrgLignesRecettes/Impayes(…, F)` réutilisent les factures déjà calculées.
-- Tests : suite O (`tests/suiteO-objectifs.mjs`), dont gros volume (1 800 factures : écran < 1,5 s).
+- Tests : suite O (`tests/suiteO-objectifs.mjs`, 78 contrôles), dont gros volume (1 800 factures : écran < 1,5 s),
+  synchro réelle entre deux appareils (O21 : vrai pushState/pullState/cpMerge sur un serveur commun simulé) et affichage téléphone
+  du suivi (O13 : aucun débordement ; échouait avant la correction du 12/10 : 111 et 164 px).
+- Essais faits par Claude le 12/10 sur la copie d'essai exacte (PC 1300 px et iPhone 13 simulés) : date d'EI 2026 → ACRE rouge,
+  2025 → vert ; trésorerie ; case cochée ; début de plan passé → suivi + 3 rappels + pastille ; point du mois ; export DEMONSTRATION_.
+- Batterie complète du 12/10 avec les validateurs CEN et FNFE : 534 réussis, 0 échec, 0 SKIP (SQL non exécuté : aucun changement SQL).
 - À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.11.zip` (base de TEST) : menu Accueil › Objectifs & feux ;
   date de fermeture de l'EI ; trésorerie ; une case cochée sur le PC puis vue sur le téléphone ; point du mois (PDF) ; pastille du menu.
 - Mise en production : fusion de cette branche dans `main` par Gabriel, puis mise à jour de chaque appareil (F5). Rien côté Supabase.
