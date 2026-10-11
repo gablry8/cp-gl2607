@@ -5,7 +5,7 @@
 (function(){
   'use strict';
 
-  const NX_VERSION='Next 1.10.0 — factures numérotées par le serveur, facture électronique, contrats particuliers';
+  const NX_VERSION='Next 1.11.0 — objectifs & feux, suivi comptable (Urssaf, comptable)';
   const NX_KEYS={
     tasks:'cpnext_tasks',trash:'cpnext_trash',templates:'cpnext_templates',
     history:'cpnext_history',settings:'cpnext_settings',notified:'cpnext_notified',
