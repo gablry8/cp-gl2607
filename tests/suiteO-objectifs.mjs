@@ -30,10 +30,10 @@ async function preparer(opts){
   const r=await p.evaluate(()=>{ const a=document.querySelector('#nav a[data-v="nx_obj"]'); const sec=a&&a.closest('.nx-nav-section');
     go('nx_obj'); const v=document.getElementById('v-nx_obj'), h=(document.getElementById('nxobj')||{}).innerText||'';
     return {lien:!!a,section:sec?sec.dataset.section:'',actif:!!(v&&v.classList.contains('active')),titre:document.getElementById('ttl').textContent,
-      blocs:['Mes feux','Mon plan sur 3 ans','Combien coûte un salarié','Pour la comptable','À renseigner','Mes réglages'].filter(x=>h.indexOf(x)<0),
+      blocs:['À faire maintenant','Mes 3 objectifs','Mes feux','Mon plan sur 3 ans','Combien coûte un salarié','Pour la comptable','Mon suivi','À renseigner','Mes réglages'].filter(x=>h.indexOf(x)<0),
       sync:SYNC_KEYS.indexOf('cpnext_objectifs')>=0, mois:/mois 7 \/ 36/.test(h)}; });
   rec(G,'Lien « Objectifs & feux » dans la section Accueil du menu',r.lien&&r.section==='home',j(r));
-  rec(G,'L’écran s’ouvre avec son titre et ses 6 blocs',r.actif&&r.titre==='Objectifs & feux'&&r.blocs.length===0,j(r));
+  rec(G,'L’écran s’ouvre avec son titre et ses 9 blocs',r.actif&&r.titre==='Objectifs & feux'&&r.blocs.length===0,j(r));
   rec(G,'Mois courant reconnu (mois 7 / 36 d’un plan démarré il y a 6 mois)',r.mois,j(r));
   rec(G,'Réglages synchronisés entre appareils (clé cpnext_objectifs dans la synchro)',r.sync,'');
 
@@ -190,6 +190,126 @@ async function preparer(opts){
   rec(G,'Avant le lancement : compte à rebours et premier objectif, sans suivi du mois',/Avant le lancement/.test(r.h)&&/Premier objectif/.test(r.h)&&!/mois \d+ \/ 36/.test(r.h),r.h);
   rec(G,'Avant le lancement : le tableau de bord montre les points prêts',/Lancement le/.test(r.b)&&/points prêts/.test(r.b),r.b);
   rec(G,'Aucune erreur JavaScript (avant lancement)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
+/* ================= O14 à O18 — date figée au 12/11/2027, plan démarré le 01/07/2027 (mois 5) ================= */
+{ const {p,ctx,errs}=await page({mobile:false}); await seed(p);
+  await p.evaluate(()=>{ window.todayISO=()=>'2027-11-12'; save('cpnext_objectifs',{debut:'2027-07-01'}); });
+
+  /* O14 — règle ACRE et ancienne EI (art. D131-6-1 CSS : reprise l'année de la cessation ou l'année suivante) */
+  const o14=await p.evaluate(()=>{ const o=nxobjEtat(), c=()=>nxobjCondAcre();
+    const vide=c().ok; o.eiFermeture='2026-03-15'; save('cpnext_objectifs',o); const a2026=c(), feu=nxobjFeux().lancement.couleur;
+    o.eiFermeture='2025-12-31'; save('cpnext_objectifs',o); const a2025=c().ok;
+    o.eiFermeture='2027-02-01'; save('cpnext_objectifs',o); const a2027=c().ok;
+    o.eiFermeture='2026-03-15'; save('cpnext_objectifs',o); nxobjCheck('urssaf',true); const rep=c().ok;
+    nxobjCheck('urssaf',false); const o2=nxobjEtat(); o2.eiFermeture=''; save('cpnext_objectifs',o2);
+    return {vide,a2026:a2026.ok,d2026:a2026.detail,feu,a2025,a2027,rep}; });
+  rec(G,'ACRE : sans date de fermeture d’EI → « à compléter »',o14.vide===null,j(o14));
+  rec(G,'ACRE : EI fermée en 2026 pour une création en 2027 → non rempli, feu de lancement rouge, date de sortie de la règle (01/01/2028) indiquée',o14.a2026===false&&o14.feu==='rouge'&&/01\/01\/2028/.test(o14.d2026),j(o14));
+  rec(G,'ACRE : EI fermée en 2025 → pas concernée ; fermée en 2027 (même année) → non rempli',o14.a2025===true&&o14.a2027===false,j(o14));
+  rec(G,'ACRE : réponse écrite de l’Urssaf cochée → condition remplie quelle que soit la date',o14.rep===true,j(o14));
+
+  /* O15 — échéances officielles de déclaration (autoentrepreneur.urssaf.fr) et 1re déclaration à 90 jours */
+  const o15=await p.evaluate(()=>{ const o=nxobjEtat();
+    o.declPeriode='mois'; save('cpnext_objectifs',o); const M=nxobjPeriodes('mois');
+    o.declPeriode='trim'; save('cpnext_objectifs',o); const T=nxobjPeriodes('trim');
+    return {M:M.map(x=>[x.id,x.to,x.ech,x.premiere||null]),T:T.map(x=>[x.id,x.from,x.to,x.ech,x.premiere||false])}; });
+  const Mok=j(o15.M)===j([['2027-09','2027-09-30','2027-10-31',true],['2027-10','2027-10-31','2027-11-30',null],['2027-11','2027-11-30','2027-12-31',null]]);
+  const Tok=j(o15.T)===j([['2027-T3','2027-07-01','2027-09-30','2027-10-31',false],['2027-T4','2027-10-01','2027-12-31','2028-01-31',false]]);
+  rec(G,'Déclaration mensuelle : échéance = dernier jour du mois suivant ; juillet à septembre regroupés en une 1re déclaration (90 jours), échéance du 31/10',Mok,j(o15.M));
+  rec(G,'Déclaration trimestrielle : échéances 31/10 puis 31/01 de l’année suivante',Tok,j(o15.T));
+
+  /* O16 — « À faire maintenant » : déclaration en retard, envoi à la comptable, coches datées, pastille du menu */
+  const o16=await p.evaluate(()=>{ go('nx_obj'); const a0=nxobjAFaire().map(x=>[x.urg,x.act||'',x.id||'',x.txt]);
+    const badge0=(document.getElementById('nxobjBadge')||{}).textContent;
+    const row=document.querySelector('#nxobj tr[data-decl="2027-T3"] input[type=checkbox]'); if(row){ row.checked=true; row.dispatchEvent(new Event('change')); }
+    const decl=nxobjEtat().decl['2027-T3'], a1=nxobjAFaire().map(x=>x.act||'');
+    ['2027-07','2027-08','2027-09','2027-10'].forEach(k=>nxobjEnvoi(k,true)); const a2=nxobjAFaire().map(x=>x.act||'');
+    const txt=document.getElementById('nxobj').innerText, badge2=(document.getElementById('nxobjBadge')||{}).textContent;
+    /* synchro : une case cochée sur chaque appareil entre deux synchros → les deux sont gardées (fusion par identifiant) */
+    const B={cpnext_objsuivi:[]}, L={cpnext_objsuivi:[{id:'decl:2027-T3',d:'2027-11-12'}]}, R={cpnext_objsuivi:[{id:'envoi:2027-10',d:'2027-11-13'}]};
+    const fus=cpMerge(B,L,R).cpnext_objsuivi.map(x=>x.id).sort();
+    const reglages=JSON.parse(localStorage.getItem('cpnext_objectifs')||'{}');
+    return {a0,badge0,decl,a1,a2,txt:/le 12\/11\/2027/.test(txt),badge2,affiche:(document.getElementById('nxobjBadge')||{style:{}}).style.display,
+      fus,propre:!('decl' in reglages)&&!('envois' in reglages)&&!('checks' in reglages),sync:SYNC_KEYS.indexOf('cpnext_objsuivi')>=0}; });
+  const dT3=o16.a0.find(x=>x[1]==='decl'), env=o16.a0.find(x=>x[1]==='envoi');
+  rec(G,'À faire : déclaration du 3e trimestre en retard (échéance 31/10 dépassée) en rouge, montant affiché',!!dT3&&dT3[0]===2&&dT3[2]==='2027-T3'&&/31\/10\/2027/.test(dT3[3])&&/€/.test(dT3[3]),j(o16.a0));
+  rec(G,'À faire : envoi du mois d’octobre à la comptable, avec les 3 mois plus anciens non cochés',!!env&&env[2]==='2027-10'&&/pièces d’octobre 2027/.test(env[3])&&/3 période/.test(env[3]),j(env));
+  rec(G,'Pastille du menu = nombre de choses urgentes',String(o16.a0.filter(x=>x[0]>=1).length)===o16.badge0,j({badge:o16.badge0,a:o16.a0.length}));
+  rec(G,'Case « Déclaré » du tableau : date du jour enregistrée, rappel retiré',o16.decl==='2027-11-12'&&o16.a1.indexOf('decl')<0&&o16.txt,j({decl:o16.decl,a1:o16.a1,txt:o16.txt}));
+  rec(G,'Synchro PC + téléphone : une case cochée sur chacun entre deux synchros → les deux sont gardées',JSON.stringify(o16.fus)===JSON.stringify(['decl:2027-T3','envoi:2027-10'])&&o16.sync&&o16.propre,j({fus:o16.fus,sync:o16.sync,propre:o16.propre}));
+  rec(G,'Envois cochés : plus de rappel d’envoi, pastille à zéro et masquée',o16.a2.indexOf('envoi')<0&&o16.badge2==='0'&&o16.affiche==='none',j(o16));
+
+  /* O17 — les 3 objectifs de l'année */
+  const o17=await p.evaluate(()=>{ const c=[6,12,24,36].map(nxobjObjContrats), A=nxobjObjectifsAnnee();
+    let att=0; for(let i=1;i<5;i++) att+=nxobjObjectif(i).ca; att+=nxobjObjectif(5).ca*12/30;
+    return {c,caAn:A.caAn,caAttendu:A.caAttendu,att,contratsObj:A.contratsObj,limite:A.limite,annee:A.annee}; });
+  rec(G,'Objectif contrats d’entretien : 8 à 6 mois, 15 / 40 / 70 en fin d’années 1, 2, 3',j(o17.c)===j([8,15,40,70]),j(o17.c));
+  rec(G,'Objectif de CA de l’année 1 = total du fichier Excel (50 807 €)',proche(o17.caAn,50807,2),o17.caAn);
+  rec(G,'CA attendu à date = mois passés + part du mois en cours (12 jours sur 30)',proche(o17.caAttendu,o17.att,0.02)&&o17.annee===1&&o17.limite===0.7,j(o17));
+
+  /* O18 — écran : nouvelles cartes et saisie de la date de fermeture d'EI */
+  const o18=await p.evaluate(()=>{ go('nx_obj'); const i=document.getElementById('nxo_eiFermeture'); i.value='2026-04-02'; i.dispatchEvent(new Event('change'));
+    const h=document.getElementById('nxobj').innerText;
+    return {ei:nxobjEtat().eiFermeture,acre:/une reprise d’activité l’année de la fermeture/.test(h),obj:/Mes 3 objectifs — année 1/.test(h),suivi:!!document.querySelector('#nxobj table.nxo-suivi')}; });
+  rec(G,'Date de fermeture d’EI saisie dans l’écran → enregistrée et explication ACRE affichée',o18.ei==='2026-04-02'&&o18.acre&&o18.obj&&o18.suivi,j(o18));
+  await p.screenshot({path:out('suiteO-ecran-pc-2027.png'),fullPage:true});
+  rec(G,'Aucune erreur JavaScript (date figée 2027)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
+/* ================= O20 — cas réels relevés par la relecture indépendante ================= */
+{ const {p,ctx,errs}=await page({mobile:false}); await seed(p);
+  const r=await p.evaluate(()=>{ const R={};
+    /* a) début le 01/08, trimestriel, 1 encaissement en août : la 1re déclaration (T3+T4) le compte */
+    window.todayISO=()=>'2028-01-15'; save('cpnext_objectifs',{debut:'2027-08-01',declPeriode:'trim'});
+    DEP.push({id:'r_d1',cNom:'Client Août',date:'2027-08-20',statut:'payee',payeLe:'2027-08-20',modeReg:'Virement',facNum:'F-2027-001',facDate:'2027-08-20',itype:'dep',heures:1,pieces:[]}); save(LS.dep,DEP);
+    const ht=Math.round(computeDep(DEP[DEP.length-1]).totalHT);
+    const T=nxobjPeriodes('trim'), d1=nxobjAFaire().find(x=>x.act==='decl');
+    R.a={T:T.map(x=>[x.id,x.from,x.to,x.ech,!!x.premiere]),txt:d1&&d1.txt,id:d1&&d1.id,ht};
+    /* b) changement de rythme : 5 trimestres cochés puis passage au mensuel → aucun faux retard */
+    window.todayISO=()=>'2028-11-12'; save('cpnext_objectifs',{debut:'2027-07-01',declPeriode:'trim'});
+    ['2027-T3','2027-T4','2028-T1','2028-T2','2028-T3'].forEach(k=>nxobjDecl(k,true));
+    const o=nxobjEtat(); o.declPeriode='mois'; save('cpnext_objectifs',o);
+    R.b=nxobjAFaire().filter(x=>x.act==='decl').map(x=>[x.id,x.urg]);
+    /* c) envoi : cocher la plus récente période suffit (les anciennes non cochées ne bloquent plus) */
+    nxobjEnvoi('2028-10',true); R.c=nxobjAFaire().filter(x=>x.act==='envoi').length;
+    /* d) 90 jours comptés depuis la vraie date de début (profil fiscal : 15/07/2027) */
+    nxFiscalSet('debut','2027-07-15'); window.todayISO=()=>'2027-11-12';
+    const M=nxobjPeriodes('mois'); R.d=M.map(x=>[x.id,x.from,x.ech,!!x.premiere]); nxFiscalSet('debut','');
+    /* e) migration de l'ancien format : une case décochée depuis ne revient pas */
+    nxobjCheck('banque',true); nxobjCheck('banque',false);
+    const o2=JSON.parse(localStorage.getItem('cpnext_objectifs')); o2.checks={banque:'2027-01-01',wolf:'2027-02-02'}; localStorage.setItem('cpnext_objectifs',JSON.stringify(o2));
+    const ch=nxobjEtat().checks; R.e={banque:!!ch.banque,wolf:ch.wolf||''};
+    nxobjCheck('wolf',false); nxobjCheck('banque',false);
+    nxobjCheck('banque',true); const o3=JSON.parse(localStorage.getItem('cpnext_objectifs')); o3.checks={banque:'2020-01-01'}; localStorage.setItem('cpnext_objectifs',JSON.stringify(o3));
+    R.e2=nxobjEtat().checks.banque; nxobjCheck('banque',false);
+    return R; });
+  rec(G,'1re déclaration trimestrielle (début le 01/08) : T3 et T4 regroupés, montant depuis le 01/08, échéance 31/01',
+    j(r.a.T)===j([['2027-T4','2027-08-01','2027-12-31','2028-01-31',true],['2028-T1','2028-01-01','2028-03-31','2028-04-30',false]])&&r.a.id==='2027-T4'&&/1re déclaration/.test(r.a.txt||'')&&(r.a.txt||'').indexOf(r.a.ht.toLocaleString('fr-FR'))>=0,j(r.a));
+  rec(G,'Passage du trimestre au mois après 5 trimestres cochés : seul octobre 2028 est rappelé, sans retard',j(r.b)===j([['2028-10',1]]),j(r.b));
+  rec(G,'Envoi à la comptable : cocher la plus récente période supprime le rappel',r.c===0,String(r.c));
+  rec(G,'Début réel le 15/07 (profil fiscal) : 1re déclaration mensuelle = juillet à octobre, échéance 30/11',j(r.d)===j([['2027-10','2027-07-01','2027-11-30',true],['2027-11','2027-11-01','2027-12-31',false]]),j(r.d));
+  rec(G,'Migration de l’ancien format : une nouvelle case est reprise, une case déjà connue n’est pas écrasée',r.e.wolf==='2027-02-02'&&r.e2&&r.e2!=='2020-01-01',j({e:r.e,e2:r.e2}));
+  rec(G,'Aucune erreur JavaScript (cas réels)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
+/* ================= O19 — gros volume : 1 800 factures sur 3 ans ================= */
+{ const {p,ctx,errs}=await page({mobile:false}); await seed(p);
+  const r=await p.evaluate(()=>{ window.todayISO=()=>'2029-11-12'; save('cpnext_objectifs',{debut:'2027-07-01'});
+    const base=DEVIS[0], L=[]; let n=0;
+    for(let i=0;i<1500;i++){ const d=JSON.parse(JSON.stringify(base)); d.id='vol'+i; d.num='D-V'+i; d.statut='accepte';
+      const y=2027+Math.floor(i/600), m=1+(i%12), dt=y+'-'+String(m).padStart(2,'0')+'-15';
+      d.facSolde={num:'F-'+y+'-'+String(++n).padStart(4,'0'),date:dt,montant:1500,payeLe:dt,mode:'Virement'}; L.push(d); }
+    DEVIS.push(...L); save(LS.devis,DEVIS);
+    for(let i=0;i<300;i++) CTR.push({id:'vc'+i,clientNom:'C'+i,type:'clim',prix:250,visites:1,actif:true,facs:[{annee:2028,num:'F-2028-9'+String(i).padStart(3,'0'),date:'2028-03-01',montant:250,payeLe:'2028-03-02',mode:'Virement'}]});
+    save('cp2_contrats',CTR);
+    go('dash'); const t0=performance.now(); go('nx_obj'); const t1=performance.now(); nxobjBandeau(); const t2=performance.now();
+    return {ecran:Math.round(t1-t0),bandeau:Math.round(t2-t1),n:nxrgLignesFactures().length,ok:/Mes 3 objectifs — année 3/.test(document.getElementById('nxobj').innerText)}; });
+  rec(G,'Gros volume (1 800 factures) : écran en moins de 1,5 s et ligne du tableau de bord en moins de 0,5 s',r.n===1800&&r.ok&&r.ecran<1500&&r.bandeau<500,j(r));
+  rec(G,'Aucune erreur JavaScript (gros volume)',errs.length===0,errs.join(' | '));
   await ctx.close();
 }
 

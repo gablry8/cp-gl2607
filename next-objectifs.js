@@ -17,12 +17,20 @@
    - Coût d'un salarié : ESTIMATION 2026 (calcul sur les taux publiés : réduction générale, caisse de congés
      BTP Nord-Ouest 20,70 %, AT 3,77 %) — à refaire sur mon-entreprise.urssaf.fr avant toute embauche.
    - « Pour la comptable » : quoi envoyer et quand, contrôles avant envoi, exports (next-regime.js).
+   - « À faire maintenant » + pastille du menu : déclaration Urssaf proche ou en retard (échéances officielles),
+     envoi à la comptable non coché, impayés de plus de 30 jours, trésorerie à mettre à jour.
+   - « Mon suivi » : déclarations Urssaf et envois à la comptable cochés et datés par toi.
+   - « Mes 3 objectifs » : CA de l'année (à date), contrats d'entretien (15 / 40 / 70), part du plus gros client.
+   - Feu de lancement : règle ACRE selon la date de fermeture de l'ancienne EI (art. D131-6-1 CSS).
    Stockage : cpnext_objectifs (synchronisé). Aucune donnée envoyée ailleurs.
    ============================================================ */
 (function(){
   'use strict';
   var KEY='cpnext_objectifs', VUE='nx_obj';
-  try{ if(Array.isArray(SYNC_KEYS)&&SYNC_KEYS.indexOf(KEY)<0) SYNC_KEYS.push(KEY); }catch(e){}
+  /* KEY2 : cases cochées (datées) et relevés mensuels, en LISTE d'éléments à identifiant : la synchro les fusionne
+     élément par élément (cpMergeArr), donc une case cochée sur le téléphone et une autre sur le PC ne s'écrasent pas. */
+  var KEY2='cpnext_objsuivi';
+  try{ [KEY,KEY2].forEach(function(k){ if(Array.isArray(SYNC_KEYS)&&SYNC_KEYS.indexOf(k)<0) SYNC_KEYS.push(k); }); }catch(e){}
 
   /* ---------- hypothèses du plan (modifiables dans l'écran) ---------- */
   var DEF={
@@ -38,8 +46,12 @@
     apprentiDate:'',apprentiCout:13200,
     techDate:'',
     societeDate:'',diplomeDate:'',
+    eiFermeture:'',           // date de fermeture de l'ancienne EI (règle ACRE « reprise l'année suivante »)
     tresoMontant:null,tresoDate:'',
-    checks:{},hist:{},
+    declPeriode:'trim',       // déclaration du CA à l'Urssaf : 'trim' ou 'mois'
+    envoiPeriode:'mois',      // envoi des pièces à la comptable : 'mois' ou 'trim' (rythme convenu avec elle)
+    checks:{},hist:{},envois:{},decl:{}, // lus dans cpnext_objsuivi (liste « type:clé ») : cases à cocher, relevés mensuels,
+                                         // envois à la comptable ('AAAA-MM' / 'AAAA-Tn'), déclarations Urssaf
     sim:{brut:2300,camion:0,fact:70,marge:20,margeBrute:50,augm:100},
     maj:0
   };
@@ -64,13 +76,34 @@
   function say(m){ try{ toast(m); }catch(e){} }
 
   /* ---------- état ---------- */
+  var MAPS={checks:'check',decl:'decl',envois:'envoi',hist:'hist'};
+  function ecrire(k,v){ try{ save(k,v); }catch(e){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(_){} } }
+  function marks(){ var a=[]; try{ a=JSON.parse(localStorage.getItem(KEY2)||'[]'); }catch(e){ a=[]; }
+    return Array.isArray(a)?a.filter(function(x){ return x&&typeof x.id==='string'&&x.id.indexOf(':')>0; }):[]; }
+  /* setMark('decl','2027-T3',{d:'2027-11-12'}) ; valeur null = décocher */
+  function setMark(type,k,val){ var a=marks(), id=type+':'+k, i=-1;
+    a.forEach(function(x,j){ if(x.id===id) i=j; });
+    if(val==null){ if(i<0) return; a.splice(i,1); } else { var x=Object.assign({id:id},val); if(i>=0) a[i]=x; else a.push(x); }
+    ecrire(KEY2,a); }
   function st(){
     var o={}; try{ o=JSON.parse(localStorage.getItem(KEY)||'{}')||{}; }catch(e){ o={}; }
+    /* anciennes cases rangées dans l'objet (branche 1.11 avant le 11/10) : passées dans la liste, une seule fois */
+    var legacy=Object.keys(MAPS).filter(function(m){ return o[m]&&typeof o[m]==='object'; });
+    if(legacy.length){ var deja={}; marks().forEach(function(x){ deja[x.id]=1; });
+      legacy.forEach(function(m){ Object.keys(o[m]).forEach(function(k){ var v=o[m][k];
+        if(m!=='hist'&&deja['hist:'+k]) return; if(deja[MAPS[m]+':'+k]) return; /* jamais d'écrasement : une case décochée ne revient pas */
+        if(m==='hist') setMark('hist',k,{carnet:Number(v&&v.carnet)||0}); else if(v) setMark(MAPS[m],k,{d:String(v)}); }); delete o[m]; });
+      ecrire(KEY,o); }
     var r=Object.assign({},DEF,o);
-    r.sim=Object.assign({},DEF.sim,o.sim||{}); r.checks=Object.assign({},o.checks||{}); r.hist=Object.assign({},o.hist||{});
+    r.sim=Object.assign({},DEF.sim,o.sim||{}); r.checks={}; r.hist={}; r.envois={}; r.decl={};
+    marks().forEach(function(x){ var p=x.id.indexOf(':'), t=x.id.slice(0,p), k=x.id.slice(p+1);
+      if(t==='check') r.checks[k]=x.d; else if(t==='decl') r.decl[k]=x.d; else if(t==='envoi') r.envois[k]=x.d; else if(t==='hist') r.hist[k]={carnet:Number(x.carnet)||0}; });
+    if(r.declPeriode!=='mois') r.declPeriode='trim';
+    if(r.envoiPeriode!=='trim') r.envoiPeriode='mois';
     return r;
   }
-  function stSave(o){ o.maj=Date.now(); try{ save(KEY,o); }catch(e){ try{ localStorage.setItem(KEY,JSON.stringify(o)); }catch(_){} } }
+  /* les réglages seuls (les cases et relevés vivent dans KEY2) */
+  function stSave(o){ var c=Object.assign({},o); Object.keys(MAPS).forEach(function(m){ delete c[m]; }); c.maj=Date.now(); ecrire(KEY,c); }
   window.nxobjEtat=st;
 
   /* début du plan : réglage de l'écran > date de début du profil fiscal > 01/07/2027 */
@@ -133,9 +166,18 @@
   window.nxobjPlancher=function(m){ return plancher(m,st()); };
 
   /* ---------- réalisé (même source que le pack comptable) ---------- */
-  function factures(){ try{ if(window.nxrgLignesFactures) return nxrgLignesFactures(); }catch(e){} return []; }
-  function recettes(from,to){ try{ if(window.nxrgLignesRecettes) return nxrgLignesRecettes(from,to); }catch(e){} return []; }
-  function impayes(){ try{ if(window.nxrgLignesImpayes) return nxrgLignesImpayes(); }catch(e){} return []; }
+  /* cache valable le temps d'UN affichage (avecCache) : chaque appel relirait sinon toutes les factures (lent avec des
+     milliers de documents) ; vidé à la fin de l'affichage, donc jamais périmé d'un écran à l'autre */
+  var CACHE=null;
+  function avecCache(fn){ if(CACHE) return fn(); CACHE={}; try{ return fn(); } finally { CACHE=null; } }
+  function factures(){ if(CACHE&&CACHE.F) return CACHE.F; var r=[]; try{ if(window.nxrgLignesFactures) r=nxrgLignesFactures(); }catch(e){} if(CACHE) CACHE.F=r; return r; }
+  function recettes(from,to){
+    var all;
+    if(CACHE&&CACHE.R) all=CACHE.R;
+    else { all=[]; try{ if(window.nxrgLignesRecettes) all=nxrgLignesRecettes('','',CACHE?factures():undefined); }catch(e){} if(CACHE) CACHE.R=all; }
+    return all.filter(function(x){ var d=String(x.date||'').slice(0,10); return d&&(!from||d>=from)&&(!to||d<=to); });
+  }
+  function impayes(){ if(CACHE&&CACHE.I) return CACHE.I; var r=[]; try{ if(window.nxrgLignesImpayes) r=nxrgLignesImpayes(CACHE?factures():undefined); }catch(e){} if(CACHE) CACHE.I=r; return r; }
   function finMois(k){ return iso(+k.slice(0,4),+k.slice(5,7),0); }
   function realise(k,F){ F=F||factures(); var f=0,n=0; F.forEach(function(x){ if(ym(x.date)===k){ f+=Number(x.ht)||0; n++; } });
     var enc=recettes(k+'-01',finMois(k)).reduce(function(s,x){ return s+(Number(x.ht)||0); },0);
@@ -157,8 +199,8 @@
   function noteHistorique(){
     var o=st(), k=ym(today()), c=carnet().semaines;
     if(o.hist[k]&&o.hist[k].carnet===c) return;
-    o.hist[k]={carnet:c}; var ks=Object.keys(o.hist).sort(); while(ks.length>24){ delete o.hist[ks.shift()]; }
-    stSave(o);
+    setMark('hist',k,{carnet:c});
+    var ks=Object.keys(o.hist).concat(o.hist[k]?[]:[k]).sort(); while(ks.length>24){ setMark('hist',ks.shift(),null); }
   }
   function moisPrec(k,n){ var y=+k.slice(0,4),m=+k.slice(5,7)-1-n; return ym(iso(y,m,1)); }
 
@@ -173,13 +215,26 @@
   /* ---------- les feux ---------- */
   function cond(ok,label,detail,source,key){ return {ok:ok,label:label,detail:detail||'',source:source||'auto',key:key||''}; }
   function couleur(cs){ if(cs.some(function(c){ return c.ok===false; })) return 'rouge'; if(cs.some(function(c){ return c.ok==null; })) return 'orange'; return 'vert'; }
+  /* ACRE : « ne sont assimilées à un début d'activité ni la modification des conditions d'exercice […] ni la reprise
+     d'activité intervenue soit dans l'année au cours de laquelle est survenue la cessation d'activité, soit dans l'année
+     suivante » (art. D131-6-1 et R131-3 du Code de la sécurité sociale, décret 2026-69 ; circulaire CNAV 2026-12 du
+     07/04/2026, https://legislation.lassuranceretraite.fr/Pdf/circulaire_cnav_2026_12_07042026.pdf, lue le 11/10/2026).
+     + pas d'ACRE déjà obtenue dans les 3 années précédentes (service-public F11677, vérifié le 01/07/2026). */
+  function condAcre(o){
+    var L='Droit à l’ACRE éclairci', yC=+debut(o).slice(0,4), u=o.checks.urssaf;
+    if(u) return cond(true,L,'Réponse écrite de l’Urssaf reçue (cochée le '+fr(u)+'). Garde-la.','auto','acre');
+    if(!okDate(o.eiFermeture)) return cond(null,L,'Renseigne la date de fermeture de ton ancienne EI dans « À renseigner » (elle figure sur l’avis de radiation).','auto','acre');
+    var yF=+o.eiFermeture.slice(0,4);
+    if(yF>=yC-1) return cond(false,L,'EI fermée en '+yF+', création en '+yC+' : une reprise d’activité l’année de la fermeture ou l’année suivante ne compte pas comme un début d’activité (art. D131-6-1 du Code de la sécurité sociale). Risque : pas d’ACRE, donc pas d’ARCE (≈ 10 000 €). Demande écrite à l’Urssaf avant de créer. Une création à partir du 01/01/'+(yF+2)+' ne serait plus concernée par cette règle.','auto','acre');
+    return cond(true,L,'EI fermée en '+yF+' : plus d’une année civile complète avant '+yC+', la règle de reprise ne te concerne pas. Reste une condition : ne pas avoir eu l’ACRE dans les 3 ans avant la création.','auto','acre');
+  }
+  window.nxobjCondAcre=function(){ return condAcre(st()); };
   var CHECKS_LANCEMENT=[
-    ['ei','Date de fermeture de ton ancienne EI retrouvée','Avis de radiation (guichet INPI / Urssaf). Elle décide si tu as droit à l’ACRE en 2027.'],
-    ['urssaf','Réponse ÉCRITE de l’Urssaf sur ton droit à l’ACRE','Sans ACRE, pas d’ARCE (capital chômage). Garde la réponse.'],
+    ['urssaf','Réponse ÉCRITE de l’Urssaf sur ton droit à l’ACRE','Indispensable si ton EI a été fermée l’année de la création ou l’année d’avant (ligne au-dessus). Sans ACRE, pas d’ARCE (capital chômage).'],
     ['assurances','Devis décennale + RC pro reçus et comparés','Décennale obligatoire pour les travaux (art. L241-1 Code des assurances) ; RC pro : à voir avec ton assureur.'],
     ['aptitude','Attestation d’aptitude fluides à jour','Catégorie adaptée (et hydrocarbures / CO₂ pour le froid commercial).'],
     ['wolf','Accord écrit avec WOLF ENERGY','Heures par mois, prix, durée, déplacements payés ou non.'],
-    ['comptable','Expert-comptable choisi (ou ta mère d’accord pour suivre)','Lui montrer ce fichier et le pack comptable avant de démarrer.'],
+    ['comptable','Expert-comptable choisi (ou la comptable qui te suit d’accord)','Lui montrer l’écran « Objectifs & feux » et le pack comptable avant de démarrer.'],
     ['banque','Compte bancaire dédié à l’activité ouvert','Obligatoire au-delà de 10 000 € de CA 2 années de suite (service-public F35991) ; conseillé dès le départ.']
   ];
   function feux(o,F,seulLancement){
@@ -191,7 +246,7 @@
     var out={};
 
     /* 1. lancement */
-    var cl=CHECKS_LANCEMENT.map(function(c){ return cond(!!o.checks[c[0]]?true:null,c[1],c[2],'toi',c[0]); });
+    var cl=[condAcre(o)].concat(CHECKS_LANCEMENT.map(function(c){ return cond(!!o.checks[c[0]]?true:null,c[1],c[2],'toi',c[0]); }));
     cl.push(cond(String(E.mediateur||'').trim()?true:null,'Médiateur de la consommation renseigné (Paramètres)','Obligatoire avant le premier devis à un particulier.','auto'));
     cl.push(cond(okDate(fiscal.debut)?true:null,'Profil fiscal rempli (date de début d’activité)','Paramètres › Profil fiscal : il règle le taux de cotisations partout.','auto'));
     cl.push(cond(!tf?null:T>=3*sorties,'Trésorerie ≥ 3 mois de dépenses ('+e0(3*sorties)+')',tf?'Déclarée : '+e0(T)+' le '+fr(o.tresoDate)+'.':'Renseigne ta trésorerie ci-dessous (à refaire tous les 45 jours).','auto'));
@@ -261,6 +316,93 @@
   }
   window.nxobjControles=function(){ return controles(); };
 
+  /* ---------- 3 objectifs simples de l'année du plan ---------- */
+  /* contrats d'entretien actifs visés : 15 fin année 1, 40 fin année 2, 70 fin année 3 (plan du 09/10/2026), progression linéaire */
+  function objContrats(m){ m=Math.max(0,Math.min(36,m)); return m<=12?Math.round(15*m/12):m<=24?Math.round(15+25*(m-12)/12):Math.round(40+30*(m-24)/12); }
+  window.nxobjObjContrats=objContrats;
+  function objectifsAnnee(o,F,t){
+    var m=indexMois(t,o), y=m>=1?Math.min(3,Math.ceil(m/12)):1, a=(y-1)*12+1, b=y*12, i, tot=0;
+    for(i=a;i<=b;i++) tot+=objectif(i,o).ca;
+    var res={annee:y,m:m,caAn:r2(tot),contratsFin:objContrats(b),limite:m<=6?0.7:0.5,debutAn:moisDate(a,o)};
+    if(m<1||m>36) return res;
+    var k=ym(t), att=0; for(i=a;i<m;i++) att+=objectif(i,o).ca;
+    att+=objectif(m,o).ca*Math.min(1,(+t.slice(8,10))/(+finMois(k).slice(8,10)));
+    var fait=0; F.forEach(function(x){ var d=String(x.date); if(d>=res.debutAn&&d<=t) fait+=Number(x.ht)||0; });
+    var rc=recurrent();
+    var d6=iso(+t.slice(0,4),+t.slice(5,7)-7,+t.slice(8,10)+1); if(d6<debut(o)) d6=debut(o); /* 6 derniers mois glissants */
+    res.caAttendu=r2(att); res.caFait=r2(fait); res.contrats=rc.contrats; res.contratsObj=objContrats(m); res.client=premierClient(F,d6); res.depuisClient=d6;
+    return res;
+  }
+  window.nxobjObjectifsAnnee=function(){ return objectifsAnnee(st(),factures(),today()); };
+
+  /* ---------- calendrier : envois à la comptable et déclarations Urssaf ----------
+     Échéances de déclaration du chiffre d'affaires (autoentrepreneur.urssaf.fr, « L'essentiel du statut », lu le 11/10/2026) :
+     mensuelle → dernier jour du mois suivant ; trimestrielle → 30/04, 31/07, 31/10, 31/01 (report au jour ouvré suivant
+     un week-end ou un jour férié, non calculé ici) ; déclaration obligatoire même à 0 € ; seules les factures encaissées.
+     1re déclaration : au plus tôt 90 jours après le début de l'activité (service-public F36232, vérifié le 01/01/2026).
+     Le rythme d'envoi à la comptable n'est pas une règle : c'est celui que tu conviens avec elle (mois ou trimestre). */
+  /* 90 jours après la VRAIE date de début (profil fiscal) quand elle est connue, sinon après le début du plan */
+  function j90(o){ var d=debut(o); try{ var pf=window.nxFiscalProfil&&nxFiscalProfil(); if(pf&&okDate(pf.debut)) d=pf.debut; }catch(e){}
+    return iso(+d.slice(0,4),+d.slice(5,7)-1,+d.slice(8,10)+90); }
+  /* périodes depuis le début du plan jusqu'à t. grouper=true (déclarations Urssaf) : les périodes terminées avant le 90e jour
+     sont regroupées avec la suivante en UNE « 1re déclaration » (montant depuis le début, échéance de cette période-là). */
+  function periodes(type,o,t,grouper){
+    var d=debut(o), out=[], k, y, q, from, to, p90=j90(o), lim=grouper&&p90>t?p90:t, n;
+    if(type==='mois'){
+      for(k=ym(d),n=0;k<=ym(lim)&&n<400;k=moisPrec(k,-1),n++){ to=finMois(k); out.push({id:k,lab:labMois(k,true),from:k+'-01',to:to,ech:finMois(moisPrec(k,-1))}); }
+    } else {
+      y=+d.slice(0,4); q=Math.floor((+d.slice(5,7)-1)/3);
+      for(n=0;n<140;n++){ from=iso(y,q*3,1); if(from>lim) break; to=iso(y,q*3+3,0);
+        out.push({id:y+'-T'+(q+1),lab:(q+1)+(q===0?'er':'e')+' trimestre '+y,from:from<d?d:from,to:to,ech:iso(y,q*3+4,0)});
+        q++; if(q>3){ q=0; y++; } }
+    }
+    if(grouper){
+      var g=-1; for(n=0;n<out.length;n++){ if(out[n].to>=p90){ g=n; break; } }
+      if(g>0){ var mb=out.slice(0,g+1), P=out[g];
+        out.splice(0,g+1,{id:P.id,lab:'1re déclaration ('+mb[0].lab+' → '+P.lab+')',from:mb[0].from,to:P.to,ech:P.ech,premiere:true,membres:mb.map(function(x){ return x.id; })}); }
+    }
+    return out.filter(function(p){ return p.from<=t; });
+  }
+  window.nxobjPeriodes=function(type,grouper){ var o=st(); return periodes(type||o.declPeriode,o,today(),grouper!==false); };
+  /* fin de la période d'un identifiant ('AAAA-MM' ou 'AAAA-Tn') */
+  function finId(id){ var m=/^(\d{4})-T([1-4])$/.exec(id); if(m) return iso(+m[1],+m[2]*3,0); return /^\d{4}-\d{2}$/.test(id)?finMois(id):''; }
+  /* « à jour jusqu'au » : fin de la plus récente période cochée, quel que soit le rythme (mois ou trimestre).
+     Une période plus ancienne non cochée n'est plus rappelée (on ne peut pas la cocher si elle n'est plus affichée,
+     et un changement de rythme ne doit pas faire réapparaître tout le passé en retard). */
+  function ajour(map){ var f=''; Object.keys(map||{}).forEach(function(id){ var x=finId(id); if(x>f) f=x; }); return f; }
+  function enAttente(map,p,t){ return !map[p.id]&&p.to<t&&p.to>ajour(map); }
+  /* « du 3e trimestre 2027 », « de juillet 2027 », « d’octobre 2027 » */
+  function duLab(p){ return /trimestre/.test(p.lab)?'du '+p.lab:(/^[aeiouyéèêàâîôû]/i.test(p.lab)?'d’':'de ')+p.lab; }
+  function encHT(p){ return r2(recettes(p.from,p.to).reduce(function(s,x){ return s+(Number(x.ht)||0); },0)); }
+
+  /* « À faire maintenant » : urg 2 = en retard / bloquant, 1 = à faire bientôt, 0 = à garder en tête */
+  function aFaire(o,F,t){
+    var m=indexMois(t,o), out=[];
+    if(m<1){
+      var ac=condAcre(o);
+      if(ac.ok===false) out.push({urg:2,txt:'ACRE : ton ancienne EI a été fermée l’année de la création ou l’année d’avant. Demande par écrit à l’Urssaf si tu y as droit, avant de créer.',act:''});
+      var fl=feux(o,F,true).lancement, reste=fl.conditions.filter(function(c){ return c.ok!==true; }).length;
+      if(reste) out.push({urg:0,txt:reste+' point(s) à régler avant de créer (carte « Lancer l’entreprise »).',act:''});
+    } else {
+      periodes(o.declPeriode,o,t,true).forEach(function(p){
+        if(!enAttente(o.decl,p,t)) return;
+        var jr=joursEntre(t,p.ech); if(jr>20) return;
+        var quoi=p.premiere?'Faire ta 1re déclaration Urssaf ('+p.lab.replace(/^1re déclaration \(|\)$/g,'')+') : '+e0(encHT(p))+' encaissés depuis le début':'Déclarer à l’Urssaf le CA encaissé '+duLab(p)+' : '+e0(encHT(p));
+        out.push({urg:jr<0?2:1,txt:quoi+(jr<0?' — échéance du '+fr(p.ech)+' dépassée : déclare tout de suite (même à 0 €).':' — avant le '+fr(p.ech)+' (même à 0 €)'+(p.premiere?' ; l’échéance exacte est sur ton espace Urssaf.':'.')),act:'decl',id:p.id});
+      });
+      var env=periodes(o.envoiPeriode==='trim'?'trim':'mois',o,t,false).filter(function(p){ return enAttente(o.envois,p,t); });
+      if(env.length){ var der=env[env.length-1], jd=joursEntre(der.to,t);
+        if(jd>=5) out.push({urg:jd>20?2:1,txt:'Envoyer à ta comptable les pièces '+duLab(der)+' (livre des recettes, facturier, factures d’achat)'+(env.length>1?' — et '+(env.length-1)+' période(s) plus ancienne(s) pas cochée(s) : cocher la plus récente suffit si tu es à jour':'')+'.',act:'envoi',id:der.id}); }
+      var imp=impayes().filter(function(i){ return i.days>30; });
+      if(imp.length) out.push({urg:1,txt:'Relancer '+imp.length+' facture(s) impayée(s) depuis plus de 30 jours ('+e0(imp.reduce(function(s,i){ return s+i.ttc; },0))+').',act:'impayes'});
+    }
+    if(!tresoFraiche(o)) out.push({urg:0,txt:o.tresoDate?'Mettre à jour ta trésorerie (dernière saisie le '+fr(o.tresoDate)+').':'Saisir ta trésorerie : plusieurs feux en ont besoin.',act:'treso'});
+    return out.sort(function(a,b){ return b.urg-a.urg; });
+  }
+  window.nxobjAFaire=function(){ return avecCache(function(){ var o=st(); return aFaire(o,factures(),today()); }); };
+  function nbUrgent(){ try{ return avecCache(function(){ return aFaire(st(),factures(),today()).filter(function(x){ return x.urg>=1; }).length; }); }catch(e){ return 0; } }
+  function majBadge(n){ var b=document.getElementById('nxobjBadge'); if(!b) return; if(n==null) n=nbUrgent(); b.textContent=n; b.style.display=n?'':'none'; }
+
   /* ---------- rendu ---------- */
   var CSS='#v-nx_obj .nxo-row{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));align-items:start}'
     +'#v-nx_obj .nxo-pill{display:inline-flex;align-items:center;gap:6px;font-weight:700;font-size:12px;padding:3px 10px;border-radius:999px;white-space:nowrap}'
@@ -268,7 +410,7 @@
     +'#v-nx_obj .nxo-dot{width:10px;height:10px;border-radius:50%;display:inline-block;flex:none}#v-nx_obj .nxo-dot.vert{background:var(--green,#16794a)}#v-nx_obj .nxo-dot.orange{background:var(--orange,#b45309)}#v-nx_obj .nxo-dot.rouge{background:var(--red,#b42318)}#v-nx_obj .nxo-dot.gris{background:#c3c8cf}'
     +'#v-nx_obj .nxo-feu h3{margin:0 0 4px;font-size:15px;display:flex;justify-content:space-between;gap:8px;align-items:center}#v-nx_obj .nxo-feu .v{font-weight:600;margin:4px 0 8px}'
     +'#v-nx_obj .nxo-c{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--line,#e5e7eb);font-size:13px}#v-nx_obj .nxo-c .i{flex:none;width:18px;text-align:center;font-weight:800}#v-nx_obj .nxo-c .d{color:var(--muted,#667085);font-size:12px;margin-top:2px}#v-nx_obj .nxo-c .s{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#667085)}'
-    +'#v-nx_obj .nxo-c input[type=checkbox]{width:18px;height:18px;margin:1px 0 0;flex:none}'
+    +'#v-nx_obj .nxo-c input[type=checkbox]{width:18px;height:18px;margin:1px 0 0;flex:none}#v-nx_obj table.nxo-suivi input[type=checkbox]{width:18px;height:18px;margin:0;flex:none;display:inline-block}'
     +'#v-nx_obj .nxo-bar{position:relative;height:12px;background:#eef1f4;border-radius:6px;overflow:visible;margin:10px 0 4px}#v-nx_obj .nxo-bar .f{position:absolute;left:0;top:0;bottom:0;border-radius:6px}#v-nx_obj .nxo-bar .p{position:absolute;top:-4px;bottom:-4px;width:2px;background:#344054}'
     +'#v-nx_obj table.nxo-t{width:100%;border-collapse:collapse;font-size:13px}#v-nx_obj table.nxo-t th,#v-nx_obj table.nxo-t td{padding:7px 6px;border-bottom:1px solid var(--line,#e5e7eb);text-align:right;white-space:nowrap}#v-nx_obj table.nxo-t th:first-child,#v-nx_obj table.nxo-t td:first-child{text-align:left}#v-nx_obj table.nxo-t tr.cur td{background:var(--blue-soft,#eef4ff);font-weight:700}'
     +'#v-nx_obj .nxo-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}'
@@ -290,11 +432,50 @@
       }).join('')
       +(f.info?'<div class="nxo-note">'+esc(f.info)+'</div>':'')+'</div>';
   }
+  /* « Mon suivi » : déclarations Urssaf et envois à la comptable, cochés par toi (datés) */
+  function suivi(o,t){
+    var m=indexMois(t,o);
+    var sel=function(id,lab,val,opts){ return '<label>'+esc(lab)+'<select id="nxo_'+id+'" onchange="nxobjSet(\''+id+'\',this.value)">'+opts.map(function(x){ return '<option value="'+x[0]+'"'+(x[0]===val?' selected':'')+'>'+esc(x[1])+'</option>'; }).join('')+'</select></label>'; };
+    var h='<h3 id="nxo_suivi" style="margin:14px 0 6px;font-size:14px">Mon suivi</h3><div class="nxo-form">'
+      +sel('declPeriode','Je déclare mon CA à l’Urssaf',o.declPeriode,[['trim','Chaque trimestre'],['mois','Chaque mois']])
+      +sel('envoiPeriode','J’envoie mes pièces à ma comptable',o.envoiPeriode,[['mois','Chaque mois'],['trim','Chaque trimestre']])
+      +'</div>';
+    if(m<1) return h+'<div class="nxo-note">Le suivi démarre le '+fr(debut(o))+', au début du plan.</div>';
+    var D=periodes(o.declPeriode,o,t,true).slice(-5).reverse(), E=periodes(o.envoiPeriode,o,t,false).filter(function(p){ return p.to<t; }).slice(-4).reverse();
+    var aJourD=ajour(o.decl);
+    var cb=function(fn,id,date,dis){ return '<label style="display:inline-flex;flex-direction:row;gap:6px;align-items:center;font-weight:600;white-space:nowrap;text-transform:none;letter-spacing:0;font-size:13px;color:inherit;margin:0"><input type="checkbox" '+(date?'checked':'')+(dis?' disabled':'')+' onchange="'+fn+'(\''+esc(id)+'\',this.checked)" aria-label="'+esc(id)+'">'+(date?'le '+fr(date):dis?'en cours':'à faire')+'</label>'; };
+    var xb=function(type,lab,p){ return '<button class="btn-ghost btn-sm" onclick="nxobjExport(\''+type+'\',\''+p.from+'\',\''+p.to+'\')">'+lab+'</button>'; };
+    h+='<div class="nxo-scroll"><table class="nxo-t nxo-suivi" style="margin-top:8px"><thead><tr><th>Déclaration Urssaf</th><th>Encaissé</th><th>Échéance</th><th>Déclaré</th></tr></thead><tbody>'
+      +D.map(function(p){ var fini=p.to<t, late=fini&&!o.decl[p.id]&&p.to>aJourD&&p.ech<t;
+        return '<tr data-decl="'+esc(p.id)+'"><td style="white-space:normal">'+esc(p.lab)+'</td><td>'+e0(encHT(p))+(fini?'':' <span style="font-weight:400">à ce jour</span>')+'</td><td'+(late?' style="color:var(--red,#b42318);font-weight:700"':'')+'>'+fr(p.ech)+(p.premiere?' <span style="font-weight:400">(à vérifier)</span>':'')+'</td><td>'+cb('nxobjDecl',p.id,o.decl[p.id],!fini)+'</td></tr>'; }).join('')
+      +'</tbody></table></div>'
+      +'<div class="nxo-scroll"><table class="nxo-t nxo-suivi" style="margin-top:8px"><thead><tr><th>Envoi à la comptable</th><th>Encaissé</th><th style="text-align:left">Pièces</th><th>Envoyé</th></tr></thead><tbody>'
+      +(E.length?E.map(function(p){ return '<tr data-envoi="'+esc(p.id)+'"><td>'+esc(p.lab)+'</td><td>'+e0(encHT(p))+'</td><td style="text-align:left">'+xb('livre','Livre',p)+' '+xb('facturier','Facturier',p)+' '+xb('synthese','Synthèse',p)+'</td><td>'+cb('nxobjEnvoi',p.id,o.envois[p.id],false)+'</td></tr>'; }).join('')
+        :'<tr><td colspan="4" style="text-align:center;color:var(--muted,#667085)">Ta première période n’est pas encore terminée.</td></tr>')
+      +'</tbody></table></div>'
+      +'<div class="nxo-note">Coche le jour où c’est fait : ClimPilot garde la date et arrête de te le rappeler. « 1re déclaration » : elle regroupe tes premiers mois et se fait au plus tôt le '+fr(j90(o))+' (90 jours après le début) ; l’échéance exacte est sur ton espace Urssaf. Une période plus ancienne que la dernière cochée n’est plus rappelée. Une échéance un samedi, un dimanche ou un jour férié passe au jour ouvré suivant. Montants = encaissements (hors TVA si tu la factures, à confirmer avec ta comptable), essais exclus, avoirs et remboursements compris.</div>';
+    return h;
+  }
+
   var ANNEE=null, PERIODE='mois';
-  function render(){
+  function render(){ return avecCache(render0); }
+  function render0(){
     var host=document.getElementById('nxobj'); if(!host) return;
     css(); try{ noteHistorique(); }catch(e){}
     var o=st(), t=today(), m=indexMois(t,o), F=factures(), FX=feux(o,F), sim=simul(o), html='';
+
+    /* 0. à faire maintenant */
+    var AF=aFaire(o,F,t); majBadge(AF.filter(function(x){ return x.urg>=1; }).length);
+    var btn=function(x){
+      if(x.act==='decl') return '<button class="btn-ghost btn-sm" onclick="nxobjDecl(\''+esc(x.id)+'\',true)">C’est déclaré</button>';
+      if(x.act==='envoi') return '<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn-ghost btn-sm" onclick="nxobjVoir(\'nxo_suivi\')">Préparer</button><button class="btn-ghost btn-sm" onclick="nxobjEnvoi(\''+esc(x.id)+'\',true)">C’est envoyé</button></span>';
+      if(x.act==='impayes') return '<button class="btn-ghost btn-sm" onclick="go(\'recettes\')">Ouvrir</button>';
+      if(x.act==='treso') return '<button class="btn-ghost btn-sm" onclick="nxobjVoir(\'nxo_tresoMontant\')">Saisir</button>';
+      return '';
+    };
+    html+='<div class="card nxo-af" id="nxo_afaire"><h2>À faire maintenant</h2>'+(AF.length?AF.map(function(x){
+        return '<div class="nxo-c" data-urg="'+x.urg+'"><span class="nxo-dot '+(x.urg===2?'rouge':x.urg===1?'orange':'gris')+'" style="margin-top:5px"></span><div style="flex:1">'+esc(x.txt)+'</div>'+btn(x)+'</div>'; }).join('')
+      :'<div class="nxo-big">Rien d’urgent pour l’instant.</div>')+'</div>';
 
     /* A. ce mois-ci */
     if(m<1){
@@ -320,6 +501,26 @@
         +'<div class="nxo-note">Facturé = factures émises dans le mois, HT, essais exclus, avoirs déduits. Plancher = charges ('+e0(pl.charges)+') + ta paie ('+e0(pl.paie)+')'+(pl.equipe?' + équipe ('+e0(pl.equipe)+')':'')+(pl.taux!=null?', cotisations '+String(pl.taux).replace('.',',')+' % (profil fiscal) comprises':'')+'.</div></div>';
     }
 
+    /* A2. les 3 objectifs de l'année */
+    var OA=objectifsAnnee(o,F,t);
+    var obj3=function(n,titre,detail,c){ return '<div class="nxo-c"><span class="i" style="font-weight:800">'+n+'</span><div style="flex:1"><div><b>'+esc(titre)+'</b></div><div class="d">'+esc(detail)+'</div></div>'+(c?pill(c,c==='vert'?'OK':c==='orange'?'À pousser':c==='rouge'?'En retard':'—'):'')+'</div>'; };
+    if(m>=1&&m<=36){
+      var ec=OA.caFait-OA.caAttendu, cc=OA.caFait>=OA.caAttendu?'vert':OA.caFait>=0.85*OA.caAttendu?'orange':'rouge';
+      var co=OA.contratsObj?(OA.contrats>=OA.contratsObj?'vert':'orange'):'gris';
+      var cl=OA.client, lim=OA.limite, ccl=cl.total>0?(cl.part<=lim?'vert':cl.part<=lim+0.15?'orange':'rouge'):'gris';
+      html+='<div class="card"><h2>Mes 3 objectifs — année '+OA.annee+'</h2>'
+        +obj3(1,'Facturer '+e0(OA.caAn)+' HT sur l’année','À ce jour : '+e0(OA.caFait)+' facturés pour '+e0(OA.caAttendu)+' attendus → '+(ec>=0?'en avance de ':'en retard de ')+e0(Math.abs(ec))+'.',cc)
+        +obj3(2,'Avoir '+OA.contratsFin+' contrats d’entretien actifs en fin d’année','Aujourd’hui : '+OA.contrats+' contrat(s) ; objectif ce mois-ci : '+OA.contratsObj+'. C’est ce qui paiera tes futurs salariés.',co)
+        +obj3(3,'Ton plus gros client sous '+Math.round(lim*100)+' % de ton CA',cl.total>0?(cl.nom||'—')+' : '+String(Math.round(cl.part*1000)/10).replace('.',',')+' % du facturé depuis le '+fr(OA.depuisClient)+' (6 derniers mois). Au-delà, tu dépends d’un seul donneur d’ordre.':'Pas encore de facture sur les 6 derniers mois.',ccl)
+        +'</div>';
+    } else if(m<1){
+      html+='<div class="card"><h2>Mes 3 objectifs — année 1</h2>'
+        +obj3(1,'Facturer '+e0(OA.caAn)+' HT sur la 1re année','Mois par mois dans « Mon plan sur 3 ans ».','')
+        +obj3(2,'Avoir '+OA.contratsFin+' contrats d’entretien actifs au bout de 12 mois','Commerces de bouche, restaurants, supérettes autour de chez toi.','')
+        +obj3(3,'Ton plus gros client (WOLF) sous 70 % de ton CA les 6 premiers mois, puis sous 50 %','Pour ne pas dépendre d’un seul donneur d’ordre.','')
+        +'</div>';
+    }
+
     /* B. les feux */
     var ordre=m>=1?[FX.apprenti,FX.technicien,FX.societe,FX.lancement]:[FX.lancement,FX.societe,FX.apprenti,FX.technicien];
     html+='<h2 style="margin:6px 0 4px">Mes feux</h2><div class="nxo-note" style="margin:0 0 10px"><b style="color:var(--green,#16794a)">✓</b> rempli · <b style="color:var(--red,#b42318)">✕</b> pas rempli · <b style="color:var(--orange,#b45309)">?</b> il manque une info — calculés par ClimPilot. Les cases à cocher, c’est toi. Règles de gestion proposées, sauf la règle légale du maître d’apprentissage.</div><div class="nxo-row">'+ordre.map(carteFeu).join('')+'</div>';
@@ -328,6 +529,7 @@
     var inp=function(id,lab,type,val,aide){ return '<label>'+esc(lab)+'<input id="nxo_'+id+'" type="'+type+'" value="'+esc(val==null?'':val)+'" '+(type==='number'?'inputmode="decimal" step="any"':'')+' onchange="nxobjSet(\''+id+'\',this.value)">'+(aide?'<span style="font-weight:400">'+esc(aide)+'</span>':'')+'</label>'; };
     html+='<div class="card"><h2>À renseigner</h2><div class="nxo-form">'
       +inp('tresoMontant','Ma trésorerie aujourd’hui (€)','number',o.tresoMontant,o.tresoDate?'Mise à jour le '+fr(o.tresoDate)+(tresoFraiche(o)?'':' — à refaire'):'Solde du compte pro + réserve')
+      +inp('eiFermeture','Fermeture de mon ancienne EI','date',o.eiFermeture,'Date de l’avis de radiation : elle décide de ton droit à l’ACRE')
       +inp('diplomeDate','Date d’obtention de mon BTS','date',o.diplomeDate,'Pour la règle du maître d’apprentissage')
       +inp('societeDate','Passage en société / au réel','date',o.societeDate,'Vide = encore en micro')
       +inp('apprentiDate','Arrivée de l’apprenti (prévue)','date',o.apprentiDate,'Vide = pas d’apprenti')
@@ -351,7 +553,7 @@
     var s=o.sim, sin=function(id,lab,val,aide){ return '<label>'+esc(lab)+'<input id="nxo_sim_'+id+'" type="number" inputmode="decimal" step="any" value="'+esc(val)+'" onchange="nxobjSim(\''+id+'\',this.value)">'+(aide?'<span style="font-weight:400">'+esc(aide)+'</span>':'')+'</label>'; };
     html+='<div class="card"><h2>Combien coûte un salarié ?</h2><div class="nxo-form">'
       +sin('brut','Salaire brut mensuel (€)',s.brut,'Minimum compagnon N3 coef. 230 en Hauts-de-France 2026 : 2 269 €')
-      +'<label>Son camion<select id="nxo_sim_camion" onchange="nxobjSim(\'camion\',this.value)"><option value="0"'+(Number(s.camion)?'':' selected')+'>En binôme dans mon camion</option><option value="1"'+(Number(s.camion)?' selected':'')+'>Son propre camion (+13 600 €/an)</option></select></label>'
+      +'<label>Son camion<select id="nxo_sim_camion" onchange="nxobjSim(\'camion\',this.value)"><option value="0"'+(Number(s.camion)?'':' selected')+'>En binôme (mon camion)</option><option value="1"'+(Number(s.camion)?' selected':'')+'>Son camion (+13 600 €/an)</option></select></label>'
       +sin('fact','Part de ses heures facturées (%)',s.fact,'65 à 75 % en pratique (trajets, SAV, préparation)')
       +sin('marge','Marge à garder sur son heure (%)',s.marge,'')
       +sin('augm','Augmentation envisagée (€ brut / mois)',s.augm,'')
@@ -367,19 +569,19 @@
     /* F. pour la comptable */
     var ctl=controles(F), y0=+t.slice(0,4), mo0=+t.slice(5,7)-1, q=Math.floor(mo0/3);
     var pm={from:iso(y0,mo0-1,1),to:iso(y0,mo0,0)}, pq={from:iso(y0,(q-1)*3,1),to:iso(y0,q*3,0)}, pa={from:(y0-1)+'-01-01',to:(y0-1)+'-12-31'};
-    var encQ=recettes(pq.from,pq.to).reduce(function(a,x){ return a+x.ht; },0), encQc=recettes(iso(y0,q*3,1),t).reduce(function(a,x){ return a+x.ht; },0);
     var PER=[['mois','Mois dernier',pm],['trim','Trimestre dernier',pq],['trimc','Trimestre en cours',{from:iso(y0,q*3,1),to:iso(y0,q*3+3,0)}],['annee','Année dernière',pa],['anneec','Année en cours',{from:y0+'-01-01',to:y0+'-12-31'}]];
     if(!PERIODE||!PER.some(function(x){ return x[0]===PERIODE; })) PERIODE='mois';
     var pc=PER.filter(function(x){ return x[0]===PERIODE; })[0][2];
     html+='<div class="card"><h2>Pour la comptable</h2>'
       +'<div class="nxo-scroll"><table class="nxo-t"><thead><tr><th>Quand</th><th style="text-align:left">Quoi envoyer</th></tr></thead><tbody>'
-      +'<tr><td>Chaque mois</td><td style="text-align:left;white-space:normal">Livre des recettes du mois + tes factures d’achat (photos ou PDF, classées par date).</td></tr>'
-      +'<tr><td>Chaque trimestre</td><td style="text-align:left;white-space:normal">Pack du trimestre (livre, facturier, synthèse). Chiffre d’affaires encaissé HT à déclarer à l’Urssaf (si tu déclares au trimestre) : trimestre dernier <b>'+e0(encQ)+'</b>, trimestre en cours <b>'+e0(encQc)+'</b> à ce jour. La date limite affichée sur ton espace Urssaf fait foi.</td></tr>'
+      +'<tr><td>'+(o.envoiPeriode==='trim'?'Chaque trimestre':'Chaque mois')+'</td><td style="text-align:left;white-space:normal">À ta comptable : livre des recettes, facturier, synthèse + tes factures d’achat (photos ou PDF, classées par date). Rythme à convenir avec elle (réglage ci-dessous).</td></tr>'
+      +'<tr><td>'+(o.declPeriode==='mois'?'Chaque mois':'Chaque trimestre')+'</td><td style="text-align:left;white-space:normal">À l’Urssaf : déclarer le chiffre d’affaires <b>encaissé</b>, même s’il est à 0 €, avant le '+(o.declPeriode==='mois'?'dernier jour du mois suivant':'30/04, 31/07, 31/10 ou 31/01')+'. Montant et échéance dans « Mon suivi » ci-dessous ; la date affichée sur ton espace Urssaf fait foi.</td></tr>'
       +'<tr><td>Chaque année (janvier)</td><td style="text-align:left;white-space:normal">Pack de l’année + point du mois de décembre. Conservation : 10 ans pour le livre des recettes et les pièces.</td></tr>'
       +'</tbody></table></div>'
+      +suivi(o,t)
       +'<h3 style="margin:14px 0 4px;font-size:14px">Contrôles avant envoi</h3>'
       +ctl.map(function(c){ return '<div class="nxo-c">'+ico(c.ok)+'<div><div>'+esc(c.label)+'</div><div class="d">'+esc(c.detail)+'</div></div></div>'; }).join('')
-      +'<h3 style="margin:14px 0 6px;font-size:14px">Exports</h3><div class="nxo-form" style="grid-template-columns:minmax(0,260px)"><label>Période<select id="nxo_periode" onchange="nxobjPeriode(this.value)">'+PER.map(function(x){ return '<option value="'+x[0]+'"'+(x[0]===PERIODE?' selected':'')+'>'+esc(x[1])+' ('+fr(x[2].from)+' → '+fr(x[2].to)+')</option>'; }).join('')+'</select></label></div>'
+      +'<h3 style="margin:14px 0 6px;font-size:14px">Exports</h3><div class="nxo-form" style="grid-template-columns:minmax(0,380px)"><label>Période<select id="nxo_periode" onchange="nxobjPeriode(this.value)">'+PER.map(function(x){ return '<option value="'+x[0]+'"'+(x[0]===PERIODE?' selected':'')+'>'+esc(x[1])+' ('+fr(x[2].from)+' → '+fr(x[2].to)+')</option>'; }).join('')+'</select></label></div>'
       +'<div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" onclick="nxobjExport(\'livre\',\''+pc.from+'\',\''+pc.to+'\')">Livre des recettes (CSV)</button><button class="btn-ghost btn-sm" onclick="nxobjExport(\'facturier\',\''+pc.from+'\',\''+pc.to+'\')">Facturier (CSV)</button><button class="btn-ghost btn-sm" onclick="nxobjExport(\'synthese\',\''+pc.from+'\',\''+pc.to+'\')">Synthèse (PDF)</button><button class="btn-ghost btn-sm" onclick="nxobjExport(\'mail\',\''+pc.from+'\',\''+pc.to+'\')">Mail à la comptable</button></div>'
       +'<div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" onclick="nxobjPointMois()">Point du mois (PDF)</button><button class="btn-ghost btn-sm" onclick="go(\'nx_regime\')">Ouvrir « Statut & régime »</button></div>'
       +'<div class="nxo-note">Livre des recettes : chronologique, montant, client, mode de règlement, n° de facture ; total tous les 3 mois (dans la synthèse) ; il peut être tenu sous forme électronique (service-public F23266). Registre des achats : exigé des commerçants ; si une part de ton activité est de la vente de matériel, demande à ta comptable — ClimPilot ne le tient pas, garde tes factures d’achat.</div></div>';
@@ -405,10 +607,11 @@
   window.nxobjRender=render;
 
   /* ---------- actions ---------- */
-  var DATES=['debut','diplomeDate','societeDate','apprentiDate','techDate'];
+  var DATES=['debut','diplomeDate','societeDate','apprentiDate','techDate','eiFermeture'];
   window.nxobjSet=function(k,v){
     var o=st();
     if(DATES.indexOf(k)>=0){ if(v&&!okDate(v)){ say('Date invalide'); return render(); } o[k]=v||''; }
+    else if(k==='declPeriode'||k==='envoiPeriode') o[k]=v==='mois'?'mois':'trim';
     else if(k==='camionActif') o.camionActif=v==='1'||v===true;
     else if(k==='tresoMontant'){ if(v===''){ o.tresoMontant=null; o.tresoDate=''; } else { var n=num(v); if(n<0&&!confirm('Trésorerie négative : c’est bien ça ?')) return render(); o.tresoMontant=n; o.tresoDate=today(); } }
     else if(Object.prototype.hasOwnProperty.call(DEF,k)){ var x=num(v); if(x<0){ say('Valeur négative refusée'); return render(); } o[k]=x; }
@@ -416,7 +619,10 @@
     stSave(o); render(); say('Enregistré');
   };
   window.nxobjSim=function(k,v){ var o=st(); var x=num(v); if(k!=='camion'&&x<0){ say('Valeur négative refusée'); return render(); } if(k==='fact'&&(x<=0||x>100)){ say('Entre 1 et 100 %'); return render(); } if(k==='marge'&&x>=90){ say('Marge trop élevée'); return render(); } o.sim[k]=x; stSave(o); render(); };
-  window.nxobjCheck=function(k,on){ var o=st(); if(on) o.checks[k]=today(); else delete o.checks[k]; stSave(o); render(); };
+  window.nxobjCheck=function(k,on){ setMark('check',k,on?{d:today()}:null); render(); };
+  window.nxobjDecl=function(id,on){ setMark('decl',id,on?{d:today()}:null); render(); say(on?'Déclaration notée le '+fr(today()):'Déclaration décochée'); };
+  window.nxobjEnvoi=function(id,on){ setMark('envoi',id,on?{d:today()}:null); render(); say(on?'Envoi noté le '+fr(today()):'Envoi décoché'); };
+  window.nxobjVoir=function(id){ var e=document.getElementById(id); if(!e) return; try{ e.scrollIntoView({behavior:'smooth',block:'center'}); }catch(_){ e.scrollIntoView(); } if(e.tagName==='INPUT') try{ e.focus({preventScroll:true}); }catch(_){} };
   window.nxobjAnnee=function(a){ ANNEE=a; render(); };
   window.nxobjPeriode=function(v){ PERIODE=v; render(); };
   window.nxobjReset=function(){ if(!confirm('Remettre toutes les hypothèses du plan (taux, paie, charges, camion) ? Tes dates, ta trésorerie et tes cases cochées sont gardées.')) return;
@@ -429,7 +635,8 @@
   };
 
   /* point du mois : une page pour toi, ta comptable ou ta banque (aperçu PDF de l'appli) */
-  window.nxobjPointMois=function(k){
+  window.nxobjPointMois=function(k){ return avecCache(function(){ return pointMois(k); }); };
+  function pointMois(k){
     var o=st(), t=today(); k=k||ym(t); var m=indexMois(k+'-01',o), F=factures(), FX=feux(o,F), E={}; try{ E=(P&&P.entreprise)||{}; }catch(e){}
     var r=realise(k,F), ob=m>=1&&m<=36?objectif(m,o):null, pl=m>=1?plancher(Math.min(m,36),o):plancher(1,o);
     var y=k.slice(0,4), fa=0, en=0; F.forEach(function(x){ if(String(x.date).slice(0,4)===y&&String(x.date)<=finMois(k)) fa+=x.ht; }); en=recettes(y+'-01-01',finMois(k)).reduce(function(a,x){ return a+x.ht; },0);
@@ -462,7 +669,8 @@
   };
 
   /* ---------- tableau de bord : une ligne ---------- */
-  function bandeauDash(){
+  function bandeauDash(){ return avecCache(bandeauDash0); }
+  function bandeauDash0(){
     try{
       var k=document.getElementById('dashKpis'); if(!k) return; var el=document.getElementById('nxobjDash');
       if(!el){ el=document.createElement('div'); el.id='nxobjDash'; el.className='card'; el.style.padding='12px 16px'; k.parentNode.insertBefore(el,k); }
@@ -472,7 +680,8 @@
       else if(m>36) txt='<span><b>Plan de 3 ans terminé</b> — refais tes objectifs</span>';
       else { var ob=objectif(m,o), pl=plancher(m,o), r=realise(ym(t)), c=r.facture>=ob.ca?'vert':r.facture>=pl.montant?'orange':'rouge';
         txt='<span><span class="nxo-dot '+c+'" style="width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;background:var(--'+(c==='vert'?'green':c==='orange'?'orange':'red')+')"></span><b>Objectif '+esc(labMois(ym(t),true))+' : '+e0(ob.ca)+' HT</b> · facturé '+e0(r.facture)+' · plancher '+e0(pl.montant)+'</span>'; }
-      el.innerHTML='<div class="nxo-l">'+txt+'<button class="btn-ghost btn-sm" onclick="go(\''+VUE+'\')">Mes objectifs & feux</button></div>';
+      var n=nbUrgent(); majBadge(n);
+      el.innerHTML='<div class="nxo-l">'+txt+(n?'<span style="color:var(--red,#b42318);font-weight:700">'+n+' chose'+(n>1?'s':'')+' à faire</span>':'')+'<button class="btn-ghost btn-sm" onclick="go(\''+VUE+'\')">Mes objectifs & feux</button></div>';
     }catch(e){}
   }
   window.nxobjBandeau=bandeauDash;
@@ -480,7 +689,7 @@
   /* ---------- branchement ---------- */
   function lienNav(){
     var nav=document.getElementById('nav'); if(!nav||nav.querySelector('a[data-v="'+VUE+'"]')) return;
-    var a=document.createElement('a'); a.setAttribute('data-v',VUE); a.innerHTML='<span class="ico">🎯</span><span class="txt">Objectifs & feux</span>';
+    var a=document.createElement('a'); a.setAttribute('data-v',VUE); a.innerHTML='<span class="ico">🎯</span><span class="txt">Objectifs & feux</span><span class="badge" id="nxobjBadge" title="Choses à faire (déclaration, envoi à la comptable, impayés)" style="display:none">0</span>';
     var dash=nav.querySelector('.nx-nav-section[data-section="home"] a[data-v="dash"]')||nav.querySelector('a[data-v="dash"]');
     if(dash&&dash.parentNode) dash.parentNode.insertBefore(a,dash.nextSibling); else nav.appendChild(a);
   }
@@ -502,7 +711,10 @@
         var od=window.renderDash; window.renderDash=function(){ var r=od.apply(this,arguments); bandeauDash(); return r; }; window.renderDash._nxobj=true;
         if(window._curView==='dash'||!window._curView) bandeauDash();
       }
-      setTimeout(function(){ lienNav(); try{ noteHistorique(); }catch(e){} },1500);
+      if(typeof window.updateBadges==='function'&&!window.updateBadges._nxobj){
+        var ub=window.updateBadges; window.updateBadges=function(){ var r=ub.apply(this,arguments); try{ majBadge(); }catch(e){} return r; }; window.updateBadges._nxobj=true;
+      }
+      setTimeout(function(){ lienNav(); try{ noteHistorique(); }catch(e){} try{ majBadge(); }catch(e){} },1500);
     }catch(e){ try{ console.error('ClimPilot next-objectifs init',e); }catch(_){} }
   }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,0); }); else setTimeout(boot,0);

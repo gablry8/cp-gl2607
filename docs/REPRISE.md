@@ -56,6 +56,29 @@ Sans droit `unshare -n` (isolation réseau du noyau), lancer avec `CP_SANS_NETNS
   - fonctions SECURITY DEFINER appelables par `authenticated` : voulu, elles vérifient `auth.uid()` ;
   - « protection des mots de passe divulgués » désactivée : à voir par Gabriel.
 
+## 1.11 « Objectifs & feux » — branche `claude/objectifs-feux` (11/10/2026, PAS en production)
+Partie de `claude/quirky-pasteur-ds9m47` (= 1.10.0 en production). Côté appli seulement : **aucune migration ni fonction serveur**
+(le serveur accepte toute clé de synchronisation, `cp_state_push` ne filtre pas).
+- `next-objectifs.js` (menu Accueil › « Objectifs & feux ») : plan d'action du 09/10/2026 dans l'appli.
+  - Objectif de CA HT mois par mois sur 36 mois, plancher (charges + paie + équipe, cotisations du profil fiscal) ; mêmes formules que `Plan_Objectifs_2027-2030.xlsx` (vérifié par la suite O).
+  - « Mes 3 objectifs » : CA de l'année à date, contrats d'entretien (15 / 40 / 70), part du plus gros client (< 70 % puis < 50 %).
+  - Feux : lancement (dont la règle ACRE selon la date de fermeture de l'ancienne EI, art. D131-6-1 CSS / circulaire CNAV 2026-12), société, apprenti (art. R6223-22), technicien. Règles de gestion proposées, sauf les règles légales citées.
+  - « Combien coûte un salarié ? » : coût ESTIMÉ 2026, prix minimum, heures minimum, coût d'une augmentation.
+  - « Pour la comptable » + « Mon suivi » : déclarations Urssaf (échéances officielles, autoentrepreneur.urssaf.fr) et envois à la comptable, cochés et datés ; contrôles avant envoi ; exports ; point du mois en PDF.
+  - « À faire maintenant » + pastille du menu + ligne sur le tableau de bord.
+  - Stockage : `cpnext_objectifs` (réglages) et `cpnext_objsuivi` (cases et relevés, liste à identifiants → fusion multi-appareils par élément).
+- `next-regime.js` : facturier, livre des recettes, synthèse et mail = mêmes règles que le livre des recettes de l'appli (essais exclus, avoirs, factures annulées, remboursements) ; fichiers `DEMONSTRATION_…` tant que la facturation réelle n'a pas démarré.
+- `next-addons.js` : libellé de version « Next 1.11.0 » (affichage seulement ; `CP_VERSION` envoyé au serveur reste 1.10.0). `sw.js` : `climpilot-next-1110-objectifs`.
+- Relecture indépendante du 11/10 (8 points, tous corrigés et testés, suite O20) : 1re déclaration Urssaf = périodes avant le 90e jour
+  regroupées avec la suivante (montant depuis le début) ; 90 jours comptés depuis la date de début du profil fiscal ; « à jour jusqu'au »
+  = fin de la plus récente période cochée, tous rythmes confondus (pas de faux retards après un changement mois ↔ trimestre) ;
+  bouton « C'est envoyé » dans le rappel ; migration de l'ancien format sans écrasement ; part du plus gros client sur 6 mois glissants.
+- Performance : cache le temps d'un affichage (`avecCache`) + `nxrgLignesRecettes/Impayes(…, F)` réutilisent les factures déjà calculées.
+- Tests : suite O (`tests/suiteO-objectifs.mjs`), dont gros volume (1 800 factures : écran < 1,5 s).
+- À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.11.zip` (base de TEST) : menu Accueil › Objectifs & feux ;
+  date de fermeture de l'EI ; trésorerie ; une case cochée sur le PC puis vue sur le téléphone ; point du mois (PDF) ; pastille du menu.
+- Mise en production : fusion de cette branche dans `main` par Gabriel, puis mise à jour de chaque appareil (F5). Rien côté Supabase.
+
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
 Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).

@@ -473,22 +473,22 @@
 
   /* Encaissements = le livre des recettes de l'appli (allRecettes : essais exclus, avoirs déduits, remboursements),
      montants ventilés HT / TVA avec le taux de la facture d'origine. UNE seule source pour l'écran, le CSV, la synthèse. */
-  function nxrgLivreLignes(from,to){
-    var parNum={};nxrgFactures().forEach(function(f){parNum[f.num]=f;});
+  function nxrgLivreLignes(from,to,F){ /* F : lignes de factures déjà calculées (facultatif, pour ne pas les recalculer) */
+    var parNum={};(Array.isArray(F)?F:nxrgFactures()).forEach(function(f){parNum[f.num]=f;});
     var rec=[];try{rec=typeof allRecettes==='function'?allRecettes():[];}catch(e){rec=[];}
     return rec.filter(function(r){var d=String(r.date||'').slice(0,10);return d&&(!from||d>=from)&&(!to||d<=to);})
       .map(function(r){var f=parNum[r.num],m=Number(r.montant)||0,s=f?nxrgSplit(m,f._rate,f._isTTC):{ht:m,tva:0,ttc:m};
         return {date:String(r.date).slice(0,10),num:r.num||'',client:r.client||'—',nature:r.nature||'',mode:r.mode||'',ht:s.ht,tva:s.tva,ttc:s.ttc,sansFacture:!f};});
   }
-  window.nxrgLignesRecettes=function(from,to){ return nxrgLivreLignes(from,to); };
+  window.nxrgLignesRecettes=function(from,to,F){ return nxrgLivreLignes(from,to,F); };
   /* impayés = ceux de l'appli (avoirs déduits, essais exclus), au montant réellement dû (TTC si assujetti) */
-  function nxrgImpayes(){
-    var parNum={};nxrgFactures().forEach(function(f){parNum[f.num]=f;});
+  function nxrgImpayes(F){
+    var parNum={};(Array.isArray(F)?F:nxrgFactures()).forEach(function(f){parNum[f.num]=f;});
     var imp=[];try{imp=typeof allImpayes==='function'?allImpayes():[];}catch(e){imp=[];}
     return imp.map(function(i){var f=parNum[i.num],m=Number(i.montant)||0,s=f?nxrgSplit(m,f._rate,f._isTTC):{ht:m,tva:0,ttc:m};
       return {num:i.num,client:i.client||'—',date:i.date||'',days:i.days||0,ht:s.ht,tva:s.tva,ttc:s.ttc};});
   }
-  window.nxrgLignesImpayes=function(){ return nxrgImpayes(); };
+  window.nxrgLignesImpayes=function(F){ return nxrgImpayes(F); };
   function nxrgInPeriod(dateStr){var p=rg.pack;return dateStr&&(!p.from||dateStr>=p.from)&&(!p.to||dateStr<=p.to);}
   /* facturation réelle pas encore démarrée : les exports ne contiennent que des documents de démonstration */
   function nxrgDemo(){ try{ var m=window.nxEmisMode&&window.nxEmisMode(); return !!(m&&!m.demarre); }catch(e){ return false; } }
