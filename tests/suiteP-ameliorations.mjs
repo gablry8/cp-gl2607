@@ -28,7 +28,7 @@ async function preparer(opts,jour){
     const sw=await (await fetch('./sw.js')).text();
     go('nx_obj'); const h=(document.getElementById('nxobj')||{}).innerText||'';
     return {fns:['nxrtSynthese','nxrtSyntheseSav','nxrtAjouter','nxavisCandidats','nxavisMail','nxbqAnalyser','nxbqValider','nxbqChoisir','nxfbBilan','nxfbCSV','nxobjTreso','nxobjTauxAnnee'].filter(f=>typeof window[f]!=='function'),
-      sync:['cpnext_sav','cpnext_avis','cpnext_flubilan','cpnext_bqvus','cpnext_objectifs','cpnext_objsuivi'].filter(k=>SYNC_KEYS.indexOf(k)<0),
+      sync:['cpnext_sav','cpnext_avis','cpnext_flubilan','cpnext_bqvus','cpnext_adr','cpnext_objectifs','cpnext_objsuivi'].filter(k=>SYNC_KEYS.indexOf(k)<0),
       cache:['next-rentab.js','next-avis.js','next-banque.js','next-flubilan.js'].filter(f=>sw.indexOf('./'+f)<0), cle:/const C='climpilot-next-1120/.test(sw),
       ajouts:(window.nxobjAjouts||[]).map(a=>a.id).sort().join(','),
       blocs:['Ma rentabilité réelle','Retours SAV non facturés','Mon relevé bancaire'].filter(x=>h.indexOf(x)<0)}; });
@@ -448,6 +448,38 @@ async function preparer(opts,jour){
   const saisie=await p.evaluate(()=>({acq:nxfbBilan('2027').find(b=>b.fluide==='R410A').acq,carte:!!document.querySelector('#nxfb .nxfb-f[data-fluide="R410A"]')}));
   rec(G,'Saisie dans une case du bilan (comme au doigt) : enregistrée, carte réaffichée, sans erreur',saisie.acq===3&&saisie.carte&&errs.length===0,j(saisie)+' '+errs.join(' | '));
   rec(G,'Aucune erreur JavaScript (fluides)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
+/* ================= P7b — bouteilles dans le camion (seuil ADR) ================= */
+{ const {p,ctx,errs}=await preparer();
+  const r=await p.evaluate(()=>{
+    const ko=[nxadrAjouter({fluide:'XX',qte:'10',nb:'1'}),nxadrAjouter({fluide:'R32',qte:'0',nb:'1'}),nxadrAjouter({fluide:'R32',qte:'10',nb:'0'}),nxadrAjouter({fluide:'R32',qte:'2000',nb:'1'})];
+    nxadrAjouter({fluide:'R32',qte:'10',nb:'2'});              /* inflammable : 2 × 10 kg × 3 = 60 */
+    nxadrAjouter({fluide:'R410A',qte:'11,3',nb:'1'});          /* non inflammable : 11,3 */
+    nxadrAjouter({fluide:'AZOTE',qte:'10',nb:'1'});            /* comprimé : 10 litres × 1 = 10 */
+    nxadrAjouter({fluide:'R290',qte:'5',nb:'1'});              /* propane : 15 */
+    nxadrAjouter({fluide:'R32',qte:'8',nb:'1',recup:true});    /* bouteille de récupération : comptée, 24 */
+    const p1=nxadrPoints();
+    go('fluides'); const c=document.getElementById('nxadr'), t1=c?c.textContent:'';
+    nxadrAjouter({fluide:'R32',qte:'30',nb:'10'});             /* + 900 → au-dessus */
+    const p2=nxadrPoints(); go('fluides'); const t2=(document.getElementById('nxadr')||{}).textContent||'';
+    nxadrSuppr(nxadrListe().find(x=>x.qte===30).id); const p3=nxadrPoints();
+    /* par le formulaire de l'écran */
+    go('fluides'); document.getElementById('nxadrF').value='R134A'; document.getElementById('nxadrQ').value='12.5'; document.getElementById('nxadrN').value='1'; nxadrAjouter(); const p4=nxadrPoints();
+    /* identifiant piégé dans les données synchronisées : ignoré */
+    const raw=JSON.parse(localStorage.getItem('cpnext_adr')||'[]'); raw.push({id:"adr_x');alert(1)//",fluide:'R32',qte:100,nb:1}); localStorage.setItem('cpnext_adr',JSON.stringify(raw)); const p5=nxadrPoints();
+    go('fluides'); const h=(document.getElementById('nxadr')||{}).innerHTML||'';
+    const lanc=nxobjFeux().lancement.conditions.find(x=>x.key==='transportFluides');
+    return {ko,p1,p2,p3,p4,p5,carte:!!c,t1:/120,3 \/ 1 000 points/.test(t1)&&/sous le seuil ADR/.test(t1)&&/extincteur 2 kg/.test(t1)&&/ADR chapitre 1\.3/.test(t1),t2:/AU-DESSUS/.test(t2),
+      piege:/alert\(1\)/.test(h),sync:SYNC_KEYS.indexOf('cpnext_adr')>=0,lanc:!!(lanc&&/1 000 points/.test(lanc.detail)&&/OPPBTP/.test(lanc.detail))}; });
+  rec(G,'ADR : saisies invalides refusées (fluide inconnu, quantité nulle ou absurde, nombre nul)',r.ko.every(x=>x===false),j(r.ko));
+  rec(G,'ADR : points = kg × 3 (inflammables : R32, R290) + kg × 1 (R410A) + litres × 1 (azote), récupération comprise',proche(r.p1,120.3,0.05)&&r.carte&&r.t1,j(r));
+  rec(G,'ADR : au-dessus de 1 000 points, alerte ; retirer une bouteille recalcule',proche(r.p2,1020.3,0.05)&&r.t2&&proche(r.p3,120.3,0.05),j(r));
+  rec(G,'ADR : ajout par le formulaire de l’écran',proche(r.p4,132.8,0.05),j(r));
+  rec(G,'ADR : donnée synchronisée piégée ignorée, rien d’injecté ; chargement synchronisé',proche(r.p5,132.8,0.05)&&!r.piege&&r.sync,j(r));
+  rec(G,'Liste de lancement : règle de transport sourcée (1 000 points, OPPBTP)',r.lanc,'');
+  rec(G,'Aucune erreur JavaScript (ADR)',errs.length===0,errs.join(' | '));
   await ctx.close();
 }
 

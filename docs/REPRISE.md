@@ -101,13 +101,16 @@ ni fonction serveur (nouvelles clés de synchronisation acceptées telles quelle
   5°), avant le 31/01 ; chargées / récupérées calculées depuis les fiches Cerfa, le reste saisi ; contrôle de cohérence du stock ;
   copie (« NON RENSEIGNÉ », jamais 0 par défaut), CSV, impression ; une case = un élément synchronisé (`cpnext_flubilan`) ;
   rappel dans « À faire » seulement si attestation de capacité ou fiches.
+- Bouteilles dans le camion (`next-flubilan.js`, écran Fluides, `cpnext_adr`) : seuil ADR 1.1.3.6, kg de fluide inflammable
+  (catégorie 2) × 3 + kg non inflammable / litres d'azote (catégorie 3) × 1 ≤ 1 000 points (OPPBTP « quantités limitées » ;
+  FDS des fournisseurs, rubrique 14) ; rappel de ce qui reste obligatoire (extincteur 2 kg, formation ADR 1.3, arrimage).
 - `next-objectifs.js` : extensions `nxobjAjouts`, conseils non bloquants dans « Lancer l'entreprise », attestation de capacité,
   coût du km dans « Mes réglages ». `index.html` : champ avisGoogle, chargement des 4 modules. `sw.js` : `climpilot-next-1120-ameliorations`.
 - Relecture indépendante du 12/10 : 2 défauts bloquants (n° de facture trouvé dans une date ou une référence ; virement déjà
   marqué payé à la main qui payait une 2e facture) et 6 importants (débit lu comme crédit, période déjà déclarée, date des chèques
   et espèces, « 0 kg » pour une case vide, seuil du voyant, deux « €/h » contradictoires), plus 9 mineurs : tous corrigés et testés
   (suite P, partie P6b et suivantes ; les cas bloquants échouent sur le code d'avant correction).
-- Tests : suite P (`tests/suiteP-ameliorations.mjs`, 120 contrôles), ajoutée à `tests/run-all.sh`.
+- Tests : suite P (`tests/suiteP-ameliorations.mjs`, 128 contrôles), ajoutée à `tests/run-all.sh`.
 - À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.12.zip` : Objectifs & feux (rentabilité, retour SAV, liste de
   lancement), Paramètres (lien d'avis), relevé bancaire (fichier CSV de sa banque, sur des factures d'essai), écran Fluides.
 - Mise en production : fusion de cette branche (elle contient la 1.11) dans `main` par Gabriel, puis F5 sur chaque appareil.

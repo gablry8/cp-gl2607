@@ -185,12 +185,60 @@
      le focus déclenchait un 2e affichage imbriqué (erreur vue au parcours de la copie d'essai du 12/10) */
   var EN_COURS=false, PREVU=0;
   function plus_tard(){ clearTimeout(PREVU); PREVU=setTimeout(render,0); }
+  /* ---------- bouteilles dans le camion : seuil ADR (vérifié le 12/10/2026) ----------
+     ADR 1.1.3.6 (quantités limitées par unité de transport) : produit de catégorie de transport 2 → quantité × 3,
+     catégorie 3 → quantité × 1 ; total ≤ 1 000 « points ». Sources : OPPBTP, focus « Transport des marchandises
+     dangereuses par route en quantités limitées » (màj 10/06/2020 : 20 bouteilles B50 d'azote ou d'oxygène, ou 9 bouteilles
+     de propane de 35 kg) ; canton de Genève, SERMA, oct. 2018 (gaz inflammables « F » en catégorie 2, gaz « A » et « O » en
+     catégorie 3). Quantité : gaz liquéfié = kg net de fluide dans la bouteille ; gaz comprimé = capacité en litres.
+     FDS des fournisseurs (rubrique 14) : R32 UN 3252, code 2F, catégorie 2 ; R134a UN 3159, code 2A, catégorie 3 ;
+     R290 = propane UN 1978, code 2F ; R410A UN 3163, code 2A. Autres fluides classés par inflammabilité (A2L / A3 → 2F,
+     A1 → 2A) : à vérifier sur la FDS de la bouteille. Sous le seuil restent obligatoires (OPPBTP) : extincteur 2 kg à
+     poudre, formation du conducteur (ADR chapitre 1.3), colis fermés et arrimés, moteur arrêté au chargement, interdiction
+     de fumer. Recommandé (FFB) : véhicule aéré, bouteilles debout, pas de bouteille à demeure dans le camion. */
+  var KADR='cpnext_adr', SEUIL=1000;
+  try{ if(Array.isArray(SYNC_KEYS)&&SYNC_KEYS.indexOf(KADR)<0) SYNC_KEYS.push(KADR); }catch(e){}
+  var ADR={ /* clé : [catégorie de transport, unité, libellé] */
+    R32:[2,'kg','R32'],R290:[2,'kg','R290 (propane)'],R600A:[2,'kg','R600a (isobutane)'],R454B:[2,'kg','R454B'],R1234YF:[2,'kg','R1234yf'],ACETYLENE:[2,'kg','Acétylène (brasure)'],
+    R410A:[3,'kg','R410A'],R134A:[3,'kg','R134a'],R404A:[3,'kg','R404A'],R407C:[3,'kg','R407C'],R448A:[3,'kg','R448A'],R449A:[3,'kg','R449A'],R452A:[3,'kg','R452A'],R513A:[3,'kg','R513A'],R22:[3,'kg','R22'],R744:[3,'kg','R744 (CO₂)'],
+    AZOTE:[3,'L','Azote (capacité de la bouteille)'],OXYGENE:[3,'L','Oxygène (capacité de la bouteille)']
+  };
+  function adrListe(){ var a=[]; try{ a=JSON.parse(localStorage.getItem(KADR)||'[]'); }catch(e){ a=[]; }
+    return Array.isArray(a)?a.filter(function(x){ return x&&typeof x.id==='string'&&/^adr_[a-z0-9_]{1,40}$/.test(x.id)&&ADR[x.fluide]&&num(x.qte)>0&&num(x.nb)>=1; }):[]; }
+  function adrPoints(L){ var t=0; (L||adrListe()).forEach(function(x){ var d=ADR[x.fluide]; if(d) t+=num(x.qte)*Math.round(num(x.nb))*(d[0]===2?3:1); }); return Math.round(t*10)/10; }
+  window.nxadrListe=adrListe; window.nxadrPoints=adrPoints;
+  window.nxadrAjouter=function(x){
+    var depuisForm=!x; if(depuisForm){ var g=function(id){ var e=document.getElementById(id); return e?e.value:''; }; x={fluide:g('nxadrF'),qte:g('nxadrQ'),nb:g('nxadrN'),recup:!!(document.getElementById('nxadrR')||{}).checked}; }
+    var f=String(x.fluide||''), q=num(x.qte), n=Math.round(num(x.nb||1));
+    if(!ADR[f]){ say('Choisis un fluide ou un gaz'); return false; }
+    if(!(q>0)||q>1000){ say('Quantité par bouteille invalide ('+ADR[f][1]+')'); return false; }
+    if(!(n>=1)||n>50){ say('Nombre de bouteilles invalide (1 à 50)'); return false; }
+    var a=adrListe(); a.push({id:'adr_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,6),fluide:f,qte:Math.round(q*1000)/1000,nb:n,recup:!!x.recup});
+    try{ save(KADR,a); }catch(e){ try{ localStorage.setItem(KADR,JSON.stringify(a)); }catch(_){} }
+    plus_tard(); return true; };
+  window.nxadrSuppr=function(id){ var a=adrListe().filter(function(x){ return x.id!==id; }); try{ save(KADR,a); }catch(e){ try{ localStorage.setItem(KADR,JSON.stringify(a)); }catch(_){} } plus_tard(); return true; };
+  function carteADR(){
+    var L=adrListe(), P=adrPoints(L), ok=P<=SEUIL;
+    return '<div class="card" id="nxadr"><h2>Bouteilles dans le camion (ADR)</h2>'
+      +'<div class="sub" style="line-height:1.5">Fluides inflammables (R32, R290, R454B, R1234yf, R600a, acétylène) : kg de fluide × 3. Non inflammables (R410A, R134a, R404A, R407C, R448A, R449A, R452A, R513A, R22, CO₂) : kg × 1. Azote, oxygène : litres de la bouteille × 1. <b>Total ≤ 1 000 points</b> : régime allégé, seules les règles ci-dessous restent obligatoires.</div>'
+      +(L.length?'<div style="margin-top:8px">'+L.map(function(x){ var d=ADR[x.fluide];
+          return '<div class="nxfb-adr" data-adr="'+esc(x.id)+'" style="display:flex;justify-content:space-between;gap:10px;align-items:center;padding:6px 0;border-top:1px solid var(--line,#e5e7eb);font-size:13px"><span>'+esc(x.nb+' × '+d[2]+' — '+String(x.qte).replace('.',',')+' '+d[1]+(x.recup?' (récupération)':''))+'</span><span style="display:flex;gap:8px;align-items:center"><b>'+String(Math.round(num(x.qte)*x.nb*(d[0]===2?3:1)*10)/10).replace('.',',')+' pts</b><button class="btn-ghost btn-sm" onclick="nxadrSuppr(\''+esc(x.id)+'\')" aria-label="Retirer">✕</button></span></div>'; }).join('')+'</div>':'')
+      +'<div class="nxadr-v" style="margin:8px 0;font-size:14px;font-weight:700;color:'+(ok?'var(--green,#16794a)':'var(--red,#b42318)')+'">'+(L.length?(ok?'✓ ':'✕ ')+String(P).replace('.',',')+' / 1 000 points'+(ok?' : sous le seuil ADR.':' : AU-DESSUS du seuil — toutes les règles ADR s’appliquent (signalisation orange, document de transport…). Réduis le chargement.'):'Ajoute tes bouteilles habituelles pour vérifier ton chargement.')+'</div>'
+      +'<div class="nxo-form" style="display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(min(100%,150px),1fr));align-items:end">'
+      +'<label style="display:flex;flex-direction:column;gap:4px;font-size:12px">Fluide / gaz<select id="nxadrF">'+Object.keys(ADR).map(function(k){ return '<option value="'+k+'">'+esc(ADR[k][2])+'</option>'; }).join('')+'</select></label>'
+      +'<label style="display:flex;flex-direction:column;gap:4px;font-size:12px">Par bouteille (kg ou L)<input id="nxadrQ" type="number" inputmode="decimal" step="any" min="0" placeholder="ex. 10"></label>'
+      +'<label style="display:flex;flex-direction:column;gap:4px;font-size:12px">Nombre<input id="nxadrN" type="number" inputmode="numeric" step="1" min="1" value="1"></label>'
+      +'<label style="flex-direction:row;display:flex;gap:6px;align-items:center;font-size:12px"><input id="nxadrR" type="checkbox" style="width:18px;height:18px">Récupération</label>'
+      +'<button class="btn-ghost btn-sm" onclick="nxadrAjouter()">+ Ajouter</button></div>'
+      +'<div class="sub" style="margin-top:10px;line-height:1.5"><b>Même sous le seuil, obligatoires :</b> extincteur 2 kg à poudre dans le camion ; formation du conducteur au transport de marchandises dangereuses (ADR chapitre 1.3, garde l’attestation) ; bouteilles fermées, chapeau en place, arrimées ; moteur arrêté au chargement ; ne pas fumer. <b>Conseillé :</b> camion aéré (surtout avec du R290 : c’est du propane), bouteilles debout, pas de bouteille laissée à demeure. Quantité : kg de fluide DANS la bouteille (bouteille de récupération comprise), pas son poids total. Vérifie la catégorie sur la fiche de données de sécurité de ta bouteille (rubrique 14, « catégorie de transport » : 2 = × 3, 3 = × 1). Sources : OPPBTP (quantités limitées), fiches de sécurité des fournisseurs.</div></div>';
+  }
+
   function render(){
     if(EN_COURS) return plus_tard();
     var v=document.getElementById('v-fluides'); if(!v) return;
     var w=document.getElementById('nxfbWrap');
     if(!w){ w=document.createElement('div'); w.id='nxfbWrap'; var t=document.getElementById('fluTable'), c=t&&t.closest('.card'); if(c&&c.parentNode===v) c.parentNode.insertBefore(w,c.nextSibling); else v.appendChild(w); }
-    EN_COURS=true; try{ w.innerHTML=carte(); }catch(e){ try{ console.error('ClimPilot next-flubilan',e); }catch(_){} } finally { EN_COURS=false; }
+    EN_COURS=true; try{ w.innerHTML=carte()+carteADR(); }catch(e){ try{ console.error('ClimPilot next-flubilan',e); }catch(_){} } finally { EN_COURS=false; }
   }
   window.nxfbRender=render;
 
