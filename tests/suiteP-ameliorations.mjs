@@ -562,13 +562,16 @@ async function preparer(opts,jour){
   const pause=ms=>new Promise(r=>setTimeout(r,ms));
   const r=await p.evaluate(async()=>{ const pause=ms=>new Promise(r=>setTimeout(r,ms));
     const cre=[...document.querySelectorAll('.nx-create-panel [data-nxrc]')].map(b=>b.dataset.nxrc), outils=[...document.querySelectorAll('.nx-tools-panel [data-nxrc]')].map(b=>b.dataset.nxrc);
+    /* même cadre que « + Dépannage » (bouton voisin du menu Créer) */
+    const cadre=(()=>{ const v=[...document.querySelectorAll('.nx-create-panel button')].find(x=>/newDep\('dep'\)/.test(x.getAttribute('onclick')||'')), n=document.querySelector('.nx-create-panel [data-nxrc="sav"]'); if(!v||!n) return null; const cv=getComputedStyle(v), cn=getComputedStyle(n); return {v:cv.borderTopWidth+' '+cv.borderTopStyle,n:cn.borderTopWidth+' '+cn.borderTopStyle}; })();
     document.querySelector('.nx-create-panel [data-nxrc="sav"]').click(); await pause(350);
     const sav={vue:window._curView,ouvert:!!(document.querySelector('#nxrt details')||{}).open,focus:(document.activeElement||{}).id||''};
     document.querySelector('.nx-tools-panel [data-nxrc="adr"]').click(); await pause(350);
     const adr={vue:window._curView,carte:!!document.getElementById('nxadr')};
     const mf=await (await fetch('./manifest.json')).json();
-    return {cre,outils,sav,adr,sc:(mf.shortcuts||[]).map(x=>x.url),cibles:nxrcCibles()}; });
+    return {cre,outils,cadre,sav,adr,sc:(mf.shortcuts||[]).map(x=>x.url),cibles:nxrcCibles()}; });
   rec(G,'Menu « Créer » : Retour SAV ; menu « Outils » : relevé bancaire, déclaration des fluides, bouteilles (ADR)',j(r.cre)==='["sav"]'&&j(r.outils)==='["releve","fluides","adr"]',j(r));
+  rec(G,'Bouton « Retour SAV » du menu Créer encadré comme « + Dépannage »',!!r.cadre&&r.cadre.n===r.cadre.v&&!/^0px|none/.test(r.cadre.n),j(r.cadre));
   rec(G,'Raccourci « Retour SAV » : écran Objectifs, formulaire ouvert, curseur dans le 1er champ',r.sav.vue==='nx_obj'&&r.sav.ouvert&&r.sav.focus==='nxrt_devis',j(r.sav));
   rec(G,'Raccourci « Bouteilles dans le camion » : écran Fluides, carte ADR',r.adr.vue==='fluides'&&r.adr.carte,j(r.adr));
   rec(G,'Icône de l’appli installée : 4 raccourcis (devis, dépannage, retour SAV, objectifs) vers des cibles connues',r.sc.length===4&&r.sc.every(u=>{ const m=/\?ouvrir=([a-z]+)$/.exec(u); return m&&r.cibles.indexOf(m[1])>=0; }),j(r.sc));

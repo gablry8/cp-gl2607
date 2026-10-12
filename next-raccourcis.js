@@ -52,6 +52,8 @@
     MENU.forEach(function(m){ var p=document.querySelector(m.p); if(!p) return;
       if(!p.querySelector('[data-nxrc="'+m.id+'"]')){
         var b=document.createElement('button'); b.type='button'; b.setAttribute('data-nxrc',m.id); b.textContent=m.txt;
+        /* même cadre que les autres boutons du menu « Créer » (règle .topbar button[style*="background"], next-pro.css) */
+        if(m.p==='.nx-create-panel'){ b.className='btn-sm'; b.setAttribute('style','background:#fff'); }
         /* relevé : le sélecteur de fichier s'ouvre directement depuis le clic (geste de l'utilisateur) */
         b.setAttribute('onclick',m.id==='releve'?"if(typeof nxbqChoisir==='function')nxbqChoisir();else nxrcOuvrir('releve')":"nxrcOuvrir('"+m.id+"')");
         p.appendChild(b); }
