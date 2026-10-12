@@ -441,6 +441,12 @@ async function preparer(opts,jour){
   rec(G,'Identifiant piégé dans les données synchronisées : ignoré (rien d’injecté)',y.fl==='R290,R32,R410A'&&!y.alerte,j(y));
   rec(G,'Années proposées à partir de 2027 (+ celles des fiches)',y.ans[0]==='2028'&&y.ans.indexOf('2027')>=0&&y.ans.every(a=>+a>=2026),j(y.ans));
   rec(G,'Rappel seulement si tu es opérateur (attestation de capacité ou fiches) : rien en sous-traitance pure',y.sans===0&&y.avec===1,j(y));
+  /* saisie au doigt dans une case (vrai champ, puis on touche ailleurs) : pas d'affichage imbriqué (parcours du 12/10) */
+  await p.evaluate(()=>{ window.todayISO=()=>'2028-01-10'; go('fluides'); });
+  const ch=p.locator('#nxfb .nxfb-f[data-fluide="R410A"] input').first(); await ch.scrollIntoViewIfNeeded(); await ch.fill('3'); await ch.dispatchEvent('change'); await p.waitForTimeout(150);
+  await p.locator('#nxfb h2').click(); await p.waitForTimeout(150);
+  const saisie=await p.evaluate(()=>({acq:nxfbBilan('2027').find(b=>b.fluide==='R410A').acq,carte:!!document.querySelector('#nxfb .nxfb-f[data-fluide="R410A"]')}));
+  rec(G,'Saisie dans une case du bilan (comme au doigt) : enregistrée, carte réaffichée, sans erreur',saisie.acq===3&&saisie.carte&&errs.length===0,j(saisie)+' '+errs.join(' | '));
   rec(G,'Aucune erreur JavaScript (fluides)',errs.length===0,errs.join(' | '));
   await ctx.close();
 }

@@ -103,12 +103,12 @@
   function anDefaut(){ var t=today(), y=+t.slice(0,4); return String(+t.slice(5,7)<=2?y-1:y); }
   window.nxfbSet=function(Y,fl,c,v){ Y=okAn(Y); fl=cle(fl); if(!Y||CHAMPS.indexOf(c)<0) return false;
     var s=String(v==null?'':v).trim(), n=s===''?null:num(s);
-    if(n!=null&&(n<0||n>100000)){ say('Quantité invalide (kg, positive)'); render(); return false; }
-    poser(Y+':'+fl+':'+c,n==null?null:{v:r3(n)}); render(); return true; };
-  window.nxfbAjouterFluide=function(Y,fl){ Y=okAn(Y); fl=cle(fl); if(!Y||!fl) return false; poser(Y+':'+fl+':_',{}); render(); return true; };
-  window.nxfbDeclarer=function(Y,on){ Y=okAn(Y); if(!Y) return false; poser(Y+':_decl',on?{d:today()}:null); render();
+    if(n!=null&&(n<0||n>100000)){ say('Quantité invalide (kg, positive)'); plus_tard(); return false; }
+    poser(Y+':'+fl+':'+c,n==null?null:{v:r3(n)}); plus_tard(); return true; };
+  window.nxfbAjouterFluide=function(Y,fl){ Y=okAn(Y); fl=cle(fl); if(!Y||!fl) return false; poser(Y+':'+fl+':_',{}); plus_tard(); return true; };
+  window.nxfbDeclarer=function(Y,on){ Y=okAn(Y); if(!Y) return false; poser(Y+':_decl',on?{d:today()}:null); plus_tard();
     say(on?'Déclaration '+Y+' notée le '+fr(today()):'Déclaration '+Y+' décochée'); try{ if(typeof updateBadges==='function') updateBadges(); }catch(e){} return true; };
-  window.nxfbAnnee=function(Y){ AN=okAn(Y)||anDefaut(); render(); };
+  window.nxfbAnnee=function(Y){ AN=okAn(Y)||anDefaut(); plus_tard(); };
 
   var LIB=[['acq','1. Acquises'],['chN','2a. Chargées — équipements neufs'],['chM','2b. Chargées — maintenance'],['recHU','3a. Récupérées — équipements hors d’usage'],['recM','3b. Récupérées — maintenance'],
     ['remis','4. Remises à un distributeur'],['recy','5a. Traitées par toi — recyclées'],['regen','5b. Traitées par toi — régénérées'],['detr','5c. Traitées par toi — détruites'],['cede','6. Cédées (opérateur, distributeur, producteur)'],
@@ -174,18 +174,23 @@
       +(+Y<2027?' <b>Année avant 2027 : les rubriques exactes sont celles de l’arrêté du 30/06/2008, vérifie avec ton organisme.</b>':'')+'</div>'
       +'<div class="row-actions" style="margin:10px 0;flex-wrap:wrap;align-items:center"><select onchange="nxfbAnnee(this.value)" style="max-width:110px" aria-label="Année">'+Object.keys(ans).sort().reverse().map(function(a){ return '<option'+(String(a)===String(Y)?' selected':'')+'>'+a+'</option>'; }).join('')+'</select>'
       +'<button class="btn-ghost btn-sm" onclick="nxfbCopier()">Copier</button><button class="btn-ghost btn-sm" onclick="nxfbCSV()">Export CSV</button><button class="btn-ghost btn-sm" onclick="nxfbImprimer()">Imprimer / PDF</button>'
-      +'<label style="display:inline-flex;gap:6px;align-items:center;font-weight:700;margin:0 0 0 auto;text-transform:none;letter-spacing:0;font-size:13px;color:inherit"><input type="checkbox" id="nxfbDecl" '+(d?'checked':'')+' onchange="nxfbDeclarer(\''+esc(Y)+'\',this.checked)" style="width:18px;height:18px">'+(d?'Déclarée le '+fr(d):'Déclarée ?')+'</label></div>'
+      +'<label style="flex-direction:row;display:inline-flex;gap:6px;align-items:center;font-weight:700;margin:0 0 0 auto;text-transform:none;letter-spacing:0;font-size:13px;color:inherit"><input type="checkbox" id="nxfbDecl" '+(d?'checked':'')+' onchange="nxfbDeclarer(\''+esc(Y)+'\',this.checked)" style="width:18px;height:18px">'+(d?'Déclarée le '+fr(d):'Déclarée ?')+'</label></div>'
       +(B.length?'<div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))">'+B.map(function(b){ return carteFluide(Y,b); }).join('')+'</div>'
         :'<div style="font-size:14px;margin:6px 0">Aucune fiche ni saisie pour '+esc(Y)+' : si tu n’as rien acheté, chargé, récupéré ni stocké, c’est une <b>déclaration à zéro</b>.</div>')
       +(manque?'<div class="sub" style="margin-top:8px;color:var(--orange,#b45309)">'+manque+' fluide(s) avec des cases vides (acquises, remises, cédées ou stock au 31/12) : mets 0 si c’est zéro.</div>':'')
       +'<div class="row-actions" style="margin-top:10px"><select id="nxfbNouv" style="max-width:150px" aria-label="Fluide à ajouter">'+FL.map(function(f){ return '<option>'+f+'</option>'; }).join('')+'</select><button class="btn-ghost btn-sm" onclick="nxfbAjouterFluide(\''+esc(Y)+'\',document.getElementById(\'nxfbNouv\').value)">+ Fluide en stock sans fiche</button></div>'
       +'<div class="sub" style="margin-top:10px;line-height:1.5">Chargées et récupérées : calculées depuis tes fiches de l’année. « Équipements neufs » = fiches « mise en service » et « assemblage » ; « hors d’usage » = fiches « démantèlement » ; le reste = maintenance (classement à confirmer avec ton organisme pour un cas douteux). La charge d’usine d’un équipement pré-chargé n’entre pas dans la déclaration (FAQ de l’AFCE) : sur la fiche, note seulement le complément. Acquises : poids net de fluide (sans la tare des bouteilles), d’après tes factures. Règle : arrêté du 21/11/2025, art. 1er (5°) ; Code de l’environnement, art. R543-100.</div></div>';
   }
+  /* réaffichage APRÈS l'événement (change d'un champ) et jamais deux à la fois : remplacer un champ pendant qu'il perd
+     le focus déclenchait un 2e affichage imbriqué (erreur vue au parcours de la copie d'essai du 12/10) */
+  var EN_COURS=false, PREVU=0;
+  function plus_tard(){ clearTimeout(PREVU); PREVU=setTimeout(render,0); }
   function render(){
+    if(EN_COURS) return plus_tard();
     var v=document.getElementById('v-fluides'); if(!v) return;
     var w=document.getElementById('nxfbWrap');
     if(!w){ w=document.createElement('div'); w.id='nxfbWrap'; var t=document.getElementById('fluTable'), c=t&&t.closest('.card'); if(c&&c.parentNode===v) c.parentNode.insertBefore(w,c.nextSibling); else v.appendChild(w); }
-    try{ w.innerHTML=carte(); }catch(e){ try{ console.error('ClimPilot next-flubilan',e); }catch(_){} }
+    EN_COURS=true; try{ w.innerHTML=carte(); }catch(e){ try{ console.error('ClimPilot next-flubilan',e); }catch(_){} } finally { EN_COURS=false; }
   }
   window.nxfbRender=render;
 

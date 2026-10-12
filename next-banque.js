@@ -305,7 +305,7 @@
     if(!avec.length) h+='<div style="font-size:14px;margin:10px 0">Aucun crédit ne correspond au montant d’une facture impayée.</div>';
     h+=avec.map(function(r){ var i=A.res.indexOf(r);
       return '<div class="nxbq-l" data-i="'+i+'" style="border:1px solid var(--line,#e5e7eb);border-radius:10px;padding:10px;margin:8px 0">'
-        +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><label style="display:flex;gap:8px;align-items:center;font-weight:700;margin:0;text-transform:none;letter-spacing:0;font-size:14px;color:inherit"><input type="checkbox" '+(r.coche?'checked':'')+(r.choix==null||r.blocage?' disabled':'')+' onchange="nxbqCoche('+i+',this.checked)" style="width:18px;height:18px">+'+esc(e2(r.c.montant))+' crédité le '+fr(r.c.date)+'</label>'+badge(r.choix!=null?r.conf:'')+'</div>'
+        +'<div style="display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap"><label style="flex-direction:row;display:flex;gap:8px;align-items:center;font-weight:700;margin:0;text-transform:none;letter-spacing:0;font-size:14px;color:inherit"><input type="checkbox" '+(r.coche?'checked':'')+(r.choix==null||r.blocage?' disabled':'')+' onchange="nxbqCoche('+i+',this.checked)" style="width:18px;height:18px">+'+esc(e2(r.c.montant))+' crédité le '+fr(r.c.date)+'</label>'+badge(r.choix!=null?r.conf:'')+'</div>'
         +'<div style="font-size:12px;color:var(--muted,#667085);margin:4px 0 6px;word-break:break-word">'+esc(r.c.lib||'(sans libellé)')+'</div>'
         +'<div style="display:grid;gap:6px;grid-template-columns:repeat(auto-fit,minmax(min(100%,180px),1fr))"><select onchange="nxbqFacture('+i+',this.value)" aria-label="Facture">'+opt(r)+'</select>'
         +'<select onchange="nxbqMode('+i+',this.value)" aria-label="Mode de règlement">'+MODES.map(function(x){ return '<option'+(x===r.mode?' selected':'')+'>'+x+'</option>'; }).join('')+'</select>'
@@ -321,7 +321,7 @@
       var T=A.treso;
       h+='<div style="border-top:1px solid var(--line,#e5e7eb);margin-top:12px;padding-top:10px">'
         +(T.plusRecente?'<div style="font-size:13px">Trésorerie : ta saisie du '+fr(T.date)+' ('+esc(e2(T.montant))+') est plus récente que ce relevé : pas de mise à jour.</div>'
-        :'<label style="display:flex;gap:8px;align-items:center;font-weight:700;margin:0;text-transform:none;letter-spacing:0;font-size:14px;color:inherit"><input type="checkbox" id="nxbqTreso" '+(A.tresoCoche?'checked':'')+' onchange="nxbqTresoCoche(this.checked)" style="width:18px;height:18px">Mettre ma trésorerie à jour</label>'
+        :'<label style="flex-direction:row;display:flex;gap:8px;align-items:center;font-weight:700;margin:0;text-transform:none;letter-spacing:0;font-size:14px;color:inherit"><input type="checkbox" id="nxbqTreso" '+(A.tresoCoche?'checked':'')+' onchange="nxbqTresoCoche(this.checked)" style="width:18px;height:18px">Mettre ma trésorerie à jour</label>'
           +'<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:6px;font-size:13px"><input id="nxbqTresoM" type="number" inputmode="decimal" step="0.01" value="'+esc(A.tresoMontant)+'" onchange="nxbqTresoMontant(this.value)" style="max-width:160px"> € au '+fr(A.solde.date)+'</div>'
           +'<div style="font-size:12px;color:var(--muted,#667085);margin-top:4px">Solde lu dans le relevé.'+(T.montant!=null?' Actuellement : '+esc(e2(T.montant))+(T.date?' (saisie le '+fr(T.date)+')':'')+'.':'')+' Ajoute ta réserve si elle est sur un autre compte.</div>')
         +'</div>';
