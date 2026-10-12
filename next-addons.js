@@ -5,7 +5,7 @@
 (function(){
   'use strict';
 
-  const NX_VERSION='Next 1.11.0 — objectifs & feux, suivi comptable (Urssaf, comptable)';
+  const NX_VERSION='Next 1.12.0 — rentabilité réelle, SAV, avis, relevé bancaire, bilan fluides';
   const NX_KEYS={
     tasks:'cpnext_tasks',trash:'cpnext_trash',templates:'cpnext_templates',
     history:'cpnext_history',settings:'cpnext_settings',notified:'cpnext_notified',

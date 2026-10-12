@@ -1138,7 +1138,9 @@ function deriveParams(T){return {
     attFluides:'',attOrganisme:'',mediateur:'',mediateurSite:'',assurance:'',assuranceZone:'',
     mentionTVA:'',piedNote:'Prix matériel indicatifs à confirmer selon fournisseur. Diamètres de liaisons et sections de câble à valider avec la notice constructeur.',
     /* 1.10 : pied de facture distinct, dénomination EI, nature des chantiers et assurance décennale à confirmer */
-    piedFacture:'',nomEntrepreneur:'',natureChantier:'a_confirmer',decennale:'a_confirmer'}
+    piedFacture:'',nomEntrepreneur:'',natureChantier:'a_confirmer',decennale:'a_confirmer',
+    /* 1.12 : lien « laisser un avis » de la fiche Google de l'entreprise (next-avis.js) */
+    avisGoogle:''}
 };}
 
 /* ============ ASSEMBLAGE PRIX & PARAMS (Notion + local) ============ */
@@ -1845,6 +1847,7 @@ function renderParams(){
     txtRow('SIRET','pe_siret',E.siret)+txtRow('N° TVA intracom.','pe_tvaintra',E.tvaIntra)+txtRow('RIB / IBAN','pe_rib',E.rib,true)+
     txtRow('N° attestation de capacité fluides','pe_attflu',E.attFluides)+txtRow('Organisme (attestation fluides)','pe_attorg',E.attOrganisme)+
     txtRow('Médiateur de la consommation (nom)','pe_medi',E.mediateur)+txtRow('Médiateur — site web','pe_medisite',E.mediateurSite)+
+    txtRow('Lien pour laisser un avis Google (copié depuis ta fiche Google)','pe_avis',E.avisGoogle,true)+
     txtRow('Assurance pro (assureur + n° contrat)','pe_assur',E.assurance)+txtRow('Assurance — couverture géographique','pe_assurzone',E.assuranceZone)+
     txtRow('Validité du devis','pe_validite',E.validiteDevis||'3 mois')+
     txtRow('Note bas de devis','pe_pied',E.piedNote,true)+txtRow('Note bas de facture et d\'avoir','pe_piedfac',E.piedFacture||'',true)+
@@ -1890,7 +1893,7 @@ function renderParams(){
 function saveParams(){const g=id=>+document.getElementById(id).value;const t=id=>document.getElementById(id)?document.getElementById(id).value:'';
   const cand=JSON.parse(JSON.stringify(P));
   cand.entreprise={...P.entreprise,nom:t('pe_nom'),activite:t('pe_act'),adresse:t('pe_adr'),cp:t('pe_cp'),ville:t('pe_ville'),tel:t('pe_tel'),email:t('pe_email'),statut:t('pe_statut'),capital:t('pe_capital'),naf:t('pe_naf'),siret:t('pe_siret'),tvaIntra:t('pe_tvaintra'),rib:t('pe_rib'),
-    attFluides:t('pe_attflu'),attOrganisme:t('pe_attorg'),mediateur:t('pe_medi'),mediateurSite:t('pe_medisite'),assurance:t('pe_assur'),assuranceZone:t('pe_assurzone'),nomEntrepreneur:t('pe_nomei'),piedFacture:t('pe_piedfac'),natureChantier:t('pe_nature')||'a_confirmer',decennale:t('pe_decennale')||'a_confirmer',validiteDevis:t('pe_validite')||'3 mois',piedNote:t('pe_pied')};
+    attFluides:t('pe_attflu'),attOrganisme:t('pe_attorg'),mediateur:t('pe_medi'),mediateurSite:t('pe_medisite'),assurance:t('pe_assur'),assuranceZone:t('pe_assurzone'),nomEntrepreneur:t('pe_nomei'),piedFacture:t('pe_piedfac'),natureChantier:t('pe_nature')||'a_confirmer',avisGoogle:t('pe_avis').trim(),decennale:t('pe_decennale')||'a_confirmer',validiteDevis:t('pe_validite')||'3 mois',piedNote:t('pe_pied')};
   cand.acomptePctDefaut=g('pg_acpt');cand.objectifCA=g('pg_obj');cand.regimeTVA=t('pg_regime')||'franchise';cand.achatTVA=g('pg_achattva');
   cand.defaultRate=g('pg_taux');cand.tauxHoraire=cand.defaultRate;cand.coutInterne=g('pg_cout');cand.cotisTaux=g('pg_cotis');cand.tva=g('pg_tva');cand.fraisAdmin=g('pg_fadm');cand.fraisCommande=g('pg_fcmd');
   cand.accGoulParM=g('pg_accg');cand.conso={petit:g('pg_cp'),moyen:g('pg_cm'),gros:g('pg_cg')};
@@ -3781,5 +3784,9 @@ if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}
 <script type="text/x-climpilot" data-src="next-taux.js"></script>
 <script type="text/x-climpilot" data-src="next-documents.js"></script>
 <script type="text/x-climpilot" data-src="next-objectifs.js"></script>
+<script type="text/x-climpilot" data-src="next-rentab.js"></script>
+<script type="text/x-climpilot" data-src="next-avis.js"></script>
+<script type="text/x-climpilot" data-src="next-banque.js"></script>
+<script type="text/x-climpilot" data-src="next-flubilan.js"></script>
 </body>
 </html>

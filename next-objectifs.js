@@ -23,6 +23,10 @@
    - « Mes 3 objectifs » : CA de l'année (à date), contrats d'entretien (15 / 40 / 70), part du plus gros client.
    - Feu de lancement : règle ACRE selon la date de fermeture de l'ancienne EI (art. D131-6-1 CSS).
    Stockage : cpnext_objectifs (synchronisé). Aucune donnée envoyée ailleurs.
+   1.12 (12/10/2026) : modules ajoutés par window.nxobjAjouts (next-rentab, next-avis, next-banque, next-flubilan) ;
+   liste « Lancer l'entreprise » avec des CONSEILS qui ne bloquent pas le feu (nom INPI, fiche Google, prévoyance,
+   transport des bouteilles, facture électronique) ; attestation de capacité de l'entreprise (conseil avant la création,
+   car elle se demande avec le SIRET ; bloquante une fois lancée) ; coût du km ; nxobjTreso / nxobjAJour.
    ============================================================ */
 (function(){
   'use strict';
@@ -53,6 +57,7 @@
     checks:{},hist:{},envois:{},decl:{}, // lus dans cpnext_objsuivi (liste « type:clé ») : cases à cocher, relevés mensuels,
                                          // envois à la comptable ('AAAA-MM' / 'AAAA-Tn'), déclarations Urssaf
     sim:{brut:2300,camion:0,fact:70,marge:20,margeBrute:50,augm:100},
+    coutKm:0,                 // € par km pour chiffrer les déplacements de SAV (1.12, next-rentab) ; 0 = km non chiffrés
     maj:0
   };
   var PLAN={heuresAn:6*235, depAn:11000, appH:30, appTaux:35, hPayees:1607, prodDebut:0.6, semaineH:30};
@@ -179,6 +184,26 @@
   }
   function impayes(){ if(CACHE&&CACHE.I) return CACHE.I; var r=[]; try{ if(window.nxrgLignesImpayes) r=nxrgLignesImpayes(CACHE?factures():undefined); }catch(e){} if(CACHE) CACHE.I=r; return r; }
   function finMois(k){ return iso(+k.slice(0,4),+k.slice(5,7),0); }
+
+  /* ---------- modules ajoutés (1.12) : next-rentab, next-avis, next-banque, next-flubilan ----------
+     Chacun s'inscrit dans window.nxobjAjouts : {id, pos:'apres3'|'apresFeux'|'comptable', carte(ctx)→html, afaire(ctx)→[{urg,txt,act…}]}.
+     ctx = {o, t, m}. Une erreur dans un module n'empêche jamais l'écran de s'afficher. */
+  window.nxobjAjouts=window.nxobjAjouts||[];
+  function ajouts(){ return Array.isArray(window.nxobjAjouts)?window.nxobjAjouts:[]; }
+  function logErr(id,e){ try{ console.error('ClimPilot objectifs — module '+id,e); }catch(_){} }
+  function ajoutsAFaire(o,t,m){ var r=[]; ajouts().forEach(function(a){ if(!a||typeof a.afaire!=='function') return;
+      try{ (a.afaire({o:o,t:t,m:m})||[]).forEach(function(x){ if(x&&x.txt) r.push(x); }); }catch(e){ logErr(a.id,e); } }); return r; }
+  function ajoutsCartes(pos,o,t,m){ return ajouts().filter(function(a){ return a&&a.pos===pos&&typeof a.carte==='function'; })
+      .map(function(a){ try{ return a.carte({o:o,t:t,m:m})||''; }catch(e){ logErr(a.id,e); return ''; } }).join(''); }
+  /* pour les modules : mêmes lectures que l'écran (avec le cache pendant un affichage) */
+  window.nxobjFactures=function(){ return factures(); };
+  window.nxobjRecettes=function(from,to){ return recettes(from,to); };
+  window.nxobjDebut=function(){ return debut(st()); };
+  window.nxobjIndexMois=function(d){ return indexMois(d||today(),st()); };
+  window.nxobjTauxAnnee=function(m){ var o=st(); m=m||indexMois(today(),o); return tauxAnnee(m>=1?Math.min(3,Math.ceil(m/12)):1,o); };
+  /* trésorerie datée (import du relevé bancaire : la date du solde, pas celle du jour) */
+  window.nxobjTreso=function(montant,date){ var o=st(), n=Number(montant); if(!isFinite(n)) return false; if(!okDate(date)||date>today()) date=today();
+    o.tresoMontant=r2(n); o.tresoDate=date; stSave(o); return true; };
   function realise(k,F){ F=F||factures(); var f=0,n=0; F.forEach(function(x){ if(ym(x.date)===k){ f+=Number(x.ht)||0; n++; } });
     var enc=recettes(k+'-01',finMois(k)).reduce(function(s,x){ return s+(Number(x.ht)||0); },0);
     return {facture:r2(f),encaisse:r2(enc),docs:n}; }
@@ -213,8 +238,11 @@
   }
 
   /* ---------- les feux ---------- */
-  function cond(ok,label,detail,source,key){ return {ok:ok,label:label,detail:detail||'',source:source||'auto',key:key||''}; }
-  function couleur(cs){ if(cs.some(function(c){ return c.ok===false; })) return 'rouge'; if(cs.some(function(c){ return c.ok==null; })) return 'orange'; return 'vert'; }
+  function cond(ok,label,detail,source,key,conseil){ var c={ok:ok,label:label,detail:detail||'',source:source||'auto',key:key||''}; if(conseil) c.conseil=true; return c; }
+  /* un conseil (c.conseil) s'affiche mais ne change pas la couleur du feu */
+  function bloquants(cs){ return cs.filter(function(c){ return !c.conseil; }); }
+  function couleur(cs){ cs=bloquants(cs); if(cs.some(function(c){ return c.ok===false; })) return 'rouge'; if(cs.some(function(c){ return c.ok==null; })) return 'orange'; return 'vert'; }
+  function resteAFaire(cs){ return bloquants(cs).filter(function(c){ return c.ok!==true; }).length; }
   /* ACRE : « ne sont assimilées à un début d'activité ni la modification des conditions d'exercice […] ni la reprise
      d'activité intervenue soit dans l'année au cours de laquelle est survenue la cessation d'activité, soit dans l'année
      suivante » (art. D131-6-1 et R131-3 du Code de la sécurité sociale, décret 2026-69 ; circulaire CNAV 2026-12 du
@@ -229,13 +257,21 @@
     return cond(true,L,'EI fermée en '+yF+' : plus d’une année civile complète avant '+yC+', la règle de reprise ne te concerne pas. Reste une condition : ne pas avoir eu l’ACRE dans les 3 ans avant la création.','auto','acre');
   }
   window.nxobjCondAcre=function(){ return condAcre(st()); };
+  /* [clé, libellé, détail, conseil] — conseil = true : recommandé, ne bloque pas le feu (1.12) */
   var CHECKS_LANCEMENT=[
     ['urssaf','Réponse ÉCRITE de l’Urssaf sur ton droit à l’ACRE','Indispensable si ton EI a été fermée l’année de la création ou l’année d’avant (ligne au-dessus). Sans ACRE, pas d’ARCE (capital chômage).'],
     ['assurances','Devis décennale + RC pro reçus et comparés','Décennale obligatoire pour les travaux (art. L241-1 Code des assurances) ; RC pro : à voir avec ton assureur.'],
+    ['decennaleActivites','Toutes tes activités écrites sur l’attestation décennale','Clim et PAC air-air, et si tu en poses : PAC air-eau, ballon thermodynamique, chambres froides, froid commercial. Une activité qui n’y figure pas risque de ne pas être couverte : fais-le confirmer par écrit par l’assureur.'],
     ['aptitude','Attestation d’aptitude fluides à jour','Catégorie adaptée (et hydrocarbures / CO₂ pour le froid commercial).'],
     ['wolf','Accord écrit avec WOLF ENERGY','Heures par mois, prix, durée, déplacements payés ou non.'],
     ['comptable','Expert-comptable choisi (ou la comptable qui te suit d’accord)','Lui montrer l’écran « Objectifs & feux » et le pack comptable avant de démarrer.'],
-    ['banque','Compte bancaire dédié à l’activité ouvert','Obligatoire au-delà de 10 000 € de CA 2 années de suite (service-public F35991) ; conseillé dès le départ.']
+    ['banque','Compte bancaire dédié à l’activité ouvert','Obligatoire au-delà de 10 000 € de CA 2 années de suite (service-public F35991) ; conseillé dès le départ.'],
+    ['deuxfa','Double authentification activée sur GitHub et Supabase','Quelqu’un qui entre dans ton GitHub peut publier une fausse version de ClimPilot ; dans Supabase, il lit toutes tes données. 15 minutes, à faire tout de suite.'],
+    ['nomInpi','Nom de l’entreprise vérifié dans la base des marques (INPI) avant de lettrer le camion','Recherche gratuite sur data.inpi.fr : un nom déjà déposé dans ton secteur peut t’obliger à tout refaire (camion, site, cartes).',true],
+    ['ficheGoogle','Fiche Google de l’entreprise créée (Google Business Profile)','Première source gratuite de clients pour un artisan local. Colle ensuite son lien « avis » dans Paramètres › Mon entreprise : ClimPilot te proposera de demander un avis après chaque chantier payé.',true],
+    ['prevoyance','Prévoyance (arrêt de travail) et perte d’exploitation étudiées','Si tu es arrêté plusieurs semaines : qui paie le camion, les assurances et ta paie ? Demande un devis à ton assureur et compare avec ce que verse la Sécurité sociale (à vérifier sur ameli.fr).',true],
+    ['transportFluides','Transport des bouteilles de fluide dans le camion vérifié','Règles du transport de gaz (ADR) : demande à ton distributeur de fluide les conditions pour un artisan (quantités, arrimage, aération) et préviens ton assureur. Le R290 est du propane, inflammable. Seuils pas vérifiés par ClimPilot.',true],
+    ['pdp','Facture électronique : plateforme choisie et essayée en bac à sable','Factures entre entreprises : réception électronique obligatoire pour toutes depuis le 01/09/2026, émission obligatoire pour les micro-entreprises à partir du 01/09/2027 (les ventes aux particuliers passent par une transmission de données, le « e-reporting »). Essaie Super PDP en bac à sable avant ta première vraie facture.',true]
   ];
   function feux(o,F,seulLancement){
     o=o||st(); F=F||factures();
@@ -246,13 +282,19 @@
     var out={};
 
     /* 1. lancement */
-    var cl=[condAcre(o)].concat(CHECKS_LANCEMENT.map(function(c){ return cond(!!o.checks[c[0]]?true:null,c[1],c[2],'toi',c[0]); }));
+    var cl=[condAcre(o)].concat(CHECKS_LANCEMENT.filter(function(c){ return !c[3]; }).map(function(c){ return cond(!!o.checks[c[0]]?true:null,c[1],c[2],'toi',c[0]); }));
+    /* attestation de CAPACITÉ (entreprise) ≠ attestation d'APTITUDE (personne) : art. R543-99 du Code de l'environnement ;
+       délivrance par un organisme agréé, arrêté du 21/11/2025 (applicable au 01/01/2027) */
+    /* elle se demande avec le SIRET : avant la création, rappel qui ne bloque pas ; une fois lancée, point bloquant */
+    var cap=String(E.attFluides||'').trim();
+    cl.push(cond(cap?true:null,mNow>=1?'Attestation de capacité fluides de TON entreprise (Paramètres)':'Attestation de capacité fluides de ton entreprise : à demander dès que tu as ton SIRET','Différente de ton attestation d’aptitude (personnelle) : c’est l’entreprise qui manipule les fluides qui doit l’avoir, délivrée par un organisme agréé (art. R543-99 du Code de l’environnement). Sans elle, pas de manipulation de fluide à ton nom. Numéro et organisme dans Paramètres › Mon entreprise.','auto','capacite',mNow<1));
     cl.push(cond(String(E.mediateur||'').trim()?true:null,'Médiateur de la consommation renseigné (Paramètres)','Obligatoire avant le premier devis à un particulier.','auto'));
     cl.push(cond(okDate(fiscal.debut)?true:null,'Profil fiscal rempli (date de début d’activité)','Paramètres › Profil fiscal : il règle le taux de cotisations partout.','auto'));
     cl.push(cond(!tf?null:T>=3*sorties,'Trésorerie ≥ 3 mois de dépenses ('+e0(3*sorties)+')',tf?'Déclarée : '+e0(T)+' le '+fr(o.tresoDate)+'.':'Renseigne ta trésorerie ci-dessous (à refaire tous les 45 jours).','auto'));
+    CHECKS_LANCEMENT.filter(function(c){ return c[3]; }).forEach(function(c){ cl.push(cond(!!o.checks[c[0]]?true:null,c[1],c[2],'toi',c[0],true)); });
     out.lancement={id:'lancement',titre:'Lancer l’entreprise',couleur:couleur(cl),conditions:cl,pill:mNow>=1&&couleur(cl)!=='vert'?'À régler':null,
-      verdict:mNow>=1?'Lancée depuis le '+fr(debut(o))+'.':couleur(cl)==='vert'?'Tout est prêt pour créer.':'Pas encore : '+cl.filter(function(c){ return c.ok!==true; }).length+' point(s) à régler avant de créer.'};
-    if(mNow>=1&&out.lancement.couleur!=='vert') out.lancement.verdict='Lancée — '+cl.filter(function(c){ return c.ok!==true; }).length+' point(s) encore à régler.';
+      verdict:mNow>=1?'Lancée depuis le '+fr(debut(o))+'.':couleur(cl)==='vert'?'Tout est prêt pour créer.':'Pas encore : '+resteAFaire(cl)+' point(s) à régler avant de créer.'};
+    if(mNow>=1&&out.lancement.couleur!=='vert') out.lancement.verdict='Lancée — '+resteAFaire(cl)+' point(s) encore à régler.';
     if(seulLancement) return out;
 
     /* 2. société (passage au réel) */
@@ -370,6 +412,8 @@
      Une période plus ancienne non cochée n'est plus rappelée (on ne peut pas la cocher si elle n'est plus affichée,
      et un changement de rythme ne doit pas faire réapparaître tout le passé en retard). */
   function ajour(map){ var f=''; Object.keys(map||{}).forEach(function(id){ var x=finId(id); if(x>f) f=x; }); return f; }
+  /* pour le relevé bancaire (1.12) : jusqu'à quelle date les déclarations Urssaf et les envois à la comptable sont faits */
+  window.nxobjAJour=function(){ var o=st(); return {decl:ajour(o.decl),envoi:ajour(o.envois)}; };
   function enAttente(map,p,t){ return !map[p.id]&&p.to<t&&p.to>ajour(map); }
   /* « du 3e trimestre 2027 », « de juillet 2027 », « d’octobre 2027 » */
   function duLab(p){ return /trimestre/.test(p.lab)?'du '+p.lab:(/^[aeiouyéèêàâîôû]/i.test(p.lab)?'d’':'de ')+p.lab; }
@@ -381,7 +425,7 @@
     if(m<1){
       var ac=condAcre(o);
       if(ac.ok===false) out.push({urg:2,txt:'ACRE : ton ancienne EI a été fermée l’année de la création ou l’année d’avant. Demande par écrit à l’Urssaf si tu y as droit, avant de créer.',act:''});
-      var fl=feux(o,F,true).lancement, reste=fl.conditions.filter(function(c){ return c.ok!==true; }).length;
+      var fl=feux(o,F,true).lancement, reste=resteAFaire(fl.conditions);
       if(reste) out.push({urg:0,txt:reste+' point(s) à régler avant de créer (carte « Lancer l’entreprise »).',act:''});
     } else {
       periodes(o.declPeriode,o,t,true).forEach(function(p){
@@ -397,6 +441,7 @@
       if(imp.length) out.push({urg:1,txt:'Relancer '+imp.length+' facture(s) impayée(s) depuis plus de 30 jours ('+e0(imp.reduce(function(s,i){ return s+i.ttc; },0))+').',act:'impayes'});
     }
     if(!tresoFraiche(o)) out.push({urg:0,txt:o.tresoDate?'Mettre à jour ta trésorerie (dernière saisie le '+fr(o.tresoDate)+').':'Saisir ta trésorerie : plusieurs feux en ont besoin.',act:'treso'});
+    out=out.concat(ajoutsAFaire(o,t,m));
     return out.sort(function(a,b){ return b.urg-a.urg; });
   }
   window.nxobjAFaire=function(){ return avecCache(function(){ var o=st(); return aFaire(o,factures(),today()); }); };
@@ -417,6 +462,7 @@
     +'#v-nx_obj .nxo-big{font-size:15px;line-height:1.5}#v-nx_obj .nxo-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px}#v-nx_obj .nxo-tabs button.on{outline:2px solid var(--ink,#121417)}'
     +'#v-nx_obj .nxo-form{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}#v-nx_obj .nxo-form label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted,#667085)}#v-nx_obj .nxo-form input,#v-nx_obj .nxo-form select{font-size:15px}'
     +'#v-nx_obj .nxo-note{font-size:12px;color:var(--muted,#667085);line-height:1.55;margin-top:8px}'
+    +'#v-nx_obj .nxo-conseils{margin:10px 0 0;padding-top:8px;border-top:2px solid var(--line,#e5e7eb);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted,#667085)}'
     +'#nxobjDash .nxo-l{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}#nxobjDash .nxo-l b{font-size:15px}'
     +'#v-nx_obj .nxo-st{display:none;font-weight:800;font-size:13px;margin:16px 0 0;padding:6px 10px;border-radius:8px;background:var(--blue-soft,#eef4ff)}'
     +'@media(max-width:640px){#v-nx_obj .nxo-st{display:block}#v-nx_obj table.nxo-suivi,#v-nx_obj table.nxo-suivi tbody{display:block;width:100%}#v-nx_obj table.nxo-suivi thead{display:none}'
@@ -433,11 +479,14 @@
   function pill(c,txt){ return '<span class="nxo-pill nxo-'+c+'"><span class="nxo-dot '+c+'"></span>'+esc(txt||NOM[c])+'</span>'; }
   function ico(ok){ return ok===true?'<span class="i" style="color:var(--green,#16794a)">✓</span>':ok===false?'<span class="i" style="color:var(--red,#b42318)">✕</span>':'<span class="i" style="color:var(--orange,#b45309)">?</span>'; }
   function carteFeu(f){
+    var ligne=function(c){
+      var box=c.source==='toi'?'<input type="checkbox" '+(c.ok===true?'checked':'')+' onchange="nxobjCheck(\''+esc(c.key)+'\',this.checked)" aria-label="'+esc(c.label)+'">':ico(c.ok);
+      return '<div class="nxo-c"'+(c.conseil?' data-conseil="1"':'')+'>'+box+'<div><div>'+esc(c.label)+'</div>'+(c.detail?'<div class="d">'+esc(c.detail)+'</div>':'')+'</div></div>';
+    };
+    var cons=f.conditions.filter(function(c){ return c.conseil; });
     return '<div class="card nxo-feu" data-feu="'+esc(f.id||'')+'"><h3><span>'+esc(f.titre)+'</span>'+pill(f.couleur,f.pill)+'</h3><div class="v">'+esc(f.verdict)+'</div>'
-      +f.conditions.map(function(c){
-        var box=c.source==='toi'?'<input type="checkbox" '+(c.ok===true?'checked':'')+' onchange="nxobjCheck(\''+esc(c.key)+'\',this.checked)" aria-label="'+esc(c.label)+'">':ico(c.ok);
-        return '<div class="nxo-c">'+box+'<div><div>'+esc(c.label)+'</div>'+(c.detail?'<div class="d">'+esc(c.detail)+'</div>':'')+'</div></div>';
-      }).join('')
+      +bloquants(f.conditions).map(ligne).join('')
+      +(cons.length?'<div class="nxo-conseils">Conseillé — ne bloque pas le feu ('+cons.filter(function(c){ return c.ok===true; }).length+' / '+cons.length+')</div>'+cons.map(ligne).join(''):'')
       +(f.info?'<div class="nxo-note">'+esc(f.info)+'</div>':'')+'</div>';
   }
   /* « Mon suivi » : déclarations Urssaf et envois à la comptable, cochés par toi (datés) */
@@ -477,8 +526,11 @@
     var btn=function(x){
       if(x.act==='decl') return '<button class="btn-ghost btn-sm" onclick="nxobjDecl(\''+esc(x.id)+'\',true)">C’est déclaré</button>';
       if(x.act==='envoi') return '<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn-ghost btn-sm" onclick="nxobjVoir(\'nxo_suivi\')">Préparer</button><button class="btn-ghost btn-sm" onclick="nxobjEnvoi(\''+esc(x.id)+'\',true)">C’est envoyé</button></span>';
-      if(x.act==='impayes') return '<button class="btn-ghost btn-sm" onclick="go(\'recettes\')">Ouvrir</button>';
-      if(x.act==='treso') return '<button class="btn-ghost btn-sm" onclick="nxobjVoir(\'nxo_tresoMontant\')">Saisir</button>';
+      if(x.act==='impayes') return '<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn-ghost btn-sm" onclick="go(\'recettes\')">Ouvrir</button>'+(typeof window.nxbqChoisir==='function'?'<button class="btn-ghost btn-sm" onclick="nxbqChoisir()">Déjà payées ? Mon relevé</button>':'')+'</span>';
+      if(x.act==='treso') return '<span style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end"><button class="btn-ghost btn-sm" onclick="nxobjVoir(\'nxo_tresoMontant\')">Saisir</button>'+(typeof window.nxbqChoisir==='function'?'<button class="btn-ghost btn-sm" onclick="nxbqChoisir()">Depuis mon relevé</button>':'')+'</span>';
+      /* modules (1.12) : ouvrir un écran, ou appeler une fonction nx… avec un argument texte */
+      if(x.act==='go'&&/^[a-z_]+$/.test(String(x.vue||''))) return '<button class="btn-ghost btn-sm" onclick="go(\''+x.vue+'\')">'+esc(x.btn||'Ouvrir')+'</button>';
+      if(x.act==='appel'&&/^nx[A-Za-z0-9_]+$/.test(String(x.fn||''))&&/^[\w:.\-]*$/.test(String(x.arg||''))) return '<button class="btn-ghost btn-sm" onclick="'+x.fn+'(\''+esc(x.arg||'')+'\')">'+esc(x.btn||'Ouvrir')+'</button>';
       return '';
     };
     html+='<div class="card nxo-af" id="nxo_afaire"><h2>À faire maintenant</h2>'+(AF.length?AF.map(function(x){
@@ -529,9 +581,12 @@
         +'</div>';
     }
 
+    html+=ajoutsCartes('apres3',o,t,m);
+
     /* B. les feux */
     var ordre=m>=1?[FX.apprenti,FX.technicien,FX.societe,FX.lancement]:[FX.lancement,FX.societe,FX.apprenti,FX.technicien];
     html+='<h2 style="margin:6px 0 4px">Mes feux</h2><div class="nxo-note" style="margin:0 0 10px"><b style="color:var(--green,#16794a)">✓</b> rempli · <b style="color:var(--red,#b42318)">✕</b> pas rempli · <b style="color:var(--orange,#b45309)">?</b> il manque une info — calculés par ClimPilot. Les cases à cocher, c’est toi. Règles de gestion proposées, sauf la règle légale du maître d’apprentissage.</div><div class="nxo-row">'+ordre.map(carteFeu).join('')+'</div>';
+    html+=ajoutsCartes('apresFeux',o,t,m);
 
     /* C. à renseigner */
     var inp=function(id,lab,type,val,aide){ return '<label>'+esc(lab)+'<input id="nxo_'+id+'" type="'+type+'" value="'+esc(val==null?'':val)+'" '+(type==='number'?'inputmode="decimal" step="any"':'')+' onchange="nxobjSet(\''+id+'\',this.value)">'+(aide?'<span style="font-weight:400">'+esc(aide)+'</span>':'')+'</label>'; };
@@ -592,6 +647,7 @@
       +'<h3 style="margin:14px 0 6px;font-size:14px">Exports</h3><div class="nxo-form" style="grid-template-columns:minmax(0,380px)"><label>Période<select id="nxo_periode" onchange="nxobjPeriode(this.value)">'+PER.map(function(x){ return '<option value="'+x[0]+'"'+(x[0]===PERIODE?' selected':'')+'>'+esc(x[1])+' ('+fr(x[2].from)+' → '+fr(x[2].to)+')</option>'; }).join('')+'</select></label></div>'
       +'<div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" onclick="nxobjExport(\'livre\',\''+pc.from+'\',\''+pc.to+'\')">Livre des recettes (CSV)</button><button class="btn-ghost btn-sm" onclick="nxobjExport(\'facturier\',\''+pc.from+'\',\''+pc.to+'\')">Facturier (CSV)</button><button class="btn-ghost btn-sm" onclick="nxobjExport(\'synthese\',\''+pc.from+'\',\''+pc.to+'\')">Synthèse (PDF)</button><button class="btn-ghost btn-sm" onclick="nxobjExport(\'mail\',\''+pc.from+'\',\''+pc.to+'\')">Mail à la comptable</button></div>'
       +'<div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" onclick="nxobjPointMois()">Point du mois (PDF)</button><button class="btn-ghost btn-sm" onclick="go(\'nx_regime\')">Ouvrir « Statut & régime »</button></div>'
+      +ajoutsCartes('comptable',o,t,m)
       +'<div class="nxo-note">Livre des recettes : chronologique, montant, client, mode de règlement, n° de facture ; total tous les 3 mois (dans la synthèse) ; il peut être tenu sous forme électronique (service-public F23266). Registre des achats : exigé des commerçants ; si une part de ton activité est de la vente de matériel, demande à ta comptable — ClimPilot ne le tient pas, garde tes factures d’achat.</div></div>';
 
     /* G. réglages */
@@ -608,6 +664,7 @@
       +rin('apprentiCout','Coût de l’apprenti (€ / an)',o.apprentiCout)
       +rin('fraisSociete','Frais de société (€ / an)',o.fraisSociete,'Comptable, banque… (hypothèse)')
       +rin('chargesDirigeant','Mes charges sociales en société (% de ma paie)',o.chargesDirigeant,'Ordre de grandeur EURL ; plus en SASU')
+      +rin('coutKm','Mon coût du km (€)',o.coutKm||'','Pour chiffrer les km de SAV non facturés : carburant + entretien + assurance du camion ÷ km par an')
       +'</div><div class="row-actions" style="margin-top:10px"><button class="btn-ghost btn-sm" onclick="nxobjReset()">Remettre les hypothèses du plan</button></div></details>';
 
     host.innerHTML=html;
@@ -683,7 +740,7 @@
       var k=document.getElementById('dashKpis'); if(!k) return; var el=document.getElementById('nxobjDash');
       if(!el){ el=document.createElement('div'); el.id='nxobjDash'; el.className='card'; el.style.padding='12px 16px'; k.parentNode.insertBefore(el,k); }
       css(); var o=st(), t=today(), m=indexMois(t,o), txt;
-      if(m<1){ var FX=feux(o,[],true), cl=FX.lancement.conditions, ok=cl.filter(function(c){ return c.ok===true; }).length;
+      if(m<1){ var FX=feux(o,[],true), cl=bloquants(FX.lancement.conditions), ok=cl.filter(function(c){ return c.ok===true; }).length;
         txt='<span><b>Lancement le '+fr(debut(o))+'</b> — dans '+joursEntre(t,debut(o))+' jours · '+ok+' / '+cl.length+' points prêts</span>'; }
       else if(m>36) txt='<span><b>Plan de 3 ans terminé</b> — refais tes objectifs</span>';
       else { var ob=objectif(m,o), pl=plancher(m,o), r=realise(ym(t)), c=r.facture>=ob.ca?'vert':r.facture>=pl.montant?'orange':'rouge';

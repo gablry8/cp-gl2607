@@ -84,6 +84,34 @@ Partie de `claude/quirky-pasteur-ds9m47` (= 1.10.0 en production). Côté appli 
   date de fermeture de l'EI ; trésorerie ; une case cochée sur le PC puis vue sur le téléphone ; point du mois (PDF) ; pastille du menu.
 - Mise en production : fusion de cette branche dans `main` par Gabriel, puis mise à jour de chaque appareil (F5). Rien côté Supabase.
 
+## 1.12 « Améliorations » — branche `claude/ameliorations-1.12` (12/10/2026, PAS en production)
+Partie de `claude/objectifs-feux` (1.11, demande de fusion n°2) : elle CONTIENT la 1.11. Côté appli seulement : aucune migration
+ni fonction serveur (nouvelles clés de synchronisation acceptées telles quelles par `cp_state_push`).
+- `next-rentab.js` (carte d'Objectifs & feux) : main-d'œuvre facturée ÷ heures réelles (bloc « Réalité terrain » du devis +
+  heures de SAV liées), comparée au taux du plan ; « tout compris / h » pour information ; retours SAV non facturés
+  (`cpnext_sav`) : heures, km, pièces, motif, coût estimé, comparé à la provision SAV facturée.
+- `next-avis.js` : demande d'avis Google après paiement (60 jours, une fois par client, `cpnext_avis`), mail ou SMS préparés,
+  texte neutre ; lien dans Paramètres › Mon entreprise (`avisGoogle`, https seulement).
+- `next-banque.js` : import du relevé bancaire CSV, lu sur l'appareil (ni enregistré ni envoyé). Crédits rapprochés des impayés
+  du même montant au centime ; n° de facture COMPLET ou nom du client → « sûr ». Jamais coché d'office : montant déjà au livre
+  des recettes à 7 jours près, période déjà déclarée / envoyée, particulier payé avant la fin du délai L221-10. Paiement par le
+  même chemin que le bouton « Payée », à la date de la ligne (modifiable). Empreintes des lignes rapprochées (`cpnext_bqvus`).
+  Colonne de montants sans aucun négatif → refus. Trésorerie : jamais d'écrasement d'une saisie plus récente.
+- `next-flubilan.js` (écran Fluides) : déclaration annuelle à l'organisme agréé, 7 rubriques de l'arrêté du 21/11/2025 (art. 1er,
+  5°), avant le 31/01 ; chargées / récupérées calculées depuis les fiches Cerfa, le reste saisi ; contrôle de cohérence du stock ;
+  copie (« NON RENSEIGNÉ », jamais 0 par défaut), CSV, impression ; une case = un élément synchronisé (`cpnext_flubilan`) ;
+  rappel dans « À faire » seulement si attestation de capacité ou fiches.
+- `next-objectifs.js` : extensions `nxobjAjouts`, conseils non bloquants dans « Lancer l'entreprise », attestation de capacité,
+  coût du km dans « Mes réglages ». `index.html` : champ avisGoogle, chargement des 4 modules. `sw.js` : `climpilot-next-1120-ameliorations`.
+- Relecture indépendante du 12/10 : 2 défauts bloquants (n° de facture trouvé dans une date ou une référence ; virement déjà
+  marqué payé à la main qui payait une 2e facture) et 6 importants (débit lu comme crédit, période déjà déclarée, date des chèques
+  et espèces, « 0 kg » pour une case vide, seuil du voyant, deux « €/h » contradictoires), plus 9 mineurs : tous corrigés et testés
+  (suite P, partie P6b et suivantes ; les cas bloquants échouent sur le code d'avant correction).
+- Tests : suite P (`tests/suiteP-ameliorations.mjs`, 120 contrôles), ajoutée à `tests/run-all.sh`.
+- À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.12.zip` : Objectifs & feux (rentabilité, retour SAV, liste de
+  lancement), Paramètres (lien d'avis), relevé bancaire (fichier CSV de sa banque, sur des factures d'essai), écran Fluides.
+- Mise en production : fusion de cette branche (elle contient la 1.11) dans `main` par Gabriel, puis F5 sur chaque appareil.
+
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
 Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).
