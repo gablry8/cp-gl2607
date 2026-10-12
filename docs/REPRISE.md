@@ -108,14 +108,19 @@ ni fonction serveur (nouvelles clés de synchronisation acceptées telles quelle
   bouteilles ADR), recherche Ctrl K (actions + écrans du menu, crochet `window.nxExtraSearch` dans `next-addons.js`),
   ouverture par l'adresse `index.html?ouvrir=…` et raccourcis de l'icône (`manifest.json` « shortcuts » ; pas sur iPhone).
 - `next-objectifs.js` : extensions `nxobjAjouts`, conseils non bloquants dans « Lancer l'entreprise », attestation de capacité,
-  coût du km dans « Mes réglages ». `index.html` : champ avisGoogle, chargement des 4 modules. `sw.js` : `climpilot-next-1122-raccourcis`.
+  coût du km dans « Mes réglages ». Conseils ajoutés le 13/10 : RGE QualiPAC (seulement pour la PAC air/eau aidée) et
+  partenaire CEE (PAC air/air et meubles frigorifiques sans RGE) ; détail et sources dans la doc du projet
+  `claude/rge-cee-fluides-lancement.md`.
+- `index.html` : champ avisGoogle, chargement des 5 modules (rentab, avis, banque, flubilan, raccourcis).
+  `sw.js` : `climpilot-next-1122-raccourcis`.
 - Relecture indépendante du 12/10 : 2 défauts bloquants (n° de facture trouvé dans une date ou une référence ; virement déjà
   marqué payé à la main qui payait une 2e facture) et 6 importants (débit lu comme crédit, période déjà déclarée, date des chèques
   et espèces, « 0 kg » pour une case vide, seuil du voyant, deux « €/h » contradictoires), plus 9 mineurs : tous corrigés et testés
   (suite P, partie P6b et suivantes ; les cas bloquants échouent sur le code d'avant correction).
 - Tests : suite P (`tests/suiteP-ameliorations.mjs`, 137 contrôles), ajoutée à `tests/run-all.sh`.
 - À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.12.zip` : Objectifs & feux (rentabilité, retour SAV, liste de
-  lancement), Paramètres (lien d'avis), relevé bancaire (fichier CSV de sa banque, sur des factures d'essai), écran Fluides.
+  lancement), Paramètres (lien d'avis), relevé bancaire (fichier CSV de sa banque, sur des factures d'essai), écran Fluides,
+  menus « Créer » / « Outils » et recherche Ctrl K.
 - Mise en production : fusion de cette branche (elle contient la 1.11) dans `main` par Gabriel, puis F5 sur chaque appareil.
 
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
