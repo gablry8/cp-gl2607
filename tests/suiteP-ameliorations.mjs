@@ -2,7 +2,7 @@
 // relevé bancaire (next-banque.js), déclaration annuelle des fluides (next-flubilan.js), liste « Lancer l'entreprise »
 // (next-objectifs.js). Données fictives uniquement.
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
-import { ecrireResultats, out } from './env.mjs';
+import { ecrireResultats, out, URL_LOCALE } from './env.mjs';
 const G='Améliorations 1.12';
 const j=o=>JSON.stringify(o);
 const proche=(a,b,t)=>Math.abs((Number(a)||0)-(Number(b)||0))<=(t==null?0.011:t);
@@ -29,7 +29,7 @@ async function preparer(opts,jour){
     go('nx_obj'); const h=(document.getElementById('nxobj')||{}).innerText||'';
     return {fns:['nxrtSynthese','nxrtSyntheseSav','nxrtAjouter','nxavisCandidats','nxavisMail','nxbqAnalyser','nxbqValider','nxbqChoisir','nxfbBilan','nxfbCSV','nxobjTreso','nxobjTauxAnnee'].filter(f=>typeof window[f]!=='function'),
       sync:['cpnext_sav','cpnext_avis','cpnext_flubilan','cpnext_bqvus','cpnext_adr','cpnext_objectifs','cpnext_objsuivi'].filter(k=>SYNC_KEYS.indexOf(k)<0),
-      cache:['next-rentab.js','next-avis.js','next-banque.js','next-flubilan.js'].filter(f=>sw.indexOf('./'+f)<0), cle:/const C='climpilot-next-1120/.test(sw),
+      cache:['next-rentab.js','next-avis.js','next-banque.js','next-flubilan.js','next-raccourcis.js'].filter(f=>sw.indexOf('./'+f)<0), cle:/const C='climpilot-next-112\d/.test(sw),
       ajouts:(window.nxobjAjouts||[]).map(a=>a.id).sort().join(','),
       blocs:['Ma rentabilité réelle','Retours SAV non facturés','Mon relevé bancaire'].filter(x=>h.indexOf(x)<0)}; });
   rec(G,'Les 4 modules 1.12 sont chargés (fonctions présentes)',r.fns.length===0,j(r));
@@ -554,6 +554,42 @@ async function preparer(opts,jour){
     return {ms:Math.round(ms),n:S.n}; });
   rec(G,'600 chantiers + 200 retours SAV : écran Objectifs & feux affiché en moins de 1,5 s',r.ms<1500&&r.n===600,j(r));
   rec(G,'Aucune erreur JavaScript (gros volume)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
+/* ================= P11 — raccourcis : menus, recherche Ctrl K, adresse, icône de l'appli ================= */
+{ const {p,ctx,errs}=await preparer();
+  const pause=ms=>new Promise(r=>setTimeout(r,ms));
+  const r=await p.evaluate(async()=>{ const pause=ms=>new Promise(r=>setTimeout(r,ms));
+    const cre=[...document.querySelectorAll('.nx-create-panel [data-nxrc]')].map(b=>b.dataset.nxrc), outils=[...document.querySelectorAll('.nx-tools-panel [data-nxrc]')].map(b=>b.dataset.nxrc);
+    document.querySelector('.nx-create-panel [data-nxrc="sav"]').click(); await pause(350);
+    const sav={vue:window._curView,ouvert:!!(document.querySelector('#nxrt details')||{}).open,focus:(document.activeElement||{}).id||''};
+    document.querySelector('.nx-tools-panel [data-nxrc="adr"]').click(); await pause(350);
+    const adr={vue:window._curView,carte:!!document.getElementById('nxadr')};
+    const mf=await (await fetch('./manifest.json')).json();
+    return {cre,outils,sav,adr,sc:(mf.shortcuts||[]).map(x=>x.url),cibles:nxrcCibles()}; });
+  rec(G,'Menu « Créer » : Retour SAV ; menu « Outils » : relevé bancaire, déclaration des fluides, bouteilles (ADR)',j(r.cre)==='["sav"]'&&j(r.outils)==='["releve","fluides","adr"]',j(r));
+  rec(G,'Raccourci « Retour SAV » : écran Objectifs, formulaire ouvert, curseur dans le 1er champ',r.sav.vue==='nx_obj'&&r.sav.ouvert&&r.sav.focus==='nxrt_devis',j(r.sav));
+  rec(G,'Raccourci « Bouteilles dans le camion » : écran Fluides, carte ADR',r.adr.vue==='fluides'&&r.adr.carte,j(r.adr));
+  rec(G,'Icône de l’appli installée : 4 raccourcis (devis, dépannage, retour SAV, objectifs) vers des cibles connues',r.sc.length===4&&r.sc.every(u=>{ const m=/\?ouvrir=([a-z]+)$/.exec(u); return m&&r.cibles.indexOf(m[1])>=0; }),j(r.sc));
+  /* recherche Ctrl K, au clavier */
+  await p.evaluate(()=>go('dash')); await p.keyboard.press('Control+k'); await p.keyboard.type('relevé'); await pause(250);
+  const s1=await p.evaluate(()=>[...document.querySelectorAll('#nxSearchResults [data-nx-search] b')].map(b=>b.textContent));
+  await p.fill('#nxSearch',''); await p.keyboard.type('fluides'); await pause(250);
+  const s2=await p.evaluate(()=>[...document.querySelectorAll('#nxSearchResults [data-nx-search]')].map(e=>e.querySelector('b').textContent+'|'+e.querySelector('small').textContent));
+  await p.evaluate(()=>{ const el=[...document.querySelectorAll('#nxSearchResults [data-nx-search]')].find(e=>/Déclaration annuelle des fluides/.test(e.textContent)); if(el) el.click(); }); await pause(350);
+  const s3=await p.evaluate(()=>({vue:window._curView,carte:!!document.getElementById('nxfb')}));
+  rec(G,'Ctrl K « relevé » : action « Importer mon relevé bancaire »',s1.indexOf('Importer mon relevé bancaire')>=0,j(s1));
+  rec(G,'Ctrl K « fluides » : la déclaration ET l’écran du menu ; le choix ouvre le bon écran',s2.some(x=>/^Déclaration annuelle des fluides\|/.test(x))&&s2.some(x=>/\|Ouvrir l’écran$/.test(x))&&s3.vue==='fluides'&&s3.carte,j({s2,s3}));
+  /* ouverture par l'adresse (raccourci de l'icône) */
+  await p.goto(URL_LOCALE+'index.html?ouvrir=adr'); await pause(2600);
+  const u1=await p.evaluate(()=>({vue:window._curView,search:location.search,carte:!!document.getElementById('nxadr')}));
+  await p.goto(URL_LOCALE+'index.html'); await pause(2300); const v0=await p.evaluate(()=>window._curView);
+  await p.goto(URL_LOCALE+'index.html?ouvrir=inconnu'); await pause(2300);
+  const u2=await p.evaluate(()=>({vue:window._curView,search:location.search})); u2.normal=v0;
+  rec(G,'Adresse « ?ouvrir=adr » : bon écran, paramètre retiré de l’adresse (pas rejoué au rechargement)',u1.vue==='fluides'&&u1.search===''&&u1.carte,j(u1));
+  rec(G,'Adresse avec une valeur inconnue : ignorée (écran de démarrage habituel), paramètre retiré',u2.vue===u2.normal&&u2.vue!=='fluides'&&u2.search==='',j(u2));
+  rec(G,'Aucune erreur JavaScript (raccourcis)',errs.length===0,errs.join(' | '));
   await ctx.close();
 }
 
