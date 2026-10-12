@@ -497,11 +497,11 @@ async function preparer(opts,jour){
     /* une fois lancée (août 2027), l'attestation de capacité devient un point bloquant */
     window.todayISO=()=>'2027-08-01'; nxobjSet('tresoMontant','60000');
     const L2=cl(), cap2=L2.conditions.find(c=>c.key==='capacite'); P.entreprise.attFluides='CAP-FICTIF-001'; const L3=cl(); P.entreprise.attFluides='';
-    return {cons,bloq,c1:L1.couleur,v1:L1.verdict,conseilsNonCoches:L1.conditions.filter(c=>c.conseil&&c.ok!==true).length,sep:/Conseillé — ne bloque pas le feu \(0 \/ 6\)/.test(txt),dash,nb:L1.conditions.filter(c=>!c.conseil).length,
+    return {cons,bloq,c1:L1.couleur,v1:L1.verdict,conseilsNonCoches:L1.conditions.filter(c=>c.conseil&&c.ok!==true).length,sep:/Conseillé — ne bloque pas le feu \(0 \/ 8\)/.test(txt),dash,nb:L1.conditions.filter(c=>!c.conseil).length,
       c2:L2.couleur,cap2:cap2?{ok:cap2.ok,conseil:!!cap2.conseil}:null,c3:L3.couleur}; });
-  rec(G,'6 conseils qui ne bloquent pas : attestation de capacité (avant le SIRET), nom INPI, fiche Google, prévoyance, transport des bouteilles, facture électronique',j(r.cons)===j(['capacite','nomInpi','ficheGoogle','prevoyance','transportFluides','pdp']),j(r.cons));
+  rec(G,'8 conseils qui ne bloquent pas : attestation de capacité (avant le SIRET), nom INPI, fiche Google, prévoyance, transport des bouteilles, RGE QualiPAC, partenaire CEE, facture électronique',j(r.cons)===j(['capacite','nomInpi','ficheGoogle','prevoyance','transportFluides','rge','partenaireCee','pdp']),j(r.cons));
   rec(G,'Nouveaux points bloquants : activités sur la décennale, double authentification',r.bloq.indexOf('decennaleActivites')>=0&&r.bloq.indexOf('deuxfa')>=0&&r.bloq.indexOf('capacite')<0,j(r.bloq));
-  rec(G,'Avant la création : feu vert sans l’attestation de capacité (elle se demande avec le SIRET), conseils non cochés',r.c1==='vert'&&r.conseilsNonCoches===6&&/Tout est prêt/.test(r.v1),j(r));
+  rec(G,'Avant la création : feu vert sans l’attestation de capacité (elle se demande avec le SIRET), conseils non cochés',r.c1==='vert'&&r.conseilsNonCoches===8&&/Tout est prêt/.test(r.v1),j(r));
   rec(G,'Une fois lancée : attestation de capacité de l’entreprise bloquante (orange sans, vert avec)',r.cap2&&r.cap2.conseil===false&&r.cap2.ok===null&&r.c2==='orange'&&r.c3==='vert',j(r));
   rec(G,'Carte : conseils séparés avec leur compteur',r.sep,'');
   rec(G,'Tableau de bord : « points prêts » comptés sans les conseils',new RegExp(r.nb+' / '+r.nb+' points prêts').test(r.dash),r.dash);
