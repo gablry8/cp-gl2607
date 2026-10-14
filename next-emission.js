@@ -284,7 +284,11 @@
       /* 1.12 (recette du 14/10/2026) : déjà facturé depuis un autre appareil pas encore synchronisé ici ? On reprend la
          facture du registre du serveur au lieu d'en émettre une 2e pour le même chantier (une facture ne se supprime pas). */
       return dejaEmis(d).then(function(ex){
-        if(ex){ return rapprocher().then(function(){ BUSY=false; recopierEcrans(d.src); relire(sorte); try{ updateBadges(); }catch(e){}
+        if(ex){ var lent=new Promise(function(ok){ setTimeout(function(){ ok({fait:false}); },25000); });
+          return Promise.race([rapprocher(),lent]).then(function(){ BUSY=false; recopierEcrans(d.src); relire(sorte); try{ updateBadges(); }catch(e){}
+          /* la facture du registre est-elle bien sur le chantier maintenant ? sinon (appareil pas à jour, formulaire ouvert…) on le dit */
+          if(!porte(ex)){ var t0='Une facture existe déjà sur le serveur pour '+(d.src.k==='dep'?'cette intervention':'ce chantier')+' : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nCet appareil n\'est pas encore à jour : quitte cet écran pour synchroniser, puis vérifie. Rien n\'a été émis.';
+            try{ alert(t0); }catch(e){ say(t0); } return null; }
           var t=ex.autre
             ?'Une facture '+(ex.src&&ex.src.w==='acompte'?'d\'acompte':'de solde')+' a été émise pour ce devis depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nElle est maintenant reprise ici. Rien n\'a été émis : vérifie le devis, puis relance « Facturer » si besoin.'
             :'Déjà facturé depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nCette facture est reprise ici. Aucune nouvelle facture n\'a été émise.';
@@ -331,6 +335,15 @@
   }
   /* copies ouvertes à l'écran (devis ouvert, fiche d'intervention) remises à jour après une reprise du registre :
      sinon « Enregistrer » réécrirait l'ancienne version, sans la facture */
+  function porte(ex){
+    try{ var s=ex.src||{};
+      if(s.k==='devis'){ var dv=(DEVIS||[]).find(function(x){ return x.id===s.id; }), f=dv&&(s.w==='acompte'?dv.facAcompte:dv.facSolde); return !!(f&&f.num===ex.num); }
+      if(s.k==='dep'){ var x=(DEP||[]).find(function(o){ return o.id===s.id; }); return !!(x&&x.facNum===ex.num); }
+      if(s.k==='loc'){ var l=(LOC||[]).find(function(o){ return o.id===s.id; }); return !!(l&&l.fac&&l.fac.num===ex.num); }
+      if(s.k==='ctr'){ var c=(CTR||[]).find(function(o){ return o.id===s.id; }); return !!(c&&(c.facs||[]).some(function(f){ return f.num===ex.num; })); }
+    }catch(e){}
+    return true;
+  }
   function recopierEcrans(src){
     try{
       if(src.k==='devis'){ var dv=(DEVIS||[]).find(function(x){ return x.id===src.id; }), cu=window.NXD2&&NXD2.api.cur&&NXD2.api.cur();
@@ -533,11 +546,15 @@
     return window.sb.from('climpilot_documents').select('id,request_id,num,serie,type,origine,date_doc,payload,payload_hash,fichiers_hash').order('cree_le',{ascending:true}).then(function(r){
       if(r.error) return {fait:false,erreur:r.error.message};
       var docs=r.data||[], restaures=[], conflits=[];
+      /* 1.12 (recette du 14/10/2026) : une facture annulée par un avoir TOTAL du registre n'est jamais remise dans son
+         chantier (l'annulation peut venir d'un autre appareil pas encore synchronisé ici) */
+      var annulees={};
+      docs.forEach(function(x){ var p=x&&x.payload||{}; if(x&&x.type==='avoir'&&p.fac&&p.fac.total===true){ var w=String((p.src||{}).w||''); if(w) annulees[w.split('|')[0]]=1; } });
       docs.forEach(function(doc){
         var p=doc.payload||{}, src=p.src||{};
         if(doc.origine==='emis'){
           ajouterRegistre({num:doc.num,mode:'reel',origine:'emis',type:doc.type,serie:doc.serie,date:doc.date_doc,src:src,fac:p.fac?remplaceVide(p.fac,doc.num):null,model:p.model?Object.assign(remplaceVide(p.model,doc.num),{id:doc.num}):null,sid:doc.id,ph:doc.payload_hash,at:Date.now()});
-          var res=restaurer(src,doc.num,p.fac?remplaceVide(p.fac,doc.num):null);
+          var res=annulees[doc.num]?'ok':restaurer(src,doc.num,p.fac?remplaceVide(p.fac,doc.num):null);
           if(res==='restaure') restaures.push(doc.num); else if(res==='conflit') conflits.push(doc.num);
           var a=attentes(); Object.keys(a).forEach(function(k){ if(a[k]&&a[k].rid===doc.request_id) attentePut(k,null); });
         } else {

@@ -529,6 +529,22 @@ try {
   const tY2 = await lire(S7, TEL7, async (x) => { await facturerDevis(x, 'solde'); const d = DEVIS.find((y) => y.id === x); const c = compute(d), tot = (typeof window.nxBillTotal === 'function') ? nxBillTotal(d, c) : c.totalTTC; return { solde: d.facSolde ? d.facSolde.montant : null, attendu: Math.round((tot - d.facAcompte.montant) * 100) / 100 }; }, ids7[1]);
   await TEL7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, TEL7);
   r('Relancé ensuite sur le téléphone : la facture de solde est émise, montant = total − acompte', tY2.solde != null && Math.abs(tY2.solde - tY2.attendu) < 0.011, j(tY2));
+  /* 5. devis Z : acompte F-a émis sur le PC, ANNULÉ par un avoir total (chantier libéré), acompte refait F-b ; le téléphone
+     pas à jour clique « Facturer l'acompte » : il doit reprendre F-b (pas l'acompte annulé), sans 3e facture */
+  const z = ids7[2];
+  PC7.reponses.push(true, true, true, true);
+  const zA = await lire(S7, PC7, async (x) => { await facturerDevis(x, 'acompte'); const d = DEVIS.find((y) => y.id === x); return d.facAcompte ? { num: d.facAcompte.num, montant: d.facAcompte.montant } : null; }, z);
+  await PC7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, PC7);
+  const zAv = await lire(S7, PC7, async (o) => { const r = await nxAvoirEmit({ facNum: o.num, montant: o.montant, motif: 'Erreur sur le montant facturé', liberer: true }); return r && (r.err || (r.av && r.av.num) || r.num || ''); }, zA);
+  await PC7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, PC7);
+  const zB = await lire(S7, PC7, async (x) => { await facturerDevis(x, 'acompte'); const d = DEVIS.find((y) => y.id === x); return d.facAcompte ? d.facAcompte.num : null; }, z);
+  await PC7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, PC7);
+  const nZ = S7.docs.length;
+  TEL7.reponses.push(true, true);
+  const tZ = await lire(S7, TEL7, async (x) => { await facturerDevis(x, 'acompte'); const d = DEVIS.find((y) => y.id === x); return d.facAcompte ? d.facAcompte.num : null; }, z);
+  await TEL7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, TEL7);
+  r('Acompte annulé par un avoir total puis refait sur le PC : le téléphone pas à jour reprend le NOUVEL acompte, pas l’acompte annulé, sans 3e facture',
+    !!zA && /^AV-/.test(String(zAv)) && !!zB && zB !== zA.num && tZ === zB && S7.docs.length === nZ, j({ acompteAnnule: zA && zA.num, avoir: zAv, nouvelAcompte: zB, tel: tZ, docs: S7.docs.map((d) => d.num), dialogue: TEL7.dialogues.slice(-1).map((d) => d.msg.slice(0, 160)) }));
 } catch (e) { r('Avoir partiel et acompte — essai interrompu', false, String(e && e.message || e).slice(0, 300)); }
 S7.etatBloque.tel = false;
 r('Aucune erreur JavaScript (avoir, acompte)', PC7.errs.length + TEL7.errs.length === 0, PC7.errs.concat(TEL7.errs).join(' | '));

@@ -118,7 +118,7 @@ ni fonction serveur (nouvelles clés de synchronisation acceptées telles quelle
   et espèces, « 0 kg » pour une case vide, seuil du voyant, deux « €/h » contradictoires), plus 9 mineurs : tous corrigés et testés
   (suite P, partie P6b et suivantes ; les cas bloquants échouent sur le code d'avant correction).
 - Tests : suite P (`tests/suiteP-ameliorations.mjs`, 138 contrôles), ajoutée à `tests/run-all.sh`.
-- Tests : suite Q (`tests/suiteQ-recette.mjs`, 41 contrôles, environ 12 min), ajoutée à `tests/run-all.sh` ;
+- Tests : suite Q (`tests/suiteQ-recette.mjs`, 42 contrôles, environ 12 min), ajoutée à `tests/run-all.sh` ;
   `CP_Q_PARTIES=4,5` pour n'en jouer qu'une partie.
 - À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.12.zip` : Objectifs & feux (rentabilité, retour SAV, liste de
   lancement), Paramètres (lien d'avis), relevé bancaire (fichier CSV de sa banque, sur des factures d'essai), écran Fluides,
@@ -162,6 +162,9 @@ Relecture indépendante des corrections (même jour) : 4 défauts importants tro
    facture du devis, s'arrête et demande de relancer ; le solde relancé vaut total − acompte (test Q7).
 10. **Fiche ouverte périmée après la reprise** (devis ouvert, fiche d'intervention `curDep`) : recopiée, sinon « Enregistrer »
    effaçait le numéro repris (test Q5).
+11. **Reprise d'une facture annulée** (2e relecture) : le rapprochement remettait dans le chantier une facture annulée par un
+   avoir total fait sur un autre appareil. Une facture visée par un avoir total du registre n'est plus jamais remise ; après
+   une reprise, l'appli vérifie que la facture est bien sur le chantier, sinon elle demande de synchroniser (test Q7).
 Garde-fous ajoutés : pas de synchro dans un onglet en lecture seule ; complément de données reporté pendant un formulaire et
 limité à un rechargement par minute ; registre lu avec un délai maximum de 25 s et les plus récents d'abord (plafond de
 1 000 lignes du serveur) ; clés propres à l'appareil (`NX_BK_SKIP`) jamais renvoyées. À faire plus tard : le rapprochement
