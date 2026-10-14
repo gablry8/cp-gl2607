@@ -33,6 +33,11 @@
   /* 1.10 — écritures suspendues : pendant fn(), ce qui est écrit reste en mémoire puis est jeté
      (essai « à blanc » d'une fonction de facturation, voir next-emission.js) */
   var OVL=null, RO=false;
+  /* 1.12 (14/10 au soir) — gel avant un rechargement de synchro : les données reçues sont déjà écrites, mais l'appli garde
+     en mémoire l'état d'avant jusqu'au rechargement (jusqu'à 1,5 s). Une écriture faite dans cet intervalle (clic, champ
+     quitté, minuterie) remettrait l'état périmé : les clés désignées par geler(f) ne sont plus écrites. */
+  var GEL=null;
+  STORE.geler=function(f){ GEL=typeof f==='function'?f:null; };
   STORE.suspend=function(fn){ var prev=OVL; OVL=new Map(); try{ return fn(); } finally{ OVL=prev; } };
   STORE.lectureSeule=function(){ return RO; };
 
@@ -91,11 +96,13 @@
   function install(){
     SP.getItem=function(k){ if(!isLS(this)) return NATIVE.getItem.call(this,k); k=String(k); if(internal(k)) return NATIVE.getItem.call(this,k); if(OVL&&OVL.has(k)){ var o=OVL.get(k); return o===undefined?null:o; } var v=MAP.get(k); return v===undefined?null:v; };
     SP.setItem=function(k,v){ if(!isLS(this)) return NATIVE.setItem.call(this,k,v); k=String(k); v=String(v); if(internal(k)) return NATIVE.setItem.call(this,k,v);
+      if(GEL&&GEL(k)) return;
       if(OVL){ OVL.set(k,v); return; }
       if(RO){ MAP.set(k,v); return; } /* onglet en lecture seule : rien n'est enregistré */
       if(mode==='local'){ nSet(k,v); MAP.set(k,v); SEQ++; KSM[k]={s:SEQ,h:h(v)}; saveKS(); return; } /* secours : erreurs de place transmises telles quelles */
       MAP.set(k,v); track(k,v,false); queue(k,v); };
     SP.removeItem=function(k){ if(!isLS(this)) return NATIVE.removeItem.call(this,k); k=String(k); if(internal(k)) return NATIVE.removeItem.call(this,k);
+      if(GEL&&GEL(k)) return;
       if(OVL){ OVL.set(k,undefined); return; }
       if(RO){ MAP.delete(k); return; }
       MAP.delete(k); if(mode==='local'){ nDel(k); SEQ++; KSM[k]={s:SEQ,d:1}; saveKS(); return; } track(k,null,true); queue(k,null); };

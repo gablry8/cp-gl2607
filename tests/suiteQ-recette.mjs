@@ -654,6 +654,98 @@ r('Aucune erreur JavaScript (appareil resté ouvert, saisie en cours)', PC9.errs
 await PC9.ctx.close(); await TEL9.ctx.close();
 }
 
+/* ================= Q10 — relecture du 14/10 au soir : écritures pendant une synchro, filtres, fiche client =================
+   1. Entre l'écriture des données reçues et le vrai rechargement (jusqu'à 1,5 s), un clic pouvait réenregistrer l'état
+      d'avant (gardé en mémoire) : la donnée de l'autre appareil était ensuite effacée du serveur.
+   2. Un enregistrement fait PENDANT un envoi était marqué « envoyé » (succès) ou écrasé par la fusion (conflit).
+   3. Une recherche ou un filtre bloquait les mises à jour ; un enregistrement clôturait toute la saisie de l'écran. */
+if (partie(10)) {
+ETAPE = 'Écritures pendant une synchro';
+const S10 = serveurCommun();
+const PC10 = await appareil(S10, 'pc', { mobile: false, horloge: H, connecte: true });
+await PC10.p.evaluate(SEED); await pret(S10, PC10);
+const TEL10 = await appareil(S10, 'tel', { mobile: true, horloge: H, connecte: true }); await calme(S10, TEL10); await TEL10.p.waitForTimeout(1600); await calme(S10, TEL10);
+const ids10 = await lire(S10, TEL10, () => CLIENTS.map((c) => c.id));
+const noteDe = (A, id) => lire(S10, A, (i) => (CLIENTS.find((c) => c.id === i) || {}).notes || '', id);
+const noteSrv = (id) => ((S10.etat.data.cp2_clients || []).find((c) => c.id === id) || {}).notes || '';
+const noter = (A, id, n) => lire(S10, A, ([i, x]) => { CLIENTS.find((c) => c.id === i).notes = x; save(LS.clients, CLIENTS); }, [id, n]);
+try {
+/* a. gel pendant le rechargement */
+await lire(S10, PC10, () => go('dep')); await PC10.p.waitForTimeout(300);
+await lire(S10, TEL10, () => { DEP.push({ id: 'dep-tel-q10', date: '2027-09-15', cNom: 'Client fictif Q10', itype: 'dep', statut: 'a_faire' }); save(LS.dep, DEP); }); await pret(S10, TEL10);
+await PC10.p.evaluate(() => { const o = window.nxStoreReload; window.nxStoreReload = function () { setTimeout(o, 1200); }; });
+await PC10.p.clock.fastForward(21000);
+await PC10.p.evaluate(() => window.dispatchEvent(new Event('focus')));
+let voile = false; for (let i = 0; i < 30 && !voile; i++) { await PC10.p.waitForTimeout(50); voile = await PC10.p.evaluate(() => !!document.getElementById('cpGel')).catch(() => false); }
+const pendant = await PC10.p.evaluate(() => { const r = { dessus: (document.elementFromPoint(innerWidth / 2, innerHeight / 2) || {}).id || '', stale: DEP.some((d) => d.id === 'dep-tel-q10') };
+  try { save(LS.dep, DEP); } catch (e) {} r.dirty = !!localStorage.getItem('cp2_dirty'); return r; }).catch((e) => ({ err: String(e) }));
+const cGel = voile ? await K.capture(PC10, 'pc-voile-mise-a-jour') : null;
+await PC10.p.waitForTimeout(2500); await calme(S10, PC10);
+await noter(PC10, ids10[2], 'Après le rechargement'); await pret(S10, PC10);
+const apresA = { pc: await lire(S10, PC10, () => DEP.some((d) => d.id === 'dep-tel-q10')), srv: (S10.etat.data.cp2_dep || []).some((d) => d.id === 'dep-tel-q10') };
+r('Pendant le rechargement qui suit une mise à jour : voile sur l’écran, l’état d’avant n’est pas réenregistré, l’intervention du téléphone reste partout',
+  voile && pendant.dessus === 'cpGel' && pendant.stale === false && pendant.dirty === false && apresA.pc && apresA.srv, j({ voile, pendant, apresA }), [cGel]);
+/* b. enregistrement pendant un envoi réussi, puis mise à jour reçue avant l'envoi suivant */
+await pret(S10, TEL10); await revenir(S10, TEL10);
+S10.latence.tel = 900;
+await noter(TEL10, ids10[0], 'A pendant envoi');
+await TEL10.p.evaluate(() => { clearTimeout(_pushT); window.__envoi = pushState(); });
+await TEL10.p.waitForTimeout(250);
+await noter(TEL10, ids10[1], 'B pendant envoi');
+await TEL10.p.evaluate(() => window.__envoi); S10.latence.tel = 40;
+const dirtyB = await TEL10.p.evaluate(() => !!localStorage.getItem('cp2_dirty'));
+await noter(PC10, ids10[2], 'C sur le PC'); await pret(S10, PC10);
+await revenir(S10, TEL10); await TEL10.p.waitForTimeout(800); await calme(S10, TEL10); await pret(S10, TEL10);
+const b10 = { dirtyB, telB: await noteDe(TEL10, ids10[1]), srvA: noteSrv(ids10[0]), srvB: noteSrv(ids10[1]), srvC: noteSrv(ids10[2]) };
+r('Enregistré pendant un envoi : reste à envoyer, n’est pas écrasé par la mise à jour suivante, arrive au serveur avec celle du PC',
+  b10.dirtyB && b10.telB === 'B pendant envoi' && b10.srvA === 'A pendant envoi' && b10.srvB === 'B pendant envoi' && b10.srvC === 'C sur le PC', j(b10));
+/* c. enregistrement pendant un envoi qui tombe en conflit (fusion) */
+await noter(PC10, ids10[2], 'C2 sur le PC'); await pret(S10, PC10);
+S10.latence.tel = 900;
+await noter(TEL10, ids10[0], 'A2 conflit');
+await TEL10.p.evaluate(() => { clearTimeout(_pushT); window.__envoi = pushState(); });
+await TEL10.p.waitForTimeout(250);
+await noter(TEL10, ids10[1], 'B2 conflit');
+await TEL10.p.evaluate(() => window.__envoi).catch(() => {}); S10.latence.tel = 40;
+await TEL10.p.waitForTimeout(2500); await calme(S10, TEL10); await pret(S10, TEL10);
+const c10 = { telB: await noteDe(TEL10, ids10[1]), srvA: noteSrv(ids10[0]), srvB: noteSrv(ids10[1]), srvC: noteSrv(ids10[2]) };
+r('Enregistré pendant un envoi qui croise une modification du PC : la fusion garde les trois modifications',
+  c10.telB === 'B2 conflit' && c10.srvA === 'A2 conflit' && c10.srvB === 'B2 conflit' && c10.srvC === 'C2 sur le PC', j(c10));
+/* d. filtre d'affichage touché sur le PC : la mise à jour n'attend pas */
+await revenir(S10, PC10); await lire(S10, PC10, () => go('dep')); await PC10.p.waitForTimeout(300);
+const opt = await PC10.p.evaluate(() => { const s = document.getElementById('depFilter'); const o = [...s.options].find((x) => !x.selected); return o ? o.value : null; });
+if (opt != null) await PC10.p.selectOption('#depFilter', opt);
+await PC10.p.locator('#depSrch').fill('fictif');
+await noter(TEL10, ids10[2], 'Pendant le filtre'); await pret(S10, TEL10);
+let n0 = PC10.chargements;
+await PC10.p.clock.fastForward(21000);
+await PC10.p.evaluate(() => window.dispatchEvent(new Event('focus'))); await PC10.p.waitForTimeout(2600); await calme(S10, PC10);
+const d10 = { note: await noteDe(PC10, ids10[2]), v: await lire(S10, PC10, () => window._curView), recharges: PC10.chargements - n0 };
+r('Filtre et recherche touchés sur le PC (Interventions) : la mise à jour du téléphone arrive quand même, même écran', d10.note === 'Pendant le filtre' && d10.v === 'dep' && d10.recharges >= 1, j(d10));
+/* e. une case enregistrée tout de suite ne clôt pas la saisie d'un autre bloc de l'écran */
+await lire(S10, TEL10, () => go('params')); await TEL10.p.waitForTimeout(300);
+await TEL10.p.locator('#pe_avis').fill('https://g.page/r/q10-pas-enregistre/review');
+await TEL10.p.evaluate(() => { const c = document.createElement('div'); c.className = 'card'; c.innerHTML = '<label><input type="checkbox" id="zzAuto" onchange="CLIENTS[0].vip=this.checked;save(LS.clients,CLIENTS)"> Réglage enregistré tout de suite</label>'; document.getElementById('v-params').prepend(c); });
+await TEL10.p.locator('#zzAuto').click(); await TEL10.p.waitForTimeout(600);
+await noter(PC10, ids10[2], 'Pendant les paramètres'); await pret(S10, PC10);
+n0 = TEL10.chargements;
+await revenir(S10, TEL10); await TEL10.p.waitForTimeout(1500); await calme(S10, TEL10, 10000, { garderEnAttente: true });
+const e10 = { recharges: TEL10.chargements - n0, champ: await lire(S10, TEL10, () => (document.getElementById('pe_avis') || {}).value || '') };
+r('Paramètres : une case enregistrée tout de suite ne fait pas perdre le lien tapé dans un autre bloc (mise à jour en attente)', e10.recharges === 0 && /q10-pas-enregistre/.test(e10.champ), j(e10));
+await lire(S10, TEL10, () => go('nx_journee')); await TEL10.p.waitForTimeout(2600); await calme(S10, TEL10);
+/* f. fiche client ouverte : rouverte sur le même client */
+await lire(S10, TEL10, (id) => openClient360(id), ids10[1]); await TEL10.p.waitForTimeout(400);
+await noter(PC10, ids10[1], 'Vu depuis la fiche'); await pret(S10, PC10);
+n0 = TEL10.chargements;
+await revenir(S10, TEL10); await TEL10.p.waitForTimeout(2600); await calme(S10, TEL10);
+const f10 = await lire(S10, TEL10, () => ({ v: window._curView, cli: window._cliId }));
+const cFiche = await K.capture(TEL10, 'fiche-client-rouverte');
+r('Fiche client ouverte sur le téléphone : après la mise à jour, la même fiche est rouverte', TEL10.chargements > n0 && f10.v === 'client360' && f10.cli === ids10[1] && (await noteDe(TEL10, ids10[1])) === 'Vu depuis la fiche', j(f10), [cFiche]);
+} catch (e) { r('Écritures pendant une synchro — essai interrompu', false, String(e && e.message || e).slice(0, 300)); }
+r('Aucune erreur JavaScript (écritures pendant une synchro)', PC10.errs.length + TEL10.errs.length === 0, PC10.errs.concat(TEL10.errs).join(' | '));
+await PC10.ctx.close(); await TEL10.ctx.close();
+}
+
 K.ecrire();
 await fermerNavigateur();
 ecrireResultats('resQ.json', RES);

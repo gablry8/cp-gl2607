@@ -111,7 +111,7 @@
   function vueApresSynchro(){
     var o=lireSS(CLE_VUE), auto=+(sessionStorage.getItem('__cpRechargeAuto')||0);
     try{ sessionStorage.removeItem(CLE_VUE); }catch(e){}
-    if(!o||typeof o.v!=='string'||!/^[a-z_]{1,40}$/.test(o.v)||/^(wizard|depform)$/.test(o.v)) return;
+    if(!o||typeof o.v!=='string'||!/^[a-z0-9_]{1,40}$/.test(o.v)||/^(wizard|depform|nx_devis2|nx_scan)$/.test(o.v)) return;
     if(Date.now()-auto>10000||Date.now()-(+o.t||0)>15000) return;
     window.__nxVueGardee=true;
     var essais=0;
@@ -119,7 +119,12 @@
       var liste=(typeof LISTV!=='undefined'&&LISTV.indexOf&&LISTV.indexOf(o.v)>=0); /* listes de devis : un seul écran « list » */
       var pret=typeof window.go==='function'&&document.getElementById('v-'+(liste?'list':o.v))&&(!window.nxStore||window.nxStore.ready);
       if(!pret){ if(++essais<40) setTimeout(encore,100); return; }
-      try{ if(window._curView!==o.v) window.go(o.v); }catch(e){ if(++essais<40) setTimeout(encore,150); return; }
+      try{
+        /* fiche client : rouverte sur le même client s'il existe encore, sinon la liste des clients */
+        if(o.v==='client360'){ var cl=typeof CLIENTS!=='undefined'&&o.c&&CLIENTS.some(function(x){ return x&&String(x.id)===o.c; });
+          if(cl&&typeof window.openClient360==='function') window.openClient360(o.c); else window.go('clients'); }
+        else if(window._curView!==o.v) window.go(o.v);
+      }catch(e){ if(++essais<40) setTimeout(encore,150); return; }
       var y=Math.max(0,+o.y||0);
       if(y) setTimeout(function(){ try{ window.scrollTo(0,y); if(document.body) document.body.scrollTop=y; }catch(e){} },150);
       try{ if(typeof window.toast==='function') window.toast('🔄 Mis à jour depuis ton autre appareil'); }catch(e){}

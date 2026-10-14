@@ -85,9 +85,10 @@ Copie d'essai de la 1.10 (bandeau rouge « VERSION D'ESSAI », hébergée à par
 
 ## Recette « deux appareils » simulée (14/10/2026, sans le PC de Gabriel)
 Un PC et un iPhone simulés sur un serveur commun qui suit les règles du vrai (suite Q, `tests/banc-appareils.mjs`). Le
-réseau de la session ne joint pas Supabase : la synchro réelle avec la base de test reste à refaire par Gabriel. 14 défauts
+réseau de la session ne joint pas Supabase : la synchro réelle avec la base de test reste à refaire par Gabriel. 18 défauts
 trouvés et corrigés (liste dans `docs/REPRISE.md`, « Recette deux appareils »), dont, le soir : retour au même écran après
-une mise à jour reçue, texte tapé jamais effacé par une mise à jour, PC resté ouvert mis à jour sans y toucher.
+une mise à jour reçue, texte tapé jamais effacé par une mise à jour, PC resté ouvert mis à jour sans y toucher, et une
+perte de données qui existait déjà (modification faite pendant un envoi).
 
 ## Pas encore essayé
 - **Fonctions `superpdp` et `assistant`** sur le projet de test. Il faut que Gabriel pose la configuration `ALLOWED_USER_IDS` et `ANTHROPIC_API_KEY` dans le tableau de bord, car la session ne peut pas le faire. En attendant, leur comportement est couvert par les tests locaux (`fn-liste-blanche`, `fn-superpdp-envoi`).

@@ -3638,8 +3638,11 @@ const WEB_MATOS=WM.map(r=>({"Nom":r[0],"Catégorie":r[1],"Unité":r[2],"Achat HT
 /* ============ CLOUD — connexion, synchro (Supabase) ============ */
 function cloudLbl(t,cls){const e=document.getElementById('cloudLbl');if(e){e.textContent=t;e.style.color=cls==='ok'?'#7de3a0':cls==='err'?'#ff9d9d':'#8fa3c8';}}
 var _cpEcritures=0; /* compteur d'enregistrements (voir « saisie en cours ») ; var : markDirty peut servir avant cette ligne */
-function markDirty(){_cpEcritures=(_cpEcritures||0)+1;try{localStorage.setItem('cp2_dirty','1');}catch(e){}
-  if(!SESS)return;clearTimeout(_pushT);_pushT=setTimeout(()=>pushState(),4000);cloudLbl('☁ à synchroniser…');}
+function markDirty(){if(window.__cpGel)return;_cpEcritures=(_cpEcritures||0)+1;try{localStorage.setItem('cp2_dirty','1');}catch(e){}
+  if(!SESS)return;clearTimeout(_pushT);_pushT=setTimeout(cpEnvoiSiBesoin,4000);cloudLbl('☁ à synchroniser…');}
+/* envoi automatique : seulement s'il reste une modification à envoyer (un envoi sans rien de neuf change la date du serveur
+   et recharge l'autre appareil pour rien). Le bouton « Synchroniser » appelle pushState directement. */
+function cpEnvoiSiBesoin(){try{if(localStorage.getItem('cp2_dirty'))pushState();}catch(e){}}
 /* --- Synchro sûre multi-appareils (v2, 28/09/2026) ---
    Écriture conditionnelle côté serveur (cp_state_push) : on n'écrase jamais une version plus récente
    d'un autre appareil. En cas de conflit : fusion « 3 voies » par identifiant (base = dernière version
@@ -3647,7 +3650,19 @@ function markDirty(){_cpEcritures=(_cpEcritures||0)+1;try{localStorage.setItem('
    Pendant un formulaire (devis, intervention), la fusion attend la sortie du formulaire. */
 /* 1.12 (14/10 au soir) — l'écran ouvert et sa position sont gardés pour l'onglet : après ce rechargement, l'appli y revient
    (next-raccourcis.js) au lieu de repartir sur « Ma journée ». Jamais pour un formulaire (devis, intervention). */
-function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();try{sessionStorage.setItem('__cpRechargeAuto',String(Date.now()));const v=window._curView;if(typeof v==='string'&&/^[a-z_]{1,40}$/.test(v)&&!/^(wizard|depform)$/.test(v))sessionStorage.setItem('__cpVue',JSON.stringify({v:v,y:Math.round(Math.max(window.scrollY||0,(document.body&&document.body.scrollTop)||0)),t:Date.now()}));}catch(e){}if(window.nxStoreReload)return nxStoreReload();location.reload();}
+function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();cpGeler();try{sessionStorage.setItem('__cpRechargeAuto',String(Date.now()));const v=window._curView;
+  if(typeof v==='string'&&/^[a-z0-9_]{1,40}$/.test(v)&&!/^(wizard|depform|nx_devis2|nx_scan)$/.test(v)){const o={v:v,y:Math.round(Math.max(window.scrollY||0,(document.body&&document.body.scrollTop)||0)),t:Date.now()};
+    if(v==='client360'&&/^[\w.\-]{1,80}$/.test(String(window._cliId||'')))o.c=String(window._cliId);sessionStorage.setItem('__cpVue',JSON.stringify(o));}}catch(e){}
+  if(window.nxStoreReload)return nxStoreReload();location.reload();}
+/* gel jusqu'au rechargement : les données synchronisées ne sont plus écrites (next-store, geler), plus rien n'est marqué
+   à envoyer, et un voile empêche de cliquer sur l'écran d'avant (ses données en mémoire sont périmées). */
+function cpGeler(){if(window.__cpGel)return;window.__cpGel=true;
+  try{if(window.nxStore&&nxStore.geler)nxStore.geler(k=>SYNC_KEYS.indexOf(k)>=0);}catch(e){}
+  try{const a=document.activeElement;if(a&&a!==document.body&&a.blur)a.blur();}catch(e){}
+  try{if(!document.getElementById('cpGel')){const d=document.createElement('div');d.id='cpGel';d.setAttribute('role','status');
+    d.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(15,27,45,.22);display:flex;align-items:flex-end;justify-content:center;padding:0 16px calc(28px + env(safe-area-inset-bottom,0px));cursor:progress';
+    d.innerHTML='<span style="background:#0f1b2d;color:#fff;font:600 14px/1.3 system-ui,-apple-system,sans-serif;padding:10px 16px;border-radius:10px">Mise à jour depuis ton autre appareil…</span>';
+    (document.body||document.documentElement).appendChild(d);}}catch(e){}}
 /* 1.12 (recette du 14/10/2026) — la synchro attend que TOUTE l'appli soit chargée : les modules (next-*.js) déclarent
    leurs données synchronisées en se chargeant ; une synchro partie avant (connexion au démarrage) ne les recevait pas
    et un envoi à ce moment-là les retirait du serveur. */
@@ -3689,7 +3704,8 @@ function cpMerge(B,L,R){ /* B peut être null (premier passage) */
     if(B&&cpSame(l,b)){out[k]=r;return;} out[k]=l;});
   return out;}
 function cpLocalData(){const d={};SYNC_KEYS.forEach(k=>{const v=localStorage.getItem(k);if(v!=null){try{d[k]=JSON.parse(v);}catch(e){}}});return d;}
-function cpWriteLocal(d){SYNC_KEYS.forEach(k=>{if(d&&d[k]!==undefined)localStorage.setItem(k,JSON.stringify(d[k]));});}
+function cpWriteLocal(d){const g=!!(window.__cpGel&&window.nxStore&&nxStore.geler);if(g)nxStore.geler(null);
+  try{SYNC_KEYS.forEach(k=>{if(d&&d[k]!==undefined)localStorage.setItem(k,JSON.stringify(d[k]));});}finally{if(g)nxStore.geler(k=>SYNC_KEYS.indexOf(k)>=0);}}
 function cpSetBase(d,ts){try{localStorage.setItem('cp2_sync_base',JSON.stringify(d));}catch(e){}localStorage.setItem('cp2_sync',JSON.stringify({lastRemote:ts}));}
 /* 1.12 (14/10 au soir) — saisie en cours : une mise à jour reçue (ou une fusion) recharge l'appli, ce qui effacerait ce qui
    est tapé mais pas encore enregistré (Paramètres, fiche client, texte copié depuis une autre appli…). Les champs où
@@ -3697,19 +3713,34 @@ function cpSetBase(d,ts){try{localStorage.setItem('cp2_sync_base',JSON.stringify
    la mise à jour attend le prochain changement d'écran (go). Un enregistrement fait par un geste de l'utilisateur (bouton,
    case, champ quitté) clôt la saisie : rien n'attend alors sans raison, et les envois partent normalement. */
 const _cpChamps=new Set();
-document.addEventListener('input',e=>{try{if(!e.isTrusted)return;const t=e.target;if(!t||!t.closest||!/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||t.closest('.next-command,#loginScreen'))return;_cpChamps.add(t);}catch(x){}},true);
-['click','change','submit'].forEach(ev=>document.addEventListener(ev,e=>{if(!e.isTrusted||!_cpChamps.size)return;const n=_cpEcritures;setTimeout(()=>{if(_cpEcritures!==n)_cpChamps.clear();},400);},true));
+/* pas une saisie : recherches et filtres d'affichage (ils ne font que réafficher une liste, rien à enregistrer) */
+function cpChampFiltre(t){try{if(t.closest('.next-command,#loginScreen,[data-cp-filtre]')||t.type==='search')return true;
+  return /^(render[A-Za-z0-9]*|climSirenSearch)\(/.test(String(t.getAttribute('oninput')||t.getAttribute('onchange')||'').trim());}catch(e){return false;}}
+document.addEventListener('input',e=>{try{if(!e.isTrusted)return;const t=e.target;if(!t||!t.closest||!/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||cpChampFiltre(t))return;_cpChamps.add(t);}catch(x){}},true);
+/* un enregistrement fait par un geste (bouton, case, champ quitté) clôt la saisie du bloc où il a eu lieu (carte, fenêtre,
+   formulaire) ; un bouton hors de tout bloc (« Enregistrer les paramètres ») clôt celle de l'écran. L'enregistrement doit
+   avoir lieu PENDANT le traitement du geste (vu en fin de propagation, sur window) : un champ quitté au moment où l'on
+   clique ailleurs n'est pas crédité de l'enregistrement fait par ce clic. */
+let _cpGeste=null;
+['click','change','submit'].forEach(ev=>{
+  document.addEventListener(ev,e=>{if(e.isTrusted&&_cpChamps.size)_cpGeste={e:e,n:_cpEcritures};},true);
+  window.addEventListener(ev,e=>{const g=_cpGeste;if(!g||g.e!==e)return;_cpGeste=null;if(_cpEcritures===g.n)return;const t=e.target;let bloc=null;
+    try{bloc=t&&t.closest?(t.closest('.card,.modal,form,dialog,details,.next-card')||t.closest('.view')):null;}catch(x){}
+    Array.from(_cpChamps).forEach(c=>{if(c===t||(bloc&&bloc.contains(c)))_cpChamps.delete(c);});});});
 function cpSaisieEnCours(){for(const t of Array.from(_cpChamps)){if(!t.isConnected){_cpChamps.delete(t);continue;}
+  if(!t.getClientRects().length)continue; /* champ caché : fenêtre fermée, bloc replié */
   if(t.tagName==='SELECT'){if(Array.from(t.options).some(o=>o.selected!==o.defaultSelected))return true;continue;}
   if(t.type==='checkbox'||t.type==='radio'){if(t.checked!==t.defaultChecked)return true;continue;}
   if(t.value!==t.defaultValue)return true;}
   return false;}
 function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform'||cpSaisieEnCours();}
 function cpMsgAttente(){const v=window._curView;return v==='wizard'||v==='depform'?'☁ mise à jour reçue — appliquée en sortant du formulaire':'☁ mise à jour reçue — appliquée au prochain changement d\'écran';}
-let _cpPushing=false,_cpAgain=false,_cpPendingReload=false;
+let _cpPushing=false,_cpAgain=false,_cpPendingReload=false,_cpPulling=false;
 async function pullState(){
-  if(!sb||!SESS||window.__cpLectureSeule)return;
+  if(!sb||!SESS||window.__cpLectureSeule||window.__cpGel)return;
   if(cpQuandPret(()=>pullState()))return;
+  if(_cpPulling)return; /* retour sur l'appli + fenêtre au premier plan arrivent ensemble : une seule lecture */
+  _cpPulling=true;
   try{
     const {data:row,error}=await sb.from('climpilot_state').select('data,updated_at').eq('user_id',SESS.user.id).maybeSingle();
     if(error)throw error;
@@ -3729,37 +3760,44 @@ async function pullState(){
     cpWriteLocal(row.data);localStorage.removeItem('cp2_dirty');cpSetBase(row.data,row.updated_at);
     cpReload();
   }catch(e){cloudLbl('⚠ cloud injoignable — mode local','err');}
+  finally{_cpPulling=false;}
 }
 async function pushState(manual,force){
   if(!sb||!SESS){if(manual)toast('Pas connecté au cloud');return;}
-  if(window.__cpLectureSeule)return;
+  if(window.__cpLectureSeule||window.__cpGel)return;
   if(!navigator.onLine){cloudLbl('⌛ hors ligne — synchro à la reconnexion');return;}
   if(cpQuandPret(()=>pushState(manual,force)))return;
   if(_cpPushing){_cpAgain=true;return;}
   _cpPushing=true;
   try{
-    let meta=load('cp2_sync',{}),L=cpGarderAbsentes(cpLocalData()),merged=false;
+    let meta=load('cp2_sync',{}),L=cpGarderAbsentes(cpLocalData()),merged=false;const n0=_cpEcritures;
     for(let tour=0;tour<4;tour++){
       const {data:res,error}=await (window.cpStatePushRpc?window.cpStatePushRpc(L,meta.lastRemote||null,!!force):sb.rpc('cp_state_push',{p_data:L,p_expected:meta.lastRemote||null,p_force:!!force}));
       if(error)throw error;
       if(res&&res.ok){
-        localStorage.removeItem('cp2_dirty');cpSetBase(L,res.updated_at);
+        /* enregistrement fait PENDANT l'envoi : il n'est pas dans ce qui vient de partir → reste à envoyer */
+        const ecritPendant=!merged&&_cpEcritures!==n0;
+        if(!ecritPendant)localStorage.removeItem('cp2_dirty');cpSetBase(L,res.updated_at);
         cloudLbl('✓ synchronisé '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),'ok');
         if(manual)toast('☁️ Synchronisé');
         if(merged){toast('☁️ Changements d\'un autre appareil fusionnés');cpReload();}
+        else if(ecritPendant)_cpAgain=true;
         return;
       }
       /* conflit : un autre appareil a écrit entre-temps */
-      if(cpBusyForm()){_cpPendingReload=true;cloudLbl(window._curView==='wizard'||window._curView==='depform'?'☁ fusion en attente — termine ton formulaire':'☁ fusion en attente — appliquée au prochain changement d\'écran');return;}
+      if(!merged&&cpBusyForm()){_cpPendingReload=true;cloudLbl(window._curView==='wizard'||window._curView==='depform'?'☁ fusion en attente — termine ton formulaire':'☁ fusion en attente — appliquée au prochain changement d\'écran');return;}
       const base=(()=>{try{return JSON.parse(localStorage.getItem('cp2_sync_base')||'null');}catch(e){return null;}})();
+      /* local relu au moment de fusionner : ce qui a été enregistré pendant l'envoi est gardé */
+      if(!merged)L=cpGarderAbsentes(cpLocalData());
       L=cpMerge(base,L,(res&&res.data)||{});
       try{if(Array.isArray(L[LS.custom]))L[LS.custom]=nxDedupPrix(L[LS.custom]);}catch(e){}
-      cpWriteLocal(L);merged=true;meta={lastRemote:res.updated_at};
+      cpWriteLocal(L);merged=true;cpGeler();meta={lastRemote:res.updated_at}; /* mémoire périmée dès maintenant : gel jusqu'au rechargement */
     }
     throw new Error('conflits répétés');
-  }catch(e){cloudLbl('⚠ échec synchro — nouvel essai auto','err');if(manual)toast('⚠ Échec synchro : '+(e.message||'réseau'));
-    clearTimeout(_pushT);_pushT=setTimeout(()=>pushState(),30000);}
-  finally{_cpPushing=false;if(_cpAgain){_cpAgain=false;setTimeout(()=>pushState(),50);}}
+  }catch(e){if(merged){cpReload();return;} /* fusion déjà rangée sur l'appareil : on recharge, l'envoi repartira (reste à envoyer) */
+    cloudLbl('⚠ échec synchro — nouvel essai auto','err');if(manual)toast('⚠ Échec synchro : '+(e.message||'réseau'));
+    clearTimeout(_pushT);_pushT=setTimeout(cpEnvoiSiBesoin,30000);}
+  finally{_cpPushing=false;if(_cpAgain){_cpAgain=false;setTimeout(cpEnvoiSiBesoin,50);}}
 }
 /* en sortant d'un formulaire : appliquer la mise à jour / fusion en attente */
 (function(){const _g=window.go;if(typeof _g!=='function')return;window.go=function(v){_cpChamps.clear();const r=_g.apply(this,arguments);
@@ -3786,7 +3824,7 @@ async function doLogin(){
    revient au premier plan et toutes les minutes ; les données ne sont lues que si elles ont changé. */
 let _cpVerifT=0;
 async function cpVerifierDistant(){
-  if(!sb||!SESS||window.__cpLectureSeule||!navigator.onLine||document.visibilityState!=='visible'||_cpPushing)return;
+  if(!sb||!SESS||window.__cpLectureSeule||window.__cpGel||!navigator.onLine||document.visibilityState!=='visible'||_cpPushing||_cpPulling)return;
   if(window.nxStore&&!nxStore.ready)return;
   if(Date.now()-_cpVerifT<20000)return;_cpVerifT=Date.now();
   try{const {data:row,error}=await sb.from('climpilot_state').select('updated_at').eq('user_id',SESS.user.id).maybeSingle();

@@ -112,13 +112,13 @@ ni fonction serveur (nouvelles clés de synchronisation acceptées telles quelle
   partenaire CEE (PAC air/air et meubles frigorifiques sans RGE) ; détail et sources dans la doc du projet
   `claude/rge-cee-fluides-lancement.md`.
 - `index.html` : champ avisGoogle, chargement des 5 modules (rentab, avis, banque, flubilan, raccourcis).
-  `sw.js` : `climpilot-next-1124-meme-ecran` (après la recette du 14/10 au soir).
+  `sw.js` : `climpilot-next-1125-synchro-sure` (après la recette du 14/10 au soir).
 - Relecture indépendante du 12/10 : 2 défauts bloquants (n° de facture trouvé dans une date ou une référence ; virement déjà
   marqué payé à la main qui payait une 2e facture) et 6 importants (débit lu comme crédit, période déjà déclarée, date des chèques
   et espèces, « 0 kg » pour une case vide, seuil du voyant, deux « €/h » contradictoires), plus 9 mineurs : tous corrigés et testés
   (suite P, partie P6b et suivantes ; les cas bloquants échouent sur le code d'avant correction).
 - Tests : suite P (`tests/suiteP-ameliorations.mjs`, 138 contrôles), ajoutée à `tests/run-all.sh`.
-- Tests : suite Q (`tests/suiteQ-recette.mjs`, 55 contrôles, environ 14 min), ajoutée à `tests/run-all.sh` ;
+- Tests : suite Q (`tests/suiteQ-recette.mjs`, 62 contrôles, environ 15 min), ajoutée à `tests/run-all.sh` ;
   `CP_Q_PARTIES=4,5` pour n'en jouer qu'une partie.
 - À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.12.zip` : Objectifs & feux (rentabilité, retour SAV, liste de
   lancement), Paramètres (lien d'avis), relevé bancaire (fichier CSV de sa banque, sur des factures d'essai), écran Fluides,
@@ -184,6 +184,20 @@ Reprise du 14/10 au soir (suite Q, parties Q8 et Q9 ; chaque test échoue sur le
 14. **PC resté ouvert sans voir les changements du téléphone** : la synchro ne se faisait qu'en sortant de l'appli. Vérification
    légère (`cpVerifierDistant` : `select('updated_at')`, pas les données) quand la fenêtre revient au premier plan et toutes les
    minutes ; les données ne sont lues que si elles ont changé.
+Relecture indépendante de ces trois corrections (même soir, suite Q, partie Q10 ; chaque test échoue sur le code d'avant) :
+15. **Perte d'une modification faite pendant un envoi** (déjà là avant le 14/10) : un enregistrement fait pendant l'appel au
+   serveur était marqué « envoyé » (succès) puis écrasé par la mise à jour suivante, ou écrasé tout de suite par la fusion
+   (conflit). `pushState` relit l'appareil au moment de fusionner, et garde « à envoyer » ce qui a été enregistré pendant
+   l'appel (`_cpEcritures`), avec un nouvel envoi aussitôt.
+16. **État d'avant réenregistré pendant le rechargement** : entre l'écriture des données reçues et le vrai rechargement
+   (jusqu'à 1,5 s), un clic pouvait réenregistrer l'état gardé en mémoire. Gel (`cpGeler`) : voile sur l'écran (« Mise à jour
+   depuis ton autre appareil… »), plus aucune écriture des données synchronisées (`nxStore.geler`, next-store.js), rien
+   marqué à envoyer ; si l'envoi échoue après une fusion, rechargement quand même.
+17. **Recherche ou filtre qui bloquait les mises à jour** (`#srch`, `#depFilter`…, champs dont le seul rôle est de
+   réafficher) et champ d'une fenêtre fermée : ignorés. Un enregistrement clôt seulement la saisie de son bloc (carte,
+   fenêtre, formulaire ; l'écran pour un bouton hors bloc), et seulement s'il a lieu pendant le geste.
+18. **Fiche client** rouverte sur le même client ; une seule lecture du serveur à la fois ; envoi automatique seulement s'il
+   reste quelque chose à envoyer (`cpEnvoiSiBesoin`).
 Gardé volontairement : chaque mise à jour reçue recharge l'appli (environ 1 s). L'appliquer sans recharger demanderait de
 relire à la main toutes les données gardées en mémoire par une quarantaine de modules ; un oubli renverrait au serveur une
 donnée périmée. Le rechargement reste donc, mais on revient au même écran, à la même hauteur, et jamais pendant une saisie.
