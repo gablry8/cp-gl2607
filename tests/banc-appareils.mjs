@@ -162,6 +162,9 @@ export async function appareil(S, dev, opts = {}) {
   await p.exposeFunction('__srvCommun', (d, s, a, b2) => S.appel(d, s, a, b2));
   await p.addInitScript(FAUX_CLIENT, [dev, { id: COMPTE.id, email: COMPTE.email }]);
   if (opts.connecte) await p.addInitScript((u) => { if (!sessionStorage.getItem('__essai_deja')) { sessionStorage.setItem('__essai_deja', '1'); localStorage.setItem('__essai_session', JSON.stringify({ access_token: 'jeton-essai', user: u })); } }, { id: COMPTE.id, email: COMPTE.email });
+  /* vérification de chaque minute (appareil resté ouvert) : coupée par défaut pour que les rechargements tombent aux moments
+     voulus par l'essai ; { verifMinute: true } pour l'essayer (suite Q, parties 9 et 10) */
+  if (!opts.verifMinute) await p.addInitScript(() => { window.__cpSansVerifMinute = true; });
   if (opts.horloge) await p.clock.install({ time: new Date(opts.horloge) });
   await p.goto(URL_LOCALE + 'index.html' + (opts.adresse || ''));
   if (opts.horloge) await p.clock.resume();
@@ -210,8 +213,11 @@ export async function lire(S, A, f, arg) {
   }
 }
 /* sortir de l'appli (onglet caché / téléphone verrouillé) puis y revenir : vrais déclencheurs de la synchro */
-export async function quitter(S, A) { await A.p.evaluate(() => { window.__vis = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); }); await calme(S, A); }
-export async function revenir(S, A) { await A.p.evaluate(() => { window.__vis = 'visible'; document.dispatchEvent(new Event('visibilitychange')); }); await A.p.waitForTimeout(100); await calme(S, A); }
+/* un rechargement de l'appli peut tomber au milieu de l'action (mise à jour reçue) : l'action est rejouée une fois
+   l'appareil calme (après un rechargement, l'appli repart « visible ») */
+async function surPage(S, A, f) { for (let i = 0; ; i++) { try { return await A.p.evaluate(f); } catch (e) { if (i >= 3 || !/context was destroyed|navigation/i.test(String(e && e.message))) throw e; await A.p.waitForTimeout(400); await calme(S, A); } } }
+export async function quitter(S, A) { await surPage(S, A, () => { window.__vis = 'hidden'; document.dispatchEvent(new Event('visibilitychange')); }); await calme(S, A); }
+export async function revenir(S, A) { await surPage(S, A, () => { window.__vis = 'visible'; document.dispatchEvent(new Event('visibilitychange')); }); await A.p.waitForTimeout(100); await calme(S, A); }
 /* fermer puis rouvrir l'appli (rechargement complet, la session reste) */
 export async function rouvrir(S, A) { await A.p.reload(); await A.p.waitForTimeout(1800); await calme(S, A); }
 /* coupure réseau de l'appareil : navigator.onLine (événements offline/online) + appels au serveur refusés */

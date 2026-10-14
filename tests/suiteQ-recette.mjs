@@ -594,9 +594,9 @@ await PC8.ctx.close(); await TEL8.ctx.close();
 if (partie(9)) {
 ETAPE = 'Appareil resté ouvert, saisie en cours';
 const S9 = serveurCommun();
-const PC9 = await appareil(S9, 'pc', { mobile: false, horloge: H, connecte: true });
+const PC9 = await appareil(S9, 'pc', { mobile: false, horloge: H, connecte: true, verifMinute: true });
 await PC9.p.evaluate(SEED); await pret(S9, PC9);
-const TEL9 = await appareil(S9, 'tel', { mobile: true, horloge: H, connecte: true }); await calme(S9, TEL9); await TEL9.p.waitForTimeout(1600); await calme(S9, TEL9);
+const TEL9 = await appareil(S9, 'tel', { mobile: true, horloge: H, connecte: true, verifMinute: true }); await calme(S9, TEL9); await TEL9.p.waitForTimeout(1600); await calme(S9, TEL9);
 try {
 await lire(S9, PC9, () => go('clients')); await PC9.p.waitForTimeout(300);
 /* a. rien n'a changé : la fenêtre revient au premier plan → simple vérification de la date, aucun rechargement */
@@ -662,9 +662,9 @@ await PC9.ctx.close(); await TEL9.ctx.close();
 if (partie(10)) {
 ETAPE = 'Écritures pendant une synchro';
 const S10 = serveurCommun();
-const PC10 = await appareil(S10, 'pc', { mobile: false, horloge: H, connecte: true });
+const PC10 = await appareil(S10, 'pc', { mobile: false, horloge: H, connecte: true, verifMinute: true });
 await PC10.p.evaluate(SEED); await pret(S10, PC10);
-const TEL10 = await appareil(S10, 'tel', { mobile: true, horloge: H, connecte: true }); await calme(S10, TEL10); await TEL10.p.waitForTimeout(1600); await calme(S10, TEL10);
+const TEL10 = await appareil(S10, 'tel', { mobile: true, horloge: H, connecte: true, verifMinute: true }); await calme(S10, TEL10); await TEL10.p.waitForTimeout(1600); await calme(S10, TEL10);
 const ids10 = await lire(S10, TEL10, () => CLIENTS.map((c) => c.id));
 const noteDe = (A, id) => lire(S10, A, (i) => (CLIENTS.find((c) => c.id === i) || {}).notes || '', id);
 const noteSrv = (id) => ((S10.etat.data.cp2_clients || []).find((c) => c.id === id) || {}).notes || '';

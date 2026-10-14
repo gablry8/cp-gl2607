@@ -183,7 +183,8 @@ Reprise du 14/10 au soir (suite Q, parties Q8 et Q9 ; chaque test échoue sur le
    restent marquées à envoyer et sont fusionnées en changeant d'écran.
 14. **PC resté ouvert sans voir les changements du téléphone** : la synchro ne se faisait qu'en sortant de l'appli. Vérification
    légère (`cpVerifierDistant` : `select('updated_at')`, pas les données) quand la fenêtre revient au premier plan et toutes les
-   minutes ; les données ne sont lues que si elles ont changé.
+   minutes ; les données ne sont lues que si elles ont changé. Le banc d'essai coupe la vérification de chaque minute
+   (`__cpSansVerifMinute`), sauf pour les parties Q9 et Q10, pour que les rechargements tombent aux moments voulus.
 Relecture indépendante de ces trois corrections (même soir, suite Q, partie Q10 ; chaque test échoue sur le code d'avant) :
 15. **Perte d'une modification faite pendant un envoi** (déjà là avant le 14/10) : un enregistrement fait pendant l'appel au
    serveur était marqué « envoyé » (succès) puis écrasé par la mise à jour suivante, ou écrasé tout de suite par la fusion

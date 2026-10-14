@@ -3834,7 +3834,8 @@ function afterLogin(){
   const ue=document.getElementById('cloudUser');if(ue&&SESS&&SESS.user)ue.textContent=SESS.user.email;
   cloudLbl('☁ connexion…');
   pullState();
-  if(!window.__cpVerif){window.__cpVerif=1;setInterval(cpVerifierDistant,60000);window.addEventListener('focus',()=>cpVerifierDistant());}
+  if(!window.__cpVerif){window.__cpVerif=1;setInterval(()=>{if(!window.__cpSansVerifMinute)cpVerifierDistant();},60000); /* __cpSansVerifMinute : banc d'essai seulement */
+    window.addEventListener('focus',()=>cpVerifierDistant());}
   window.addEventListener('online',()=>{if(localStorage.getItem('cp2_dirty'))pushState();});
   document.addEventListener('visibilitychange',()=>{if(!SESS)return;
     if(document.visibilityState==='hidden'&&localStorage.getItem('cp2_dirty'))pushState();
