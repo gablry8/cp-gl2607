@@ -152,7 +152,8 @@ Défauts trouvés et corrigés (chaque test échoue sur le code d'avant) :
    l'identique, et le registre réécrit avec une nouvelle date à chaque ouverture, déclenchaient une synchro ; l'autre appareil
    tombait en conflit et se rechargeait. Plus de synchro pour une réécriture identique ; une entrée du registre garde sa date.
 6. **Raccourci de l'icône perdu** (`next-raccourcis.js`) quand l'appli se recharge juste après l'ouverture (mise à jour reçue
-   d'un autre appareil) : la cible est gardée 4 s pour l'onglet (`sessionStorage`).
+   d'un autre appareil) : la cible est gardée quelques secondes pour l'onglet (`sessionStorage`) et rouverte seulement après
+   un rechargement fait par l'appli (`cpReload` pose `__cpRechargeAuto`), jamais après un F5.
 Relecture indépendante des corrections (même jour) : 4 défauts importants trouvés, reproduits par un test puis corrigés :
 7. **Renvois sans fin entre deux appareils** : le serveur (jsonb) rend les objets avec les clés dans un autre ordre ; le
    catalogue de l'assistant, recalculé à l'identique, passait pour modifié (9 envois et 7 rechargements sans rien toucher,
