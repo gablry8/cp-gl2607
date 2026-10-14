@@ -326,6 +326,9 @@ async function preparer(opts){
   /* 3. chacun synchronise : le PC d'abord, le téléphone tombe en conflit → fusion → le PC relit */
   await A.p.evaluate(async c=>{ await pushState(); eval(c); },calme);
   await B.p.evaluate(async c=>{ await pushState(); eval(c); },calme);
+  /* 1.12 (14/10 au soir) : après une fusion, l'appli range le résultat, se recharge, et l'envoie au redémarrage (pullState
+     de la connexion). Ici le rechargement est seulement compté (cpTestReload) : le redémarrage est rejoué à la main. */
+  await B.p.evaluate(async c=>{ await pullState(); eval(c); },calme);
   await A.p.evaluate(async c=>{ await pullState(); eval(c); },calme);
   const lire=X=>X.p.evaluate(()=>{ const o=nxobjEtat(); return {decl:o.decl['2027-T3']||'',envoi:o.envois['2027-10']||''}; });
   const a1=await lire(A), b1=await lire(B);

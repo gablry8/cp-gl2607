@@ -201,7 +201,8 @@ Relecture indépendante de ces trois corrections (même soir, suite Q, partie Q1
 Deuxième relecture (même soir) :
 19. **Appli bloquée sous le voile sur réseau lent** : après une fusion, l'appli renvoyait l'état sous le voile (appel sans
    délai maximum). La fusion est maintenant rangée sur l'appareil avec, pour base, la version du serveur et « à envoyer » ;
-   l'appli se recharge tout de suite et l'envoi repart après, sans conflit.
+   l'appli se recharge tout de suite et l'envoi repart après, sans conflit (suite O, O21 : le redémarrage, simplement compté
+   par `cpTestReload`, est rejoué à la main).
 20. **Rechargement coupé à 1,5 s** (`nxStoreReload`, next-store.js) : une grosse donnée gardée seulement dans IndexedDB
    (iPhone) pouvait ne pas être écrite alors que la date de synchro l'était. Attente portée à 8 s au plus, sous le voile.
 Gardé volontairement : chaque mise à jour reçue recharge l'appli (environ 1 s). L'appliquer sans recharger demanderait de
