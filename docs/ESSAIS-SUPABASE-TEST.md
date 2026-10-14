@@ -78,6 +78,18 @@ Copie d'essai de la 1.10 (bandeau rouge « VERSION D'ESSAI », hébergée à par
 - Message « Serveur injoignable » trompeur quand la fonction `superpdp` n'est pas installée. **Corrigé** : messages distincts (service pas installé, pas de réseau, erreur HTTP), avec une mention spéciale pour un document de démonstration.
 - Décision de facturation réelle définitive même sans aucune facture. **Corrigé** : elle s'annule avant la date de début, ou après si aucune facture réelle n'existe (vérifié sur l'appareil et sur le serveur). Les anciennes factures renommées ESSAI-… reprennent leur numéro.
 
+## Lecture de la base de test le 14/10/2026 (lecture seule)
+- Base de prix synchronisée : **84 lignes pour 28 articles** (3 copies), créées par les appareils et navigateurs successifs.
+  Cause : identifiant tiré au hasard pour les articles de départ. Corrigé en 1.12 (recette du 14/10) : la base est remise en
+  ordre automatiquement à la prochaine ouverture de la copie d'essai. La base réelle n'a pas de doublon (56 lignes, 0 doublon).
+
+## Recette « deux appareils » simulée (14/10/2026, sans le PC de Gabriel)
+Un PC et un iPhone simulés sur un serveur commun qui suit les règles du vrai (suite Q, `tests/banc-appareils.mjs`). Le
+réseau de la session ne joint pas Supabase : la synchro réelle avec la base de test reste à refaire par Gabriel. 20 défauts
+trouvés et corrigés (liste dans `docs/REPRISE.md`, « Recette deux appareils »), dont, le soir : retour au même écran après
+une mise à jour reçue, texte tapé jamais effacé par une mise à jour, PC resté ouvert mis à jour sans y toucher, et une
+perte de données qui existait déjà (modification faite pendant un envoi).
+
 ## Pas encore essayé
 - **Fonctions `superpdp` et `assistant`** sur le projet de test. Il faut que Gabriel pose la configuration `ALLOWED_USER_IDS` et `ANTHROPIC_API_KEY` dans le tableau de bord, car la session ne peut pas le faire. En attendant, leur comportement est couvert par les tests locaux (`fn-liste-blanche`, `fn-superpdp-envoi`).
 - Avec la copie d'essai : iPhone (écran d'accueil, mise à jour, impression des PDF).

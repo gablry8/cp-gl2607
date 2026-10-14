@@ -158,8 +158,10 @@
       window.go=function(v){ var r=_go.apply(this,arguments); try{ if(v==='nx_journee'){ render();
         document.querySelectorAll('.nx-nav-section').forEach(function(s){ var open=s.dataset.section==='home'; s.classList.toggle('open',open); }); } }catch(e){} return r; };
       /* écran d'accueil : on ouvre « Ma journée » au lancement si l'utilisateur n'a encore rien touché */
+      /* après une mise à jour reçue d'un autre appareil, l'appli rouvre l'écran d'avant (next-raccourcis.js) : pas de bascule */
+      function vueARouvrir(){ try{ var o=JSON.parse(sessionStorage.getItem('__cpVue')||'null'); return !!(o&&Date.now()-(+o.t||0)<15000); }catch(e){ return false; } }
       var touched=false; document.addEventListener('click',function(){ touched=true; },{once:true,capture:true});
-      setTimeout(function(){ try{ var v=window._curView; if(!touched && (v==='dash'||v==='nx_cockpit'||!v)) window.go('nx_journee'); }catch(e){} },1400);
+      setTimeout(function(){ try{ var v=window._curView; if(!touched && !window.__nxVueGardee && !vueARouvrir() && (v==='dash'||v==='nx_cockpit'||!v)) window.go('nx_journee'); }catch(e){} },1400);
       document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible' && window._curView==='nx_journee') render(); });
     }catch(e){ try{ console.error('ClimPilot next-journee',e); }catch(_){} }
   }
