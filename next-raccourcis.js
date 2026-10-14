@@ -78,12 +78,20 @@
   });
 
   /* ---------- ouverture par l'adresse ---------- */
+  /* la cible est gardée pour l'onglet (sessionStorage) jusqu'à son ouverture : si l'appli se recharge entre-temps
+     (mise à jour reçue d'un autre appareil à l'ouverture), le raccourci n'est pas perdu (recette du 14/10/2026) */
+  var CLE_RC='__nxrc_cible';
   function depuisAdresse(){
     var q=''; try{ q=new URLSearchParams(location.search).get('ouvrir')||''; }catch(e){ q=''; }
-    if(!q) return;
-    try{ var u=new URL(location.href); u.searchParams.delete('ouvrir'); history.replaceState(history.state,'',u.pathname+u.search+u.hash); }catch(e){}
-    if(!Object.prototype.hasOwnProperty.call(CIBLES,q)) return;
-    setTimeout(function(){ window.nxrcOuvrir(q); },900);
+    if(q){
+      try{ var u=new URL(location.href); u.searchParams.delete('ouvrir'); history.replaceState(history.state,'',u.pathname+u.search+u.hash); }catch(e){}
+      if(!Object.prototype.hasOwnProperty.call(CIBLES,q)) return;
+      try{ sessionStorage.setItem(CLE_RC,JSON.stringify({c:q,t:Date.now()})); }catch(e){}
+    }
+    var o=null; try{ o=JSON.parse(sessionStorage.getItem(CLE_RC)||'null'); }catch(e){ o=null; }
+    if(!o||!Object.prototype.hasOwnProperty.call(CIBLES,o.c)||!(Date.now()-o.t<20000)){ try{ sessionStorage.removeItem(CLE_RC); }catch(e){} return; }
+    /* oubliée 4 s après l'ouverture : un rechargement juste après (synchro) rouvre encore le bon écran */
+    setTimeout(function(){ window.nxrcOuvrir(o.c); setTimeout(function(){ try{ sessionStorage.removeItem(CLE_RC); }catch(e){} },4000); },900);
   }
 
   function boot(){

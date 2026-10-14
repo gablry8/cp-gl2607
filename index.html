@@ -995,9 +995,16 @@ var SYNC_KEYS=['cp2_devis','cp2_clients','cp2_prix_custom','cp2_params_over','cp
 const NX_TXT_KEYS=['cp2_devis','cp2_clients','cp2_dep','cp2_loc','cp2_equip','cp2_contrats','cp2_fluides'];
 const NX_TAG=/<(?=[a-zA-Z\/!?])/g;
 function nxClean(v){if(typeof v==='string')return v.indexOf('<')<0?v:v.replace(NX_TAG,'‹');if(Array.isArray(v)){for(let i=0;i<v.length;i++)v[i]=nxClean(v[i]);return v;}if(v&&typeof v==='object'){for(const k in v)v[k]=nxClean(v[k]);return v;}return v;}
+/* 1.12 (recette du 14/10/2026) : une donnée réécrite à l'identique (catalogue de l'assistant, suivi… au démarrage) ne
+   déclenche plus de synchro : chaque ouverture de l'appli envoyait l'état, l'autre appareil tombait en conflit et se
+   rechargeait, et ainsi de suite. */
 const save=(k,v)=>{let s=JSON.stringify(v);if(NX_TXT_KEYS.indexOf(k)>=0&&/<[a-zA-Z\/!?]/.test(s)){nxClean(v);s=JSON.stringify(v);}
+  let avant=null;try{avant=localStorage.getItem(k);}catch(e){}
   try{localStorage.setItem(k,s);}catch(e){nxStorageFail(k,e);throw e;}
-  if(SYNC_KEYS.indexOf(k)>=0)markDirty();};
+  if(SYNC_KEYS.indexOf(k)>=0&&avant!==s){
+    /* même contenu, clés dans un autre ordre (le serveur, en jsonb, rend les objets triés autrement) : pas une modification */
+    let pareil=false;if(avant!=null&&avant.length===s.length){try{pareil=cpStable(JSON.parse(avant))===cpStable(v);}catch(e){}}
+    if(!pareil)markDirty();}};
 /* stockage de l'appareil plein : on ne laisse JAMAIS croire que c'est enregistré */
 function nxStorageFail(k,e){try{window._nxSaveFail={k,at:Date.now(),msg:String(e&&e.name||e)};
   let b=document.getElementById('nxStoreFail');if(!b){b=document.createElement('div');b.id='nxStoreFail';b.style.cssText='position:fixed;left:8px;right:8px;top:8px;z-index:200000;background:#b42318;color:#fff;border-radius:12px;padding:12px 14px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)';document.body.appendChild(b);}
@@ -1203,14 +1210,18 @@ let CTR=loadArr('cp2_contrats');
 let FLU=loadArr('cp2_fluides');
 let MATOS=load('cp2_tarif_cache2',[]);
 // Catalogue pièces dépannage : articles locaux « à vérifier », prix marché 07/2026 (Spareka, Aircco, guides recharge R32/R410A). Fluides : marge relevée pour coller au marché (R32 vendu 60-80 €/kg).
-function seedPieces(){
-  const customs=load(LS.custom,[]);
-  if(customs.some(p=>p.cat==='Pièces dépannage'))return;
-  const S=[['Condensateur de démarrage',20,40,'unité'],['Contacteur de puissance',20,40,'unité'],['Sonde de température (CTN)',15,40,'unité'],
+/* 1.12 (recette du 14/10/2026) : articles de départ avec un identifiant FIXE. Tiré au hasard sur chaque appareil, il
+   faisait ajouter toute la liste en double à chaque nouvel appareil connecté (constaté sur la base de test : 3 copies). */
+function nxSlugPrix(t){return String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
+const SEED_PIECES=[['Condensateur de démarrage',20,40,'unité'],['Contacteur de puissance',20,40,'unité'],['Sonde de température (CTN)',15,40,'unité'],
    ['Carte électronique (selon modèle)',150,40,'unité'],['Moteur ventilateur',120,40,'unité'],['Turbine ventilateur unité int.',40,40,'unité'],
    ['Télécommande (universelle)',25,40,'unité'],['Pressostat / klixon',35,40,'unité'],['Filtre déshydrateur',15,40,'unité'],
    ['Obus de valve + bouchons',5,40,'unité'],['Fluide R32 (au kg)',30,54,'kg'],['Fluide R410A (au kg)',35,53,'kg']];
-  S.forEach(s=>customs.push({id:uid(),nom:s[0],cat:'Pièces dépannage',unite:s[3],achat:s[1],marge:s[2],verif:true,src:'local'}));
+function seedPiecesEntree(s){return {id:'pd_'+nxSlugPrix(s[0]),nom:s[0],cat:'Pièces dépannage',unite:s[3],achat:s[1],marge:s[2],verif:true,src:'local'};}
+function seedPieces(){
+  const customs=load(LS.custom,[]);
+  if(customs.some(p=>p.cat==='Pièces dépannage'))return;
+  SEED_PIECES.forEach(s=>customs.push(seedPiecesEntree(s)));
   save(LS.custom,customs);
 }
 seedPieces();
@@ -2529,12 +2540,26 @@ function adiaMachine(){return ADIACAT.find(m=>m.id===adiaSel)||ADIACAT[0];}
 function saveAdiacat(){save(LS.adiacat,ADIACAT);save('cp2_adiasel',adiaSel);}
 const ADIA_ART='Fournitures pose rafraîchisseur fixe (raccord eau, fixations, purge)';
 const AART={vanne:"Vanne d'arrêt 1/4 tour DN15",ea:"Clapet anti-pollution type EA DN15 (EN 1717)",red:"Réducteur de pression eau",filtre:"Filtre à tamis lavable",tubeEau:"Tube multicouche Ø16 — arrivée d'eau",tubePvc:"Tube PVC Ø32 — évacuation / vidange",inter:"Interrupteur de proximité IP65",plenum:"Plénum de soufflage + grille grand débit",costiere:"Costière / châssis de pose toiture",solin:"Solin & étanchéité passage toiture",traversee:"Traversée de façade (percement + finition)",extracteur:"Extracteur d'air motorisé (évacuation)",nacelle:"Location nacelle (par jour)",hiver:"Kit hivernage (purge, bouchons, protection)",entr:"Contrat entretien adiabatique — 2 visites/an, par machine (1ʳᵉ année)"};
+function seedAdiaListe(){return [[ADIA_ART,150,40,'unité'],[AART.vanne,8,40,'unité'],[AART.ea,22,40,'unité'],[AART.red,42,40,'unité'],[AART.filtre,18,40,'unité'],[AART.tubeEau,2.2,40,'m'],[AART.tubePvc,2.8,40,'m'],[AART.inter,22,40,'unité'],[AART.plenum,180,35,'unité'],[AART.costiere,320,30,'unité'],[AART.solin,90,40,'forfait'],[AART.traversee,60,40,'unité'],[AART.extracteur,380,30,'unité'],[AART.nacelle,260,15,'unité'],[AART.hiver,25,40,'unité'],[AART.entr,90,50,'unité']];}
+function seedAdiaEntree(s){return {id:'adia_'+nxSlugPrix(s[0]),nom:s[0],cat:'Adiabatique',unite:s[3],achat:s[1],marge:s[2],verif:true,src:'local'};}
 function seedAdiaArticles(){
   const customs=load(LS.custom,[]);let ch=false;
-  const S=[[ADIA_ART,150,40,'unité'],[AART.vanne,8,40,'unité'],[AART.ea,22,40,'unité'],[AART.red,42,40,'unité'],[AART.filtre,18,40,'unité'],[AART.tubeEau,2.2,40,'m'],[AART.tubePvc,2.8,40,'m'],[AART.inter,22,40,'unité'],[AART.plenum,180,35,'unité'],[AART.costiere,320,30,'unité'],[AART.solin,90,40,'forfait'],[AART.traversee,60,40,'unité'],[AART.extracteur,380,30,'unité'],[AART.nacelle,260,15,'unité'],[AART.hiver,25,40,'unité'],[AART.entr,90,50,'unité']];
-  S.forEach(s=>{if(!customs.some(p=>p.nom===s[0])){customs.push({id:uid(),nom:s[0],cat:'Adiabatique',unite:s[3],achat:s[1],marge:s[2],verif:true,src:'local'});ch=true;}});
+  seedAdiaListe().forEach(s=>{if(!customs.some(p=>p.nom===s[0])){customs.push(seedAdiaEntree(s));ch=true;}});
   if(ch)save(LS.custom,customs);
 }
+/* base de prix : copies identiques retirées (même contenu, identifiants différents), et article de départ jamais modifié
+   retiré s'il existe déjà sous le même nom (ancien identifiant, ou version modifiée à la main) — même résultat sur chaque
+   appareil, donc la synchro converge ; un article réellement différent n'est jamais touché */
+function nxDedupPrix(L){if(!Array.isArray(L))return L;
+  const graines={};SEED_PIECES.forEach(s=>{const e=seedPiecesEntree(s);graines[e.id]=cpStable(e);});seedAdiaListe().forEach(s=>{const e=seedAdiaEntree(s);graines[e.id]=cpStable(e);});
+  const sig=x=>{const o=Object.assign({},x);delete o.id;return cpStable(o);};
+  const rang=x=>(graines[x.id]?'1':'0')+String(x.id==null?'':x.id);
+  const vierge=x=>!!graines[x.id]&&graines[x.id]===cpStable(x);
+  const garde={};L.forEach(x=>{if(!x||typeof x!=='object')return;const k=sig(x);if(!garde[k]||rang(x)<rang(garde[k]))garde[k]=x;});
+  let out=L.filter(x=>!x||typeof x!=='object'||garde[sig(x)]===x);
+  const noms={};out.forEach(x=>{if(x&&typeof x==='object'&&!vierge(x))noms[(x.cat||'')+'|'+(x.nom||'')]=1;});
+  return out.filter(x=>!(x&&typeof x==='object'&&vierge(x)&&noms[(x.cat||'')+'|'+(x.nom||'')]));}
+function dedupPrix(){try{const L=load(LS.custom,[]),M=nxDedupPrix(L);if(M.length!==L.length)save(LS.custom,M);}catch(e){}}
 /* psychrométrie — Stull 2011 (Twb), Magnus-Tetens (psat), évolution quasi iso-enthalpique */
 function adiaTwb(T,RH){return T*Math.atan(0.151977*Math.sqrt(RH+8.313659))+Math.atan(T+RH)-Math.atan(RH-1.676331)+0.00391838*Math.pow(RH,1.5)*Math.atan(0.023101*RH)-4.686035;}
 function adiaPsat(T){return 0.6108*Math.exp(17.27*T/(T+237.3));}
@@ -3620,6 +3645,22 @@ function markDirty(){try{localStorage.setItem('cp2_dirty','1');}catch(e){}
    synchronisée, local, cloud) → rien n'est perdu ; ce qui a été supprimé d'un côté reste supprimé.
    Pendant un formulaire (devis, intervention), la fusion attend la sortie du formulaire. */
 function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();if(window.nxStoreReload)return nxStoreReload();location.reload();}
+/* 1.12 (recette du 14/10/2026) — la synchro attend que TOUTE l'appli soit chargée : les modules (next-*.js) déclarent
+   leurs données synchronisées en se chargeant ; une synchro partie avant (connexion au démarrage) ne les recevait pas
+   et un envoi à ce moment-là les retirait du serveur. */
+let _cpAttente=null;
+function cpQuandPret(f){if(!window.nxStore||nxStore.ready)return false;
+  if(!_cpAttente){_cpAttente=[];document.addEventListener('nxstoreready',()=>{const L=_cpAttente||[];_cpAttente=null;L.forEach(g=>{try{g();}catch(e){}});},{once:true});}
+  _cpAttente.push(f);return true;}
+/* données du serveur absentes de cet appareil (clé inconnue d'une autre version de l'appli, ou jamais reçue) :
+   renvoyées telles quelles, jamais retirées du serveur (aucune donnée synchronisée n'est effacée de l'appareil) */
+function cpGarderAbsentes(L){try{const b=JSON.parse(localStorage.getItem('cp2_sync_base')||'null');if(b&&typeof b==='object')Object.keys(b).forEach(k=>{if(L[k]===undefined&&b[k]!==undefined&&!NX_BK_SKIP.test(k))L[k]=b[k];});}catch(e){}return L;}
+/* données reçues avant que l'appareil sache les ranger (mise à jour de l'appli) : rangées maintenant */
+function cpManquantes(d){try{return d&&typeof d==='object'?SYNC_KEYS.filter(k=>d[k]!==undefined&&localStorage.getItem(k)==null):[];}catch(e){return [];}}
+function cpCompleterLocal(d){const L=cpManquantes(d);L.forEach(k=>{try{localStorage.setItem(k,JSON.stringify(d[k]));}catch(e){}});
+  /* une seule fois par minute et par onglet : si le stockage refuse (plein, onglet en lecture seule), pas de rechargement sans fin */
+  let deja=false;try{deja=Date.now()-(+sessionStorage.getItem('__cpComplete')||0)<60000;sessionStorage.setItem('__cpComplete',String(Date.now()));}catch(e){}
+  return L.length&&!deja?L.length:0;}
 function cpStable(v){if(Array.isArray(v))return '['+v.map(cpStable).join(',')+']';
   if(v&&typeof v==='object')return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+cpStable(v[k])).join(',')+'}';
   return JSON.stringify(v===undefined?null:v);}
@@ -3650,7 +3691,8 @@ function cpSetBase(d,ts){try{localStorage.setItem('cp2_sync_base',JSON.stringify
 function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform';}
 let _cpPushing=false,_cpAgain=false,_cpPendingReload=false;
 async function pullState(){
-  if(!sb||!SESS)return;
+  if(!sb||!SESS||window.__cpLectureSeule)return;
+  if(cpQuandPret(()=>pullState()))return;
   try{
     const {data:row,error}=await sb.from('climpilot_state').select('data,updated_at').eq('user_id',SESS.user.id).maybeSingle();
     if(error)throw error;
@@ -3660,7 +3702,10 @@ async function pullState(){
       else cloudLbl('☁ connecté — cloud vide pour l\'instant','ok');
       return;
     }
-    if(row.updated_at===meta.lastRemote){cloudLbl('✓ synchronisé','ok');if(localStorage.getItem('cp2_dirty'))pushState();return;}
+    if(row.updated_at===meta.lastRemote){
+      if(cpManquantes(row.data).length){if(cpBusyForm()){_cpPendingReload=true;cloudLbl('☁ mise à jour reçue — appliquée en sortant du formulaire');return;}
+        if(cpCompleterLocal(row.data)){cloudLbl('✓ synchronisé','ok');cpReload();return;}}
+      cloudLbl('✓ synchronisé','ok');if(localStorage.getItem('cp2_dirty'))pushState();return;}
     const dirty=!!localStorage.getItem('cp2_dirty');
     if(dirty||!meta.lastRemote&&(DEVIS.length||CLIENTS.length||DEP.length)){await pushState();return;} /* modifs locales → écriture conditionnelle + fusion */
     if(cpBusyForm()){_cpPendingReload=true;cloudLbl('☁ mise à jour reçue — appliquée en sortant du formulaire');return;}
@@ -3670,11 +3715,13 @@ async function pullState(){
 }
 async function pushState(manual,force){
   if(!sb||!SESS){if(manual)toast('Pas connecté au cloud');return;}
+  if(window.__cpLectureSeule)return;
   if(!navigator.onLine){cloudLbl('⌛ hors ligne — synchro à la reconnexion');return;}
+  if(cpQuandPret(()=>pushState(manual,force)))return;
   if(_cpPushing){_cpAgain=true;return;}
   _cpPushing=true;
   try{
-    let meta=load('cp2_sync',{}),L=cpLocalData(),merged=false;
+    let meta=load('cp2_sync',{}),L=cpGarderAbsentes(cpLocalData()),merged=false;
     for(let tour=0;tour<4;tour++){
       const {data:res,error}=await (window.cpStatePushRpc?window.cpStatePushRpc(L,meta.lastRemote||null,!!force):sb.rpc('cp_state_push',{p_data:L,p_expected:meta.lastRemote||null,p_force:!!force}));
       if(error)throw error;
@@ -3689,6 +3736,7 @@ async function pushState(manual,force){
       if(cpBusyForm()){_cpPendingReload=true;cloudLbl('☁ fusion en attente — termine ton formulaire');return;}
       const base=(()=>{try{return JSON.parse(localStorage.getItem('cp2_sync_base')||'null');}catch(e){return null;}})();
       L=cpMerge(base,L,(res&&res.data)||{});
+      try{if(Array.isArray(L[LS.custom]))L[LS.custom]=nxDedupPrix(L[LS.custom]);}catch(e){}
       cpWriteLocal(L);merged=true;meta={lastRemote:res.updated_at};
     }
     throw new Error('conflits répétés');
@@ -3738,7 +3786,7 @@ async function initCloud(){
 
 /* ============ INIT ============ */
 window._curView='dash';
-seedAdiaArticles();rebuildPrix();
+seedAdiaArticles();dedupPrix();rebuildPrix();
 renderDash();updateBadges();
 syncNotion();
 if(pinActive())lockApp();

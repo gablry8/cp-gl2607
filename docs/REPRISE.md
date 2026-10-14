@@ -112,16 +112,63 @@ ni fonction serveur (nouvelles clés de synchronisation acceptées telles quelle
   partenaire CEE (PAC air/air et meubles frigorifiques sans RGE) ; détail et sources dans la doc du projet
   `claude/rge-cee-fluides-lancement.md`.
 - `index.html` : champ avisGoogle, chargement des 5 modules (rentab, avis, banque, flubilan, raccourcis).
-  `sw.js` : `climpilot-next-1122-raccourcis`.
+  `sw.js` : `climpilot-next-1123-recette` (après la recette du 14/10).
 - Relecture indépendante du 12/10 : 2 défauts bloquants (n° de facture trouvé dans une date ou une référence ; virement déjà
   marqué payé à la main qui payait une 2e facture) et 6 importants (débit lu comme crédit, période déjà déclarée, date des chèques
   et espèces, « 0 kg » pour une case vide, seuil du voyant, deux « €/h » contradictoires), plus 9 mineurs : tous corrigés et testés
   (suite P, partie P6b et suivantes ; les cas bloquants échouent sur le code d'avant correction).
 - Tests : suite P (`tests/suiteP-ameliorations.mjs`, 138 contrôles), ajoutée à `tests/run-all.sh`.
+- Tests : suite Q (`tests/suiteQ-recette.mjs`, 41 contrôles, environ 12 min), ajoutée à `tests/run-all.sh` ;
+  `CP_Q_PARTIES=4,5` pour n'en jouer qu'une partie.
 - À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.12.zip` : Objectifs & feux (rentabilité, retour SAV, liste de
   lancement), Paramètres (lien d'avis), relevé bancaire (fichier CSV de sa banque, sur des factures d'essai), écran Fluides,
   menus « Créer » / « Outils » et recherche Ctrl K.
 - Mise en production : fusion de cette branche (elle contient la 1.11) dans `main` par Gabriel, puis F5 sur chaque appareil.
+
+### Recette « deux appareils » du 14/10/2026 (suite Q)
+Banc d'essai `tests/banc-appareils.mjs` : un PC (1300 px) et un iPhone 13 simulés, sur UN serveur commun simulé côté Node
+(état : règle de `cp_state_push` ; registre des factures : règles de `cp_emettre_document`, numérotation partagée). Le client
+Supabase de l'appli est remplacé avant son chargement : vrai démarrage (`initCloud`), vrai écran de connexion, rechargements
+de l'appli compris. Coupure réseau par appareil, retour sur l'appli (`visibilitychange`), réseau lent, modules lents.
+Scénarios de `tests/suiteQ-recette.mjs` (captures et `etapes.json` dans `<CP_TEST_OUT>/recette/`, rapport pour Gabriel) :
+ouverture d'un 2e appareil, ancienne version restée en cache, connexion d'un nouvel appareil, journée complète (facturation
+réelle démarrée, factures depuis les deux appareils, même devis facturé des deux côtés, chèque, relevé bancaire importé sur
+les deux, retour SAV, avis, fluides hors ligne, bouteilles, liste de lancement, hors ligne, devis ouvert pendant une mise à
+jour, suppression, raccourcis, tous les écrans, contrôle du registre), dépannage préparé sur le PC et facturé sur le téléphone.
+Défauts trouvés et corrigés (chaque test échoue sur le code d'avant) :
+1. **Synchro partie avant le chargement des modules** (`index.html`, `cpQuandPret`) : à l'ouverture, les données des modules
+   (retours SAV, bouteilles, registre des factures…) n'étaient pas reçues, et un envoi à ce moment-là les retirait du serveur.
+   La synchro attend maintenant l'événement `nxstoreready`.
+2. **Données inconnues retirées du serveur** (`cpGarderAbsentes`, `cpCompleterLocal`) : un appareil resté sur une ancienne
+   version (ou qui n'avait pas encore reçu une donnée) renvoyait l'état sans elle. Une donnée présente sur le serveur et absente
+   de l'appareil est maintenant renvoyée telle quelle, et rangée dès que l'appareil sait la lire.
+3. **Prix en double à chaque nouvel appareil** (`seedPieces`, `seedAdiaArticles`, `nxDedupPrix`) : les articles de départ
+   avaient un identifiant tiré au hasard sur chaque appareil (base de test : 84 lignes pour 28 articles). Identifiants fixes
+   (`pd_…`, `adia_…`) et nettoyage des copies identiques, au démarrage et à chaque fusion ; un article modifié à la main est gardé.
+4. **Même chantier facturé deux fois** (`next-emission.js`, `dejaEmis`) : un appareil pas encore synchronisé émettait une
+   2e facture (F-…-003 puis F-…-004) pour un devis ou un dépannage déjà facturé ailleurs. Avant d'émettre, l'appli lit le
+   registre du serveur (sélection légère `src:payload->src`, sinon lecture complète) et reprend la facture existante.
+5. **Rechargements en chaîne entre deux appareils** (`save` dans `index.html`, `ajouterRegistre`) : une donnée réécrite à
+   l'identique, et le registre réécrit avec une nouvelle date à chaque ouverture, déclenchaient une synchro ; l'autre appareil
+   tombait en conflit et se rechargeait. Plus de synchro pour une réécriture identique ; une entrée du registre garde sa date.
+6. **Raccourci de l'icône perdu** (`next-raccourcis.js`) quand l'appli se recharge juste après l'ouverture (mise à jour reçue
+   d'un autre appareil) : la cible est gardée 4 s pour l'onglet (`sessionStorage`).
+Relecture indépendante des corrections (même jour) : 4 défauts importants trouvés, reproduits par un test puis corrigés :
+7. **Renvois sans fin entre deux appareils** : le serveur (jsonb) rend les objets avec les clés dans un autre ordre ; le
+   catalogue de l'assistant, recalculé à l'identique, passait pour modifié (9 envois et 7 rechargements sans rien toucher,
+   test Q6). `save` compare maintenant le contenu sans tenir compte de l'ordre des clés (`cpStable`). Le banc simule cet ordre.
+8. **Avoir partiel** : seul un avoir TOTAL (`payload->fac->total`) rend un chantier refacturable depuis un autre appareil.
+9. **Solde calculé sans l'acompte émis ailleurs** (et acompte après un solde émis ailleurs) : l'appli reprend l'autre
+   facture du devis, s'arrête et demande de relancer ; le solde relancé vaut total − acompte (test Q7).
+10. **Fiche ouverte périmée après la reprise** (devis ouvert, fiche d'intervention `curDep`) : recopiée, sinon « Enregistrer »
+   effaçait le numéro repris (test Q5).
+Garde-fous ajoutés : pas de synchro dans un onglet en lecture seule ; complément de données reporté pendant un formulaire et
+limité à un rechargement par minute ; registre lu avec un délai maximum de 25 s et les plus récents d'abord (plafond de
+1 000 lignes du serveur) ; clés propres à l'appareil (`NX_BK_SKIP`) jamais renvoyées. À faire plus tard : le rapprochement
+au démarrage lit encore le registre du plus ancien au plus récent (au-delà de 1 000 factures, les plus récentes manqueraient).
+Constaté, pas changé : chaque mise à jour reçue d'un autre appareil recharge l'appli (environ 1 s), sauf pendant la saisie d'un
+devis ou d'un dépannage (appliquée en sortant). À revoir plus tard (appliquer sans recharger), pas urgent.
+Pas faisable ici (réseau fermé vers Supabase) : synchro réelle avec la base de test, iPhone réel, Netlify, relevé de sa banque.
 
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 

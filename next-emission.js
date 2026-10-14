@@ -106,9 +106,14 @@
     return window.sb.from('climpilot_documents').select('html,xml').eq('id',e.sid).maybeSingle().then(function(r){
       var d=r&&r.data; if(d&&(d.xml||d.html)){ fichiersPut(num,{html:d.html||'',xml:d.xml||null,at:Date.now(),mode:e.mode}); return true; } return false; },function(){ return false; });
   };
+  /* 1.12 (recette du 14/10/2026) : une entrée déjà connue garde sa date d'ajout et n'est réécrite que si elle change.
+     Le rapprochement fait à chaque ouverture réécrivait tout le registre (nouvelle date) : chaque appareil renvoyait
+     alors l'état, l'autre tombait en conflit et se rechargeait. */
   function ajouterRegistre(e){
     var a=reg(); e.id=(e.mode==='demo'?'demo|':'')+e.num+'|'+srcCle(e.src);
-    var i=a.findIndex(function(x){ return x.id===e.id; }); if(i>=0) a[i]=Object.assign(a[i],e); else a.push(e);
+    var i=a.findIndex(function(x){ return x.id===e.id; });
+    if(i>=0){ var avant=JSON.stringify(a[i]), n=Object.assign({},a[i],e); if(a[i].at!=null) n.at=a[i].at; if(JSON.stringify(n)===avant) return; a[i]=n; }
+    else a.push(e);
     regPut(a);
   }
   /* doublons : un même numéro porté par deux documents différents */
@@ -276,11 +281,76 @@
     BUSY=true; say('🔐 Émission de la facture… (numéro attribué par le serveur)');
     return sonde(true).then(function(info){
       if(!info.ok){ BUSY=false; bloque(info); relire(sorte); return null; }
-      return demanderServeur(d,'F',d.type).then(function(r){ BUSY=false; if(!r){ relire(sorte); return null; }
-        if(r.differe) return reprendreServeur(sorte,d,r.doc);
-        return finir(S,d,r.doc.num,'reel',r.doc); });
+      /* 1.12 (recette du 14/10/2026) : déjà facturé depuis un autre appareil pas encore synchronisé ici ? On reprend la
+         facture du registre du serveur au lieu d'en émettre une 2e pour le même chantier (une facture ne se supprime pas). */
+      return dejaEmis(d).then(function(ex){
+        if(ex){ return rapprocher().then(function(){ BUSY=false; recopierEcrans(d.src); relire(sorte); try{ updateBadges(); }catch(e){}
+          var t=ex.autre
+            ?'Une facture '+(ex.src&&ex.src.w==='acompte'?'d\'acompte':'de solde')+' a été émise pour ce devis depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nElle est maintenant reprise ici. Rien n\'a été émis : vérifie le devis, puis relance « Facturer » si besoin.'
+            :'Déjà facturé depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nCette facture est reprise ici. Aucune nouvelle facture n\'a été émise.';
+          try{ alert(t); }catch(e){ say(t); } return ex.autre?null:ex.num; }); }
+        return demanderServeur(d,'F',d.type).then(function(r){ BUSY=false; if(!r){ relire(sorte); return null; }
+          if(r.differe) return reprendreServeur(sorte,d,r.doc);
+          return finir(S,d,r.doc.num,'reel',r.doc); });
+      });
     }).catch(function(e){ BUSY=false; bloque({raison:'serveur',detail:String(e&&e.message||e)}); relire(sorte); return null; });
   }
+  /* facture émise ailleurs pour le même chantier / la même intervention (même source), ni annulée ici ni par un avoir du
+     registre ; une demande de CET appareil restée sans réponse suit son propre chemin (même request_id, voir demanderServeur) */
+  function annuleIci(src,num){
+    try{
+      if(src.k==='devis') return numsAnnules((DEVIS||[]).find(function(x){ return x.id===src.id; }),'facAnnulees').indexOf(num)>=0;
+      if(src.k==='dep') return numsAnnules((DEP||[]).find(function(x){ return x.id===src.id; }),'facAnnulees').indexOf(num)>=0;
+      if(src.k==='loc') return numsAnnules((LOC||[]).find(function(x){ return x.id===src.id; }),'facAnnulees').indexOf(num)>=0;
+      if(src.k==='ctr') return numsAnnules((CTR||[]).find(function(x){ return x.id===src.id; }),'facsAnnulees').indexOf(num)>=0;
+    }catch(e){}
+    return false;
+  }
+  function dejaEmis(d){
+    if(!d||!d.src||!d.src.k||d.type==='avoir') return Promise.resolve(null);
+    var cle=srcCle(d.src), a=attentes()[cle], rid0=a&&a.rid;
+    var delai=new Promise(function(ok){ setTimeout(function(){ ok(null); },25000); });
+    return Promise.race([sourcesRegistre(),delai]).then(function(docs){
+      if(!docs) return null; /* registre illisible ou trop lent : le serveur décide, comme avant */
+      /* seul un avoir TOTAL annule la facture ; après un avoir partiel, elle reste due (pas de 2e facture) */
+      var annulees={};
+      docs.forEach(function(x){ if(x&&x.type==='avoir'&&x.avt===true){ var w=String((x.src||{}).w||''); if(w) annulees[w.split('|')[0]]=1; } });
+      var vivantes=docs.filter(function(x){ return x&&x.origine==='emis'&&x.serie==='F'&&x.request_id!==rid0&&!annulees[x.num]&&!annuleIci(x.src||{},x.num); });
+      var L=vivantes.filter(function(x){ return srcCle(x.src)===cle; });
+      if(L.length) return L[L.length-1];
+      /* devis : l'autre facture (acompte ou solde) émise ailleurs et inconnue ici — un solde calculé sans l'acompte, ou un
+         acompte après le solde, facturerait deux fois la même somme */
+      if(d.src.k==='devis'){
+        var dv=(DEVIS||[]).find(function(x){ return x.id===d.src.id; }), connus={};
+        if(dv) [dv.facAcompte,dv.facSolde].forEach(function(f){ if(f&&f.num) connus[f.num]=1; });
+        var A=vivantes.filter(function(x){ var s=x.src||{}; return s.k==='devis'&&s.id===d.src.id&&String(s.w||'')!==String(d.src.w||'')&&!connus[x.num]; });
+        if(A.length){ var o=A[A.length-1]; o.autre=true; return o; }
+      }
+      return null;
+    },function(){ return null; });
+  }
+  /* copies ouvertes à l'écran (devis ouvert, fiche d'intervention) remises à jour après une reprise du registre :
+     sinon « Enregistrer » réécrirait l'ancienne version, sans la facture */
+  function recopierEcrans(src){
+    try{
+      if(src.k==='devis'){ var dv=(DEVIS||[]).find(function(x){ return x.id===src.id; }), cu=window.NXD2&&NXD2.api.cur&&NXD2.api.cur();
+        [cu,(typeof cur!=='undefined'?cur:null)].forEach(function(o){ if(dv&&o&&o.id===dv.id&&o!==dv) ['facAcompte','facSolde'].forEach(function(k){ if(dv[k]) o[k]=cl(dv[k]); }); }); }
+      if(src.k==='dep'&&typeof curDep!=='undefined'&&curDep&&curDep.id===src.id){ var x=(DEP||[]).find(function(o){ return o.id===src.id; });
+        if(x&&x!==curDep){ curDep.facNum=x.facNum; curDep.facDate=x.facDate; curDep.statut=x.statut; } }
+    }catch(e){}
+  }
+  /* registre du serveur, sans le contenu des factures : seulement leur source (léger sur le téléphone) ; si la sélection
+     d'un champ JSON était refusée, lecture complète comme le rapprochement */
+  function sourcesRegistre(){
+    var q=function(sel){ return window.sb.from('climpilot_documents').select(sel).order('cree_le',{ascending:false}); };
+    var trier=function(L){ return L.slice().reverse(); }; /* les plus récents d'abord côté serveur (plafond de lignes), puis dans l'ordre */
+    return q('id,request_id,num,serie,type,origine,date_doc,src:payload->src,avt:payload->fac->total').then(function(r){
+      if(r&&!r.error&&Array.isArray(r.data)) return trier(r.data.map(function(x){ x.src=x.src||{}; x.avt=x.avt===true; return x; }));
+      return q('id,request_id,num,serie,type,origine,date_doc,payload').then(function(r2){
+        if(!r2||r2.error) return null; return trier((r2.data||[]).map(function(x){ var p=x.payload||{}; x.src=p.src||{}; x.avt=!!(p.fac&&p.fac.total===true); return x; })); });
+    });
+  }
+  window.nxEmisDejaEmis=dejaEmis;
   function relire(sorte){ try{ if(sorte==='dep') loadDepForm(); if(sorte==='devis') renderFBloc(); }catch(e){} }
   function bloque(info){
     var t='Facture NON émise : '+(RAISON[info.raison]||'serveur indisponible')+(info.detail?' ('+info.detail+')':'')+'.\n\nRien n\'a été facturé : réessaie quand le serveur répond (le même clic reprendra la même demande, sans créer de doublon).';
