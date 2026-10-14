@@ -112,7 +112,7 @@ ni fonction serveur (nouvelles clés de synchronisation acceptées telles quelle
   partenaire CEE (PAC air/air et meubles frigorifiques sans RGE) ; détail et sources dans la doc du projet
   `claude/rge-cee-fluides-lancement.md`.
 - `index.html` : champ avisGoogle, chargement des 5 modules (rentab, avis, banque, flubilan, raccourcis).
-  `sw.js` : `climpilot-next-1125-synchro-sure` (après la recette du 14/10 au soir).
+  `sw.js` : `climpilot-next-1126-synchro-sure` (après la recette du 14/10 au soir).
 - Relecture indépendante du 12/10 : 2 défauts bloquants (n° de facture trouvé dans une date ou une référence ; virement déjà
   marqué payé à la main qui payait une 2e facture) et 6 importants (débit lu comme crédit, période déjà déclarée, date des chèques
   et espèces, « 0 kg » pour une case vide, seuil du voyant, deux « €/h » contradictoires), plus 9 mineurs : tous corrigés et testés
@@ -198,6 +198,12 @@ Relecture indépendante de ces trois corrections (même soir, suite Q, partie Q1
    fenêtre, formulaire ; l'écran pour un bouton hors bloc), et seulement s'il a lieu pendant le geste.
 18. **Fiche client** rouverte sur le même client ; une seule lecture du serveur à la fois ; envoi automatique seulement s'il
    reste quelque chose à envoyer (`cpEnvoiSiBesoin`).
+Deuxième relecture (même soir) :
+19. **Appli bloquée sous le voile sur réseau lent** : après une fusion, l'appli renvoyait l'état sous le voile (appel sans
+   délai maximum). La fusion est maintenant rangée sur l'appareil avec, pour base, la version du serveur et « à envoyer » ;
+   l'appli se recharge tout de suite et l'envoi repart après, sans conflit.
+20. **Rechargement coupé à 1,5 s** (`nxStoreReload`, next-store.js) : une grosse donnée gardée seulement dans IndexedDB
+   (iPhone) pouvait ne pas être écrite alors que la date de synchro l'était. Attente portée à 8 s au plus, sous le voile.
 Gardé volontairement : chaque mise à jour reçue recharge l'appli (environ 1 s). L'appliquer sans recharger demanderait de
 relire à la main toutes les données gardées en mémoire par une quarantaine de modules ; un oubli renverrait au serveur une
 donnée périmée. Le rechargement reste donc, mais on revient au même écran, à la même hauteur, et jamais pendant une saisie.

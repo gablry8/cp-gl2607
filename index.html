@@ -3770,32 +3770,29 @@ async function pushState(manual,force){
   if(_cpPushing){_cpAgain=true;return;}
   _cpPushing=true;
   try{
-    let meta=load('cp2_sync',{}),L=cpGarderAbsentes(cpLocalData()),merged=false;const n0=_cpEcritures;
-    for(let tour=0;tour<4;tour++){
-      const {data:res,error}=await (window.cpStatePushRpc?window.cpStatePushRpc(L,meta.lastRemote||null,!!force):sb.rpc('cp_state_push',{p_data:L,p_expected:meta.lastRemote||null,p_force:!!force}));
-      if(error)throw error;
-      if(res&&res.ok){
-        /* enregistrement fait PENDANT l'envoi : il n'est pas dans ce qui vient de partir → reste à envoyer */
-        const ecritPendant=!merged&&_cpEcritures!==n0;
-        if(!ecritPendant)localStorage.removeItem('cp2_dirty');cpSetBase(L,res.updated_at);
-        cloudLbl('✓ synchronisé '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),'ok');
-        if(manual)toast('☁️ Synchronisé');
-        if(merged){toast('☁️ Changements d\'un autre appareil fusionnés');cpReload();}
-        else if(ecritPendant)_cpAgain=true;
-        return;
-      }
-      /* conflit : un autre appareil a écrit entre-temps */
-      if(!merged&&cpBusyForm()){_cpPendingReload=true;cloudLbl(window._curView==='wizard'||window._curView==='depform'?'☁ fusion en attente — termine ton formulaire':'☁ fusion en attente — appliquée au prochain changement d\'écran');return;}
-      const base=(()=>{try{return JSON.parse(localStorage.getItem('cp2_sync_base')||'null');}catch(e){return null;}})();
-      /* local relu au moment de fusionner : ce qui a été enregistré pendant l'envoi est gardé */
-      if(!merged)L=cpGarderAbsentes(cpLocalData());
-      L=cpMerge(base,L,(res&&res.data)||{});
-      try{if(Array.isArray(L[LS.custom]))L[LS.custom]=nxDedupPrix(L[LS.custom]);}catch(e){}
-      cpWriteLocal(L);merged=true;cpGeler();meta={lastRemote:res.updated_at}; /* mémoire périmée dès maintenant : gel jusqu'au rechargement */
+    const meta=load('cp2_sync',{}),L=cpGarderAbsentes(cpLocalData()),n0=_cpEcritures;
+    const {data:res,error}=await (window.cpStatePushRpc?window.cpStatePushRpc(L,meta.lastRemote||null,!!force):sb.rpc('cp_state_push',{p_data:L,p_expected:meta.lastRemote||null,p_force:!!force}));
+    if(error)throw error;
+    if(res&&res.ok){
+      /* enregistrement fait PENDANT l'envoi : il n'est pas dans ce qui vient de partir → reste à envoyer */
+      const ecritPendant=_cpEcritures!==n0;
+      if(!ecritPendant)localStorage.removeItem('cp2_dirty');cpSetBase(L,res.updated_at);
+      cloudLbl('✓ synchronisé '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),'ok');
+      if(manual)toast('☁️ Synchronisé');
+      if(ecritPendant)_cpAgain=true;
+      return;
     }
-    throw new Error('conflits répétés');
-  }catch(e){if(merged){cpReload();return;} /* fusion déjà rangée sur l'appareil : on recharge, l'envoi repartira (reste à envoyer) */
-    cloudLbl('⚠ échec synchro — nouvel essai auto','err');if(manual)toast('⚠ Échec synchro : '+(e.message||'réseau'));
+    /* conflit : un autre appareil a écrit entre-temps */
+    if(cpBusyForm()){_cpPendingReload=true;cloudLbl(window._curView==='wizard'||window._curView==='depform'?'☁ fusion en attente — termine ton formulaire':'☁ fusion en attente — appliquée au prochain changement d\'écran');return;}
+    const base=(()=>{try{return JSON.parse(localStorage.getItem('cp2_sync_base')||'null');}catch(e){return null;}})();
+    /* appareil relu au moment de fusionner : ce qui a été enregistré pendant l'envoi est gardé */
+    const R=(res&&res.data)||{};let M=cpMerge(base,cpGarderAbsentes(cpLocalData()),R);
+    try{if(Array.isArray(M[LS.custom]))M[LS.custom]=nxDedupPrix(M[LS.custom]);}catch(e){}
+    /* 1.12 (relecture du 14/10 au soir) — fusion rangée sur l'appareil, base = version du serveur, « à envoyer » : l'envoi
+       repart après le rechargement, sans conflit. Plus de nouvel envoi sous le voile (réseau lent : appli bloquée). */
+    cpWriteLocal(M);cpSetBase(R,res.updated_at);try{localStorage.setItem('cp2_dirty','1');}catch(e){}
+    toast('☁️ Changements d\'un autre appareil fusionnés');cpReload();
+  }catch(e){cloudLbl('⚠ échec synchro — nouvel essai auto','err');if(manual)toast('⚠ Échec synchro : '+(e.message||'réseau'));
     clearTimeout(_pushT);_pushT=setTimeout(cpEnvoiSiBesoin,30000);}
   finally{_cpPushing=false;if(_cpAgain){_cpAgain=false;setTimeout(cpEnvoiSiBesoin,50);}}
 }

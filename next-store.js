@@ -279,7 +279,9 @@
   }
   try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist().then(function(p){ STORE.persistent=p; }).catch(function(){}); }catch(e){}
   /* rechargement : on attend que tout soit écrit dans la base */
-  W.nxStoreReload=function(){ var go=function(){ location.reload(); }; try{ doFlush().then(go,go); setTimeout(go,1500); }catch(e){ go(); } };
+  /* 1.12 (relecture du 14/10 au soir) : attente portée à 8 s au plus (un voile couvre l'écran pendant ce temps) — à 1,5 s, une
+     grosse donnée gardée seulement dans IndexedDB pouvait être coupée alors que la date de synchro était déjà écrite. */
+  W.nxStoreReload=function(){ var fait=false, go=function(){ if(fait) return; fait=true; location.reload(); }; try{ doFlush().then(go,go); setTimeout(go,8000); }catch(e){ go(); } };
   document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='hidden') doFlush(); });
   W.addEventListener('pagehide',function(){ doFlush(); });
   try{ start(0); }catch(e){ try{ startLocal(e); }catch(_){ whenParsed(runApp); } }
