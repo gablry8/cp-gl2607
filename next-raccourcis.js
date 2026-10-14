@@ -78,19 +78,25 @@
   });
 
   /* ---------- ouverture par l'adresse ---------- */
-  /* la cible est gardée pour l'onglet (sessionStorage) jusqu'à son ouverture : si l'appli se recharge entre-temps
-     (mise à jour reçue d'un autre appareil à l'ouverture), le raccourci n'est pas perdu (recette du 14/10/2026) */
+  /* la cible est gardée pour l'onglet (sessionStorage) quelques secondes : si l'APPLI se recharge d'elle-même juste après
+     (mise à jour reçue d'un autre appareil à l'ouverture), le raccourci n'est pas perdu. Un rechargement fait à la main
+     (F5) n'y revient pas : seul un rechargement de synchro est signalé par l'appli (__cpRechargeAuto, voir cpReload). */
   var CLE_RC='__nxrc_cible';
+  function lireSS(k){ try{ return JSON.parse(sessionStorage.getItem(k)||'null'); }catch(e){ return null; } }
   function depuisAdresse(){
     var q=''; try{ q=new URLSearchParams(location.search).get('ouvrir')||''; }catch(e){ q=''; }
+    var o=null;
     if(q){
       try{ var u=new URL(location.href); u.searchParams.delete('ouvrir'); history.replaceState(history.state,'',u.pathname+u.search+u.hash); }catch(e){}
       if(!Object.prototype.hasOwnProperty.call(CIBLES,q)) return;
-      try{ sessionStorage.setItem(CLE_RC,JSON.stringify({c:q,t:Date.now()})); }catch(e){}
+      o={c:q,t:Date.now()};
+    } else {
+      var p=lireSS(CLE_RC), auto=+(sessionStorage.getItem('__cpRechargeAuto')||0);
+      if(p&&Object.prototype.hasOwnProperty.call(CIBLES,p.c)&&Date.now()-p.t<20000&&Date.now()-auto<10000) o=p;
     }
-    var o=null; try{ o=JSON.parse(sessionStorage.getItem(CLE_RC)||'null'); }catch(e){ o=null; }
-    if(!o||!Object.prototype.hasOwnProperty.call(CIBLES,o.c)||!(Date.now()-o.t<20000)){ try{ sessionStorage.removeItem(CLE_RC); }catch(e){} return; }
-    /* oubliée 4 s après l'ouverture : un rechargement juste après (synchro) rouvre encore le bon écran */
+    try{ sessionStorage.removeItem(CLE_RC); }catch(e){}
+    if(!o) return;
+    try{ sessionStorage.setItem(CLE_RC,JSON.stringify(o)); }catch(e){}
     setTimeout(function(){ window.nxrcOuvrir(o.c); setTimeout(function(){ try{ sessionStorage.removeItem(CLE_RC); }catch(e){} },4000); },900);
   }
 

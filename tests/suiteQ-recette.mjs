@@ -372,7 +372,8 @@ await PC4.p.keyboard.press('Escape').catch(() => {});
    l'ouverture sur un réseau lent) : le bon écran doit rester */
 await TEL4.p.goto(new URL('index.html?ouvrir=adr', TEL4.p.url()).href); await TEL4.p.waitForTimeout(2200); await calme(S4, TEL4);
 const vue1 = await lire(S4, TEL4, () => _curView);
-await TEL4.p.reload(); await TEL4.p.waitForTimeout(2200); await calme(S4, TEL4);
+await TEL4.p.evaluate(() => { setTimeout(() => cpReload(), 0); }); /* rechargement fait par l'appli, comme après une mise à jour reçue */
+await TEL4.p.waitForTimeout(2400); await calme(S4, TEL4);
 const ouv = await lire(S4, TEL4, () => ({ vue: _curView, adr: !!document.getElementById('nxadr'), adresse: location.search })); ouv.avantRechargement = vue1;
 r('Raccourcis : Ctrl K « fluides » sur le PC propose la déclaration et l’écran ; le raccourci « Bouteilles » ouvre le bon écran sur le téléphone, même si l’appli se recharge juste après (mise à jour reçue)',
   resK.some((t) => /Déclaration annuelle des fluides/.test(t)) && vue1 === 'fluides' && ouv.vue === 'fluides' && ouv.adr && ouv.adresse === '', j({ resK: resK.slice(0, 5), ouv }), [capK]);

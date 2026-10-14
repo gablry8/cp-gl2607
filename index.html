@@ -3644,7 +3644,7 @@ function markDirty(){try{localStorage.setItem('cp2_dirty','1');}catch(e){}
    d'un autre appareil. En cas de conflit : fusion « 3 voies » par identifiant (base = dernière version
    synchronisée, local, cloud) → rien n'est perdu ; ce qui a été supprimé d'un côté reste supprimé.
    Pendant un formulaire (devis, intervention), la fusion attend la sortie du formulaire. */
-function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();if(window.nxStoreReload)return nxStoreReload();location.reload();}
+function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();try{sessionStorage.setItem('__cpRechargeAuto',String(Date.now()));}catch(e){}if(window.nxStoreReload)return nxStoreReload();location.reload();}
 /* 1.12 (recette du 14/10/2026) — la synchro attend que TOUTE l'appli soit chargée : les modules (next-*.js) déclarent
    leurs données synchronisées en se chargeant ; une synchro partie avant (connexion au démarrage) ne les recevait pas
    et un envoi à ce moment-là les retirait du serveur. */
