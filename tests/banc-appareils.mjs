@@ -64,7 +64,9 @@ export function serveurCommun(debutISO) {
   }
   function from(q) {
     const un = q.mode === 'maybeSingle' || q.mode === 'single';
-    if (q.t === 'climpilot_state') return { data: un ? (S.etat ? { data: c(S.etat.data), updated_at: S.etat.updated_at } : null) : [] };
+    /* comme PostgREST : select('updated_at') ne rend que la date (vérification légère de l'appli), sinon données + date */
+    if (q.t === 'climpilot_state') { if (q.sel === 'updated_at') S.verifs = (S.verifs || 0) + 1;
+      return { data: un ? (S.etat ? (q.sel === 'updated_at' ? { updated_at: S.etat.updated_at } : { data: c(S.etat.data), updated_at: S.etat.updated_at }) : null) : [] }; }
     if (q.t === 'climpilot_documents') {
       let L = S.docs.slice(); (q.eq || []).forEach(([k, v]) => { L = L.filter((d) => String(d[k]) === String(v)); });
       if (q.lim) L = L.slice(0, q.lim);

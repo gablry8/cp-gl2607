@@ -555,6 +555,105 @@ r('Aucune erreur JavaScript (avoir, acompte)', PC7.errs.length + TEL7.errs.lengt
 await PC7.ctx.close(); await TEL7.ctx.close();
 }
 
+/* ================= Q8 — mise à jour reçue d'un autre appareil : on reste sur le même écran =================
+   Chaque mise à jour reçue recharge l'appli (seule façon sûre de relire toutes les données) ; avant le 14/10 au soir,
+   l'appareil revenait alors sur « Ma journée » : on perdait l'écran où l'on était et sa position. */
+if (partie(8)) {
+ETAPE = 'Mise à jour reçue : même écran';
+const S8 = serveurCommun();
+const PC8 = await appareil(S8, 'pc', { mobile: false, horloge: H, connecte: true });
+await PC8.p.evaluate(SEED); await pret(S8, PC8);
+const TEL8 = await appareil(S8, 'tel', { mobile: true, horloge: H, connecte: true }); await calme(S8, TEL8); await TEL8.p.waitForTimeout(1600); await calme(S8, TEL8);
+for (const [A, B, v] of [[TEL8, PC8, 'fluides'], [TEL8, PC8, 'tous'], [TEL8, PC8, 'nx_obj'], [PC8, TEL8, 'tous']]) {
+  await lire(S8, A, (v) => { go(v); }, v); await A.p.waitForTimeout(400);
+  /* le téléphone fait défiler le corps de la page (body), le PC la fenêtre : les deux sont essayés */
+  const y0 = await A.p.evaluate(() => { window.scrollTo(0, 500); document.body.scrollTop = 500; return Math.round(Math.max(scrollY, document.body.scrollTop)); });
+  const n0 = A.chargements;
+  const note = 'Note ' + v + ' ' + A.dev;
+  const id8 = await lire(S8, B, () => CLIENTS[0].id);
+  await lire(S8, B, ([n, id]) => { CLIENTS.find((c) => c.id === id).notes = n; save(LS.clients, CLIENTS); }, [note, id8]); await pret(S8, B);
+  await revenir(S8, A); await A.p.waitForTimeout(2600); await calme(S8, A);
+  const o = await lire(S8, A, (id) => ({ v: window._curView, y: Math.round(Math.max(scrollY, document.body.scrollTop)), note: (CLIENTS.find((c) => c.id === id) || {}).notes, toast: (document.getElementById('toast') || {}).textContent || '' }), id8);
+  const cap = await K.capture(A, 'mise-a-jour-recue-' + v);
+  r(`${A.dev === 'tel' ? 'Téléphone' : 'PC'} sur l’écran « ${v} » : la mise à jour de l’autre appareil arrive et l’écran reste le même, à la même hauteur`,
+    A.chargements - n0 >= 1 && o.note === note && o.v === v && y0 > 0 && Math.abs(o.y - y0) <= 80 && /autre appareil/.test(o.toast), j({ recharges: A.chargements - n0, y0, ...o }), [cap]);
+}
+/* un rechargement fait à la main (F5) garde le comportement habituel : départ sur « Ma journée » */
+await lire(S8, TEL8, () => go('fluides')); await TEL8.p.waitForTimeout(300);
+await rouvrir(S8, TEL8); await TEL8.p.waitForTimeout(1500);
+const f5 = await lire(S8, TEL8, () => window._curView);
+r('F5 à la main : départ habituel sur « Ma journée » (l’écran n’est gardé qu’après une mise à jour reçue)', f5 === 'nx_journee', j({ f5 }));
+r('Aucune erreur JavaScript (mise à jour reçue, même écran)', PC8.errs.length + TEL8.errs.length === 0, PC8.errs.concat(TEL8.errs).join(' | '));
+await PC8.ctx.close(); await TEL8.ctx.close();
+}
+
+/* ================= Q9 — appareil resté ouvert, et saisie en cours pendant une mise à jour =================
+   1. Le PC reste ouvert sur le bureau (jamais caché) : il voyait les changements du téléphone seulement après être sorti
+      de l'appli. Vérification légère quand la fenêtre revient au premier plan et toutes les minutes.
+   2. Une mise à jour reçue recharge l'appli : un texte tapé mais pas encore enregistré (Paramètres…) était effacé. */
+if (partie(9)) {
+ETAPE = 'Appareil resté ouvert, saisie en cours';
+const S9 = serveurCommun();
+const PC9 = await appareil(S9, 'pc', { mobile: false, horloge: H, connecte: true });
+await PC9.p.evaluate(SEED); await pret(S9, PC9);
+const TEL9 = await appareil(S9, 'tel', { mobile: true, horloge: H, connecte: true }); await calme(S9, TEL9); await TEL9.p.waitForTimeout(1600); await calme(S9, TEL9);
+try {
+await lire(S9, PC9, () => go('clients')); await PC9.p.waitForTimeout(300);
+/* a. rien n'a changé : la fenêtre revient au premier plan → simple vérification de la date, aucun rechargement */
+await pret(S9, TEL9); await revenir(S9, PC9); await PC9.p.waitForTimeout(1500); await calme(S9, PC9); await lire(S9, PC9, () => go('clients'));
+await PC9.p.clock.fastForward(21000);
+let n0 = PC9.chargements, v0 = S9.verifs || 0;
+await PC9.p.evaluate(() => window.dispatchEvent(new Event('focus'))); await PC9.p.waitForTimeout(500); await calme(S9, PC9);
+r('PC au premier plan sans changement ailleurs : une vérification légère (date seulement), pas de rechargement', (S9.verifs || 0) === v0 + 1 && PC9.chargements === n0, j({ verifs: (S9.verifs || 0) - v0, recharges: PC9.chargements - n0 }));
+/* b. le téléphone note un client ; le PC revient au premier plan (clic dans sa fenêtre) */
+const idB = await lire(S9, TEL9, () => CLIENTS[0].id), idC = await lire(S9, TEL9, () => CLIENTS[1].id), idD = await lire(S9, TEL9, () => CLIENTS[2].id);
+await lire(S9, TEL9, (id) => { CLIENTS.find((c) => c.id === id).notes = 'Vu sur le téléphone'; save(LS.clients, CLIENTS); }, idB); await pret(S9, TEL9);
+n0 = PC9.chargements;
+await PC9.p.clock.fastForward(21000);
+await PC9.p.evaluate(() => window.dispatchEvent(new Event('focus'))); await PC9.p.waitForTimeout(2600); await calme(S9, PC9);
+const b9 = await lire(S9, PC9, (id) => ({ note: CLIENTS.find((c) => c.id === id).notes, v: window._curView }), idB);
+const cB = await K.capture(PC9, 'pc-premier-plan-mise-a-jour');
+r('PC resté ouvert, revenu au premier plan : la note du téléphone arrive, on reste sur « Clients »', b9.note === 'Vu sur le téléphone' && b9.v === 'clients' && PC9.chargements > n0, j(b9), [cB]);
+/* c. le PC ne fait rien du tout : la vérification de chaque minute suffit */
+await lire(S9, TEL9, (id) => { CLIENTS.find((c) => c.id === id).notes = 'Deuxième note du téléphone'; save(LS.clients, CLIENTS); }, idC); await pret(S9, TEL9);
+n0 = PC9.chargements;
+await PC9.p.clock.fastForward(61000); await PC9.p.waitForTimeout(2600); await calme(S9, PC9);
+const c9 = await lire(S9, PC9, (id) => CLIENTS.find((c) => c.id === id).notes, idC);
+r('PC ouvert sans y toucher : la modification du téléphone arrive dans la minute', c9 === 'Deuxième note du téléphone' && PC9.chargements > n0, j({ c9 }));
+/* d. saisie en cours sur le téléphone (Paramètres, pas encore enregistrée) pendant une mise à jour du PC */
+await lire(S9, TEL9, () => go('params')); await TEL9.p.waitForTimeout(300);
+await TEL9.p.locator('#pe_avis').fill('https://g.page/r/brouillon-pas-enregistre/review');
+await lire(S9, PC9, (id) => { CLIENTS.find((c) => c.id === id).notes = 'Note du PC pendant la saisie'; save(LS.clients, CLIENTS); }, idD); await pret(S9, PC9);
+n0 = TEL9.chargements;
+await revenir(S9, TEL9); await TEL9.p.waitForTimeout(1500); await calme(S9, TEL9);
+const d9 = await lire(S9, TEL9, () => ({ champ: (document.getElementById('pe_avis') || {}).value || '', lbl: (document.getElementById('cloudLbl') || {}).textContent || '', v: window._curView }));
+const cD = await K.capture(TEL9, 'saisie-en-cours-mise-a-jour-en-attente');
+r('Téléphone en pleine saisie (Paramètres) : la mise à jour du PC attend, le texte tapé reste là', TEL9.chargements === n0 && /brouillon-pas-enregistre/.test(d9.champ) && /prochain changement d.écran/.test(d9.lbl), j(d9), [cD]);
+await lire(S9, TEL9, () => saveParams()); await TEL9.p.waitForTimeout(200);
+await lire(S9, TEL9, () => go('nx_journee')); await TEL9.p.waitForTimeout(2600); await calme(S9, TEL9); await pret(S9, TEL9);
+const e9 = await lire(S9, TEL9, (id) => ({ note: CLIENTS.find((c) => c.id === id).notes, lien: (P.entreprise || {}).avisGoogle || '' }), idD);
+const srv9 = S9.etat.data;
+r('Enregistré puis écran changé : la note du PC arrive sur le téléphone, et le lien enregistré part au serveur', e9.note === 'Note du PC pendant la saisie' && /brouillon-pas-enregistre/.test(e9.lien) && /brouillon-pas-enregistre/.test(j(srv9.cp2_params || srv9[Object.keys(srv9).find((k) => /param/.test(k))] || '')), j(e9));
+/* e. modification enregistrée sur le téléphone + saisie en cours, conflit avec le PC : rien n'est perdu */
+await lire(S9, TEL9, () => go('clients')); await TEL9.p.waitForTimeout(200);
+const ids9 = await lire(S9, TEL9, () => CLIENTS.map((c) => c.id));
+await lire(S9, TEL9, (id) => { CLIENTS.find((c) => c.id === id).notes = 'Enregistré sur le téléphone'; save(LS.clients, CLIENTS); }, ids9[1]);
+await TEL9.p.evaluate(() => { const i = document.createElement('input'); i.id = 'zzSaisie'; document.querySelector('#v-clients').prepend(i); });
+await TEL9.p.locator('#zzSaisie').fill('texte en cours');
+await lire(S9, PC9, (id) => { CLIENTS.find((c) => c.id === id).notes = 'Enregistré sur le PC'; save(LS.clients, CLIENTS); }, ids9[0]); await pret(S9, PC9);
+await quitter(S9, TEL9); await revenir(S9, TEL9);
+const f9a = await lire(S9, TEL9, () => ({ champ: (document.getElementById('zzSaisie') || {}).value || '' }));
+await lire(S9, TEL9, () => go('nx_journee')); await TEL9.p.waitForTimeout(2600); await calme(S9, TEL9); await pret(S9, TEL9);
+await revenir(S9, PC9); await PC9.p.waitForTimeout(1500); await calme(S9, PC9);
+const srv = S9.etat.data.cp2_clients || [];
+const f9 = { champ: f9a.champ, srv3: (srv.find((c) => c.id === ids9[1]) || {}).notes, srv4: (srv.find((c) => c.id === ids9[0]) || {}).notes, pc3: await lire(S9, PC9, (id) => CLIENTS.find((c) => c.id === id).notes, ids9[1]), tel4: await lire(S9, TEL9, (id) => CLIENTS.find((c) => c.id === id).notes, ids9[0]) };
+r('Conflit pendant une saisie : la saisie n’est pas effacée, puis les deux modifications arrivent sur le serveur et sur les deux appareils',
+  f9.champ === 'texte en cours' && f9.srv3 === 'Enregistré sur le téléphone' && f9.srv4 === 'Enregistré sur le PC' && f9.pc3 === 'Enregistré sur le téléphone' && f9.tel4 === 'Enregistré sur le PC', j(f9));
+} catch (e) { r('Appareil resté ouvert, saisie en cours — essai interrompu', false, String(e && e.message || e).slice(0, 300)); }
+r('Aucune erreur JavaScript (appareil resté ouvert, saisie en cours)', PC9.errs.length + TEL9.errs.length === 0, PC9.errs.concat(TEL9.errs).join(' | '));
+await PC9.ctx.close(); await TEL9.ctx.close();
+}
+
 K.ecrire();
 await fermerNavigateur();
 ecrireResultats('resQ.json', RES);

@@ -9,7 +9,8 @@
      (raccourcis de l'appli installée, manifest.json « shortcuts » : clic droit sur l'icône dans la barre des tâches de
      Windows, appui long sur Android ; l'iPhone ne les affiche pas). Le paramètre est retiré de l'adresse après usage,
      une valeur inconnue est ignorée.
-   Rien n'est stocké.
+   Rien n'est stocké, sauf pour l'onglet (sessionStorage) : la cible d'un raccourci et l'écran à rouvrir après une mise à jour
+   reçue d'un autre appareil.
    ============================================================ */
 (function(){
   'use strict';
@@ -95,9 +96,34 @@
       if(p&&Object.prototype.hasOwnProperty.call(CIBLES,p.c)&&Date.now()-p.t<20000&&Date.now()-auto<10000) o=p;
     }
     try{ sessionStorage.removeItem(CLE_RC); }catch(e){}
-    if(!o) return;
+    if(!o){ if(!q) vueApresSynchro(); return; }
+    try{ sessionStorage.removeItem(CLE_VUE); }catch(e){}
     try{ sessionStorage.setItem(CLE_RC,JSON.stringify(o)); }catch(e){}
     setTimeout(function(){ window.nxrcOuvrir(o.c); setTimeout(function(){ try{ sessionStorage.removeItem(CLE_RC); }catch(e){} },4000); },900);
+  }
+
+  /* ---------- même écran après une mise à jour reçue d'un autre appareil ----------
+     La mise à jour recharge l'appli (seule façon sûre de relire toutes les données). cpReload (index.html) garde pour
+     l'onglet l'écran ouvert et sa position (__cpVue) ; on y revient ici, au lieu de repartir sur « Ma journée ».
+     Seulement après un rechargement fait par l'appli (__cpRechargeAuto, 10 s), jamais après un F5. Un raccourci en
+     attente (ci-dessus) passe avant. */
+  var CLE_VUE='__cpVue';
+  function vueApresSynchro(){
+    var o=lireSS(CLE_VUE), auto=+(sessionStorage.getItem('__cpRechargeAuto')||0);
+    try{ sessionStorage.removeItem(CLE_VUE); }catch(e){}
+    if(!o||typeof o.v!=='string'||!/^[a-z_]{1,40}$/.test(o.v)||/^(wizard|depform)$/.test(o.v)) return;
+    if(Date.now()-auto>10000||Date.now()-(+o.t||0)>15000) return;
+    window.__nxVueGardee=true;
+    var essais=0;
+    (function encore(){
+      var liste=(typeof LISTV!=='undefined'&&LISTV.indexOf&&LISTV.indexOf(o.v)>=0); /* listes de devis : un seul écran « list » */
+      var pret=typeof window.go==='function'&&document.getElementById('v-'+(liste?'list':o.v))&&(!window.nxStore||window.nxStore.ready);
+      if(!pret){ if(++essais<40) setTimeout(encore,100); return; }
+      try{ if(window._curView!==o.v) window.go(o.v); }catch(e){ if(++essais<40) setTimeout(encore,150); return; }
+      var y=Math.max(0,+o.y||0);
+      if(y) setTimeout(function(){ try{ window.scrollTo(0,y); if(document.body) document.body.scrollTop=y; }catch(e){} },150);
+      try{ if(typeof window.toast==='function') window.toast('🔄 Mis à jour depuis ton autre appareil'); }catch(e){}
+    })();
   }
 
   function boot(){

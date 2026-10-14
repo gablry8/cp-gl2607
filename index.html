@@ -3637,14 +3637,17 @@ const WEB_MATOS=WM.map(r=>({"Nom":r[0],"Catégorie":r[1],"Unité":r[2],"Achat HT
 
 /* ============ CLOUD — connexion, synchro (Supabase) ============ */
 function cloudLbl(t,cls){const e=document.getElementById('cloudLbl');if(e){e.textContent=t;e.style.color=cls==='ok'?'#7de3a0':cls==='err'?'#ff9d9d':'#8fa3c8';}}
-function markDirty(){try{localStorage.setItem('cp2_dirty','1');}catch(e){}
+var _cpEcritures=0; /* compteur d'enregistrements (voir « saisie en cours ») ; var : markDirty peut servir avant cette ligne */
+function markDirty(){_cpEcritures=(_cpEcritures||0)+1;try{localStorage.setItem('cp2_dirty','1');}catch(e){}
   if(!SESS)return;clearTimeout(_pushT);_pushT=setTimeout(()=>pushState(),4000);cloudLbl('☁ à synchroniser…');}
 /* --- Synchro sûre multi-appareils (v2, 28/09/2026) ---
    Écriture conditionnelle côté serveur (cp_state_push) : on n'écrase jamais une version plus récente
    d'un autre appareil. En cas de conflit : fusion « 3 voies » par identifiant (base = dernière version
    synchronisée, local, cloud) → rien n'est perdu ; ce qui a été supprimé d'un côté reste supprimé.
    Pendant un formulaire (devis, intervention), la fusion attend la sortie du formulaire. */
-function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();try{sessionStorage.setItem('__cpRechargeAuto',String(Date.now()));}catch(e){}if(window.nxStoreReload)return nxStoreReload();location.reload();}
+/* 1.12 (14/10 au soir) — l'écran ouvert et sa position sont gardés pour l'onglet : après ce rechargement, l'appli y revient
+   (next-raccourcis.js) au lieu de repartir sur « Ma journée ». Jamais pour un formulaire (devis, intervention). */
+function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();try{sessionStorage.setItem('__cpRechargeAuto',String(Date.now()));const v=window._curView;if(typeof v==='string'&&/^[a-z_]{1,40}$/.test(v)&&!/^(wizard|depform)$/.test(v))sessionStorage.setItem('__cpVue',JSON.stringify({v:v,y:Math.round(Math.max(window.scrollY||0,(document.body&&document.body.scrollTop)||0)),t:Date.now()}));}catch(e){}if(window.nxStoreReload)return nxStoreReload();location.reload();}
 /* 1.12 (recette du 14/10/2026) — la synchro attend que TOUTE l'appli soit chargée : les modules (next-*.js) déclarent
    leurs données synchronisées en se chargeant ; une synchro partie avant (connexion au démarrage) ne les recevait pas
    et un envoi à ce moment-là les retirait du serveur. */
@@ -3688,7 +3691,21 @@ function cpMerge(B,L,R){ /* B peut être null (premier passage) */
 function cpLocalData(){const d={};SYNC_KEYS.forEach(k=>{const v=localStorage.getItem(k);if(v!=null){try{d[k]=JSON.parse(v);}catch(e){}}});return d;}
 function cpWriteLocal(d){SYNC_KEYS.forEach(k=>{if(d&&d[k]!==undefined)localStorage.setItem(k,JSON.stringify(d[k]));});}
 function cpSetBase(d,ts){try{localStorage.setItem('cp2_sync_base',JSON.stringify(d));}catch(e){}localStorage.setItem('cp2_sync',JSON.stringify({lastRemote:ts}));}
-function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform';}
+/* 1.12 (14/10 au soir) — saisie en cours : une mise à jour reçue (ou une fusion) recharge l'appli, ce qui effacerait ce qui
+   est tapé mais pas encore enregistré (Paramètres, fiche client, texte copié depuis une autre appli…). Les champs où
+   l'utilisateur tape sont suivis (hors recherche) ; tant que l'un d'eux, encore à l'écran, diffère de sa valeur d'affichage,
+   la mise à jour attend le prochain changement d'écran (go). Un enregistrement fait par un geste de l'utilisateur (bouton,
+   case, champ quitté) clôt la saisie : rien n'attend alors sans raison, et les envois partent normalement. */
+const _cpChamps=new Set();
+document.addEventListener('input',e=>{try{if(!e.isTrusted)return;const t=e.target;if(!t||!t.closest||!/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||t.closest('.next-command,#loginScreen'))return;_cpChamps.add(t);}catch(x){}},true);
+['click','change','submit'].forEach(ev=>document.addEventListener(ev,e=>{if(!e.isTrusted||!_cpChamps.size)return;const n=_cpEcritures;setTimeout(()=>{if(_cpEcritures!==n)_cpChamps.clear();},400);},true));
+function cpSaisieEnCours(){for(const t of Array.from(_cpChamps)){if(!t.isConnected){_cpChamps.delete(t);continue;}
+  if(t.tagName==='SELECT'){if(Array.from(t.options).some(o=>o.selected!==o.defaultSelected))return true;continue;}
+  if(t.type==='checkbox'||t.type==='radio'){if(t.checked!==t.defaultChecked)return true;continue;}
+  if(t.value!==t.defaultValue)return true;}
+  return false;}
+function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform'||cpSaisieEnCours();}
+function cpMsgAttente(){const v=window._curView;return v==='wizard'||v==='depform'?'☁ mise à jour reçue — appliquée en sortant du formulaire':'☁ mise à jour reçue — appliquée au prochain changement d\'écran';}
 let _cpPushing=false,_cpAgain=false,_cpPendingReload=false;
 async function pullState(){
   if(!sb||!SESS||window.__cpLectureSeule)return;
@@ -3703,12 +3720,12 @@ async function pullState(){
       return;
     }
     if(row.updated_at===meta.lastRemote){
-      if(cpManquantes(row.data).length){if(cpBusyForm()){_cpPendingReload=true;cloudLbl('☁ mise à jour reçue — appliquée en sortant du formulaire');return;}
+      if(cpManquantes(row.data).length){if(cpBusyForm()){_cpPendingReload=true;cloudLbl(cpMsgAttente());return;}
         if(cpCompleterLocal(row.data)){cloudLbl('✓ synchronisé','ok');cpReload();return;}}
       cloudLbl('✓ synchronisé','ok');if(localStorage.getItem('cp2_dirty'))pushState();return;}
     const dirty=!!localStorage.getItem('cp2_dirty');
     if(dirty||!meta.lastRemote&&(DEVIS.length||CLIENTS.length||DEP.length)){await pushState();return;} /* modifs locales → écriture conditionnelle + fusion */
-    if(cpBusyForm()){_cpPendingReload=true;cloudLbl('☁ mise à jour reçue — appliquée en sortant du formulaire');return;}
+    if(cpBusyForm()){_cpPendingReload=true;cloudLbl(cpMsgAttente());return;}
     cpWriteLocal(row.data);localStorage.removeItem('cp2_dirty');cpSetBase(row.data,row.updated_at);
     cpReload();
   }catch(e){cloudLbl('⚠ cloud injoignable — mode local','err');}
@@ -3733,7 +3750,7 @@ async function pushState(manual,force){
         return;
       }
       /* conflit : un autre appareil a écrit entre-temps */
-      if(cpBusyForm()){_cpPendingReload=true;cloudLbl('☁ fusion en attente — termine ton formulaire');return;}
+      if(cpBusyForm()){_cpPendingReload=true;cloudLbl(window._curView==='wizard'||window._curView==='depform'?'☁ fusion en attente — termine ton formulaire':'☁ fusion en attente — appliquée au prochain changement d\'écran');return;}
       const base=(()=>{try{return JSON.parse(localStorage.getItem('cp2_sync_base')||'null');}catch(e){return null;}})();
       L=cpMerge(base,L,(res&&res.data)||{});
       try{if(Array.isArray(L[LS.custom]))L[LS.custom]=nxDedupPrix(L[LS.custom]);}catch(e){}
@@ -3745,7 +3762,7 @@ async function pushState(manual,force){
   finally{_cpPushing=false;if(_cpAgain){_cpAgain=false;setTimeout(()=>pushState(),50);}}
 }
 /* en sortant d'un formulaire : appliquer la mise à jour / fusion en attente */
-(function(){const _g=window.go;if(typeof _g!=='function')return;window.go=function(v){const r=_g.apply(this,arguments);
+(function(){const _g=window.go;if(typeof _g!=='function')return;window.go=function(v){_cpChamps.clear();const r=_g.apply(this,arguments);
   try{if(_cpPendingReload&&v!=='wizard'&&v!=='depform'){_cpPendingReload=false;setTimeout(()=>{if(localStorage.getItem('cp2_dirty'))pushState();else pullState();},30);}}catch(e){}return r;};})();
 function showLogin(){const L=document.getElementById('loginScreen');L.style.display='flex';setTimeout(()=>{try{document.getElementById('logEmail').focus();}catch(e){}},80);}
 async function doLogin(){
@@ -3764,10 +3781,25 @@ async function doLogin(){
     afterLogin();
   }catch(e){msg.textContent='Serveur cloud injoignable — projet Supabase en pause ? (supabase.com/dashboard → Restore)';}
 }
+/* 1.12 (14/10 au soir) — appareil resté ouvert (PC sur le bureau) : sans sortie de l'appli, il ne voyait pas les changements
+   faits sur l'autre appareil. Vérification légère (date de la dernière version seulement, pas les données) quand la fenêtre
+   revient au premier plan et toutes les minutes ; les données ne sont lues que si elles ont changé. */
+let _cpVerifT=0;
+async function cpVerifierDistant(){
+  if(!sb||!SESS||window.__cpLectureSeule||!navigator.onLine||document.visibilityState!=='visible'||_cpPushing)return;
+  if(window.nxStore&&!nxStore.ready)return;
+  if(Date.now()-_cpVerifT<20000)return;_cpVerifT=Date.now();
+  try{const {data:row,error}=await sb.from('climpilot_state').select('updated_at').eq('user_id',SESS.user.id).maybeSingle();
+    if(error||!row||row.updated_at===load('cp2_sync',{}).lastRemote)return;
+    if(cpBusyForm()){_cpPendingReload=true;cloudLbl(cpMsgAttente());return;}
+    pullState();
+  }catch(e){}
+}
 function afterLogin(){
   const ue=document.getElementById('cloudUser');if(ue&&SESS&&SESS.user)ue.textContent=SESS.user.email;
   cloudLbl('☁ connexion…');
   pullState();
+  if(!window.__cpVerif){window.__cpVerif=1;setInterval(cpVerifierDistant,60000);window.addEventListener('focus',()=>cpVerifierDistant());}
   window.addEventListener('online',()=>{if(localStorage.getItem('cp2_dirty'))pushState();});
   document.addEventListener('visibilitychange',()=>{if(!SESS)return;
     if(document.visibilityState==='hidden'&&localStorage.getItem('cp2_dirty'))pushState();

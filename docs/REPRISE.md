@@ -112,13 +112,13 @@ ni fonction serveur (nouvelles clés de synchronisation acceptées telles quelle
   partenaire CEE (PAC air/air et meubles frigorifiques sans RGE) ; détail et sources dans la doc du projet
   `claude/rge-cee-fluides-lancement.md`.
 - `index.html` : champ avisGoogle, chargement des 5 modules (rentab, avis, banque, flubilan, raccourcis).
-  `sw.js` : `climpilot-next-1123-recette` (après la recette du 14/10).
+  `sw.js` : `climpilot-next-1124-meme-ecran` (après la recette du 14/10 au soir).
 - Relecture indépendante du 12/10 : 2 défauts bloquants (n° de facture trouvé dans une date ou une référence ; virement déjà
   marqué payé à la main qui payait une 2e facture) et 6 importants (débit lu comme crédit, période déjà déclarée, date des chèques
   et espèces, « 0 kg » pour une case vide, seuil du voyant, deux « €/h » contradictoires), plus 9 mineurs : tous corrigés et testés
   (suite P, partie P6b et suivantes ; les cas bloquants échouent sur le code d'avant correction).
 - Tests : suite P (`tests/suiteP-ameliorations.mjs`, 138 contrôles), ajoutée à `tests/run-all.sh`.
-- Tests : suite Q (`tests/suiteQ-recette.mjs`, 42 contrôles, environ 12 min), ajoutée à `tests/run-all.sh` ;
+- Tests : suite Q (`tests/suiteQ-recette.mjs`, 55 contrôles, environ 14 min), ajoutée à `tests/run-all.sh` ;
   `CP_Q_PARTIES=4,5` pour n'en jouer qu'une partie.
 - À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.12.zip` : Objectifs & feux (rentabilité, retour SAV, liste de
   lancement), Paramètres (lien d'avis), relevé bancaire (fichier CSV de sa banque, sur des factures d'essai), écran Fluides,
@@ -170,8 +170,23 @@ Garde-fous ajoutés : pas de synchro dans un onglet en lecture seule ; compléme
 limité à un rechargement par minute ; registre lu avec un délai maximum de 25 s et les plus récents d'abord (plafond de
 1 000 lignes du serveur) ; clés propres à l'appareil (`NX_BK_SKIP`) jamais renvoyées. À faire plus tard : le rapprochement
 au démarrage lit encore le registre du plus ancien au plus récent (au-delà de 1 000 factures, les plus récentes manqueraient).
-Constaté, pas changé : chaque mise à jour reçue d'un autre appareil recharge l'appli (environ 1 s), sauf pendant la saisie d'un
-devis ou d'un dépannage (appliquée en sortant). À revoir plus tard (appliquer sans recharger), pas urgent.
+Reprise du 14/10 au soir (suite Q, parties Q8 et Q9 ; chaque test échoue sur le code d'avant) :
+12. **Retour sur « Ma journée » après chaque mise à jour reçue** : le rechargement (seule façon sûre de relire toutes les
+   données, voir ci-dessous) ramenait l'appareil sur « Ma journée », en haut. `cpReload` garde pour l'onglet l'écran ouvert et
+   sa position (`__cpVue`, jamais un formulaire) ; `next-raccourcis.js` y revient avec le message « Mis à jour depuis ton autre
+   appareil » (seulement après un rechargement fait par l'appli ; un F5 repart sur « Ma journée » ; un raccourci passe avant).
+13. **Texte tapé effacé par une mise à jour** (Paramètres, fiche client, texte copié depuis une autre appli puis retour) : les
+   champs où l'on tape sont suivis (`_cpChamps`, hors recherche) ; tant que l'un d'eux, encore à l'écran, diffère de sa valeur
+   d'affichage, la mise à jour ou la fusion attend le prochain changement d'écran (`cpBusyForm`, message « appliquée au
+   prochain changement d'écran »). Un enregistrement fait par un geste (bouton, case, champ quitté : `markDirty` dans les
+   400 ms) clôt la saisie, pour que les envois ne restent pas bloqués. Rien n'est perdu : les modifications enregistrées
+   restent marquées à envoyer et sont fusionnées en changeant d'écran.
+14. **PC resté ouvert sans voir les changements du téléphone** : la synchro ne se faisait qu'en sortant de l'appli. Vérification
+   légère (`cpVerifierDistant` : `select('updated_at')`, pas les données) quand la fenêtre revient au premier plan et toutes les
+   minutes ; les données ne sont lues que si elles ont changé.
+Gardé volontairement : chaque mise à jour reçue recharge l'appli (environ 1 s). L'appliquer sans recharger demanderait de
+relire à la main toutes les données gardées en mémoire par une quarantaine de modules ; un oubli renverrait au serveur une
+donnée périmée. Le rechargement reste donc, mais on revient au même écran, à la même hauteur, et jamais pendant une saisie.
 Pas faisable ici (réseau fermé vers Supabase) : synchro réelle avec la base de test, iPhone réel, Netlify, relevé de sa banque.
 
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
