@@ -271,6 +271,7 @@ await champ(TEL4, 'R32 remis', '1');
 const capFluTel = await K.capture(TEL4, 'fluides-hors-ligne', '#nxfb');
 await retablir(S4, TEL4); await synchroAuto(S4, TEL4); await revenir(S4, PC4);
 const flu = await Promise.all([PC4, TEL4].map((A) => A.p.evaluate(() => { const b = nxfbBilan('2027').find((x) => x.fluide === 'R32') || {}; return { acq: b.acq, remis: b.remis, chN: b.chN }; })));
+await lire(S4, PC4, () => go('fluides')); await PC4.p.waitForTimeout(400);
 const capFluPC = await K.capture(PC4, 'fluides-pc', '#nxfb');
 r('Déclaration des fluides : « acquises » saisie sur le PC, « remises » sur le téléphone hors ligne → les deux valeurs gardées partout, la charge de la fiche du téléphone comptée',
   flu.every((f) => f.acq === 5 && f.remis === 1 && f.chN === 0.4), j(flu), [capFluTel, capFluPC]);
@@ -295,6 +296,7 @@ const cocher = async (A, cle) => { const l = A.p.locator('input[onchange*="nxobj
 const c1 = await cocher(PC4, 'assurances'), c2 = await cocher(TEL4, 'deuxfa');
 await quitter(S4, PC4); await quitter(S4, TEL4); await revenir(S4, PC4); await revenir(S4, TEL4);
 const chk = await Promise.all([PC4, TEL4].map((A) => A.p.evaluate(() => { const o = nxobjEtat(); return { assurances: !!(o.checks || {}).assurances, deuxfa: !!(o.checks || {}).deuxfa }; })));
+await lire(S4, TEL4, () => go('nx_obj')); await TEL4.p.waitForTimeout(400);
 const capLanc = await K.capture(TEL4, 'liste-lancement', '#nxobj .nxo-feu[data-feu="lancement"]');
 r('Liste de lancement : « assurances » cochée sur le PC et « double authentification » sur le téléphone, sans synchro entre-temps → les deux cochées partout',
   c1 && c2 && chk.every((x) => x.assurances && x.deuxfa), j({ c1, c2, chk }), [capLanc]);
@@ -453,11 +455,12 @@ try {
   PC5.reponses.push(true, true);
   await PC5.p.locator('button[onclick="factureDep()"]:visible').first().click(); await PC5.p.waitForTimeout(600); await calme(S5, PC5);
   const depPC = await lire(S5, PC5, (x) => { const d = DEP.find((y) => y.id === x); return d ? { num: d.facNum, statut: d.statut } : null; }, idDep);
-  const capDep3 = await K.capture(PC5, 'depannage-pc-pas-a-jour');
   /* la fiche ouverte doit montrer la facture reprise : « Enregistrer » ne doit pas effacer le numéro */
   const fiche = await lire(S5, PC5, () => ({ num: (typeof curDep !== 'undefined' && curDep) ? curDep.facNum : null }));
   await PC5.p.locator('button[onclick="saveDep()"]:visible').first().click().catch(() => {}); await PC5.p.waitForTimeout(300);
   const apresEnr = await lire(S5, PC5, (x) => { const d = DEP.find((y) => y.id === x); return d ? d.facNum : null; }, idDep);
+  await lire(S5, PC5, () => go('dep')); await PC5.p.waitForTimeout(400);
+  const capDep3 = await K.capture(PC5, 'depannage-pc-pas-a-jour');
   S5.etatBloque.pc = false;
   const docsDep = S5.docs.filter((d) => d.payload && d.payload.src && d.payload.src.k === 'dep').map((d) => d.num);
   r('« Facturer » cliqué ensuite sur le PC pas à jour : aucune 2e facture, le PC reprend F-2027-001',
