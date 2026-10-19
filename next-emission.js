@@ -293,7 +293,7 @@
             ?'Une facture '+(ex.src&&ex.src.w==='acompte'?'d\'acompte':'de solde')+' a été émise pour ce devis depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nElle est maintenant reprise ici. Rien n\'a été émis : vérifie le devis, puis relance « Facturer » si besoin.'
             :'Déjà facturé depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nCette facture est reprise ici. Aucune nouvelle facture n\'a été émise.';
           try{ alert(t); }catch(e){ say(t); } return ex.autre?null:ex.num; }); }
-        return demanderServeur(d,'F',d.type).then(function(r){ BUSY=false; if(!r){ relire(sorte); return null; }
+        return demanderServeur(d,'F',d.type).then(function(r){ BUSY=false; if(!r||r.inconnu){ relire(sorte); return null; }
           if(r.differe) return reprendreServeur(sorte,d,r.doc);
           return finir(S,d,r.doc.num,'reel',r.doc); });
       });
@@ -364,6 +364,12 @@
     });
   }
   window.nxEmisDejaEmis=dejaEmis;
+  /* 19/10/2026 — réponse jamais arrivée (délai dépassé, réseau coupé PENDANT l'envoi) : le serveur a peut-être enregistré la facture */
+  function inconnu(e){
+    var t='Résultat INCONNU ('+String(e&&e.message||e)+').\n\nLa demande est partie mais la réponse n\'est pas arrivée : la facture a PEUT-ÊTRE été enregistrée par le serveur.\n\n'+
+      'Réessaie depuis CET appareil, sur ce même document : le même clic reprend la même demande, sans doublon.\nNe la refais pas depuis un autre appareil.';
+    try{ alert(t); }catch(_){ say(t); }
+  }
   function relire(sorte){ try{ if(sorte==='dep') loadDepForm(); if(sorte==='devis') renderFBloc(); }catch(e){} }
   function bloque(info){
     var t='Facture NON émise : '+(RAISON[info.raison]||'serveur indisponible')+(info.detail?' ('+info.detail+')':'')+'.\n\nRien n\'a été facturé : réessaie quand le serveur répond (le même clic reprendra la même demande, sans créer de doublon).';
@@ -384,7 +390,7 @@
          le document du serveur fait foi — rien n'est recalculé sur l'appareil (voir reprendreServeur) */
       if(out.deja&&out.doc.payload&&JSON.stringify(out.doc.payload.fac||{})!==JSON.stringify(pl.fac||{})) out.differe=true;
       return out;
-    });
+    },function(e){ inconnu(e); return {inconnu:true}; });   /* la demande reste en attente : même request_id au prochain clic */
   }
   /* numéro minimal envoyé au serveur (p_min_numero) : seulement les VRAIS numéros de l'année du document —
      registre du serveur (émis ou reconstitués) et anciennes factures choisies pour l'import ; jamais les essais */
@@ -455,7 +461,8 @@
       if(!info.ok){ BUSY=false; return {err:'Avoir NON émis : '+(RAISON[info.raison]||'serveur indisponible')+'. Rien n\'a été créé.'}; }
       /* la clé de demande d'un avoir : facture + montant + motif (le même formulaire rejoué = même demande) */
       d.src={k:'avoir',id:'',w:b.av.facNum+'|'+b.av.montant+'|'+b.av.motif};
-      return demanderServeur(d,'AV','avoir').then(function(r){ BUSY=false; if(!r) return {err:'Avoir non émis (serveur)'}; return fin(r.doc.num,'reel',r.doc); });
+      return demanderServeur(d,'AV','avoir').then(function(r){ BUSY=false; if(r&&r.inconnu) return {err:'Résultat inconnu pour cet avoir : réessaie depuis CET appareil avec le même formulaire (même demande, sans doublon).'};
+        if(!r) return {err:'Avoir non émis (serveur)'}; return fin(r.doc.num,'reel',r.doc); });
     }).catch(function(e){ BUSY=false; return {err:'Avoir non émis : '+String(e&&e.message||e)}; });
   };
 
@@ -719,7 +726,11 @@
         fichiersPut(num,{html:filigrane(html),xml:xml,at:Date.now(),mode:'demo'});
         return r; }; wc._nxem=true; window.nxCreateAvoir=wc; }
     /* paiements → événements */
-    var pf=window.payerFacture; if(typeof pf==='function'&&!pf._nxem){ var wp=function(kind,id,which){ var r=pf.apply(this,arguments); try{ var n=numDe(kind,id,which); if(n) evenement(n,'paiement',{date:today(),source:'payerFacture'}); }catch(e){} return r; }; wp._nxem=true; window.payerFacture=wp; }
+    /* 19/10/2026 : un évènement n'est envoyé que si l'encaissement a VRAIMENT changé (avant : « Annuler » sur le mode de
+       règlement, ou un second clic, envoyait quand même un « paiement » au journal du serveur) */
+    var pf=window.payerFacture; if(typeof pf==='function'&&!pf._nxem){ var wp=function(kind,id,which){ var avant=payeDe(kind,id,which); var r=pf.apply(this,arguments); try{ var n=numDe(kind,id,which); if(n&&!avant&&payeDe(kind,id,which)) evenement(n,'paiement',{date:today(),source:'payerFacture'}); }catch(e){} return r; }; wp._nxem=true; window.payerFacture=wp; }
+    var ae=window.annulerEncaissement; if(typeof ae==='function'&&!ae._nxem){ var wa=function(kind,id,which){ if(kind==='dep') return ae.apply(this,arguments); /* intervention : payDep trace déjà */
+        var avant=payeDe(kind,id,which); var r=ae.apply(this,arguments); try{ var n=numDe(kind,id,which); if(n&&avant&&!payeDe(kind,id,which)) evenement(n,'paiement_annule',{date:today(),source:'annulerEncaissement',payeLe:avant}); }catch(e){} return r; }; wa._nxem=true; window.annulerEncaissement=wa; }
     var pd=window.payDep; if(typeof pd==='function'&&!pd._nxem){ var wd=function(id){ var x=(DEP||[]).find(function(o){ return o.id===id; }), avant=x&&x.statut; var r=pd.apply(this,arguments); try{ if(x&&x.facNum&&avant!==x.statut) evenement(x.facNum,x.statut==='payee'?'paiement':'paiement_annule',{date:today(),mode:x.modeReg||''}); }catch(e){} return r; }; wd._nxem=true; window.payDep=wd; }
     /* une facture enregistrée sur le serveur ne se « corrige » plus : avoir */
     var un=window.nxfUnlockDep; if(typeof un==='function'&&!un._nxem){ var wu=function(){ try{ var e=curDep&&entree(curDep.facNum); if(e&&e.mode==='reel'&&e.origine==='emis'){ alert('La facture '+curDep.facNum+' est émise et enregistrée sur le serveur : elle ne se modifie plus. Pour la corriger, fais un avoir (écran Avoirs).'); return; } }catch(_){} return un.apply(this,arguments); }; wu._nxem=true; window.nxfUnlockDep=wu; }
@@ -737,6 +748,16 @@
     if(kind==='loc'){ var l=(LOC||[]).find(function(x){ return x.id===id; }); return l&&l.fac&&l.fac.num; }
     if(kind==='ctr'){ var c=(CTR||[]).find(function(x){ return x.id===id; }); var f2=c&&(c.facs||[]).find(function(x){ return String(x.annee)===String(which); }); return f2&&f2.num; }
     if(kind==='dep'){ var x=(DEP||[]).find(function(o){ return o.id===id; }); return x&&x.facNum; }
+    return null;
+  }
+  /* date d'encaissement de la facture (null = pas encaissée) */
+  function payeDe(kind,id,which){
+    try{
+      if(kind==='devis'){ var d=(DEVIS||[]).find(function(x){ return x.id===id; }); var f=d&&(which==='acompte'?d.facAcompte:d.facSolde); return (f&&f.payeLe)||null; }
+      if(kind==='loc'){ var l=(LOC||[]).find(function(x){ return x.id===id; }); return (l&&l.fac&&l.fac.payeLe)||null; }
+      if(kind==='ctr'){ var c=(CTR||[]).find(function(x){ return x.id===id; }); var f2=c&&(c.facs||[]).find(function(x){ return String(x.annee)===String(which); }); return (f2&&f2.payeLe)||null; }
+      if(kind==='dep'){ var x=(DEP||[]).find(function(o){ return o.id===id; }); return x&&x.statut==='payee'?(x.payeLe||'oui'):null; }
+    }catch(e){}
     return null;
   }
 
