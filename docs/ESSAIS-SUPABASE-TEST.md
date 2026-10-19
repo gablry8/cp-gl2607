@@ -109,6 +109,25 @@ Chaque correction a d'abord un test qui échoue sur l'ancien code (suite R), pui
 - Tests : suite R (R2 + R2b, 10 contrôles), échouaient sur l'ancien code (8 échecs). Batterie complète : 511 réussis,
   0 échec, 0 SKIP.
 
+**3. Sauvegarde hors Supabase (`next-assistant.js`, `next-fiabilite.js`, `index.html`)**
+- Constat : l'appli annonçait « une copie de secours part aussi chaque semaine sur ton Google Drive ». Sur le Drive,
+  un seul fichier (28/09, 44 Ko) alors que l'état pèse 215 Ko : la copie par la tâche planifiée ne marche pas (le JSON
+  devrait être recopié mot pour mot). Le rappel « sauvegarde jamais faite » était masqué dès que le cloud est connecté.
+  `climpilot_backups` ne copie que l'état, dans le même projet Supabase, sans le registre des factures ni les signatures ;
+  l'offre gratuite ne permet pas de télécharger les sauvegardes de la base.
+- Correction : texte honnête (copies du serveur « dans Supabase ») ; bouton **Export complet** : un fichier JSON daté
+  `ClimPilot_export_complet_AAAA-MM-JJ.json` = état de l'appareil + `climpilot_documents` + `climpilot_doc_events` +
+  `climpilot_signatures`, lus page par page (100 ou 1 000 lignes par page, tri sur la clé primaire). Si une table
+  échoue, le fichier est quand même donné, marqué `complet:false`, et l'export n'est pas compté. Le fichier se relit
+  avec « Importer » (partie `etat`). Ligne « Dernière copie hors Supabase : … » et rappel discret dans le bandeau du
+  tableau de bord au-delà de 7 jours.
+- Clé **synchronisée** `cpnext_dernier_export` (dans `climpilot_state.data`, lisible par une tâche planifiée) :
+  `{ "at": "<ISO du dernier export COMPLET>", "octets": <taille du fichier>, "comptes": {"documents":n,"evenements":n,"signatures":n},
+  "incomplet": {"at":"<ISO>","erreurs":n} }` (`incomplet` seulement après un essai raté ; il ne change pas `at`).
+  Lecture SQL : `select data->'cpnext_dernier_export'->>'at' from public.climpilot_state;`
+- Tests : suite R (R3, 10 contrôles, dont 1 205 événements sur 2 pages et une table en erreur). Batterie complète :
+  521 réussis, 0 échec, 0 SKIP. La tâche planifiée Drive n'a pas été modifiée.
+
 ## Pas encore essayé
 - **Fonctions `superpdp` et `assistant`** sur le projet de test. Il faut que Gabriel pose la configuration `ALLOWED_USER_IDS` et `ANTHROPIC_API_KEY` dans le tableau de bord, car la session ne peut pas le faire. En attendant, leur comportement est couvert par les tests locaux (`fn-liste-blanche`, `fn-superpdp-envoi`).
 - Avec la copie d'essai : iPhone (écran d'accueil, mise à jour, impression des PDF).

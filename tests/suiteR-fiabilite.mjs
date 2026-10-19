@@ -135,6 +135,60 @@ const IDS=['aaaaaaaa-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-00000
   await ctx.close();
 }
 
+/* R3 — export complet (état + registre + journal + signatures), pagination, rappel discret, texte honnête */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  p.removeAllListeners('dialog'); p.on('dialog',d=>d.accept().catch(()=>{}));
+  await seed(p); await p.evaluate(SERVEUR); await p.evaluate(SESSION);
+  await p.evaluate(()=>{ for(let i=0;i<3;i++) __srv.docs.push({id:'doc'+(i+1),request_id:'r'+i,serie:'F',annee:2026,numero:i+1,num:'F-2026-00'+(i+1),type:'facture',origine:'emis',date_doc:todayISO(),payload:{src:{k:'devis',id:'x'+i,w:'solde'}}});
+    for(let i=0;i<1205;i++) __srv.events.push({rid:'e'+i,doc:'doc1',type:'note',donnees:{}});
+    const t=new Date().toISOString();
+    __srv.sigs.push({token:'t1',user_id:'u1',doc_type:'devis',doc_id:'zz1',doc_num:'D-1',statut:'signe',created_at:t,doc_html:'<p>x</p>'},{token:'t2',user_id:'u1',doc_type:'devis',doc_id:'zz2',doc_num:'D-2',statut:'en_attente',created_at:t,doc_html:'<p>y</p>'});
+    go('nx_tools'); });
+  await wait(p,800);
+  const texte=await p.evaluate(()=>(document.getElementById('nxaBackups')||{}).innerText||'');
+  rec('Sauvegarde','Texte honnête : plus de promesse de copie Google Drive, copies serveur dites « dans Supabase »',!/Google Drive/i.test(texte)&&/hors Supabase/i.test(texte),texte.slice(0,400));
+  const existe=await p.evaluate(()=>typeof window.nxaExportComplet==='function');
+  rec('Export complet','Bouton « Export complet » présent',existe&&/Export complet/.test(texte),texte.slice(0,200));
+  if(existe){
+    const [dl]=await Promise.all([p.waitForEvent('download',{timeout:30000}),p.evaluate(()=>nxaExportComplet())]);
+    const nom=dl.suggestedFilename(), pth=out('export-complet.json'); await dl.saveAs(pth);
+    const o=JSON.parse(fs.readFileSync(pth,'utf8')), s=o.serveur||{};
+    const info=await p.evaluate(()=>({i:JSON.parse(localStorage.getItem('cpnext_dernier_export')||'null'),appels:__srv.appels.filter(a=>a==='from:climpilot_doc_events').length,sync:SYNC_KEYS.indexOf('cpnext_dernier_export')>=0,txt:(document.getElementById('nxaBackups')||{}).innerText||''}));
+    rec('Export complet','Fichier JSON daté',/^ClimPilot_export_complet_\d{4}-\d{2}-\d{2}\.json$/.test(nom)&&o.format==='climpilot-export-complet-1',nom+' '+o.format);
+    rec('Export complet','Contient l\'état (devis, clients…), le registre, le journal et les signatures',!!(o.etat&&o.etat.all&&o.etat.all.cp2_devis&&o.etat.all.cp2_devis.length)&&(s.climpilot_documents||[]).length===3&&(s.climpilot_signatures||[]).length===2&&(o.erreurs||[]).length===0,j({docs:(s.climpilot_documents||[]).length,sig:(s.climpilot_signatures||[]).length,err:o.erreurs}));
+    rec('Export complet','Pagination : 1 205 événements récupérés en plusieurs pages',(s.climpilot_doc_events||[]).length===1205&&info.appels>=2,j({n:(s.climpilot_doc_events||[]).length,appels:info.appels}));
+    rec('Export complet','Clé synchronisée cpnext_dernier_export : horodatage ISO + taille en octets, date affichée',!!(info.i&&info.i.at&&Date.now()-Date.parse(info.i.at)<60000&&info.i.octets===fs.statSync(pth).size)&&info.sync&&/Dernière copie hors Supabase/.test(info.txt)&&info.txt.indexOf(new Date().toLocaleDateString('fr-FR'))>=0,j({i:info.i,txt:info.txt.slice(0,300)}));
+    /* une table en erreur : fichier quand même, mais signalé INCOMPLET et non compté comme export complet */
+    const avant=info.i&&info.i.at;
+    await p.evaluate(()=>{ __srv.fail.climpilot_signatures=true; });
+    const [dl2]=await Promise.all([p.waitForEvent('download',{timeout:30000}),p.evaluate(()=>nxaExportComplet())]);
+    const pth2=out('export-incomplet.json'); await dl2.saveAs(pth2); const o2=JSON.parse(fs.readFileSync(pth2,'utf8'));
+    const i2=await p.evaluate(()=>{ __srv.fail.climpilot_signatures=false; return JSON.parse(localStorage.getItem('cpnext_dernier_export')||'null'); });
+    rec('Export complet','Table en erreur : fichier marqué incomplet, pas compté comme export complet',(o2.erreurs||[]).length===1&&o2.complet===false&&i2&&i2.at===avant&&i2.incomplet&&i2.incomplet.erreurs===1,j({err:o2.erreurs,i2}));
+    /* rappel discret : plus de 7 jours sans export complet */
+    const rp=await p.evaluate(()=>{ const set=ms=>localStorage.setItem('cpnext_dernier_export',JSON.stringify({at:new Date(ms).toISOString(),octets:1}));
+      set(Date.now()-8*86400000); checkBackup(); const a=(document.getElementById('bkbanner')||{}).innerText||'';
+      set(Date.now()-86400000); checkBackup(); const b=(document.getElementById('bkbanner')||{}).innerText||'';
+      localStorage.removeItem('cpnext_dernier_export'); checkBackup(); const c=(document.getElementById('bkbanner')||{}).innerText||'';
+      return {a,b,c}; });
+    rec('Export complet','Rappel discret au-delà de 7 jours, rien en dessous, « jamais » sans export',/Export complet/.test(rp.a)&&/8 jours/.test(rp.a)&&rp.b.trim()===''&&/jamais/i.test(rp.c),j(rp));
+  }
+  rec('Export complet','Aucune erreur JavaScript',errs.length===0,errs.join(' | '));
+  await ctx.close();
+  /* l'export complet se relit avec « Importer » sur un appareil vide (partie « etat ») */
+  if(existe&&fs.existsSync(out('export-complet.json'))){
+    const q=await page({mobile:false});
+    q.p.on('dialog',d=>d.accept().catch(()=>{}));
+    await q.p.evaluate(()=>{ window.confirm=()=>true; });
+    await q.p.evaluate(()=>{ const i=document.createElement('input'); i.type='file'; i.id='tstImpR'; i.onchange=function(){ importJSON(this); }; document.body.appendChild(i); });
+    await q.p.setInputFiles('#tstImpR',out('export-complet.json')); await q.p.waitForTimeout(2500);
+    const n=await q.p.evaluate(()=>({d:DEVIS.length,c:CLIENTS.length}));
+    rec('Export complet','Relu par « Importer » sur un appareil vide (devis et clients revenus)',n.d>=12&&n.c>=3,j(n));
+    await q.ctx.close();
+  }
+}
+
 await closeBrowser();
 ecrireResultats('resR.json',RES);
 RES.forEach(x=>console.log(x.ok.padEnd(5),'['+x.group+']',x.name,x.ok==='PASS'?'':'— '+x.detail));

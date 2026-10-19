@@ -606,14 +606,90 @@
     var d=currentData(), n=function(k){ return Array.isArray(d[k])?d[k].length:0; };
     return sb.from('climpilot_backups').insert({user_id:SESS.user.id,raison:raison,data:d,taille:JSON.stringify(d).length,nb_devis:n('cp2_devis'),nb_clients:n('cp2_clients'),nb_dep:n('cp2_dep'),nb_loc:n('cp2_loc')}).then(function(r){ return r; });
   }
+  /* ---------- Export complet HORS Supabase (19/10/2026) ----------
+     Les copies de climpilot_backups restent DANS le projet Supabase (même compte, même projet) et ne contiennent que
+     l'état synchronisé. L'export complet télécharge un fichier JSON daté : état de l'appareil + registre des factures
+     (climpilot_documents) + journal (climpilot_doc_events) + signatures (climpilot_signatures), lus page par page.
+     Clé SYNCHRONISÉE cpnext_dernier_export (lue aussi par une tâche planifiée dans climpilot_state) :
+       { at: ISO du dernier export COMPLET, octets: taille du fichier, comptes:{documents,evenements,signatures},
+         incomplet?: { at: ISO, erreurs: n } }   ← dernier essai incomplet, n'avance pas « at » */
+  var EXP_KEY='cpnext_dernier_export', EXP_BUSY=false;
+  try{ if(Array.isArray(SYNC_KEYS) && SYNC_KEYS.indexOf(EXP_KEY)<0) SYNC_KEYS.push(EXP_KEY); }catch(e){}
+  function exportInfo(){ var o=lsGet(EXP_KEY,null); return o&&typeof o==='object'?o:null; }
+  window.nxaExportInfo=exportInfo;
+  function quand(iso){ try{ var d=new Date(iso); if(isNaN(d)) return ''; return d.toLocaleDateString('fr-FR')+' à '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+  function joursDepuis(iso){ var t=Date.parse(iso||''); return isNaN(t)?null:Math.floor((Date.now()-t)/86400000); }
+  /* lecture page par page (l'API Supabase renvoie au plus 1 000 lignes par requête) ; tri sur une clé unique */
+  function lirePages(table,ordre,taille){
+    var tout=[], page=0;
+    function suite(){
+      return sb.from(table).select('*').order(ordre,{ascending:true}).range(page*taille,page*taille+taille-1).then(function(r){
+        if(r&&r.error) throw new Error(table+' : '+(r.error.message||'erreur'));
+        var d=(r&&r.data)||[]; tout=tout.concat(d); page++;
+        if(d.length<taille) return tout;
+        if(page>=1000) throw new Error(table+' : trop de pages');
+        return suite();
+      });
+    }
+    return suite();
+  }
+  function telecharger(txt,nom){
+    var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'})); a.download=nom;
+    document.body.appendChild(a); a.click(); setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} },2000);
+  }
+  window.nxaExportComplet=function(){
+    if(EXP_BUSY){ toastX('Export en cours…','warn'); return Promise.resolve(null); }
+    EXP_BUSY=true; toastX('Export complet en cours…');
+    var erreurs=[], serveur={}, etat=null;
+    try{ etat=typeof window.nxExportObjet==='function'?window.nxExportObjet():null; if(!etat) erreurs.push('état de l\'appareil : indisponible'); }catch(e){ erreurs.push('état de l\'appareil : '+(e.message||e)); }
+    var T=[['climpilot_documents','id',100],['climpilot_doc_events','id',1000],['climpilot_signatures','token',100]], ch=Promise.resolve();
+    if(!cloudOk()) erreurs.push('pas connecté au cloud : registre des factures, journal et signatures non exportés');
+    else T.forEach(function(t){ ch=ch.then(function(){ return lirePages(t[0],t[1],t[2]).then(function(rows){ serveur[t[0]]=rows; },function(e){ serveur[t[0]]=null; erreurs.push(String(e&&e.message||e)); }); }); });
+    var fin=function(){ EXP_BUSY=false; };
+    return ch.then(function(){
+      var n=function(k){ return Array.isArray(serveur[k])?serveur[k].length:0; }, complet=!erreurs.length, maintenant=new Date().toISOString();
+      var o={format:'climpilot-export-complet-1',exporte_le:maintenant,complet:complet,erreurs:erreurs,
+        comptes:{documents:n('climpilot_documents'),evenements:n('climpilot_doc_events'),signatures:n('climpilot_signatures')},
+        lisezmoi:'Copie de secours ClimPilot : état de l\'appareil (etat, relisible par « Importer ») et tables du serveur (serveur). Données personnelles de clients : à ranger en lieu sûr, hors de Supabase.',
+        etat:etat,serveur:serveur};
+      var txt=JSON.stringify(o), octets=new Blob([txt]).size;
+      telecharger(txt,'ClimPilot_export_complet_'+dISO(new Date())+'.json');
+      var info=exportInfo()||{};
+      if(complet){ info={at:maintenant,octets:octets,comptes:o.comptes}; try{ save(LS.lastbk,Date.now()); }catch(e){} }
+      else info.incomplet={at:maintenant,erreurs:erreurs.length};
+      try{ if(typeof save==='function') save(EXP_KEY,info); else lsSet(EXP_KEY,info); }catch(e){ lsSet(EXP_KEY,info); }
+      toastX(complet?'⤓ Export complet téléchargé ('+Math.max(1,Math.round(octets/1024))+' Ko) : range-le hors de Supabase (ordinateur, clé USB, Drive)'
+        :'⚠ Export INCOMPLET ('+erreurs.join(' ; ')+') : le fichier contient le reste, refais l\'export quand le réseau répond', complet?'ok':'warn');
+      try{ renderBackups(); }catch(e){} try{ if(typeof window.checkBackup==='function') window.checkBackup(); }catch(e){}
+      fin(); return {complet:complet,octets:octets,erreurs:erreurs};
+    },function(e){ fin(); toastX('⚠ Export impossible : '+(e&&e.message||e),'warn'); return null; });
+  };
+  /* rappel discret (bandeau du tableau de bord) : plus de 7 jours sans export complet */
+  window.nxaRappelExport=function(){
+    var i=exportInfo(), j=i&&i.at?joursDepuis(i.at):null;
+    if(j!=null&&j<=7) return '';
+    return '<span style="font-size:12.5px">💾 Export complet : '+(j==null?'jamais fait':'le dernier date de '+j+' jours')+'. Tes copies serveur restent dans Supabase : garde aussi un fichier ailleurs. '+
+      '<button class="btn-ghost btn-sm" style="margin-left:6px" onclick="nxaExportComplet()">⤓ Export complet</button></span>';
+  };
+  function ligneExport(){
+    var i=exportInfo(), h='<div class="nxa-sub" style="margin:2px 0 8px">Dernière copie hors Supabase : ';
+    if(i&&i.at) h+='<b>export complet du '+esc(quand(i.at))+'</b>'+(i.octets?' ('+Math.max(1,Math.round(i.octets/1024))+' Ko)':'')+(joursDepuis(i.at)>7?' — <b>plus de 7 jours</b>':'');
+    else h+='<b>aucune connue</b>';
+    if(i&&i.incomplet&&(!i.at||String(i.incomplet.at)>String(i.at))) h+=' · dernier essai INCOMPLET le '+esc(quand(i.incomplet.at));
+    return h+'.</div>';
+  }
+  var TXT_COPIES='Le serveur garde une copie de tes données <b>chaque jour où tu synchronises</b> (45 jours, puis une par mois pendant 13 mois) et une copie <b>avant toute grosse perte</b> (appareil vide qui écraserait le cloud, suppression massive…). '+
+    'Ces copies sont <b>dans Supabase</b>, au même endroit que tes données : elles ne protègent ni d\'une perte du compte ou du projet, ni le registre des factures. '+
+    'Pour une copie <b>hors Supabase</b>, fais un <b>Export complet</b> (fichier JSON : données, registre des factures, journal, signatures) au moins une fois par semaine et range-le ailleurs.';
+  var BTN_EXPORT='<button class="nx-sbtn mar" onclick="nxaExportComplet()">⤓ Export complet (fichier)</button>';
   function renderBackups(){
     var host=document.getElementById('nxaBackups'); if(!host) return;
-    if(!cloudOk()){ host.innerHTML='<div class="card"><h2>☁️ Sauvegardes cloud</h2><div class="nxa-sub">Connecte-toi au cloud pour voir tes sauvegardes automatiques.</div></div>'; return; }
-    host.innerHTML='<div class="card"><h2>☁️ Sauvegardes cloud</h2><div class="nxa-sub">Chargement…</div></div>';
+    if(!cloudOk()){ host.innerHTML='<div class="card"><h2>☁️ Sauvegardes</h2><div class="nxa-sub">Connecte-toi au cloud pour voir les copies du serveur. Sans connexion, l\'export ne contient que les données de cet appareil.</div>'+ligneExport()+'<div class="nxa-act">'+BTN_EXPORT+'</div></div>'; return; }
+    host.innerHTML='<div class="card"><h2>☁️ Sauvegardes</h2><div class="nxa-sub">Chargement…</div></div>';
     sb.from('climpilot_backups').select('id,created_at,raison,taille,nb_devis,nb_clients,nb_dep,nb_loc').order('created_at',{ascending:false}).limit(60).then(function(r){
       var rows=(r&&r.data)||[];
-      var h='<div class="card"><div class="nxa-hd"><h2 style="margin:0">☁️ Sauvegardes cloud automatiques</h2><button class="nx-sbtn mar" onclick="nxaBackupNow()">Sauvegarder maintenant</button></div>'+
-        '<div class="nxa-sub" style="margin:4px 0 10px">Le serveur garde une copie <b>chaque jour</b> (45 jours, puis une par mois pendant 13 mois) et une copie <b>avant toute grosse perte</b> de données (appareil vide qui écraserait le cloud, suppression massive…). Une copie de secours part aussi chaque semaine sur ton Google Drive.</div>';
+      var h='<div class="card"><div class="nxa-hd"><h2 style="margin:0">☁️ Sauvegardes</h2><div>'+BTN_EXPORT+'<button class="nx-sbtn" onclick="nxaBackupNow()">Copie serveur maintenant</button></div></div>'+
+        '<div class="nxa-sub" style="margin:4px 0 6px">'+TXT_COPIES+'</div>'+ligneExport();
       if(r&&r.error) h+='<div class="nxa-state warn">⚠ '+esc(r.error.message)+'</div>';
       else if(!rows.length) h+='<div class="empty">Aucune sauvegarde pour l\'instant — la première arrive à la prochaine synchro.</div>';
       else h+=rows.map(function(b){ return '<div class="recap-line"><div style="min-width:0"><b>'+esc(fmtWhen(b.created_at))+'</b><div class="sub2">'+esc(RAISON[b.raison]||b.raison)+' · '+(b.nb_devis||0)+' devis · '+(b.nb_clients||0)+' clients · '+(b.nb_dep||0)+' interv. · '+(b.nb_loc||0)+' loc. · '+Math.max(1,Math.round((b.taille||0)/1024))+' Ko</div></div><button class="nx-sbtn" onclick="nxaRestore('+b.id+')">Restaurer</button></div>'; }).join('');

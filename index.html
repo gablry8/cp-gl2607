@@ -2474,19 +2474,25 @@ function exportCSV(){
    L'ancienne sauvegarde oubliait le parc, les contrats et les fiches fluides. Anciennes sauvegardes toujours lisibles. */
 const NX_BK_SKIP=/^(cp2_pin|cp2_lastbackup|cpnext_history|cpnext_avant_import|cpnext_nav_section|cpnext_notified)$|_corrompu_/;
 function nxBackupKeys(){const out=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^(cp2_|cpnext_)/.test(k)&&!NX_BK_SKIP.test(k))out.push(k);}return out.sort();}
-function exportJSON(){
+/* contenu de la sauvegarde de l'appareil (aussi repris tel quel par l'« Export complet », next-assistant.js) */
+function nxExportObjet(){
   const all={};nxBackupKeys().forEach(k=>{try{all[k]=JSON.parse(localStorage.getItem(k));}catch(e){all[k]=localStorage.getItem(k);}});
-  const o={format:'climpilot-complet-1',exported:new Date().toISOString(),all,
+  return {format:'climpilot-complet-1',exported:new Date().toISOString(),all,
     /* champs de l'ancien format, pour relire la sauvegarde avec une ancienne version */
     devis:DEVIS,clients:CLIENTS,custom:load(LS.custom,[]),over:load(LS.over,{}),cmd:CMD,machlib:MACHLIB,dep:DEP,facseq:load(LS.facseq,null),loc:LOC,locseq:load(LS.locseq,null),adiacat:ADIACAT,
     equip:EQUIP,contrats:CTR,fluides:FLU,
     compte:{devis:DEVIS.length,clients:CLIENTS.length,interventions:DEP.length,locations:LOC.length,equipements:EQUIP.length,contrats:CTR.length,fiches_fluides:FLU.length}};
+}
+function exportJSON(){
+  const o=nxExportObjet();
   const blob=new Blob([JSON.stringify(o)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ClimPilot_sauvegarde_'+todayISO()+'.json';a.click();
   save(LS.lastbk,Date.now());checkBackup();
   toast('Sauvegarde complète téléchargée : '+DEVIS.length+' devis, '+CLIENTS.length+' clients, '+CTR.length+' contrats, '+FLU.length+' fiches fluides');}
 function importJSON(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{let o;
   try{o=JSON.parse(r.result);}catch(e){alert('Fichier illisible : ce n\'est pas une sauvegarde ClimPilot.');input.value='';return;}
+  /* « Export complet » (19/10/2026) : la partie « etat » est la sauvegarde de l'appareil ; les tables du serveur restent dans le fichier */
+  if(o&&o.format==='climpilot-export-complet-1'&&o.etat&&typeof o.etat==='object')o=o.etat;
   if(!o||typeof o!=='object'||!(o.all||o.devis||o.clients||o.prix)){alert('Ce fichier ne contient pas de données ClimPilot.');input.value='';return;}
   const n=o.compte||{devis:(o.devis||[]).length,clients:(o.clients||[]).length};
   const when=o.exported?new Date(o.exported).toLocaleString('fr-FR'):'date inconnue';

@@ -66,6 +66,9 @@ Partie de `main` (`1c91cca`), car `claude/quirky-pasteur-ds9m47` n'en contient p
    « Traité » / « Écarter ») ; une ligne abîmée ne casse plus la liste.
 2. **Encaissement** (fait) : « Annuler » sur le mode de règlement n'enregistre plus rien ; bouton ↺ « Annuler
    l'encaissement » avec trace ; le journal du serveur ne reçoit un paiement que s'il a vraiment eu lieu.
+3. **Export complet hors Supabase** (fait) : Outils › Sauvegardes › « Export complet (fichier) » ; clé synchronisée
+   `cpnext_dernier_export` (`at` ISO du dernier export complet, `octets`) ; rappel discret au-delà de 7 jours ; texte
+   faux sur la copie Google Drive retiré. À faire par Gabriel : un export par semaine, rangé hors de Supabase.
 
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
@@ -88,7 +91,7 @@ Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Su
    - **adhésion à un médiateur de la consommation** : obligatoire avant le premier devis à un particulier.
 4. **Sécurité avant la production** :
    - double authentification sur GitHub et sur Supabase ;
-   - sauvegarde des données : export régulier, à définir ;
+   - sauvegarde des données : « Export complet » chaque semaine (branche `claude/fiabilite-19-10`), fichier rangé hors de Supabase ;
    - vérifier l'absence de secrets dans le dépôt public.
 5. **Déploiement réel**, uniquement par Gabriel et avec son accord, dans l'ordre de `docs/CORRECTIONS-1.10.md` (« Ordre de déploiement envisagé ») :
    - migration sur le projet réel ;
