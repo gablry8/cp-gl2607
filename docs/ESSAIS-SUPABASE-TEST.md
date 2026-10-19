@@ -78,6 +78,22 @@ Copie d'essai de la 1.10 (bandeau rouge « VERSION D'ESSAI », hébergée à par
 - Message « Serveur injoignable » trompeur quand la fonction `superpdp` n'est pas installée. **Corrigé** : messages distincts (service pas installé, pas de réseau, erreur HTTP), avec une mention spéciale pour un document de démonstration.
 - Décision de facturation réelle définitive même sans aucune facture. **Corrigé** : elle s'annule avant la date de début, ou après si aucune facture réelle n'existe (vérifié sur l'appareil et sur le serveur). Les anciennes factures renommées ESSAI-… reprennent leur numéro.
 
+## Audit de fiabilité du 18/10/2026 — constats et corrections (branche `claude/fiabilite-19-10`, non déployée)
+Audit en lecture seule du code de `main` et du projet réel (métadonnées seulement, aucune donnée client lue).
+Chaque correction a d'abord un test qui échoue sur l'ancien code (suite R), puis la batterie complète.
+
+**1. Boîte de réception (`next-assistant.js`)**
+- Constat : une seule requête prenait les 200 lignes les **plus anciennes** (à valider et traitées de la semaine mêlées).
+  Avec 500 lignes (300 traitées, 200 à valider), l'ancien code n'affichait **aucune** des nouvelles demandes, badge à 0.
+  Une ligne du site (`source='site'`) n'affichait pas `payload.champs` et n'avait pas de bouton « Traité ». Une ligne
+  dont `a_verifier` n'est pas une liste faisait planter toute la liste.
+- Correction : trois lectures (à valider : 100 plus récentes + nombre exact pour le badge ; « auto » à importer ;
+  traités : 25 derniers), carte dédiée aux demandes du site (champs avec libellés, « À rappeler avant le … » en
+  rouge si dépassé, « ACTIVITÉ BLOQUÉE », liens `tel:` et `mailto:` à schéma fixe et valeur encodée, « Traité »,
+  « Écarter », « Copier »), garde `Array.isArray`. Tout le texte du visiteur est échappé.
+- Tests : suite R (R1, 17 contrôles), dont un texte piégé (`" onmouseover=…`, `<img onerror>`, `javascript:`) : affiché
+  tel quel, rien d'exécuté. Échouait sur l'ancien code (15 échecs sur 17).
+
 ## Pas encore essayé
 - **Fonctions `superpdp` et `assistant`** sur le projet de test. Il faut que Gabriel pose la configuration `ALLOWED_USER_IDS` et `ANTHROPIC_API_KEY` dans le tableau de bord, car la session ne peut pas le faire. En attendant, leur comportement est couvert par les tests locaux (`fn-liste-blanche`, `fn-superpdp-envoi`).
 - Avec la copie d'essai : iPhone (écran d'accueil, mise à jour, impression des PDF).

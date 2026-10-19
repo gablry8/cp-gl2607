@@ -56,6 +56,15 @@ Sans droit `unshare -n` (isolation réseau du noyau), lancer avec `CP_SANS_NETNS
   - fonctions SECURITY DEFINER appelables par `authenticated` : voulu, elles vérifient `auth.uid()` ;
   - « protection des mots de passe divulgués » désactivée : à voir par Gabriel.
 
+## Branche `claude/fiabilite-19-10` (19/10/2026) — corrections de fiabilité, NON déployées
+Partie de `main` (`1c91cca`), car `claude/quirky-pasteur-ds9m47` n'en contient pas le commit de fusion ; le commit de documentation
+`217661b` y est repris. Attention : `claude/ameliorations-1.12` (1.11 + 1.12, non fusionnée) touche aussi `index.html`,
+`next-emission.js`, `sw.js` et `tests/run-all.sh` : fusion à faire avec soin, après essais. Constats : audit du 18/10
+(voir `docs/ESSAIS-SUPABASE-TEST.md`, « Audit de fiabilité du 18/10/2026 »). Tests : nouvelle suite `tests/suiteR-fiabilite.mjs`.
+1. **Boîte de réception** (fait) : à valider = les 100 plus récentes + nombre exact (badge) ; traités = les 25 derniers ;
+   carte dédiée aux demandes du site (champs lisibles, « À rappeler avant le … », « ACTIVITÉ BLOQUÉE », liens tel:/mailto:,
+   « Traité » / « Écarter ») ; une ligne abîmée ne casse plus la liste.
+
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
 Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).
