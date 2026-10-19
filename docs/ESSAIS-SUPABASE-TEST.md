@@ -93,6 +93,21 @@ Chaque correction a d'abord un test qui échoue sur l'ancien code (suite R), pui
   « Écarter », « Copier »), garde `Array.isArray`. Tout le texte du visiteur est échappé.
 - Tests : suite R (R1, 17 contrôles), dont un texte piégé (`" onmouseover=…`, `<img onerror>`, `javascript:`) : affiché
   tel quel, rien d'exécuté. Échouait sur l'ancien code (15 échecs sur 17).
+- Batterie complète : 501 réussis, 0 échec, 0 SKIP (le message du commit indique 484 : le rapport ne comptait pas
+  encore la suite R, corrigé dans `tests/isolation/rapport.mjs`).
+
+**2. Encaissement annulé (`index.html`, `next-emission.js`, `next-particuliers.js`, `next-avoir.js`)**
+- Constat : « Annuler » sur la question du mode de règlement enregistrait quand même l'encaissement (« Virement »),
+  sans moyen de l'annuler pour un devis, une location ou un contrat. En mode réel, un « paiement » partait aussi au
+  journal du serveur, même sans encaissement (et un second clic en envoyait un deuxième).
+- Correction : `askMode()` renvoie `null` sur « Annuler » et rien n'est enregistré (factures, interventions,
+  remboursement d'avoir) ; bouton ↺ « Annuler l'encaissement » (devis, location, contrat) qui remet la facture
+  « en attente » et garde une trace (`encaissementsAnnules` : date payée, mode, date d'annulation) ; pour une
+  intervention, la bascule existante garde la même trace. Le journal du serveur ne reçoit `paiement` /
+  `paiement_annule` que si l'encaissement a vraiment changé. Un paiement « irrégulier » n'est plus marqué si rien
+  n'a été encaissé.
+- Tests : suite R (R2 + R2b, 10 contrôles), échouaient sur l'ancien code (8 échecs). Batterie complète : 511 réussis,
+  0 échec, 0 SKIP.
 
 ## Pas encore essayé
 - **Fonctions `superpdp` et `assistant`** sur le projet de test. Il faut que Gabriel pose la configuration `ALLOWED_USER_IDS` et `ANTHROPIC_API_KEY` dans le tableau de bord, car la session ne peut pas le faire. En attendant, leur comportement est couvert par les tests locaux (`fn-liste-blanche`, `fn-superpdp-envoi`).

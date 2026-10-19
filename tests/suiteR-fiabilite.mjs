@@ -78,6 +78,63 @@ const IDS=['aaaaaaaa-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-00000
   await ctx.close();
 }
 
+/* R2 — encaissement : « Annuler » sur le mode de règlement n'enregistre rien ; « Annuler l'encaissement » avec trace */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  p.removeAllListeners('dialog'); p.on('dialog',d=>d.accept().catch(()=>{}));
+  await seed(p);
+  const r=await p.evaluate(async c=>{
+    const d=DEVIS.find(x=>x.statut==='accepte'&&compute(x).totalHT>0); await facturerDevis(d.id,'solde'); eval(c);
+    const f=()=>DEVIS.find(x=>x.id===d.id).facSolde, num=f()&&f().num, livre=n=>allRecettes().some(x=>x.num===n);
+    window.prompt=()=>null; payerFacture('devis',d.id,'solde');
+    const annule={paye:f().payeLe||null,livre:livre(num)};
+    window.prompt=()=>'Chèque'; payerFacture('devis',d.id,'solde');
+    const paye={paye:f().payeLe||null,mode:f().mode,livre:livre(num)};
+    cur=DEVIS.find(x=>x.id===d.id); renderFBloc(); const bouton=!!document.querySelector('#fBloc [onclick*="annulerEncaissement"]');
+    const fn=typeof window.annulerEncaissement==='function'; if(fn) annulerEncaissement('devis',d.id,'solde');
+    const apres={paye:f().payeLe||null,trace:f().encaissementsAnnules||null,livre:livre(num)};
+    /* location */
+    LOC.push({id:'locR',cNom:'Location test',cType:'Professionnel',items:[],fac:{num:'TEST-F-2099-001',date:todayISO(),montant:100,payeLe:null,mode:''}}); save(LS.loc,LOC);
+    window.prompt=()=>null; payerFacture('loc','locR',''); const l1=LOC.find(x=>x.id==='locR').fac.payeLe||null;
+    window.prompt=()=>'Espèces'; payerFacture('loc','locR',''); const l2=LOC.find(x=>x.id==='locR').fac.payeLe||null;
+    if(fn) annulerEncaissement('loc','locR',''); const lf=LOC.find(x=>x.id==='locR').fac;
+    /* intervention : bascule existante (sans question), trace gardée */
+    newDep('dep'); await new Promise(r=>setTimeout(r,50));
+    Object.assign(curDep,{cNom:'Intervention test',cType:'Professionnel',desc:'Dépannage test',heures:1}); loadDepForm(); await factureDep(); eval(c);
+    const idD=curDep.id;
+    window.prompt=()=>null; payDep(idD); const d1=DEP.find(x=>x.id===idD).statut;
+    window.prompt=()=>'CB'; payDep(idD); const d2=DEP.find(x=>x.id===idD).statut;
+    payDep(idD); const dx=DEP.find(x=>x.id===idD);
+    return {num,annule,paye,bouton,fn,apres,l1,l2,lf:{paye:lf.payeLe||null,trace:lf.encaissementsAnnules||null},d1,d2,d3:dx.statut,dtrace:dx.encaissementsAnnules||null};
+  },close);
+  rec('Encaissement','« Annuler » sur le mode de règlement : rien n\'est enregistré',!!r.num&&r.annule.paye===null&&!r.annule.livre,j(r));
+  rec('Encaissement','Encaissement confirmé : payé, mode gardé, au livre des recettes',!!r.paye.paye&&r.paye.mode==='Chèque'&&r.paye.livre,j(r));
+  rec('Encaissement','Bouton « Annuler l\'encaissement » sur une facture payée',r.bouton,j(r));
+  rec('Encaissement','Annuler l\'encaissement : retour « en attente », trace gardée, hors livre des recettes',r.fn&&r.apres.paye===null&&Array.isArray(r.apres.trace)&&r.apres.trace.length===1&&r.apres.trace[0].mode==='Chèque'&&!!r.apres.trace[0].annuleLe&&!r.apres.livre,j(r));
+  rec('Encaissement','Location : mêmes règles',r.l1===null&&!!r.l2&&r.lf.paye===null&&Array.isArray(r.lf.trace)&&r.lf.trace.length===1,j(r));
+  rec('Encaissement','Intervention : « Annuler » = reste facturée ; repasser en attente garde une trace',r.d1==='facturee'&&r.d2==='payee'&&r.d3==='facturee'&&Array.isArray(r.dtrace)&&r.dtrace.length===1&&r.dtrace[0].mode==='CB',j(r));
+  rec('Encaissement','Aucune erreur JavaScript',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
+/* R2b — mode réel : le journal du serveur ne reçoit un paiement que s'il a vraiment été enregistré */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  p.removeAllListeners('dialog'); p.on('dialog',d=>d.accept().catch(()=>{}));
+  await seed(p); await p.evaluate(SERVEUR); await p.evaluate(REEL);
+  const r=await p.evaluate(async c=>{ const d=DEVIS.find(x=>x.statut==='accepte'&&compute(x).totalHT>0);
+    await facturerDevis(d.id,'solde'); eval(c); await new Promise(r=>setTimeout(r,100));
+    const ev=()=>__srv.events.map(e=>e.type);
+    window.prompt=()=>null; payerFacture('devis',d.id,'solde'); await new Promise(r=>setTimeout(r,100)); const e1=ev();
+    window.prompt=()=>'Virement'; payerFacture('devis',d.id,'solde'); await new Promise(r=>setTimeout(r,100)); const e2=ev();
+    if(typeof window.annulerEncaissement==='function') annulerEncaissement('devis',d.id,'solde'); await new Promise(r=>setTimeout(r,100)); const e3=ev();
+    return {num:d.facSolde&&d.facSolde.num,e1,e2,e3}; },close);
+  rec('Encaissement','Mode réel : « Annuler » n\'envoie aucun paiement au journal du serveur',/^F-\d{4}-\d{3}$/.test(r.num||'')&&r.e1.length===0,j(r));
+  rec('Encaissement','Mode réel : paiement puis annulation tracés au journal (paiement, paiement_annule)',r.e2.join()==='paiement'&&r.e3.join()==='paiement,paiement_annule',j(r));
+  rec('Encaissement','Aucune erreur JavaScript (mode réel)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
 await closeBrowser();
 ecrireResultats('resR.json',RES);
 RES.forEach(x=>console.log(x.ok.padEnd(5),'['+x.group+']',x.name,x.ok==='PASS'?'':'— '+x.detail));

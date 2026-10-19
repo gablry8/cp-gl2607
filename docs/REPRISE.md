@@ -64,6 +64,8 @@ Partie de `main` (`1c91cca`), car `claude/quirky-pasteur-ds9m47` n'en contient p
 1. **Boîte de réception** (fait) : à valider = les 100 plus récentes + nombre exact (badge) ; traités = les 25 derniers ;
    carte dédiée aux demandes du site (champs lisibles, « À rappeler avant le … », « ACTIVITÉ BLOQUÉE », liens tel:/mailto:,
    « Traité » / « Écarter ») ; une ligne abîmée ne casse plus la liste.
+2. **Encaissement** (fait) : « Annuler » sur le mode de règlement n'enregistre plus rien ; bouton ↺ « Annuler
+   l'encaissement » avec trace ; le journal du serveur ne reçoit un paiement que s'il a vraiment eu lieu.
 
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 

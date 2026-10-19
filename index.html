@@ -2171,8 +2171,8 @@ function factureDep(){formToDep();
   saveDep();loadDepForm();toast('🧾 Facture '+curDep.facNum+' — série continue, ne pas supprimer une facture émise');
 }
 function payDep(id){const d=DEP.find(x=>x.id===id);if(!d)return;
-  if(d.statut==='payee'){d.statut='facturee';d.payeLe=null;d.modeReg='';}
-  else if(d.statut==='facturee'){d.statut='payee';d.payeLe=todayISO();d.modeReg=askMode();}
+  if(d.statut==='payee'){nxTraceEncaissement(d,d.payeLe,d.modeReg);d.statut='facturee';d.payeLe=null;d.modeReg='';}
+  else if(d.statut==='facturee'){const m=askMode();if(m==null){toast(NX_ENC_ANNULE);return;}d.statut='payee';d.payeLe=todayISO();d.modeReg=m;}
   save(LS.dep,DEP);renderDep();updateBadges();}
 function delDep(id){const d=DEP.find(x=>x.id===id);
   if(d&&d.facNum&&!confirm('⚠️ Cette intervention a une facture émise ('+d.facNum+'). En comptabilité une facture ne se supprime pas, elle s\'annule par avoir. Supprimer quand même ?'))return;
@@ -2778,6 +2778,7 @@ function renderLoc(){
     '<button class="iconbtn" title="Mail de confirmation" onclick="mailLoc(\''+l.id+'\')">✉️</button>'+
     (l.statut==='rendu'&&!l.fac?'<button class="iconbtn" title="Facturer" onclick="facturerLoc(\''+l.id+'\')">🧾</button>':'')+
     (l.fac&&!l.fac.payeLe?'<button class="iconbtn" title="Marquer payée" onclick="payerFacture(\'loc\',\''+l.id+'\',\'\')">💶</button>':'')+
+    (l.fac&&l.fac.payeLe?'<button class="iconbtn" title="Annuler l\'encaissement (enregistré par erreur)" onclick="annulerEncaissement(\'loc\',\''+l.id+'\',\'\')">↺</button>':'')+
     (l.fac?'<button class="iconbtn" title="PDF facture" onclick="printFactureLoc(LOC.find(x=>x.id===\''+l.id+'\'))">🖨️</button>':'')+
     (l.statut!=='rendu'?'<button class="iconbtn" title="Étape suivante" onclick="locNext(\''+l.id+'\')">⇢</button>':'')+
     '<button class="iconbtn" title="Supprimer" onclick="delLoc(\''+l.id+'\')">🗑</button></td></tr>').join('')+'</tbody></table></div>';
@@ -2862,7 +2863,11 @@ function checkBackup(){const b=document.getElementById('bkbanner');if(!b)return;
   b.innerHTML='💾 <b>Sauvegarde :</b> '+(last?('dernière il y a '+days+' jours'):'jamais faite')+' — tes devis, factures et contrats ne vivent que sur cet ordinateur. <button class="btn-dark btn-sm" style="margin-left:8px" onclick="exportJSON()">⤓ Sauvegarder maintenant (JSON)</button>';}
 
 /* ============ FINANCES — facturation chantiers, encaissements, impayés, URSSAF, livre des recettes ============ */
-function askMode(){return (prompt('Mode de règlement ?\nVirement / Chèque / Espèces / CB','Virement')||'').trim()||'Virement';}
+/* 19/10/2026 : « Annuler » sur le mode de règlement = null → rien n'est enregistré (avant : « Virement » enregistré quand même) */
+function askMode(){const r=prompt('Mode de règlement ?\nVirement / Chèque / Espèces / CB','Virement');if(r==null)return null;return String(r).trim()||'Virement';}
+const NX_ENC_ANNULE='Encaissement non enregistré (annulé)';
+/* trace d'un encaissement annulé : on garde la date, le mode et le moment de l'annulation (rien ne disparaît sans trace) */
+function nxTraceEncaissement(o,payeLe,mode){(o.encaissementsAnnules=o.encaissementsAnnules||[]).push({payeLe:payeLe||null,mode:mode||'',annuleLe:new Date().toISOString()});}
 function facturerDevis(id,which){
   const d=DEVIS.find(x=>x.id===id);if(!d)return;
   const c=compute(d);const today=todayISO();
@@ -2890,21 +2895,40 @@ function facturerDevis(id,which){
 function payerFacture(kind,id,which){
   if(kind==='devis'){const d=DEVIS.find(x=>x.id===id);if(!d)return;
     const f=which==='acompte'?d.facAcompte:d.facSolde;if(!f||f.payeLe)return;
-    f.payeLe=todayISO();f.mode=askMode();
+    const m=askMode();if(m==null){toast(NX_ENC_ANNULE);return;}
+    f.payeLe=todayISO();f.mode=m;
     save(LS.devis,DEVIS);renderFBloc();
   }else if(kind==='loc'){const l=LOC.find(x=>x.id===id);if(!l||!l.fac||l.fac.payeLe)return;
-    l.fac.payeLe=todayISO();l.fac.mode=askMode();
+    const m=askMode();if(m==null){toast(NX_ENC_ANNULE);return;}
+    l.fac.payeLe=todayISO();l.fac.mode=m;
     save(LS.loc,LOC);if(window._curView==='loc')renderLoc();
   }else if(kind==='dep'){const x=DEP.find(o=>o.id===id);if(!x||x.statut!=='facturee')return;
-    x.statut='payee';x.payeLe=todayISO();x.modeReg=askMode();
+    const m=askMode();if(m==null){toast(NX_ENC_ANNULE);return;}
+    x.statut='payee';x.payeLe=todayISO();x.modeReg=m;
     save(LS.dep,DEP);if(window._curView==='dep')renderDep();
   }else if(kind==='ctr'){const c=CTR.find(o=>o.id===id);if(!c)return;
     const f=(c.facs||[]).find(x=>String(x.annee)===String(which));if(!f||f.payeLe)return;
-    f.payeLe=todayISO();f.mode=askMode();
+    const m=askMode();if(m==null){toast(NX_ENC_ANNULE);return;}
+    f.payeLe=todayISO();f.mode=m;
     save('cp2_contrats',CTR);if(window._curView==='contrats')renderContrats();
   }
   updateBadges();if(window._curView==='dash')renderDash();
   toast('💶 Encaissement enregistré — il entre au livre des recettes');
+}
+/* 19/10/2026 : annuler un encaissement enregistré par erreur — la facture repasse « en attente », une trace est gardée */
+function annulerEncaissement(kind,id,which){
+  if(kind==='dep'){const x=DEP.find(o=>o.id===id);if(x&&x.statut==='payee')payDep(id);return;}
+  let f=null;
+  if(kind==='devis'){const d=DEVIS.find(x=>x.id===id);f=d&&(which==='acompte'?d.facAcompte:d.facSolde);}
+  else if(kind==='loc'){const l=LOC.find(x=>x.id===id);f=l&&l.fac;}
+  else if(kind==='ctr'){const c=CTR.find(o=>o.id===id);f=c&&(c.facs||[]).find(x=>String(x.annee)===String(which));}
+  if(!f||!f.payeLe)return;
+  nxTraceEncaissement(f,f.payeLe,f.mode);f.payeLe=null;f.mode='';
+  if(kind==='devis'){save(LS.devis,DEVIS);renderFBloc();}
+  else if(kind==='loc'){save(LS.loc,LOC);if(window._curView==='loc')renderLoc();}
+  else{save('cp2_contrats',CTR);if(window._curView==='contrats')renderContrats();}
+  updateBadges();if(window._curView==='dash')renderDash();if(window._curView==='recettes')renderRecettes();
+  toast('↺ Encaissement annulé : la facture repasse « en attente » (trace gardée). S\'il a déjà été déclaré, vois la correction avec ta comptable.');
 }
 function facturerLoc(id){const l=LOC.find(x=>x.id===id);if(!l)return;
   if(l.fac){toast('Déjà facturée ('+l.fac.num+')');return;}
@@ -2917,7 +2941,7 @@ function renderFBloc(){
   if(!cur||(cur.statut!=='accepte'&&!cur.facAcompte&&!cur.facSolde)){el.innerHTML='';return;}
   const c=compute(cur);
   const row=(f,lbl,which)=>'<div class="recap-line"><div><b>'+lbl+' — '+f.num+'</b><div class="sub2">émise le '+f.date+' · '+eur(f.montant)+(f.payeLe?' · ✔ payée le '+f.payeLe+' ('+(f.mode||'—')+')':' · ⌛ en attente de paiement')+'</div></div><div class="row-actions">'
-    +(f.payeLe?'':'<button class="btn-pri btn-sm" onclick="payerFacture(\'devis\',cur.id,\''+which+'\')">💶 Payée</button>')
+    +(f.payeLe?'<button class="iconbtn" title="Annuler l\'encaissement (enregistré par erreur)" onclick="annulerEncaissement(\'devis\',cur.id,\''+which+'\')">↺</button>':'<button class="btn-pri btn-sm" onclick="payerFacture(\'devis\',cur.id,\''+which+'\')">💶 Payée</button>')
     +'<button class="iconbtn" title="PDF" onclick="printFactureDevis(cur,\''+which+'\')">🖨️</button></div></div>';
   let h='<div class="card" style="border-top:3px solid var(--green);margin-top:14px"><h2>💰 Facturation du chantier</h2>'
    +'<div class="sub" style="margin-bottom:8px">Série unique F-'+new Date().getFullYear()+'-XXX (commune avec les interventions). Une facture émise ne se supprime pas — elle s\'annule par avoir.</div>';
@@ -3254,6 +3278,7 @@ function renderContrats(){
       +'<button class="iconbtn" title="Mail au client" onclick="mailEntretien(\''+c.id+'\')">✉️</button>'
       +(!f?'<button class="iconbtn" title="Facturer l\'année" onclick="facturerContrat(\''+c.id+'\')">🧾</button>':'')
       +(f&&!f.payeLe?'<button class="iconbtn" title="Marquer payée" onclick="payerFacture(\'ctr\',\''+c.id+'\',\''+pk+'\')">💶</button>':'')
+      +(f&&f.payeLe?'<button class="iconbtn" title="Annuler l\'encaissement (enregistré par erreur)" onclick="annulerEncaissement(\'ctr\',\''+c.id+'\',\''+pk+'\')">↺</button>':'')
       +(f?'<button class="iconbtn" title="PDF" onclick="printFactureCtr(CTR.find(x=>x.id===\''+c.id+'\'),CTR.find(x=>x.id===\''+c.id+'\').facs.find(x=>x.annee==='+pk+'))">🖨️</button>':'')
       +'<button class="iconbtn" onclick="openCtr(\''+c.id+'\')">✏️</button>'
       +'<button class="iconbtn d" onclick="delCtr(\''+c.id+'\')">🗑</button></td></tr>';}).join('')
