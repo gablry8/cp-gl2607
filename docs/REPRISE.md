@@ -69,6 +69,14 @@ Partie de `main` (`1c91cca`), car `claude/quirky-pasteur-ds9m47` n'en contient p
 3. **Export complet hors Supabase** (fait) : Outils › Sauvegardes › « Export complet (fichier) » ; clé synchronisée
    `cpnext_dernier_export` (`at` ISO du dernier export complet, `octets`) ; rappel discret au-delà de 7 jours ; texte
    faux sur la copie Google Drive retiré. À faire par Gabriel : un export par semaine, rangé hors de Supabase.
+4. **Émission** (fait, appli seulement) : « résultat inconnu, réessaie depuis CET appareil » après une réponse perdue ;
+   facture déjà émise pour la même source reprise au lieu d'un second numéro. Reste possible : une règle SQL dans
+   `cp_emettre_document` (même source = même facture), à préparer et tester sur le projet de test avant toute production.
+5. **Suite** : copie d'essai (projet de test à relancer par Gabriel, clé anon du projet de test à mettre dans la copie
+   seulement), essais de Gabriel, puis fusion dans `main` par lui ; ensuite rapprocher avec `claude/ameliorations-1.12`.
+   Autres points de l'audit non traités ici : nouvel appareil qui écrase des réglages au premier passage (fusion sans
+   base), synchro sans délai d'attente, fonction `superpdp` en ligne (v1) qui ne lit pas `document_id`, signature
+   (refus non vérifié, erreur de base présentée comme « lien introuvable »).
 
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 

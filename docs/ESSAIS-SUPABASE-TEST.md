@@ -128,6 +128,20 @@ Chaque correction a d'abord un test qui échoue sur l'ancien code (suite R), pui
 - Tests : suite R (R3, 10 contrôles, dont 1 205 événements sur 2 pages et une table en erreur). Batterie complète :
   521 réussis, 0 échec, 0 SKIP. La tâche planifiée Drive n'a pas été modifiée.
 
+**4. Émission : réponse perdue et autre appareil (`next-emission.js`, partie appli seulement, aucun changement SQL)**
+- Constat : après 25 s sans réponse (ou une coupure pendant l'envoi), l'appli affichait « Facture NON émise… Rien n'a
+  été facturé », alors que le serveur avait peut-être enregistré la facture. La demande en attente ne vit que sur
+  l'appareil : refacturer depuis un autre appareil donnait un second numéro pour le même devis (reproduit par le test :
+  F-2026-003 émise alors que F-2026-002 existait déjà pour ce devis).
+- Correction : message « Résultat INCONNU… réessaie depuis CET appareil (même demande, sans doublon), pas depuis un autre
+  appareil » ; avant toute émission en mode réel, lecture de `climpilot_documents` (filtre `payload->src`) : une facture
+  déjà émise pour la même source (devis + acompte/solde, intervention, location, année de contrat) est reprise et remise
+  en place, sans nouveau numéro. Exceptions : la demande en attente de CET appareil (même request_id) et une facture
+  annulée par un avoir total (`facAnnulees`). Registre illisible : rien n'est émis (« NON émise »).
+- Limite : la vérification se fait côté appli ; deux appareils qui émettent à la même seconde pour le même devis ne
+  sont pas arrêtés par le serveur (il faudrait une règle SQL, non faite ici).
+- Tests : suite R (R4, 5 contrôles), 3 échecs sur l'ancien code. Batterie complète : 526 réussis, 0 échec, 0 SKIP.
+
 ## Pas encore essayé
 - **Fonctions `superpdp` et `assistant`** sur le projet de test. Il faut que Gabriel pose la configuration `ALLOWED_USER_IDS` et `ANTHROPIC_API_KEY` dans le tableau de bord, car la session ne peut pas le faire. En attendant, leur comportement est couvert par les tests locaux (`fn-liste-blanche`, `fn-superpdp-envoi`).
 - Avec la copie d'essai : iPhone (écran d'accueil, mise à jour, impression des PDF).

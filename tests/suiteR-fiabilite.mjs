@@ -1,6 +1,6 @@
 import { ecrireResultats, out } from './env.mjs';
 // Suite R — fiabilité (19/10/2026) : boîte de réception (demandes déposées par le site), encaissement annulé,
-// export complet hors Supabase. Serveur Supabase SIMULÉ (tests/serveur-simule.mjs), aucune connexion réelle.
+// export complet hors Supabase, émission après une réponse perdue. Serveur Supabase SIMULÉ (tests/serveur-simule.mjs), aucune connexion réelle.
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
 import { SERVEUR } from './serveur-simule.mjs';
 import fs from 'fs';
@@ -187,6 +187,51 @@ const IDS=['aaaaaaaa-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-00000
     rec('Export complet','Relu par « Importer » sur un appareil vide (devis et clients revenus)',n.d>=12&&n.c>=3,j(n));
     await q.ctx.close();
   }
+}
+
+/* R4 — émission : réponse perdue = « résultat inconnu » ; facture déjà émise pour la même source (autre appareil) = reprise, pas de doublon */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  p.removeAllListeners('dialog'); const dlg=[]; p.on('dialog',d=>{ dlg.push(d.message()); d.accept().catch(()=>{}); });
+  await seed(p); await p.evaluate(SERVEUR); await p.evaluate(REEL);
+  /* copies d'un devis accepté (un devis par essai) */
+  await p.evaluate(()=>{ const src=DEVIS.find(x=>x.statut==='accepte'&&compute(x).totalHT>0);
+    window.__nouveauDevis=()=>{ const d=JSON.parse(JSON.stringify(src)); d.id='R'+Math.random().toString(36).slice(2,8); d.num=src.num+'-'+d.id; delete d.facSolde; delete d.facAcompte; delete d.facAnnulees; DEVIS.push(d); save(LS.devis,DEVIS); return d; }; });
+  /* a) réponse perdue après l'enregistrement : le message ne dit plus « rien n'a été facturé » */
+  const ra=await p.evaluate(async c=>{ const d=__nouveauDevis();
+    __srv.fail.perdreReponse=true; await facturerDevis(d.id,'solde'); eval(c);
+    return {docs:__srv.docs.length,fac:!!d.facSolde}; },close);
+  const ma=dlg.slice(-1)[0]||'';
+  rec('Émission (fiabilité)','Réponse perdue : « résultat inconnu, réessaie depuis CET appareil », plus « rien n\'a été facturé »',ra.docs===1&&!ra.fac&&/inconnu/i.test(ma)&&/CET appareil/.test(ma)&&!/Rien n.a été facturé/.test(ma),j({ra,ma}));
+  /* b) même devis déjà facturé depuis un autre appareil (autre demande) : reprise de la facture, aucun nouveau numéro */
+  dlg.length=0;
+  const rb=await p.evaluate(async c=>{ const d=__nouveauDevis(), an=+todayISO().slice(0,4);
+    __srv.docs.push({id:'docAutre',request_id:'demande-autre-appareil',serie:'F',annee:an,numero:2,num:'F-'+an+'-002',type:'facture',origine:'emis',date_doc:todayISO(),
+      payload:{v:1,src:{k:'devis',id:d.id,w:'solde'},type:'facture',date:todayISO(),fac:{num:'',date:todayISO(),montant:123.45,payeLe:null,mode:''}}});
+    __srv.seq['F|'+an]=2; const n0=__srv.docs.length, a0=__srv.appels.filter(x=>x==='cp_emettre_document').length;
+    await facturerDevis(d.id,'solde'); eval(c);
+    return {num:d.facSolde&&d.facSolde.num,docs:__srv.docs.length-n0,appels:__srv.appels.filter(x=>x==='cp_emettre_document').length-a0}; },close);
+  const mb=dlg.join(' | ');
+  rec('Émission (fiabilité)','Déjà émise pour ce devis sur un autre appareil : facture reprise, aucun doublon',/^F-\d{4}-002$/.test(rb.num||'')&&rb.docs===0&&rb.appels===0&&/DÉJÀ émise/.test(mb),j({rb,mb}));
+  /* c) l'ancienne facture de ce devis a été annulée par un avoir : une nouvelle facture reste possible */
+  dlg.length=0;
+  const rc=await p.evaluate(async c=>{ const d=__nouveauDevis(), an=+todayISO().slice(0,4);
+    __srv.docs.push({id:'docAnnule',request_id:'demande-annulee',serie:'F',annee:an,numero:3,num:'F-'+an+'-003',type:'facture',origine:'emis',date_doc:todayISO(),
+      payload:{v:1,src:{k:'devis',id:d.id,w:'solde'},type:'facture',date:todayISO(),fac:{num:'',date:todayISO(),montant:50,payeLe:null,mode:''}}});
+    __srv.seq['F|'+an]=3; d.facAnnulees=[{num:'F-'+an+'-003',date:todayISO(),montant:50}]; save(LS.devis,DEVIS);
+    const n0=__srv.docs.length; await facturerDevis(d.id,'solde'); eval(c);
+    return {num:d.facSolde&&d.facSolde.num,nouveaux:__srv.docs.length-n0}; },close);
+  rec('Émission (fiabilité)','Facture annulée par un avoir : une nouvelle facture reste possible (non bloquée)',rc.nouveaux===1&&/^F-\d{4}-004$/.test(rc.num||''),j(rc));
+  /* d) registre illisible : rien n'est émis, message clair */
+  dlg.length=0;
+  const rd=await p.evaluate(async c=>{ const d=__nouveauDevis();
+    __srv.fail.climpilot_documents=true; const a0=__srv.appels.filter(x=>x==='cp_emettre_document').length;
+    await facturerDevis(d.id,'solde'); eval(c); __srv.fail.climpilot_documents=false;
+    return {fac:!!d.facSolde,appels:__srv.appels.filter(x=>x==='cp_emettre_document').length-a0}; },close);
+  const md=dlg.join(' | ');
+  rec('Émission (fiabilité)','Registre du serveur illisible : rien n\'est émis, message « NON émise »',!rd.fac&&rd.appels===0&&/NON émise/.test(md)&&/registre/i.test(md),j({rd,md}));
+  rec('Émission (fiabilité)','Aucune erreur JavaScript',errs.length===0,errs.join(' | '));
+  await ctx.close();
 }
 
 await closeBrowser();

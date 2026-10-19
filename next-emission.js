@@ -276,10 +276,54 @@
     BUSY=true; say('🔐 Émission de la facture… (numéro attribué par le serveur)');
     return sonde(true).then(function(info){
       if(!info.ok){ BUSY=false; bloque(info); relire(sorte); return null; }
-      return demanderServeur(d,'F',d.type).then(function(r){ BUSY=false; if(!r){ relire(sorte); return null; }
-        if(r.differe) return reprendreServeur(sorte,d,r.doc);
-        return finir(S,d,r.doc.num,'reel',r.doc); });
+      /* 19/10/2026 : une facture déjà émise pour ce même document (autre appareil, ou réponse perdue puis autre demande)
+         est reprise telle quelle : pas de second numéro pour le même chantier */
+      return dejaEmise(d).then(function(ex){
+        if(ex){ BUSY=false; return adopter(sorte,d,ex); }
+        return demanderServeur(d,'F',d.type).then(function(r){ BUSY=false; if(!r||r.inconnu){ relire(sorte); return null; }
+          if(r.differe) return reprendreServeur(sorte,d,r.doc);
+          return finir(S,d,r.doc.num,'reel',r.doc); });
+      });
     }).catch(function(e){ BUSY=false; bloque({raison:'serveur',detail:String(e&&e.message||e)}); relire(sorte); return null; });
+  }
+  /* même délai que les appels au serveur (25 s) */
+  function delai(p){ return Promise.race([p,new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('délai dépassé (25 s)')); },25000); })]); }
+  /* numéros de cette source annulés par un avoir total : une nouvelle facture reste alors possible */
+  function annulesDe(src){
+    try{
+      var o=src.k==='devis'?(DEVIS||[]).find(function(x){ return x.id===src.id; }):src.k==='dep'?(DEP||[]).find(function(x){ return x.id===src.id; })
+        :src.k==='loc'?(LOC||[]).find(function(x){ return x.id===src.id; }):src.k==='ctr'?(CTR||[]).find(function(x){ return x.id===src.id; }):null;
+      return numsAnnules(o,src.k==='ctr'?'facsAnnulees':'facAnnulees');
+    }catch(e){ return []; }
+  }
+  /* registre du serveur : facture déjà émise pour la même source (même chantier / intervention / location / année de contrat) ?
+     La demande en attente sur CET appareil (même request_id) n'est pas un doublon : le serveur la renverra telle quelle. */
+  function dejaEmise(d){
+    if(!d||!d.src||!d.src.k||d.type==='avoir') return Promise.resolve(null);
+    var cle=srcCle(d.src), a=attentes()[cle], rid0=a&&a.rid, ann=annulesDe(d.src);
+    return delai(window.sb.from('climpilot_documents').select('id,request_id,num,serie,annee,numero,type,origine,date_doc,payload,payload_hash')
+      .eq('origine','emis').eq('payload->src->>k',String(d.src.k)).eq('payload->src->>id',String(d.src.id))).then(function(r){
+        if(r&&r.error) throw new Error('vérification du registre impossible : '+(r.error.message||'erreur'));
+        var docs=((r&&r.data)||[]).filter(function(x){ var s=(x&&x.payload&&x.payload.src)||{};
+          return x.origine==='emis'&&x.type!=='avoir'&&srcCle(s)===cle&&ann.indexOf(x.num)<0&&x.request_id!==rid0; });
+        return docs[0]||null;
+      },function(e){ throw new Error('vérification du registre impossible : '+String(e&&e.message||e)); });
+  }
+  function adopter(sorte,d,doc){
+    var p=doc.payload||{}, fac=p.fac?remplaceVide(p.fac,doc.num):null;
+    ajouterRegistre({num:doc.num,mode:'reel',origine:'emis',type:doc.type,serie:doc.serie,date:doc.date_doc,src:d.src,fac:fac,model:p.model?Object.assign(remplaceVide(p.model,doc.num),{id:doc.num}):null,sid:doc.id,ph:doc.payload_hash,at:Date.now()});
+    var res=restaurer(d.src,doc.num,fac); attentePut(srcCle(d.src),null); relire(sorte);
+    try{ updateBadges(); }catch(e){}
+    var t='La facture '+doc.num+' est DÉJÀ émise pour ce document (depuis un autre appareil, ou avant une coupure du réseau).\n\nElle est remise en place ici'+(fac&&fac.montant!=null?' (montant '+fac.montant+' €)':'')+'. Rien de nouveau n\'a été émis : pas de doublon.'+
+      (res==='conflit'?'\n\n⚠ Ce document porte déjà une autre facture : vérifie le registre des documents.':'');
+    try{ alert(t); }catch(e){ say(t); }
+    return {num:doc.num,mode:'reel',repris:true,restaure:res};
+  }
+  /* réponse jamais arrivée (délai dépassé, réseau coupé PENDANT l'envoi) : le serveur a peut-être enregistré la facture */
+  function inconnu(e){
+    var t='Résultat INCONNU ('+String(e&&e.message||e)+').\n\nLa demande est partie mais la réponse n\'est pas arrivée : la facture a PEUT-ÊTRE été enregistrée par le serveur.\n\n'+
+      'Réessaie depuis CET appareil, sur ce même document : le même clic reprend la même demande, sans doublon.\nNe la refais pas depuis un autre appareil.';
+    try{ alert(t); }catch(_){ say(t); }
   }
   function relire(sorte){ try{ if(sorte==='dep') loadDepForm(); if(sorte==='devis') renderFBloc(); }catch(e){} }
   function bloque(info){
@@ -301,7 +345,7 @@
          le document du serveur fait foi — rien n'est recalculé sur l'appareil (voir reprendreServeur) */
       if(out.deja&&out.doc.payload&&JSON.stringify(out.doc.payload.fac||{})!==JSON.stringify(pl.fac||{})) out.differe=true;
       return out;
-    });
+    },function(e){ inconnu(e); return {inconnu:true}; });   /* la demande reste en attente : même request_id au prochain clic */
   }
   /* numéro minimal envoyé au serveur (p_min_numero) : seulement les VRAIS numéros de l'année du document —
      registre du serveur (émis ou reconstitués) et anciennes factures choisies pour l'import ; jamais les essais */
@@ -372,7 +416,8 @@
       if(!info.ok){ BUSY=false; return {err:'Avoir NON émis : '+(RAISON[info.raison]||'serveur indisponible')+'. Rien n\'a été créé.'}; }
       /* la clé de demande d'un avoir : facture + montant + motif (le même formulaire rejoué = même demande) */
       d.src={k:'avoir',id:'',w:b.av.facNum+'|'+b.av.montant+'|'+b.av.motif};
-      return demanderServeur(d,'AV','avoir').then(function(r){ BUSY=false; if(!r) return {err:'Avoir non émis (serveur)'}; return fin(r.doc.num,'reel',r.doc); });
+      return demanderServeur(d,'AV','avoir').then(function(r){ BUSY=false; if(r&&r.inconnu) return {err:'Résultat inconnu pour cet avoir : réessaie depuis CET appareil avec le même formulaire (même demande, sans doublon).'};
+        if(!r) return {err:'Avoir non émis (serveur)'}; return fin(r.doc.num,'reel',r.doc); });
     }).catch(function(e){ BUSY=false; return {err:'Avoir non émis : '+String(e&&e.message||e)}; });
   };
 
