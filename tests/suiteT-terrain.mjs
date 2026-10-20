@@ -65,7 +65,9 @@ const D=await p.evaluate(()=>{
   const r=await p.evaluate(async()=>{ const t=dISO(new Date());
     const a=DEVIS.find(d=>d.id==='t-a'); a.datePlanif=t; a.momentPlanif='apresmidi'; a.cAdr='2 rue de l\'Église'; a.cVille='60100 Creil'; save(LS.devis,DEVIS);
     const x=DEP.find(d=>d.id==='t-dep'); x.date=t; x.moment='matin'; save(LS.dep,DEP);
-    localStorage.setItem('cpnext_geo',JSON.stringify({[nxadTest.key('5 Rue de la Gare, 60600 Clermont')]:{lon:2.41,lat:49.38,label:'x'},[nxadTest.key('2 rue de l\'Église, 60100 Creil')]:{lon:2.47,lat:49.26,label:'y'}}));
+    /* M0 20/10/2026 : les coordonnées passent par l'appli (géocodage simulé par lib.mjs), comme en vrai — next-adresse.js lit
+       son cache en mémoire au démarrage, une écriture directe dans cpnext_geo n'était jamais vue (km restait à 0) */
+    await nxadDistance('5 Rue de la Gare, 60600 Clermont'); await nxadDistance('2 rue de l\'Église, 60100 Creil');
     const T=nxtrTournee(t); go('nx_journee'); nxjMode('matin'); await new Promise(z=>setTimeout(z,300));
     const card=document.getElementById('nxTournee'); const stops=card?[...card.querySelectorAll('.nxt-stop .nxt-main b')].map(b=>b.textContent):[];
     const btn=card&&card.querySelector('.nxt-stop button'); const url=card&&card.querySelector('a[href*="waypoints="]');
