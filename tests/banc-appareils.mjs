@@ -11,6 +11,7 @@
 // Aucune donnée réelle : compte, entreprise et clients fictifs. Aucun accès réseau (le navigateur est isolé).
 import fs from 'fs';
 import { lancerNavigateur, devices, URL_LOCALE, out } from './env.mjs';
+import { sansBibliothequesCloud } from './lib.mjs';
 
 const c = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 /* comme une colonne jsonb de PostgreSQL : l'ordre des clés d'un objet n'est pas gardé (clés triées par longueur, puis
@@ -142,6 +143,7 @@ export async function appareil(S, dev, opts = {}) {
   const mobile = opts.mobile !== false;
   const ctx = await navigateur.newContext(mobile ? { ...devices['iPhone 13'], locale: 'fr-FR', timezoneId: 'Europe/Paris' }
     : { viewport: { width: 1300, height: 900 }, locale: 'fr-FR', timezoneId: 'Europe/Paris' });
+  await sansBibliothequesCloud(ctx);
   const p = await ctx.newPage();
   const A = { dev, p, ctx, mobile, errs: [], dialogues: [], reponses: [], chargements: 0, derniereNav: 0, recharges: [] };
   p.on('pageerror', (e) => A.errs.push('PAGEERR ' + e.message));

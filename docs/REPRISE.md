@@ -266,7 +266,14 @@ navigateur).
 - `vendor/` : **supabase-js 2.117.3** et **Chart.js 4.5.0** embarqués, avec `integrity`. Avant : `supabase-js@2` sans version
   ni empreinte (changeait tout seul à chaque version publiée) et hors du cache (sans réseau à l'ouverture : « cloud non chargé »).
   Chart.js : fichier npm identique à celui du CDN (même empreinte sha384). Licences MIT dans `vendor/LISEZMOI.md`.
-- Tests : les routes qui remplaçaient Chart.js sur le CDN visent aussi `vendor/chart-` (comportement des tests inchangé).
+- Tests : les fichiers `vendor/` sont remplacés au niveau du **contexte** du navigateur (`sansBibliothequesCloud` dans
+  `tests/lib.mjs`) : le service worker les met en cache et les routes de page ne voient pas ce qu'il sert (sans cela,
+  supabase-js se chargeait au 2e chargement et l'écran de connexion bloquait la suite O). Batterie du 20/10/2026 :
+  **774 réussis, 0 échoué**, 2 SKIP (validateurs CEN / FNFE absents), SQL non exécuté (pas de PostgreSQL local).
+- Constat du 20/10 sur `claude/fiabilite-sur-1.12` (machine lente, 2 batteries en parallèle) : la suite Q (recette deux
+  appareils, chronométrée) a échoué 1 fois sur 62 à chaque passage, jamais au même contrôle (voile pendant un
+  rechargement, téléphone « pas à jour » déjà à jour, essai interrompu) ; résultat des factures toujours juste.
+  Contrôles sensibles au temps, à fiabiliser si cela se reproduit sur une machine normale.
 - Pas fait, volontairement : chargement à la demande des modules (gain faible au regard du risque), minification (étape de
   construction en plus pour un gain que la compression de GitHub Pages donne déjà).
 

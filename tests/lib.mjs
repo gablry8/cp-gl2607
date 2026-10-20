@@ -1,6 +1,14 @@
 // Batterie de tests ClimPilot — Playwright (Chromium), serveur local :8765
 import { devices, lancerNavigateur, URL_LOCALE } from './env.mjs';
 export const RES=[];
+/* 20/10/2026 : supabase-js et Chart.js sont embarqués (vendor/) et mis en cache par le service worker.
+   Les routes de page ne voient pas ce que le service worker sert : on remplace donc ces fichiers au niveau du
+   CONTEXTE (avec PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1, posé par run-all.sh), pour que les tests restent
+   « sans cloud » comme avant, même au 2e chargement. */
+export async function sansBibliothequesCloud(ctx){
+  await ctx.route(/\/vendor\/supabase-js-/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'/* supabase-js désactivé pendant les tests */'}));
+  await ctx.route(/\/vendor\/chart-/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.Chart=function(){return{destroy(){},update(){}}};'}));
+}
 export function rec(group,name,ok,detail){ RES.push({group,name,ok:ok===true?'PASS':ok===false?'FAIL':ok,detail:detail==null?'':String(detail).slice(0,400)}); }
 let browser=null;
 export async function getBrowser(){ if(!browser) browser=await lancerNavigateur(); return browser; }
@@ -9,7 +17,7 @@ export async function closeBrowser(){ if(browser) await browser.close(); browser
 export async function page(opts={}){
   const b=await getBrowser();
   const ctxOpts=opts.mobile===false?{viewport:{width:1300,height:900},locale:'fr-FR',timezoneId:opts.tz||'Europe/Paris'}:{...devices['iPhone 13'],locale:'fr-FR',timezoneId:opts.tz||'Europe/Paris'};
-  const ctx=await b.newContext(ctxOpts);
+  const ctx=await b.newContext(ctxOpts); await sansBibliothequesCloud(ctx);
   const p=await ctx.newPage();
   const errs=[];
   p.on('pageerror',e=>errs.push('PAGEERR '+e.message));
