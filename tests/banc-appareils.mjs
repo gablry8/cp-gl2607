@@ -154,7 +154,7 @@ export async function appareil(S, dev, opts = {}) {
   p.on('dialog', (d) => { const r = A.reponses.length ? A.reponses.shift() : null; A.dialogues.push({ type: d.type(), msg: d.message().slice(0, 300) });
     if (r === false) d.dismiss().catch(() => {}); else d.accept(d.type() === 'prompt' ? (r == null ? d.defaultValue() : String(r)) : undefined).catch(() => {}); });
   await p.route(/supabase/, (r) => r.abort());
-  await p.route(/cdn\.jsdelivr\.net\/npm\/chart/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: 'window.Chart=function(){return{destroy(){},update(){}}};' }));
+  await p.route(/cdn\.jsdelivr\.net\/npm\/chart|\/vendor\/chart-/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: 'window.Chart=function(){return{destroy(){},update(){}}};' }));
   await p.route(/cdnjs|tesseract|unpkg/, (r) => r.abort());
   await p.route(/data\.geopf\.fr/, (r) => r.abort());
   /* modules lents (téléphone au premier chargement, réseau mobile) : chaque next-*.js arrive après un délai */

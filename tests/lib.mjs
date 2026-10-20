@@ -16,7 +16,7 @@ export async function page(opts={}){
   p.on('console',m=>{ if(m.type()==='error' && !/Failed to load resource|ERR_|net::|Not allowed to launch|integrity/.test(m.text())) errs.push('CONSOLE '+m.text().slice(0,200)); });
   p.on('dialog',d=>d.dismiss().catch(()=>{}));
   await p.route(/supabase/, r=>r.abort());
-  await p.route(/cdn\.jsdelivr\.net\/npm\/chart/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.Chart=function(){return{destroy(){},update(){}}};'}));
+  await p.route(/cdn\.jsdelivr\.net\/npm\/chart|\/vendor\/chart-/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.Chart=function(){return{destroy(){},update(){}}};'}));
   await p.route(/cdnjs|tesseract|unpkg/, r=>r.abort());
   if(opts.offline){ await p.route(/data\.geopf\.fr/, r=>r.abort()); }
   else if(opts.routeFail){ await p.route(/data\.geopf\.fr\/navigation/, r=>r.fulfill({status:503,body:'down'})); geoMock(p,true); }

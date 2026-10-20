@@ -90,7 +90,7 @@ const nat=`(function(){ const LS=window.localStorage; const g=Storage.prototype.
 {
   const b=await lancerNavigateur();
   const ctx=await b.newContext({viewport:{width:900,height:800}});
-  const p=await ctx.newPage(); await p.route(/supabase|cdn\./,r=>r.abort());
+  const p=await ctx.newPage(); await p.route(/supabase|cdn\.|vendor\/chart-/,r=>r.abort());
   await p.goto('http://localhost:8765/index.html'); await p.waitForTimeout(2500);
   await p.evaluate(()=>{ const big=[]; for(let i=0;i<2500;i++) big.push({id:'z'+i,v:2,lots:[],num:'DV-Z-'+i,cNom:'Z'+i,notes:'x'.repeat(2400),statut:'brouillon'}); localStorage.setItem('cp2_devis',JSON.stringify(big)); });
   await p.evaluate(()=>nxStore.flush());
