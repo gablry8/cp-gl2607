@@ -177,7 +177,7 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
 /* I8 deux onglets ; ancienne version qui écrit en même temps */
 {
   const {p,ctx}=await page({mobile:false});
-  const p2=await ctx.newPage(); await p2.route(/supabase|cdnjs|tesseract|unpkg|cdn\.jsdelivr/,r=>r.abort());
+  const p2=await ctx.newPage(); await p2.route(/supabase|cdnjs|tesseract|unpkg|cdn\.jsdelivr|vendor\/chart-/,r=>r.abort());
   await p2.goto('http://localhost:8765/index.html'); await p2.waitForTimeout(2200);
   const a=await p.evaluate(()=>({ro:nxStore.info().lectureSeule,voile:!!document.getElementById('nxRoVoile')}));
   const b=await p2.evaluate(()=>{ const avant=__native.get.call(localStorage,'cp2_clients'); try{ CLIENTS.push({id:'zz',nom:'Écrit dans le 2e onglet'}); save(LS.clients,CLIENTS); }catch(e){} return {ro:nxStore.info().lectureSeule,voile:!!document.getElementById('nxRoVoile'),persiste:__native.get.call(localStorage,'cp2_clients')!==avant}; });

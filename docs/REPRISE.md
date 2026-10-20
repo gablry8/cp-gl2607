@@ -246,6 +246,37 @@ Branche de travail à utiliser désormais (les copies d'essai de Gabriel sont en
   (767), suite F avec les validateurs EN 16931 / FNFE (9), tests SQL sur PostgreSQL 16 local (28) ; aucune requête de l'appli
   ni des tests n'a quitté la machine.
 
+## Branche `claude/optimisation-20-10` (20/10/2026, depuis `claude/fiabilite-sur-1.12`) — NON déployée
+Demande de Gabriel : « est-ce que le logiciel est optimisé ? ». Mesure faite sur une copie servie en local (Chromium,
+écran 390 px, après installation du service worker) :
+
+| Situation | Avant | Après |
+|---|---|---|
+| Réseau normal | 2,5 s | 2,6 s |
+| Téléphone moyen (processeur ÷ 4) | 3,3 s | 2,9 s |
+| Réseau faible (1,5 s par fichier) | 17,4 s | 8,5 s |
+| Réseau presque coupé (5 s par fichier) | plus de 30 s | 10,3 s |
+
+Ouverture hors ligne : supabase-js et Chart.js chargés depuis la copie (avant : seulement s'ils restaient dans le cache du
+navigateur).
+
+- `sw.js` : réseau d'abord comme avant, mais quand une copie existe on n'attend pas plus de **2,5 s** ; la réponse du réseau,
+  si elle arrive, met la copie à jour pour l'ouverture suivante. Une réponse en erreur (404, 503) sert aussi la copie.
+  Cache `climpilot-next-1128-optim`.
+- `vendor/` : **supabase-js 2.117.3** et **Chart.js 4.5.0** embarqués, avec `integrity`. Avant : `supabase-js@2` sans version
+  ni empreinte (changeait tout seul à chaque version publiée) et hors du cache (sans réseau à l'ouverture : « cloud non chargé »).
+  Chart.js : fichier npm identique à celui du CDN (même empreinte sha384). Licences MIT dans `vendor/LISEZMOI.md`.
+- Tests : les fichiers `vendor/` sont remplacés au niveau du **contexte** du navigateur (`sansBibliothequesCloud` dans
+  `tests/lib.mjs`) : le service worker les met en cache et les routes de page ne voient pas ce qu'il sert (sans cela,
+  supabase-js se chargeait au 2e chargement et l'écran de connexion bloquait la suite O). Batterie du 20/10/2026 :
+  **774 réussis, 0 échoué**, 2 SKIP (validateurs CEN / FNFE absents), SQL non exécuté (pas de PostgreSQL local).
+- Constat du 20/10 sur `claude/fiabilite-sur-1.12` (machine lente, 2 batteries en parallèle) : la suite Q (recette deux
+  appareils, chronométrée) a échoué 1 fois sur 62 à chaque passage, jamais au même contrôle (voile pendant un
+  rechargement, téléphone « pas à jour » déjà à jour, essai interrompu) ; résultat des factures toujours juste.
+  Contrôles sensibles au temps, à fiabiliser si cela se reproduit sur une machine normale.
+- Pas fait, volontairement : chargement à la demande des modules (gain faible au regard du risque), minification (étape de
+  construction en plus pour un gain que la compression de GitHub Pages donne déjà).
+
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
 Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).
