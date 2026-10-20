@@ -3,7 +3,7 @@ import { ecrireResultats } from './env.mjs';
 // mode de conclusion ≠ urgence, « à préciser » bloque toute demande de paiement, délai de 7 jours (L221-10)
 // sur tous les parcours (facture, encaissement, intervention, relance), paiement reçu malgré tout tracé,
 // rétractation selon le mode, contrat de dépannage avant travaux, remise de l'exemplaire avec preuve.
-import {page,rec,RES,closeBrowser,seed,getBrowser} from './lib.mjs';
+import {page,rec,RES,closeBrowser,seed,getBrowser,sansBibliothequesCloud} from './lib.mjs';
 import fs from 'fs';
 
 /* boîtes de dialogue simulées dans la page + petites aides */
@@ -254,7 +254,7 @@ await ctx.close();
 
 /* J10 page de signature du client : accord « support durable » et téléchargement de l'exemplaire (fonction simulée) */
 {
-  const b=await getBrowser(); const ctx=await b.newContext({acceptDownloads:true,locale:'fr-FR'}); const p=await ctx.newPage(); const errs=[];
+  const b=await getBrowser(); const ctx=await b.newContext({acceptDownloads:true,locale:'fr-FR'}); await sansBibliothequesCloud(ctx); const p=await ctx.newPage(); const errs=[];
   p.on('pageerror',e=>errs.push(e.message));
   const tok='11111111-2222-4333-8444-555555555555', appels=[]; let etat='en_attente';
   await p.route(/functions\/v1\/signature/, async r=>{ const body=JSON.parse(r.request().postData()||'{}'); appels.push(body);
