@@ -39,8 +39,8 @@ const codes = Object.fromEntries((fs.existsSync(out('codes.txt')) ? fs.readFileS
 const ETAPES = [
   ['autotest-isolation', 'resIsolation.json'], ['suiteA', 'resA.json'], ['suiteB', 'resB.json'], ['suiteC', 'resC.json'], ['suiteD-memoire', 'resD.json'],
   ['suiteE-avoirs', 'resE.json'], ['suiteF-einvoice', 'resF.json'], ['suiteG-virgule', 'resG.json'], ['suiteH-superpdp', 'resH.json'], ['suiteI-emission', 'resI.json'],
-  ['suiteJ-particuliers', 'resJ.json'], ['suiteK-fiscal', 'resK.json'], ['suiteL-documents', 'resL.json'], ['suiteM-adresse-copie', 'resM.json'], ['suiteN-passage-reel', 'resN.json'], ['suiteO-objectifs', 'resO.json'], ['suiteP-ameliorations', 'resP.json'], ['suiteQ-recette', 'resQ.json'], ['suiteR-fiabilite', 'resR.json'], ['fn-signature', 'resFn-signature.json'],
-  ['fn-liste-blanche', 'resFn-liste-blanche.json'], ['fn-superpdp-envoi', 'resFn-superpdp-envoi.json'], ['sql', 'sql-junit.xml'], ['apercu-test', 'resApercu.json'],
+  ['suiteJ-particuliers', 'resJ.json'], ['suiteK-fiscal', 'resK.json'], ['suiteL-documents', 'resL.json'], ['suiteM-adresse-copie', 'resM.json'], ['suiteN-passage-reel', 'resN.json'], ['suiteO-objectifs', 'resO.json'], ['suiteP-ameliorations', 'resP.json'], ['suiteQ-recette', 'resQ.json'], ['suiteR-fiabilite', 'resR.json'], ['suiteS-planning', 'resS.json'], ['suiteT-terrain', 'resT.json'], ['fn-signature', 'resFn-signature.json'],
+  ['fn-liste-blanche', 'resFn-liste-blanche.json'], ['fn-superpdp-envoi', 'resFn-superpdp-envoi.json'], ['fn-agenda', 'resFn-agenda.json'], ['fn-apps-script', 'resFn-apps-script.json'], ['sql', 'sql-junit.xml'], ['apercu-test', 'resApercu.json'],
 ];
 const tableau = ETAPES.map(([nom, fichier]) => {
   const c = codes[nom];

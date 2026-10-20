@@ -29,7 +29,7 @@ async function preparer(opts,jour){
     go('nx_obj'); const h=(document.getElementById('nxobj')||{}).innerText||'';
     return {fns:['nxrtSynthese','nxrtSyntheseSav','nxrtAjouter','nxavisCandidats','nxavisMail','nxbqAnalyser','nxbqValider','nxbqChoisir','nxfbBilan','nxfbCSV','nxobjTreso','nxobjTauxAnnee'].filter(f=>typeof window[f]!=='function'),
       sync:['cpnext_sav','cpnext_avis','cpnext_flubilan','cpnext_bqvus','cpnext_adr','cpnext_objectifs','cpnext_objsuivi'].filter(k=>SYNC_KEYS.indexOf(k)<0),
-      cache:['next-rentab.js','next-avis.js','next-banque.js','next-flubilan.js','next-raccourcis.js'].filter(f=>sw.indexOf('./'+f)<0), cle:/const C='climpilot-next-112\d/.test(sw),
+      cache:['next-rentab.js','next-avis.js','next-banque.js','next-flubilan.js','next-raccourcis.js'].filter(f=>sw.indexOf('./'+f)<0), cle:/const C='climpilot-next-1[1-9]\d\d/.test(sw),
       ajouts:(window.nxobjAjouts||[]).map(a=>a.id).sort().join(','),
       blocs:['Ma rentabilité réelle','Retours SAV non facturés','Mon relevé bancaire'].filter(x=>h.indexOf(x)<0)}; });
   rec(G,'Les 4 modules 1.12 sont chargés (fonctions présentes)',r.fns.length===0,j(r));

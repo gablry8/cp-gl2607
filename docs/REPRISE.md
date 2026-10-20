@@ -277,6 +277,31 @@ navigateur).
 - Pas fait, volontairement : chargement à la demande des modules (gain faible au regard du risque), minification (étape de
   construction en plus pour un gain que la compression de GitHub Pages donne déjà).
 
+## Branche `claude/planning-20-10` (20/10/2026, depuis `claude/fiabilite-sur-1.12`) — planning par demi-journée, NON déployée
+Choix de Gabriel du 19/10 : synchro Google Agenda toutes les 15 min, « que je ne me retrouve pas avec deux clients en même
+temps ». Détail, installation et repères : **`docs/AGENDA.md`**.
+- Appli : `next-planning.js` (moment Matin / Après-midi / Journée, conflits, confirmation avant de planifier sur un moment
+  pris, envoi des demi-journées occupées, moments Google au planning) ; clé `k` sur les événements de `planEvents`,
+  `data-k` / `data-iso` sur les cartes et les jours ; champ Moment dans le devis (`momentPlanif`, protégé et remis à zéro
+  à la copie comme `datePlanif`). Cache `climpilot-next-1129-planning`.
+- Serveur (préparé) : migration `20261020120000_agenda.sql`, fonction `agenda`. Script Google : `tools/apps-script/`.
+- Tests : suite S (appli), fn-agenda, fn-apps-script, `tests/sql/test_agenda.py`.
+- **Phase 2, messages** (`next-messages.js`, 20/10) : dans Ma journée, les messages prêts à envoyer depuis le téléphone
+  (SMS ou mail, rien ne part seul, aucun service payant) : veille (interventions de demain, le vendredi : lundi),
+  entretien (clients SOUS CONTRAT seulement, 21 jours avant / en retard), confirmation d'un créneau venu du site
+  (avec l'acompte), rappel des avis à demander (next-avis). Compte SMS GSM (160 / 70 caractères), version « 1 SMS »
+  sans caractères spéciaux à l'envoi, journal `cpnext_msgs` (jamais deux fois), bouton « Plus de messages » par client.
+- **Phase 3, terrain** (`next-terrain.js`, 20/10) : tournée du jour (ordre matin → journée → après-midi puis plus
+  proche, km estimés vol d'oiseau × 1,3, itinéraire complet Google Maps depuis le point de départ) ; pointage
+  ▶ / ■ (quart d'heure, ajouté à `hReel` du devis / de l'intervention, journal `cpnext_pointages`) ; alerte matériel
+  (chantier accepté sous 7 jours sans `matReserve`) ; « 📅 Planifier ce créneau » sur une réservation du site
+  (→ intervention DEP avec `moment`, `site`, `acompte`, fiche client, demande marquée traitée, conflit vérifié) ;
+  suivi d'acompte « ✔ Reçu » → créneau ferme (planning et message). Extension `window.nxjAjouts` dans Ma journée.
+  Cache `climpilot-next-1130-terrain`. Tests : suite T (22).
+- Batterie complète du 20/10 sur cette branche : 826 réussis ; 2 points hors code (suite A « petits boutons » = INFO
+  sur des boutons ✏️ de 29 px qui existaient déjà, largeur qui varie avec la police ; suite E « Émettre » masqué par le
+  bouton Assistant une fois sur deux, passe seule) ; suite P adaptée au nom de cache 1130.
+
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
 Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).
