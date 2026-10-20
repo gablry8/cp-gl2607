@@ -255,8 +255,18 @@ temps ». Détail, installation et repères : **`docs/AGENDA.md`**.
   à la copie comme `datePlanif`). Cache `climpilot-next-1129-planning`.
 - Serveur (préparé) : migration `20261020120000_agenda.sql`, fonction `agenda`. Script Google : `tools/apps-script/`.
 - Tests : suite S (appli), fn-agenda, fn-apps-script, `tests/sql/test_agenda.py`.
-- Phases suivantes (plan du 19/10) : messages (veille, entretien sous contrat, avis, SMS), puis terrain (tournée,
-  pointage, alerte matériel, suivi acompte → créneau ferme).
+- **Phase 2, messages** (`next-messages.js`, 20/10) : dans Ma journée, les messages prêts à envoyer depuis le téléphone
+  (SMS ou mail, rien ne part seul, aucun service payant) : veille (interventions de demain, le vendredi : lundi),
+  entretien (clients SOUS CONTRAT seulement, 21 jours avant / en retard), confirmation d'un créneau venu du site
+  (avec l'acompte), rappel des avis à demander (next-avis). Compte SMS GSM (160 / 70 caractères), version « 1 SMS »
+  sans caractères spéciaux à l'envoi, journal `cpnext_msgs` (jamais deux fois), bouton « Plus de messages » par client.
+- **Phase 3, terrain** (`next-terrain.js`, 20/10) : tournée du jour (ordre matin → journée → après-midi puis plus
+  proche, km estimés vol d'oiseau × 1,3, itinéraire complet Google Maps depuis le point de départ) ; pointage
+  ▶ / ■ (quart d'heure, ajouté à `hReel` du devis / de l'intervention, journal `cpnext_pointages`) ; alerte matériel
+  (chantier accepté sous 7 jours sans `matReserve`) ; « 📅 Planifier ce créneau » sur une réservation du site
+  (→ intervention DEP avec `moment`, `site`, `acompte`, fiche client, demande marquée traitée, conflit vérifié) ;
+  suivi d'acompte « ✔ Reçu » → créneau ferme (planning et message). Extension `window.nxjAjouts` dans Ma journée.
+  Cache `climpilot-next-1130-terrain`. Tests : suite T (22).
 
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 

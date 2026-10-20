@@ -39,6 +39,15 @@ Seules des **dates et deux cases (matin, après-midi)** circulent : aucun nom, a
    dans Google, et le mardi matin grisé sur la page Réserver ; un rendez-vous perso dans Google un jeudi après-midi →
    au planning de ClimPilot et grisé sur le site.
 
+## Messages et terrain (phases 2 et 3, 20/10/2026)
+- Messages (Ma journée › « Messages à envoyer ») : veille, entretien sous contrat, confirmation de créneau, avis. Tu
+  envoies depuis ton téléphone (SMS compris dans ton forfait) ; un service d'envoi coûterait ~0,045 € HT par SMS
+  (comparatif SMS Partner, août 2026) et n'est pas branché. Un SMS avec ç, ê, ô, œ ou ’ passe à 70 caractères : à
+  l'envoi, ClimPilot remplace ces caractères (version « 1 SMS »). « ✕ Plus de messages » exclut un client.
+- Terrain (Ma journée, le matin) : tournée du jour, pointage, matériel à vérifier, acomptes des créneaux réservés.
+- Boîte de réception : « 📅 Planifier ce créneau » sur une réservation du site crée l'intervention ; « ✔ Reçu » sur
+  l'acompte rend le créneau ferme.
+
 ## Repères techniques
 - Demi-journées (script Google) : matin 7 h – 12 h 30, après-midi 12 h 30 – 19 h ; le soir ne bloque pas le site.
   Ignorés : événements « Disponible », invitations refusées, événements créés par le script.

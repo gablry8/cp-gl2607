@@ -183,7 +183,7 @@
     document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible') planifierEnvoi(3000); });
     planifierEnvoi(5000);
   }
-  window.nxplMoment=momentDe; window.nxplSetMoment=setMoment; window.nxplConflits=conflits; window.nxplConflitsDuJour=conflitsDuJour;
+  window.nxplMoment=momentDe; window.nxplSetMoment=setMoment; window.nxplSource=source; window.nxplEvenementsDuJour=function(iso){ return evenementsDuJour(iso); }; window.nxplLabel=function(m){ return LBL[m]||LBL.journee; }; window.nxplConflits=conflits; window.nxplConflitsDuJour=conflitsDuJour;
   window.nxplOccupations=occupations; window.nxplEnvoyer=envoyer; window.nxplChargerGoogle=chargerGoogle; window._nxplEtat={envoi:ENVOI,google:GOOGLE};
   boot(0);
 })();

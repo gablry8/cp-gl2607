@@ -489,10 +489,11 @@
       '<div class="nxa-sub">'+esc(SITE_TYPE[p.type]||'Demande du site')+' · '+esc(fmtWhen(x.created_at))+'</div></div></div>'+
       (bloque?'<div class="nxa-bloque">ACTIVITÉ BLOQUÉE</div>':'')+rappel+dl+
       (meta?'<div class="nxa-sub">Site : '+esc(meta)+'</div>':'')+
-      '<div class="nxa-act">'+liens+'<button class="nx-sbtn" onclick="nxaSiteCopier(\''+id+'\')">Copier</button>'+
+      '<div class="nxa-act">'+liens+(p.type==='site_reservation'&&typeof window.nxtrPlanifierSite==='function'&&x.statut==='a_valider'?'<button class="nx-sbtn acc" onclick="nxtrPlanifierSite(\''+id+'\')">📅 Planifier ce créneau</button>':'')+'<button class="nx-sbtn" onclick="nxaSiteCopier(\''+id+'\')">Copier</button>'+
       '<button class="nx-sbtn acc" onclick="nxaSiteTraite(\''+id+'\')">✅ Traité</button><button class="nx-sbtn ref" onclick="nxaReject(\''+id+'\')">Écarter</button></div></div>';
   }
   window.nxaSiteTraite=function(id){ return mark(id,'valide').then(fetchInbox); };
+  window.nxaSiteLigne=function(id){ var x=findRow(id); return x?JSON.parse(JSON.stringify(x)):null; };
   window.nxaSiteCopier=function(id){
     var x=findRow(id); if(!x) return;
     var t=String(x.titre||'')+'\n'+siteLignes(x).map(function(l){ return l[0]+' : '+l[1]; }).join('\n');

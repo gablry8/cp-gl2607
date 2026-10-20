@@ -96,7 +96,7 @@
   /* distance d'une adresse complète depuis le domicile → {km,min,est,label} */
   function distance(adr){ return geocode(adr).then(function(g){ return route(g).then(function(r){ return {km:r.km,min:r.min,est:r.est,label:g.label}; }); }); }
   function cachedDist(adr){ var g=GEO[key(adr)], h=homeSync(); if(h&&g&&g.route&&g.route.from===key(h.adr)) return {km:g.route.km,min:g.route.min,est:false,label:g.label}; return null; }
-  window.nxadDistance=distance; window.nxadCached=cachedDist;
+  window.nxadDistance=distance; window.nxadCached=cachedDist; window.nxadGeo=function(adr){ var g=GEO[key(adr)]; return (g&&g.lat)?{lon:g.lon,lat:g.lat,label:g.label}:null; }; window.nxadHav=hav;
   function fmtDur(m){ m=Math.round(m||0); return m<60?m+' min':Math.floor(m/60)+' h '+('0'+(m%60)).slice(-2); }
   function distTxt(r){ return (r.est?'≈ ':'')+fq(r.km)+' km · '+fmtDur(r.min)+(r.est?' (estimé)':''); }
   window.nxadDistTxt=distTxt;
