@@ -155,6 +155,9 @@ Chaque correction a d'abord un test qui échoue sur l'ancien code (suite R), pui
 - Tests : suite R (R4, 5 contrôles), 3 échecs sur l'ancien code. Batterie complète : 526 réussis, 0 échec, 0 SKIP.
 
 ## Pas encore essayé
+- **Agenda (20/10/2026)** : migration `20261020120000_agenda.sql` (script `essai-agenda-TEST.sql` à coller), fonction
+  `agenda`, script Google Agenda. Vérifié hors ligne seulement : PGlite (droits, remplacement, garde-fous), fonction et
+  script avec base et Google simulés. Le 20/10, la base de test ne contient aucune table `climpilot_busy`.
 - **Fonctions `superpdp` et `assistant`** sur le projet de test. Il faut que Gabriel pose la configuration `ALLOWED_USER_IDS` et `ANTHROPIC_API_KEY` dans le tableau de bord, car la session ne peut pas le faire. En attendant, leur comportement est couvert par les tests locaux (`fn-liste-blanche`, `fn-superpdp-envoi`).
 - Avec la copie d'essai : iPhone (écran d'accueil, mise à jour, impression des PDF).
 - **SUPER PDP** en bac à sable avec la 1.10.

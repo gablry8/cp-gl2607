@@ -246,6 +246,18 @@ Branche de travail à utiliser désormais (les copies d'essai de Gabriel sont en
   (767), suite F avec les validateurs EN 16931 / FNFE (9), tests SQL sur PostgreSQL 16 local (28) ; aucune requête de l'appli
   ni des tests n'a quitté la machine.
 
+## Branche `claude/planning-20-10` (20/10/2026, depuis `claude/fiabilite-sur-1.12`) — planning par demi-journée, NON déployée
+Choix de Gabriel du 19/10 : synchro Google Agenda toutes les 15 min, « que je ne me retrouve pas avec deux clients en même
+temps ». Détail, installation et repères : **`docs/AGENDA.md`**.
+- Appli : `next-planning.js` (moment Matin / Après-midi / Journée, conflits, confirmation avant de planifier sur un moment
+  pris, envoi des demi-journées occupées, moments Google au planning) ; clé `k` sur les événements de `planEvents`,
+  `data-k` / `data-iso` sur les cartes et les jours ; champ Moment dans le devis (`momentPlanif`, protégé et remis à zéro
+  à la copie comme `datePlanif`). Cache `climpilot-next-1129-planning`.
+- Serveur (préparé) : migration `20261020120000_agenda.sql`, fonction `agenda`. Script Google : `tools/apps-script/`.
+- Tests : suite S (appli), fn-agenda, fn-apps-script, `tests/sql/test_agenda.py`.
+- Phases suivantes (plan du 19/10) : messages (veille, entretien sous contrat, avis, SMS), puis terrain (tournée,
+  pointage, alerte matériel, suivi acompte → créneau ferme).
+
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
 Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).

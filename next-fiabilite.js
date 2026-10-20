@@ -80,7 +80,7 @@
     }; w._nxf=true; window[fn]=w;
   }
   /* 5. dupliquer un devis ne recopie ni ses factures, ni sa signature, ni son suivi */
-  var RESET=['facAcompte','facSolde','facAnnulees','signature','signLink','sentAt','relances','datePlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv','rnd'];
+  var RESET=['facAcompte','facSolde','facAnnulees','signature','signLink','sentAt','relances','datePlanif','momentPlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv','rnd'];
   function guardDup(){
     var o=window.dupDevis; if(typeof o!=='function'||o._nxf) return;
     var w=function(id){
