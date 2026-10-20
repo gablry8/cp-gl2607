@@ -64,6 +64,7 @@ Source : `supabase/functions/agenda/index.ts`. À déployer **sans vérification
 | 3 | Ouvrir un **ancien** devis (d'avant 1.12) | mêmes montants qu'avant, au centime |
 | 4 | Créer un devis (nature au choix), l'enregistrer | numéro `DV-…`, totaux cohérents, visible sur l'autre appareil après synchro |
 | 5 | Émettre une facture de **TEST** (mode démonstration uniquement, jamais une vraie) | numéro `TEST-F-2026-NNN` qui **suit** le dernier, sans trou ni doublon |
+| 5 bis | **Acompte sur le PC, solde sur le téléphone** (mode TEST) : facture l'acompte d'un devis sur le PC ; sur le téléphone **en mode avion**, « Facturer le solde » du même devis, puis remets le réseau | le téléphone signale « déjà facturé depuis un autre appareil », reprend l'acompte ; le solde émis ensuite = total − acompte, un seul `TEST-F-` de solde (contrôle demandé par le compte rendu § 4) |
 | 6 | Synchro entre deux appareils | modification sur le PC visible sur le téléphone, et inversement ; aucune « modification en attente » qui reste |
 | 7 | Mode avion, rouvrir l'appli | elle s'ouvre, les données sont là, l'écran Planning répond |
 | 8 | Signature en ligne d'un devis de **test** | lien ouvert sur le téléphone, signature enregistrée |
