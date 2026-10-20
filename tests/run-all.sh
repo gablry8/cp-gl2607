@@ -60,6 +60,7 @@ done
 etape fn-signature node "$ICI/functions/test-signature.mjs"
 etape fn-liste-blanche node "$ICI/functions/test-liste-blanche.mjs"
 etape fn-superpdp-envoi node "$ICI/functions/test-superpdp-envoi.mjs"
+etape fn-agenda node "$ICI/functions/test-agenda.mjs"
 if [ -n "${PGHOST:-}" ]; then
   etape sql python3 -m pytest -q -p no:cacheprovider --junitxml="$CP_TEST_OUT/sql-junit.xml" "$ICI/sql"
 else
