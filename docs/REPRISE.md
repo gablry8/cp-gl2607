@@ -211,6 +211,41 @@ relire à la main toutes les données gardées en mémoire par une quarantaine d
 donnée périmée. Le rechargement reste donc, mais on revient au même écran, à la même hauteur, et jamais pendant une saisie.
 Pas faisable ici (réseau fermé vers Supabase) : synchro réelle avec la base de test, iPhone réel, Netlify, relevé de sa banque.
 
+## Branche `claude/fiabilite-19-10` (19/10/2026) — corrections de fiabilité, NON déployées
+Partie de `main` (`1c91cca`), car `claude/quirky-pasteur-ds9m47` n'en contient pas le commit de fusion ; le commit de documentation
+`217661b` y est repris. Attention : `claude/ameliorations-1.12` (1.11 + 1.12, non fusionnée) touche aussi `index.html`,
+`next-emission.js`, `sw.js` et `tests/run-all.sh` : fusion à faire avec soin, après essais. Constats : audit du 18/10
+(voir `docs/ESSAIS-SUPABASE-TEST.md`, « Audit de fiabilité du 18/10/2026 »). Tests : nouvelle suite `tests/suiteR-fiabilite.mjs`.
+1. **Boîte de réception** (fait) : à valider = les 100 plus récentes + nombre exact (badge) ; traités = les 25 derniers ;
+   carte dédiée aux demandes du site (champs lisibles, « À rappeler avant le … », « ACTIVITÉ BLOQUÉE », liens tel:/mailto:,
+   « Traité » / « Écarter ») ; une ligne abîmée ne casse plus la liste.
+2. **Encaissement** (fait) : « Annuler » sur le mode de règlement n'enregistre plus rien ; bouton ↺ « Annuler
+   l'encaissement » avec trace ; le journal du serveur ne reçoit un paiement que s'il a vraiment eu lieu.
+3. **Export complet hors Supabase** (fait) : Outils › Sauvegardes › « Export complet (fichier) » ; clé synchronisée
+   `cpnext_dernier_export` (`at` ISO du dernier export complet, `octets`) ; rappel discret au-delà de 7 jours ; texte
+   faux sur la copie Google Drive retiré. À faire par Gabriel : un export par semaine, rangé hors de Supabase.
+4. **Émission** (fait, appli seulement) : « résultat inconnu, réessaie depuis CET appareil » après une réponse perdue ;
+   facture déjà émise pour la même source reprise au lieu d'un second numéro. Reste possible : une règle SQL dans
+   `cp_emettre_document` (même source = même facture), à préparer et tester sur le projet de test avant toute production.
+5. **Suite** : copie d'essai (projet de test à relancer par Gabriel, clé anon du projet de test à mettre dans la copie
+   seulement), essais de Gabriel, puis fusion dans `main` par lui ; ensuite rapprocher avec `claude/ameliorations-1.12`.
+   Autres points de l'audit non traités ici : nouvel appareil qui écrase des réglages au premier passage (fusion sans
+   base), synchro sans délai d'attente, fonction `superpdp` en ligne (v1) qui ne lit pas `document_id`, signature
+   (refus non vérifié, erreur de base présentée comme « lien introuvable »).
+
+## Fusion `claude/fiabilite-sur-1.12` (19/10/2026) = `claude/ameliorations-1.12` + `claude/fiabilite-19-10`
+Branche de travail à utiliser désormais (les copies d'essai de Gabriel sont en 1.11 / 1.12). Fusion sans réécriture d'historique.
+- Conflits résolus en gardant les deux apports : `sw.js` (cache `climpilot-next-1127-fiabilite`, liste des fichiers de la 1.12),
+  `tests/run-all.sh` et `tests/isolation/rapport.mjs` (suites O, P, Q **et** R).
+- `next-emission.js` : la 1.12 vérifiait déjà le registre du serveur avant d'émettre (`dejaEmis`, recette du 14/10, plus complet :
+  acompte / solde croisés, avoir total lu dans le registre). **On garde celui de la 1.12** ; de la branche fiabilité ne reste que
+  le message « Résultat INCONNU… réessaie depuis CET appareil » après une réponse perdue. Registre illisible : comme en 1.12,
+  le serveur décide (la demande garde son request_id). Les contrôles R4 de la suite R sont adaptés à ce comportement.
+- Déjà corrigé en 1.12, signalé par l'audit : modification faite pendant un envoi gardée (synchro sûre).
+- Batterie complète sur la fusion (19/10/2026, hors réseau, isolation du noyau) : **804 réussis, 0 échoué** — suites A à R
+  (767), suite F avec les validateurs EN 16931 / FNFE (9), tests SQL sur PostgreSQL 16 local (28) ; aucune requête de l'appli
+  ni des tests n'a quitté la machine.
+
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
 Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).
@@ -232,7 +267,7 @@ Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Su
    - **adhésion à un médiateur de la consommation** : obligatoire avant le premier devis à un particulier.
 4. **Sécurité avant la production** :
    - double authentification sur GitHub et sur Supabase ;
-   - sauvegarde des données : export régulier, à définir ;
+   - sauvegarde des données : « Export complet » chaque semaine (branche `claude/fiabilite-19-10`), fichier rangé hors de Supabase ;
    - vérifier l'absence de secrets dans le dépôt public.
 5. **Déploiement réel**, uniquement par Gabriel et avec son accord, dans l'ordre de `docs/CORRECTIONS-1.10.md` (« Ordre de déploiement envisagé ») :
    - migration sur le projet réel ;

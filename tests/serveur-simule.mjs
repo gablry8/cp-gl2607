@@ -1,4 +1,4 @@
-// Serveur Supabase SIMULÉ pour les suites I et N : mêmes règles que la migration SQL (cp_emettre_document & co),
+// Serveur Supabase SIMULÉ pour les suites I, N et R : mêmes règles que la migration SQL (cp_emettre_document & co),
 // testée, elle, sur un vrai PostgreSQL (tests/sql/test_migration.py). Injecté dans la page par p.evaluate(SERVEUR).
 /* serveur simulé, injecté dans la page (même règles que cp_emettre_document & co) */
 export const SERVEUR=`(function(){
@@ -29,11 +29,73 @@ export const SERVEUR=`(function(){
       srv.docs.push(d); return Promise.resolve({data:{ok:true,deja:false,doc:doc(d)}}); }
     return Promise.resolve({error:{message:'rpc inconnue '+name}});
   }
-  function from(t){ const q={_eq:null,select(){return q;},order(){return q;},eq(c,v){ q._eq=[c,v]; return q;},
-      or(){return q;},in(){return q;},gte(){return q;},lte(){return q;},lt(){return q;},gt(){return q;},is(){return q;},neq(){return q;},limit(){return q;},range(){return q;},
+  /* 19/10/2026 — tables lues et écrites pour de vrai par le faux client : boîte de réception (demandes du site comprises),
+     signatures, journal des événements (lecture). Filtres, tri, limite, tranche (range), nombre exact (count) et mises à jour. */
+  let nId=0; const uid=()=>'00000000-0000-4000-8000-'+String(++nId).padStart(12,'0');
+  srv.inbox=[]; srv.sigs=[];
+  const CHAMPS={
+    demande:{besoin:'panne',profil:'pro',equipement:'Vitrine réfrigérée',commune:'Creil',description:'Vitrine en panne depuis ce matin',marque:'Je ne sais pas',code:'Ne refroidit plus',bloquant:'Oui, marchandise ou service en danger',depuis:'Depuis ce matin',nom:'Boulangerie Test',telephone:'06 12 34 56 78',email:'contact@exemple.fr',rappel:'Le matin'},
+    reservation:{prestation:'Entretien climatisation',profil:'Particulier',jour:'Mardi 27 octobre',moment:'Matin',nom:'Mme Exemple',telephone:'07 00 00 00 01',email:'mme@exemple.fr',adresse:'1 rue de l\\'Exemple',commune:'Beauvais',equipement:'Daikin FTXM25',cgv:'Oui',execution:'Oui'},
+    retractation:{nom:'M. Exemple',email:'m@exemple.fr',date:'2026-10-10',prestation:'Entretien climatisation du 12/10',message:'Je me rétracte.'}};
+  const LIB={demande:'Demande',reservation:'Réservation',retractation:'Rétractation'};
+  /* ligne déposée par le site (même forme que toRow de la fonction « site-demande ») : site_demande, site_reservation, site_retractation */
+  srv.ligneSite=function(type,o){ o=o||{}; const ch=Object.assign({},CHAMPS[type],o.champs||{});
+    const quoi=type==='demande'?(ch.besoin||''):(ch.prestation||''), bloque=type==='demande'&&/^Oui/.test(ch.bloquant||'');
+    const recu=o.recu||o.created_at||new Date().toISOString();
+    const avant=type==='demande'?(o.rappeler_avant!==undefined?o.rappeler_avant:new Date(Date.now()+7*86400000).toISOString().slice(0,10)):null;
+    return {id:o.id||uid(),user_id:'u1',created_at:o.created_at||recu,kind:'message',statut:o.statut||'a_valider',source:'site',traite_at:o.traite_at||null,dictee:null,
+      titre:'Site · '+LIB[type]+' · '+quoi+(ch.commune?' · '+ch.commune:'')+(bloque?' · ACTIVITÉ BLOQUÉE':''),
+      resume:[ch.nom,ch.telephone,ch.email,ch.description||ch.message||''].filter(Boolean).join('\\n'),
+      payload:{type:'site_'+type,champs:ch,meta:{ip_hash:'h'+nId,rid:'rid-'+nId,page:'/contact.html',secondes:42,recu:recu,rappeler_avant:avant}}};
+  };
+  const TABLES={climpilot_inbox:()=>srv.inbox, climpilot_signatures:()=>srv.sigs,
+    climpilot_doc_events:()=>srv.events.map((e,i)=>({id:i+1,document_id:e.doc,request_id:e.rid,type:e.type,donnees:e.donnees||{},cree_le:e.cree_le||null}))};
+  function val(r,c){ let v=r; for(const k of String(c).split(/->>?/)){ if(v==null) return null; v=v[k]; } return v===undefined?null:v; }
+  function splitTop(s){ const out=[]; let cur='',dep=0,qu=false; for(const ch of String(s)){ if(ch==='"'){ qu=!qu; cur+=ch; continue; }
+      if(!qu&&ch==='(') dep++; if(!qu&&ch===')') dep--; if(!qu&&dep===0&&ch===','){ out.push(cur); cur=''; continue; } cur+=ch; } if(cur) out.push(cur); return out; }
+  function cond(part){ const i1=part.indexOf('.'), i2=part.indexOf('.',i1+1), col=part.slice(0,i1), op=part.slice(i1+1,i2); let v=part.slice(i2+1);
+    const unq=x=>x.replace(/^"|"$/g,''), g=r=>val(r,col);
+    if(op==='in'){ const l=v.replace(/^\\(|\\)$/g,'').split(',').map(unq); return r=>l.indexOf(String(g(r)))>=0; }
+    v=unq(v);
+    if(op==='eq') return r=>String(g(r))===v; if(op==='neq') return r=>String(g(r))!==v;
+    if(op==='gte') return r=>g(r)!=null&&String(g(r))>=v; if(op==='gt') return r=>g(r)!=null&&String(g(r))>v;
+    if(op==='lte') return r=>g(r)!=null&&String(g(r))<=v; if(op==='lt') return r=>g(r)!=null&&String(g(r))<v;
+    if(op==='is') return r=>(g(r)==null)===(v==='null');
+    return ()=>false; }
+  function table(t){ const q={f:[],o:null,lim:null,rg:null,cnt:false,upd:null,ins:null,sel:false,del:false,
+      select(c,opt){ if(q.upd||q.ins) q.sel=true; if(opt&&opt.count) q.cnt=true; return q; },
+      eq(c,v){ q.f.push(r=>String(val(r,c))===String(v)); return q; }, neq(c,v){ q.f.push(r=>String(val(r,c))!==String(v)); return q; },
+      in(c,a){ const l=(a||[]).map(String); q.f.push(r=>l.indexOf(String(val(r,c)))>=0); return q; },
+      gte(c,v){ q.f.push(r=>val(r,c)!=null&&String(val(r,c))>=String(v)); return q; }, gt(c,v){ q.f.push(r=>val(r,c)!=null&&String(val(r,c))>String(v)); return q; },
+      lte(c,v){ q.f.push(r=>val(r,c)!=null&&String(val(r,c))<=String(v)); return q; }, lt(c,v){ q.f.push(r=>val(r,c)!=null&&String(val(r,c))<String(v)); return q; },
+      is(c,v){ q.f.push(r=>(val(r,c)==null)===(v==null)); return q; },
+      or(s){ const cs=splitTop(s).map(cond); q.f.push(r=>cs.some(fn=>fn(r))); return q; },
+      order(c,o){ q.o={c:c,asc:!(o&&o.ascending===false)}; return q; }, limit(n){ q.lim=n; return q; }, range(a,b){ q.rg=[a,b]; return q; },
+      update(o){ q.upd=o; return q; }, insert(o){ q.ins=o; return q; }, upsert(o){ q.ins=o; return q; }, delete(){ q.del=true; return q; },
+      single(){ return run().then(r=>({data:(r.data||[])[0]||null,error:r.error})); }, maybeSingle(){ return run().then(r=>({data:(r.data||[])[0]||null,error:r.error})); },
+      then(ok,ko){ return run().then(ok,ko); } };
+    function run(){ srv.appels.push('from:'+t);
+      if(srv.fail[t]) return Promise.resolve({data:null,count:null,error:{message:'erreur simulée ('+t+')'}});
+      const rows=TABLES[t](), copie=x=>JSON.parse(JSON.stringify(x));
+      if(q.ins){ const a=[].concat(q.ins).map(x=>Object.assign({id:uid(),created_at:new Date().toISOString()},x)); a.forEach(x=>rows.push(x)); return Promise.resolve({data:q.sel?copie(a):null,error:null}); }
+      let res=rows.filter(r=>q.f.every(fn=>fn(r)));
+      if(q.upd){ res.forEach(r=>Object.assign(r,q.upd)); return Promise.resolve({data:q.sel?copie(res):null,error:null}); }
+      if(q.del){ res.forEach(r=>{ const i=rows.indexOf(r); if(i>=0) rows.splice(i,1); }); return Promise.resolve({data:null,error:null}); }
+      if(q.o){ const c=q.o.c, s=q.o.asc?1:-1; res=res.slice().sort((a,b)=>{ const x=val(a,c), y=val(b,c); if(x===y) return 0; if(x==null) return 1; if(y==null) return -1; return x<y?-s:s; }); }
+      const n=res.length; if(q.rg) res=res.slice(q.rg[0],q.rg[1]+1); if(q.lim!=null) res=res.slice(0,q.lim);
+      return Promise.resolve({data:copie(res),count:q.cnt?n:null,error:null}); }
+    return q; }
+  function from(t){ if(TABLES[t]) return table(t);
+    const q={_eq:null,_rg:null,_sel:'',select(s){ q._sel=String(s||''); return q;},order(){return q;},eq(c,v){ q._eq=[c,v]; return q;},
+      or(){return q;},in(){return q;},gte(){return q;},lte(){return q;},lt(){return q;},gt(){return q;},is(){return q;},neq(){return q;},limit(){return q;},range(a,b){ q._rg=[a,b]; return q;},
       update(){return q;},insert(){return q;},upsert(){return q;},delete(){return q;},single(){ return Promise.resolve({data:null}); },
       maybeSingle(){ const d=srv.docs.find(x=>x[q._eq[0]]===q._eq[1]); return Promise.resolve({data:d?{html:d.html||null,data:null}:null}); },
-      then(ok,ko){ return Promise.resolve(t==='climpilot_documents'?{data:srv.docs.map(doc)}:{data:[]}).then(ok,ko); } };
+      then(ok,ko){ if(t==='climpilot_documents'&&srv.fail.climpilot_documents) return Promise.resolve({data:null,error:{message:'erreur simulée (climpilot_documents)'}}).then(ok,ko);
+        let d=t==='climpilot_documents'?srv.docs.map(doc):[]; if(q._rg) d=d.slice(q._rg[0],q._rg[1]+1);
+        /* sélection d'un champ JSON, comme PostgREST : « alias:payload->clé->clé » (vérification 1.12 avant émission) */
+        const ch=[...q._sel.matchAll(/(\\w+):payload((?:->\\w+)+)/g)];
+        if(t==='climpilot_documents'&&ch.length) d=d.map(x=>{ const o=Object.assign({},x); delete o.payload; ch.forEach(m=>{ let v=x.payload; m[2].split('->').filter(Boolean).forEach(k=>{ v=v==null?undefined:v[k]; }); o[m[1]]=v===undefined?null:JSON.parse(JSON.stringify(v)); }); return o; });
+        return Promise.resolve({data:d}).then(ok,ko); } };
     return q; }
   window.__srv=srv; window.sb={rpc:rpc,from:from,auth:{getSession:()=>Promise.resolve({data:{session:null}})}};
 })();`;

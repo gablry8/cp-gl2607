@@ -22,6 +22,8 @@
   var CAT_KEY = 'cp2_agent_catalog';
   var DONE_KEY = 'cpnext_inbox_done';          /* ids déjà importés (anti-doublon, local) */
   var ROWS = [], RECENT = [], STATE = 'init', LAST_ERR = '';
+  /* 19/10/2026 : « à valider » = les 100 plus récentes + le nombre exact (badge) ; « traité » = les 25 dernières */
+  var LIM_A_VALIDER = 100, LIM_TRAITES = 25, NB_A_VALIDER = 0;
   var ICO = {note:'📝',tache:'✅',rdv:'📅',devis:'📄',intervention:'🔧',message:'✉️',machine:'❄️',client:'👤',article:'🏷️',autre:'💡'};
   var LBL = {note:'Note',tache:'Tâche',rdv:'Rendez-vous',devis:'Devis',intervention:'Intervention',message:'Message client',machine:'Machine',client:'Client',article:'Article',autre:'Autre'};
   var DONE_LBL = {note:'ajouté à « À faire »',tache:'ajouté à « À faire »',machine:'ajoutée à la bibliothèque',client:'ajouté aux clients',article:'ajouté à la base de prix'};
@@ -155,16 +157,20 @@
   function fetchInbox(){
     if(!cloudOk()){ STATE='offline'; renderAssist(); setBadge(); return Promise.resolve(); }
     var since=new Date(Date.now()-7*86400000).toISOString();
-    return sb.from(TABLE).select('*').or('statut.in.(a_valider,auto),traite_at.gte."'+since+'"').order('created_at',{ascending:true}).limit(200)
-      .then(function(r){
-        if(r.error){ STATE=/does not exist|not find|PGRST205|42P01/i.test((r.error.message||'')+(r.error.code||''))?'notable':'error'; LAST_ERR=r.error.message||''; ROWS=[]; RECENT=[]; }
-        else {
-          STATE='ok';
-          var all=r.data||[];
-          ROWS=all.filter(function(x){return x.statut==='a_valider';});
-          RECENT=all.filter(function(x){return x.statut!=='a_valider';}).reverse();
-          return autoImport(all.filter(function(x){return x.statut==='auto';}));
-        }
+    /* 19/10/2026 — trois lectures séparées. Avant : UNE requête qui prenait les 200 lignes les PLUS ANCIENNES (à valider
+       et traitées de la semaine mêlées) : avec beaucoup de demandes du site, les nouvelles n'apparaissaient plus du tout. */
+    var qV=sb.from(TABLE).select('*',{count:'exact'}).eq('statut','a_valider').order('created_at',{ascending:false}).limit(LIM_A_VALIDER);
+    var qA=sb.from(TABLE).select('*').eq('statut','auto').order('created_at',{ascending:true}).limit(50);
+    var qT=sb.from(TABLE).select('*').in('statut',['valide','rejete']).gte('traite_at',since).order('traite_at',{ascending:false}).limit(LIM_TRAITES);
+    return Promise.all([qV,qA,qT])
+      .then(function(rs){
+        var err=rs.map(function(r){ return r&&r.error; }).filter(Boolean)[0];
+        if(err){ STATE=/does not exist|not find|PGRST205|42P01/i.test((err.message||'')+(err.code||''))?'notable':'error'; LAST_ERR=err.message||''; }
+        else { STATE='ok'; LAST_ERR=''; }
+        var v=rs[0]&&!rs[0].error?rs[0]:null;
+        ROWS=v?(v.data||[]):[]; NB_A_VALIDER=v?(typeof v.count==='number'?v.count:ROWS.length):0;
+        RECENT=(rs[2]&&!rs[2].error&&rs[2].data)||[];
+        return autoImport((rs[1]&&!rs[1].error&&rs[1].data)||[]);
       })
       .catch(function(e){ STATE='error'; LAST_ERR=String(e&&e.message||e); })
       .then(function(){ renderAssist(); setBadge(); });
@@ -418,29 +424,80 @@
   window.nxaDone = function(id){ mark(id,'valide').then(fetchInbox); };
 
   /* ---------- 6. Rendu ---------- */
+  /* identifiant pour un attribut onclick : uuid attendu, tout autre caractère retiré */
+  function idSur(x){ return String(x&&x.id!=null?x.id:'').replace(/[^0-9A-Za-z_-]/g,''); }
   function card(x){
-    var p=x.payload||{}, k=x.kind||'autre';
-    var todo=(p.a_verifier||[]).length?'<ul class="nxa-warn">'+p.a_verifier.map(function(w){return '<li>'+esc(w)+'</li>';}).join('')+'</ul>':'';
+    if(x&&x.source==='site') return cardSite(x);
+    var p=(x.payload&&typeof x.payload==='object')?x.payload:{}, k=x.kind||'autre', id=idSur(x);
+    var av=Array.isArray(p.a_verifier)?p.a_verifier:[];   /* une ligne abîmée ne doit pas casser toute la liste */
+    var todo=av.length?'<ul class="nxa-warn">'+av.map(function(w){return '<li>'+esc(w)+'</li>';}).join('')+'</ul>':'';
     var act='';
-    if(k==='devis') act='<button class="nx-sbtn mar" onclick="nxaOpenDevis(\''+x.id+'\')">Ouvrir le devis pré-rempli</button>';
-    else if(k==='intervention') act='<button class="nx-sbtn mar" onclick="nxaOpenInter(\''+x.id+'\')">Ouvrir la fiche pré-remplie</button>';
+    if(k==='devis') act='<button class="nx-sbtn mar" onclick="nxaOpenDevis(\''+id+'\')">Ouvrir le devis pré-rempli</button>';
+    else if(k==='intervention') act='<button class="nx-sbtn mar" onclick="nxaOpenInter(\''+id+'\')">Ouvrir la fiche pré-remplie</button>';
     else if(k==='message'){
       act='<div class="nxa-msg">'+(p.objet?'<div class="nxa-sub"><b>Objet :</b> '+esc(p.objet)+'</div>':'')+
-        '<textarea id="nxaMsg_'+x.id+'" rows="7">'+esc(p.corps||'')+'</textarea>'+
+        '<textarea id="nxaMsg_'+id+'" rows="7">'+esc(p.corps||'')+'</textarea>'+
         '<div class="nxa-sub">À : '+esc([p.destinataire,p.email,p.tel].filter(Boolean).join(' · ')||'—')+'</div></div>'+
-        (p.email||p.canal==='mail'?'<button class="nx-sbtn mar" onclick="nxaMsg(\''+x.id+'\',\'mail\')">✉ Ouvrir dans Mail</button>':'')+
-        (p.tel||p.canal==='sms'?'<button class="nx-sbtn mar" onclick="nxaMsg(\''+x.id+'\',\'sms\')">💬 SMS</button>':'')+
-        '<button class="nx-sbtn" onclick="nxaMsg(\''+x.id+'\',\'copy\')">Copier</button>';
+        (p.email||p.canal==='mail'?'<button class="nx-sbtn mar" onclick="nxaMsg(\''+id+'\',\'mail\')">✉ Ouvrir dans Mail</button>':'')+
+        (p.tel||p.canal==='sms'?'<button class="nx-sbtn mar" onclick="nxaMsg(\''+id+'\',\'sms\')">💬 SMS</button>':'')+
+        '<button class="nx-sbtn" onclick="nxaMsg(\''+id+'\',\'copy\')">Copier</button>';
     }
-    else if(k==='rdv'){ var pr=x.payload||{}; act='<div class="nxa-sub" style="width:100%">📅 '+esc(pr.date?new Date(String(pr.date).slice(0,10)+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}):'date ?')+(pr.heure?' à '+esc(String(pr.heure).replace(':','h')):'')+(pr.lieu?' · '+esc(pr.lieu):'')+'</div><button class="nx-sbtn mar" onclick="nxaGcal(\''+x.id+'\')">📅 Ajouter à Google Agenda</button>'; }
-    else act='<button class="nx-sbtn acc" onclick="nxaDone(\''+x.id+'\')">OK, traité</button>';
-    return '<div class="nxa-card k-'+esc(k)+'">'+
+    else if(k==='rdv'){ var pr=p; act='<div class="nxa-sub" style="width:100%">📅 '+esc(pr.date?new Date(String(pr.date).slice(0,10)+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'}):'date ?')+(pr.heure?' à '+esc(String(pr.heure).replace(':','h')):'')+(pr.lieu?' · '+esc(pr.lieu):'')+'</div><button class="nx-sbtn mar" onclick="nxaGcal(\''+id+'\')">📅 Ajouter à Google Agenda</button>'; }
+    else act='<button class="nx-sbtn acc" onclick="nxaDone(\''+id+'\')">OK, traité</button>';
+    return '<div class="nxa-card k-'+esc(k)+'" data-id="'+id+'">'+
       '<div class="nxa-h"><span class="nxa-ico">'+(ICO[k]||'💡')+'</span><div style="flex:1;min-width:0"><b>'+esc(x.titre||LBL[k]||'Proposition')+'</b>'+
       '<div class="nxa-sub">'+esc(LBL[k]||k)+' · '+esc(fmtWhen(x.created_at))+'</div></div></div>'+
       (x.resume?'<div class="nxa-body">'+esc(x.resume).replace(/\n/g,'<br>')+'</div>':'')+todo+
       (x.dictee?'<details class="nxa-dict"><summary>Ce que tu as dit</summary>« '+esc(x.dictee)+' »</details>':'')+
-      '<div class="nxa-act">'+act+'<button class="nx-sbtn ref" onclick="nxaReject(\''+x.id+'\')">Écarter</button></div></div>';
+      '<div class="nxa-act">'+act+'<button class="nx-sbtn ref" onclick="nxaReject(\''+id+'\')">Écarter</button></div></div>';
   }
+
+  /* ---------- Demandes déposées par le site (source 'site') — 19/10/2026 ----------
+     Forme : {kind:'message', statut:'a_valider', source:'site', titre, resume,
+              payload:{type:'site_demande'|'site_reservation'|'site_retractation', champs:{…}, meta:{ip_hash, rid, page, secondes, recu, rappeler_avant}}}
+     Tout ce qui vient du visiteur est affiché comme du TEXTE (esc) ; les seuls liens sont tel: et mailto:, à schéma fixe,
+     valeur encodée (encodeURIComponent). Rien n'est créé ni envoyé : « Traité » ou « Écarter » soldent la demande. */
+  var SITE_TYPE={site_demande:'Demande (devis ou dépannage)',site_reservation:'Réservation en ligne',site_retractation:'Rétractation'};
+  var SITE_CH=[['nom','Nom'],['telephone','Téléphone'],['email','E-mail'],['rappel','Quand rappeler'],['profil','Client'],['besoin','Besoin'],['prestation','Prestation'],
+    ['jour','Jour souhaité'],['moment','Moment'],['date','Date de la réservation ou du contrat'],['equipement','Équipement'],['marque','Marque et modèle'],['commune','Commune'],['adresse','Adresse'],
+    ['bloquant','Activité bloquée ?'],['depuis','Depuis quand'],['code','Code erreur ou symptôme'],['pieces','Pièces et surface'],['dernier','Dernier entretien'],['chauffage','Chauffage actuel'],
+    ['description','Description'],['message','Précisions'],['acompte','Acompte'],['cgv','Conditions générales acceptées'],['execution','Intervention avant la fin du délai de rétractation demandée'],['connu','Nous a connu par']];
+  var SITE_VAL={profil:{home:'Particulier',pro:'Professionnel'},besoin:{installation:'Installation',entretien:'Entretien',panne:'Panne / dépannage'}};
+  function siteObj(o){ return (o&&typeof o==='object'&&!Array.isArray(o))?o:{}; }
+  function siteLignes(x){
+    var ch=siteObj(siteObj(x.payload).champs), vus={}, out=[];
+    var txt=function(k){ var v=ch[k]; return (v==null||typeof v==='object')?'':String(v); };
+    SITE_CH.forEach(function(c){ vus[c[0]]=1; var v=txt(c[0]); if(v) out.push([c[1],(SITE_VAL[c[0]]&&SITE_VAL[c[0]][v])||v]); });
+    Object.keys(ch).forEach(function(k){ if(!vus[k]){ var v=txt(k); if(v) out.push([k,v]); } });
+    return out;
+  }
+  function dateLongue(iso){ try{ return new Date(iso+'T12:00:00').toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}); }catch(e){ return iso; } }
+  function cardSite(x){
+    var p=siteObj(x.payload), ch=siteObj(p.champs), m=siteObj(p.meta), id=idSur(x);
+    var txt=function(k){ var v=ch[k]; return (v==null||typeof v==='object')?'':String(v); };
+    var bloque=/^Oui/i.test(txt('bloquant'))||/ACTIVITÉ BLOQUÉE/.test(String(x.titre||''));
+    var av=String(m.rappeler_avant||''), rappel='';
+    if(/^\d{4}-\d{2}-\d{2}$/.test(av)){ var auj=dISO(new Date()), dep=av<auj, jour=av===auj;
+      rappel='<div class="nxa-rappel'+(dep?' depasse':jour?' jour':'')+'">'+(dep?'⚠ Délai dépassé — ':'')+'À rappeler avant le '+esc(dateLongue(av))+(jour?' (aujourd\'hui)':'')+'</div>'; }
+    var dl='<dl class="nxa-champs">'+siteLignes(x).map(function(l){ return '<dt>'+esc(l[0])+'</dt><dd>'+esc(l[1]).replace(/\n/g,'<br>')+'</dd>'; }).join('')+'</dl>';
+    var tel=txt('telephone').replace(/[^0-9+]/g,''), mail=txt('email').trim(), liens='';
+    if(tel.length>=10&&tel.length<=16) liens+='<a class="nx-sbtn mar" href="'+esc('tel:'+encodeURIComponent(tel))+'">📞 Appeler</a>';
+    if(/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(mail)) liens+='<a class="nx-sbtn mar" href="'+esc('mailto:'+encodeURIComponent(mail)+'?subject='+encodeURIComponent('Votre demande'+(txt('prestation')?' — '+txt('prestation'):'')))+'">✉ Répondre par mail</a>';
+    var meta=[m.recu?'reçue le '+fmtWhen(m.recu):'', m.page?'page '+String(m.page):''].filter(Boolean).join(' · ');
+    return '<div class="nxa-card k-message k-site" data-id="'+id+'">'+
+      '<div class="nxa-h"><span class="nxa-ico">🌐</span><div style="flex:1;min-width:0"><b>'+esc(x.titre||'Demande du site')+'</b>'+
+      '<div class="nxa-sub">'+esc(SITE_TYPE[p.type]||'Demande du site')+' · '+esc(fmtWhen(x.created_at))+'</div></div></div>'+
+      (bloque?'<div class="nxa-bloque">ACTIVITÉ BLOQUÉE</div>':'')+rappel+dl+
+      (meta?'<div class="nxa-sub">Site : '+esc(meta)+'</div>':'')+
+      '<div class="nxa-act">'+liens+'<button class="nx-sbtn" onclick="nxaSiteCopier(\''+id+'\')">Copier</button>'+
+      '<button class="nx-sbtn acc" onclick="nxaSiteTraite(\''+id+'\')">✅ Traité</button><button class="nx-sbtn ref" onclick="nxaReject(\''+id+'\')">Écarter</button></div></div>';
+  }
+  window.nxaSiteTraite=function(id){ return mark(id,'valide').then(fetchInbox); };
+  window.nxaSiteCopier=function(id){
+    var x=findRow(id); if(!x) return;
+    var t=String(x.titre||'')+'\n'+siteLignes(x).map(function(l){ return l[0]+' : '+l[1]; }).join('\n');
+    try{ window.cpCopier(t).then(function(ok){ toastX(ok?'📋 Copié':'Copie impossible', ok?'ok':'warn'); }); }catch(e){ toastX('Copie impossible','warn'); }
+  };
   /* ---------- Conversation avec l'assistant IA (fonction serveur) ---------- */
   var THREAD=[], DISPLAY=[], BUSY=false, BUDGET=null;
   function nowInfo(){ var d=new Date(); return {jour:d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'}), date:dISO(d), heure:pad(d.getHours())+':'+pad(d.getMinutes())}; }
@@ -521,21 +578,24 @@
     else if(STATE==='notable') st='<div class="nxa-state warn">La boîte de réception n\'est pas encore créée dans Supabase (étape d\'installation à faire une fois).</div>';
     else if(STATE==='error') st='<div class="nxa-state warn">⚠ Boîte de réception injoignable : '+esc(LAST_ERR)+' <button class="nx-sbtn" onclick="nxaRefresh()">Réessayer</button></div>';
     document.getElementById('nxaState').innerHTML=st;
+    var plus=NB_A_VALIDER>ROWS.length?'<div class="nxa-sub" style="margin:8px 0 2px">… et '+(NB_A_VALIDER-ROWS.length)+' autres plus anciennes, non affichées : traite ou écarte d\'abord celles-ci.</div>':'';
+    var vide=(STATE==='error'||STATE==='notable')?'<div class="empty">Liste indisponible pour l\'instant (voir le message ci-dessus).</div>'
+      :'<div class="empty">Rien à valider pour l\'instant. Dicte une demande ci-dessus, ou parle à l\'agent complet dans l\'app Claude (projet « Gabriel Leroy — Froid & Clim »).</div>';
     document.getElementById('nxaLists').innerHTML=
-      '<div class="card"><div class="nxa-hd"><h2 style="margin:0">📥 À valider</h2><button class="nx-sbtn" onclick="nxaRefresh()">↻ Actualiser</button></div>'+
-        '<div class="nxa-sub" style="margin:2px 0 6px">Proposé par ton assistant — rien n\'est créé ni envoyé sans toi.</div>'+
-        (ROWS.length?ROWS.map(card).join(''):'<div class="empty">Rien à valider pour l\'instant. Dicte une demande ci-dessus, ou parle à l\'agent complet dans l\'app Claude (projet « Gabriel Leroy — Froid & Clim »).</div>')+
+      '<div class="card" id="nxaAValider"><div class="nxa-hd"><h2 style="margin:0">📥 À valider'+(NB_A_VALIDER?' ('+NB_A_VALIDER+')':'')+'</h2><button class="nx-sbtn" onclick="nxaRefresh()">↻ Actualiser</button></div>'+
+        '<div class="nxa-sub" style="margin:2px 0 6px">Proposé par ton assistant ou demandé sur ton site — les plus récentes d\'abord. Rien n\'est créé ni envoyé sans toi.</div>'+
+        (ROWS.length?ROWS.map(card).join('')+plus:vide)+
       '</div>'+
-      (RECENT.length?'<div class="card"><h2>🕘 Traité ces 7 derniers jours</h2>'+RECENT.slice(0,25).map(function(x){
-        var s=x.statut==='rejete'?'écarté':(x.kind==='rdv'?'dans l\'agenda':(DONE_LBL[x.kind]||'validé'));
-        return '<div class="recap-line"><div style="min-width:0">'+(ICO[x.kind]||'💡')+' '+esc(x.titre||LBL[x.kind]||'')+'<div class="sub2">'+esc(fmtWhen(x.created_at))+'</div></div><span class="nxa-chip '+(x.statut==='rejete'?'mute':'')+'">'+s+'</span></div>';
+      (RECENT.length?'<div class="card" id="nxaTraites"><h2>🕘 Traité ces 7 derniers jours</h2>'+RECENT.slice(0,LIM_TRAITES).map(function(x){
+        var s=x.statut==='rejete'?'écarté':(x.source==='site'?'traité':(x.kind==='rdv'?'dans l\'agenda':(DONE_LBL[x.kind]||'validé')));
+        return '<div class="recap-line" data-id="'+idSur(x)+'"><div style="min-width:0">'+(x.source==='site'?'🌐':(ICO[x.kind]||'💡'))+' '+esc(x.titre||LBL[x.kind]||'')+'<div class="sub2">'+esc(fmtWhen(x.traite_at||x.created_at))+'</div></div><span class="nxa-chip '+(x.statut==='rejete'?'mute':'')+'">'+s+'</span></div>';
       }).join('')+'</div>':'');
   }
   window.nxaRender = renderAssist;
 
   function setBadge(){
     var el=document.getElementById('nxaBadge'); if(!el) return;
-    var n=ROWS.length; el.textContent=n; el.style.display=n>0?'':'none';
+    var n=Math.max(NB_A_VALIDER,ROWS.length); el.textContent=n; el.style.display=n>0?'':'none';
   }
 
   /* ---------- Sauvegardes cloud (table climpilot_backups, alimentée par le serveur) ---------- */
@@ -546,14 +606,90 @@
     var d=currentData(), n=function(k){ return Array.isArray(d[k])?d[k].length:0; };
     return sb.from('climpilot_backups').insert({user_id:SESS.user.id,raison:raison,data:d,taille:JSON.stringify(d).length,nb_devis:n('cp2_devis'),nb_clients:n('cp2_clients'),nb_dep:n('cp2_dep'),nb_loc:n('cp2_loc')}).then(function(r){ return r; });
   }
+  /* ---------- Export complet HORS Supabase (19/10/2026) ----------
+     Les copies de climpilot_backups restent DANS le projet Supabase (même compte, même projet) et ne contiennent que
+     l'état synchronisé. L'export complet télécharge un fichier JSON daté : état de l'appareil + registre des factures
+     (climpilot_documents) + journal (climpilot_doc_events) + signatures (climpilot_signatures), lus page par page.
+     Clé SYNCHRONISÉE cpnext_dernier_export (lue aussi par une tâche planifiée dans climpilot_state) :
+       { at: ISO du dernier export COMPLET, octets: taille du fichier, comptes:{documents,evenements,signatures},
+         incomplet?: { at: ISO, erreurs: n } }   ← dernier essai incomplet, n'avance pas « at » */
+  var EXP_KEY='cpnext_dernier_export', EXP_BUSY=false;
+  try{ if(Array.isArray(SYNC_KEYS) && SYNC_KEYS.indexOf(EXP_KEY)<0) SYNC_KEYS.push(EXP_KEY); }catch(e){}
+  function exportInfo(){ var o=lsGet(EXP_KEY,null); return o&&typeof o==='object'?o:null; }
+  window.nxaExportInfo=exportInfo;
+  function quand(iso){ try{ var d=new Date(iso); if(isNaN(d)) return ''; return d.toLocaleDateString('fr-FR')+' à '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); }catch(e){ return ''; } }
+  function joursDepuis(iso){ var t=Date.parse(iso||''); return isNaN(t)?null:Math.floor((Date.now()-t)/86400000); }
+  /* lecture page par page (l'API Supabase renvoie au plus 1 000 lignes par requête) ; tri sur une clé unique */
+  function lirePages(table,ordre,taille){
+    var tout=[], page=0;
+    function suite(){
+      return sb.from(table).select('*').order(ordre,{ascending:true}).range(page*taille,page*taille+taille-1).then(function(r){
+        if(r&&r.error) throw new Error(table+' : '+(r.error.message||'erreur'));
+        var d=(r&&r.data)||[]; tout=tout.concat(d); page++;
+        if(d.length<taille) return tout;
+        if(page>=1000) throw new Error(table+' : trop de pages');
+        return suite();
+      });
+    }
+    return suite();
+  }
+  function telecharger(txt,nom){
+    var a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'})); a.download=nom;
+    document.body.appendChild(a); a.click(); setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} },2000);
+  }
+  window.nxaExportComplet=function(){
+    if(EXP_BUSY){ toastX('Export en cours…','warn'); return Promise.resolve(null); }
+    EXP_BUSY=true; toastX('Export complet en cours…');
+    var erreurs=[], serveur={}, etat=null;
+    try{ etat=typeof window.nxExportObjet==='function'?window.nxExportObjet():null; if(!etat) erreurs.push('état de l\'appareil : indisponible'); }catch(e){ erreurs.push('état de l\'appareil : '+(e.message||e)); }
+    var T=[['climpilot_documents','id',100],['climpilot_doc_events','id',1000],['climpilot_signatures','token',100]], ch=Promise.resolve();
+    if(!cloudOk()) erreurs.push('pas connecté au cloud : registre des factures, journal et signatures non exportés');
+    else T.forEach(function(t){ ch=ch.then(function(){ return lirePages(t[0],t[1],t[2]).then(function(rows){ serveur[t[0]]=rows; },function(e){ serveur[t[0]]=null; erreurs.push(String(e&&e.message||e)); }); }); });
+    var fin=function(){ EXP_BUSY=false; };
+    return ch.then(function(){
+      var n=function(k){ return Array.isArray(serveur[k])?serveur[k].length:0; }, complet=!erreurs.length, maintenant=new Date().toISOString();
+      var o={format:'climpilot-export-complet-1',exporte_le:maintenant,complet:complet,erreurs:erreurs,
+        comptes:{documents:n('climpilot_documents'),evenements:n('climpilot_doc_events'),signatures:n('climpilot_signatures')},
+        lisezmoi:'Copie de secours ClimPilot : état de l\'appareil (etat, relisible par « Importer ») et tables du serveur (serveur). Données personnelles de clients : à ranger en lieu sûr, hors de Supabase.',
+        etat:etat,serveur:serveur};
+      var txt=JSON.stringify(o), octets=new Blob([txt]).size;
+      telecharger(txt,'ClimPilot_export_complet_'+dISO(new Date())+'.json');
+      var info=exportInfo()||{};
+      if(complet){ info={at:maintenant,octets:octets,comptes:o.comptes}; try{ save(LS.lastbk,Date.now()); }catch(e){} }
+      else info.incomplet={at:maintenant,erreurs:erreurs.length};
+      try{ if(typeof save==='function') save(EXP_KEY,info); else lsSet(EXP_KEY,info); }catch(e){ lsSet(EXP_KEY,info); }
+      toastX(complet?'⤓ Export complet téléchargé ('+Math.max(1,Math.round(octets/1024))+' Ko) : range-le hors de Supabase (ordinateur, clé USB, Drive)'
+        :'⚠ Export INCOMPLET ('+erreurs.join(' ; ')+') : le fichier contient le reste, refais l\'export quand le réseau répond', complet?'ok':'warn');
+      try{ renderBackups(); }catch(e){} try{ if(typeof window.checkBackup==='function') window.checkBackup(); }catch(e){}
+      fin(); return {complet:complet,octets:octets,erreurs:erreurs};
+    },function(e){ fin(); toastX('⚠ Export impossible : '+(e&&e.message||e),'warn'); return null; });
+  };
+  /* rappel discret (bandeau du tableau de bord) : plus de 7 jours sans export complet */
+  window.nxaRappelExport=function(){
+    var i=exportInfo(), j=i&&i.at?joursDepuis(i.at):null;
+    if(j!=null&&j<=7) return '';
+    return '<span style="font-size:12.5px">💾 Export complet : '+(j==null?'jamais fait':'le dernier date de '+j+' jours')+'. Tes copies serveur restent dans Supabase : garde aussi un fichier ailleurs. '+
+      '<button class="btn-ghost btn-sm" style="margin-left:6px" onclick="nxaExportComplet()">⤓ Export complet</button></span>';
+  };
+  function ligneExport(){
+    var i=exportInfo(), h='<div class="nxa-sub" style="margin:2px 0 8px">Dernière copie hors Supabase : ';
+    if(i&&i.at) h+='<b>export complet du '+esc(quand(i.at))+'</b>'+(i.octets?' ('+Math.max(1,Math.round(i.octets/1024))+' Ko)':'')+(joursDepuis(i.at)>7?' — <b>plus de 7 jours</b>':'');
+    else h+='<b>aucune connue</b>';
+    if(i&&i.incomplet&&(!i.at||String(i.incomplet.at)>String(i.at))) h+=' · dernier essai INCOMPLET le '+esc(quand(i.incomplet.at));
+    return h+'.</div>';
+  }
+  var TXT_COPIES='Le serveur garde une copie de tes données <b>chaque jour où tu synchronises</b> (45 jours, puis une par mois pendant 13 mois) et une copie <b>avant toute grosse perte</b> (appareil vide qui écraserait le cloud, suppression massive…). '+
+    'Ces copies sont <b>dans Supabase</b>, au même endroit que tes données : elles ne protègent ni d\'une perte du compte ou du projet, ni le registre des factures. '+
+    'Pour une copie <b>hors Supabase</b>, fais un <b>Export complet</b> (fichier JSON : données, registre des factures, journal, signatures) au moins une fois par semaine et range-le ailleurs.';
+  var BTN_EXPORT='<button class="nx-sbtn mar" onclick="nxaExportComplet()">⤓ Export complet (fichier)</button>';
   function renderBackups(){
     var host=document.getElementById('nxaBackups'); if(!host) return;
-    if(!cloudOk()){ host.innerHTML='<div class="card"><h2>☁️ Sauvegardes cloud</h2><div class="nxa-sub">Connecte-toi au cloud pour voir tes sauvegardes automatiques.</div></div>'; return; }
-    host.innerHTML='<div class="card"><h2>☁️ Sauvegardes cloud</h2><div class="nxa-sub">Chargement…</div></div>';
+    if(!cloudOk()){ host.innerHTML='<div class="card"><h2>☁️ Sauvegardes</h2><div class="nxa-sub">Connecte-toi au cloud pour voir les copies du serveur. Sans connexion, l\'export ne contient que les données de cet appareil.</div>'+ligneExport()+'<div class="nxa-act">'+BTN_EXPORT+'</div></div>'; return; }
+    host.innerHTML='<div class="card"><h2>☁️ Sauvegardes</h2><div class="nxa-sub">Chargement…</div></div>';
     sb.from('climpilot_backups').select('id,created_at,raison,taille,nb_devis,nb_clients,nb_dep,nb_loc').order('created_at',{ascending:false}).limit(60).then(function(r){
       var rows=(r&&r.data)||[];
-      var h='<div class="card"><div class="nxa-hd"><h2 style="margin:0">☁️ Sauvegardes cloud automatiques</h2><button class="nx-sbtn mar" onclick="nxaBackupNow()">Sauvegarder maintenant</button></div>'+
-        '<div class="nxa-sub" style="margin:4px 0 10px">Le serveur garde une copie <b>chaque jour</b> (45 jours, puis une par mois pendant 13 mois) et une copie <b>avant toute grosse perte</b> de données (appareil vide qui écraserait le cloud, suppression massive…). Une copie de secours part aussi chaque semaine sur ton Google Drive.</div>';
+      var h='<div class="card"><div class="nxa-hd"><h2 style="margin:0">☁️ Sauvegardes</h2><div>'+BTN_EXPORT+'<button class="nx-sbtn" onclick="nxaBackupNow()">Copie serveur maintenant</button></div></div>'+
+        '<div class="nxa-sub" style="margin:4px 0 6px">'+TXT_COPIES+'</div>'+ligneExport();
       if(r&&r.error) h+='<div class="nxa-state warn">⚠ '+esc(r.error.message)+'</div>';
       else if(!rows.length) h+='<div class="empty">Aucune sauvegarde pour l\'instant — la première arrive à la prochaine synchro.</div>';
       else h+=rows.map(function(b){ return '<div class="recap-line"><div style="min-width:0"><b>'+esc(fmtWhen(b.created_at))+'</b><div class="sub2">'+esc(RAISON[b.raison]||b.raison)+' · '+(b.nb_devis||0)+' devis · '+(b.nb_clients||0)+' clients · '+(b.nb_dep||0)+' interv. · '+(b.nb_loc||0)+' loc. · '+Math.max(1,Math.round((b.taille||0)/1024))+' Ko</div></div><button class="nx-sbtn" onclick="nxaRestore('+b.id+')">Restaurer</button></div>'; }).join('');
@@ -578,7 +714,11 @@
   /* ---------- 7. Styles ---------- */
   var CSS=
   '.nxa-card{border:1px solid var(--line,#e3e8ef);border-left:4px solid #121417;border-radius:12px;padding:12px 14px;margin:10px 0;background:#fff}'+
-  '.nxa-card.k-message{border-left-color:#0d6e7c}.nxa-card.k-intervention{border-left-color:#c77700}'+
+  '.nxa-card.k-message{border-left-color:#0d6e7c}.nxa-card.k-intervention{border-left-color:#c77700}.nxa-card.k-site{border-left-color:#1d5fa8}'+
+  '.nxa-champs{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:3px 12px;margin:8px 0;font-size:13px;line-height:1.4}.nxa-champs dt{color:var(--muted,#6b7a90)}.nxa-champs dd{margin:0;overflow-wrap:anywhere}'+
+  '.nxa-bloque{display:inline-block;background:#b03a2e;color:#fff;font-weight:800;font-size:12px;letter-spacing:.04em;padding:3px 10px;border-radius:6px;margin:8px 0 2px}'+
+  '.nxa-rappel{font-size:13px;margin:6px 0;padding:6px 10px;border-radius:8px;background:#eef3f9}.nxa-rappel.jour{background:#fff6e5;color:#7a4b00;font-weight:700}.nxa-rappel.depasse{background:#fde2df;color:#b03a2e;font-weight:800}'+
+  '@media (max-width:520px){.nxa-champs{grid-template-columns:minmax(0,1fr)}.nxa-champs dt{margin-top:4px}}'+
   '.nxa-hd{display:flex;justify-content:space-between;align-items:center;gap:10px}.nxa-h{display:flex;gap:10px;align-items:flex-start}.nxa-ico{font-size:20px;line-height:1.2}'+
   '.nxa-sub{font-size:12px;color:var(--muted,#6b7a90)}.nxa-body{margin:8px 0 4px;font-size:13.5px;line-height:1.45}'+
   '.nxa-warn{margin:6px 0;padding:8px 10px 8px 26px;background:#fff6e5;border-radius:8px;font-size:12.5px;color:#7a4b00}'+
