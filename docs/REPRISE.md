@@ -267,6 +267,9 @@ temps ». Détail, installation et repères : **`docs/AGENDA.md`**.
   (→ intervention DEP avec `moment`, `site`, `acompte`, fiche client, demande marquée traitée, conflit vérifié) ;
   suivi d'acompte « ✔ Reçu » → créneau ferme (planning et message). Extension `window.nxjAjouts` dans Ma journée.
   Cache `climpilot-next-1130-terrain`. Tests : suite T (22).
+- Batterie complète du 20/10 sur cette branche : 826 réussis ; 2 points hors code (suite A « petits boutons » = INFO
+  sur des boutons ✏️ de 29 px qui existaient déjà, largeur qui varie avec la police ; suite E « Émettre » masqué par le
+  bouton Assistant une fois sur deux, passe seule) ; suite P adaptée au nom de cache 1130.
 
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
