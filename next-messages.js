@@ -135,7 +135,8 @@
     '.nxm-n{display:inline-block;background:#b03a2e;color:#fff;border-radius:10px;padding:0 7px;font-size:12px;margin-left:6px}.nxm-faits{margin-top:8px;font-size:13px}.nxm-faits summary{cursor:pointer;color:var(--muted,#6b7a90)}';
   function boot(n){
     if(typeof window.nxjRender!=='function'||typeof window.nxplSource!=='function'){ if(n<60) setTimeout(function(){ boot(n+1); },250); return; }
-    if(!document.getElementById('nxmStyle')){ var st=document.createElement('style'); st.id='nxmStyle'; st.textContent=CSS; document.head.appendChild(st); }
+    /* M0 20/10/2026 : identifiant propre (nxmStyle était aussi celui de next-mobile.js, qui n'installait plus sa CSS téléphone) */
+    if(!document.getElementById('nxmsgStyle')){ var st=document.createElement('style'); st.id='nxmsgStyle'; st.textContent=CSS; document.head.appendChild(st); }
     window.nxjAjouts=window.nxjAjouts||[]; if(!window.nxjAjouts.some(function(a){ return a&&a.id==='messages'; })) window.nxjAjouts.push({id:'messages',pos:40,carte:carte});
     try{ if(window._curView==='nx_journee') nxjRender(); }catch(e){}
   }

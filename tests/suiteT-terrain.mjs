@@ -120,6 +120,13 @@ const D=await p.evaluate(()=>{
   await p.evaluate(()=>nxjMode('soir')); await p.waitForTimeout(300); const h2=await p.$('#nxJournee'); if(h2) await h2.screenshot({path:out('suiteT-journee-soir.png')});
   await p.setViewportSize({width:390,height:844}); await p.evaluate(()=>nxjMode('matin')); await p.waitForTimeout(300); const h3=await p.$('#nxJournee'); if(h3) await h3.screenshot({path:out('suiteT-journee-telephone.png')});
 }
+/* T9 (M0, 20/10/2026) : les feuilles de style de next-mobile.js et next-messages.js sont bien toutes les deux installées
+   (régression vue en M0 : même identifiant nxmStyle, la CSS téléphone n'était plus posée → bouton Assistant par-dessus « Émettre l'avoir ») */
+{
+  const r=await p.evaluate(()=>{ const m=document.getElementById('nxmStyle'), g=document.getElementById('nxmsgStyle');
+    return {mobile:!!m&&/nx-ov-open #nxaFab/.test(m.textContent),messages:!!g&&/\.nxm-row/.test(g.textContent)}; });
+  rec('Terrain','Styles téléphone (next-mobile) et messages (next-messages) tous deux installés, identifiants distincts',r.mobile&&r.messages,j(r));
+}
 rec('Terrain','Aucune erreur JavaScript',errs.length===0,errs.join(' | '));
 await ctx.close();
 await closeBrowser();
