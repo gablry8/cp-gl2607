@@ -5,7 +5,7 @@
 (function(){
   'use strict';
 
-  const NX_VERSION='Next 1.11.0 — objectifs & feux, suivi comptable (Urssaf, comptable)';
+  const NX_VERSION='Next 1.12.0 — rentabilité réelle, SAV, avis, relevé bancaire, bilan fluides';
   const NX_KEYS={
     tasks:'cpnext_tasks',trash:'cpnext_trash',templates:'cpnext_templates',
     history:'cpnext_history',settings:'cpnext_settings',notified:'cpnext_notified',
@@ -383,6 +383,9 @@
       {type:'Action',ico:'🤝',title:'Nouveau contrat d’entretien',sub:'Assistant guidé',terms:['contrat entretien maintenance'],run:()=>nxOpenContractWizard()},
       {type:'Action',ico:'📷',title:'Scanner une plaque',sub:'Préremplir un équipement sans quitter le formulaire',terms:['scan photo ocr plaque équipement'],run:()=>nxOpenScanner('equip')}
     );
+    /* 1.12 : actions et écrans ajoutés par les modules (next-raccourcis) — tableau d'entrées ou de fonctions qui en renvoient */
+    (Array.isArray(window.nxExtraSearch)?window.nxExtraSearch:[]).forEach(src=>{ try{ const L=typeof src==='function'?src():[src];
+      (Array.isArray(L)?L:[]).forEach(x=>{ if(x&&x.title&&typeof x.run==='function') items.push(Object.assign({type:'Action',ico:'＋',sub:'',terms:[]},x)); }); }catch(e){ console.error('ClimPilot recherche (module)',e); } });
     nxSearchItems=items;return items;
   }
 
