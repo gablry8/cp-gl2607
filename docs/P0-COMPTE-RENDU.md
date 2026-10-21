@@ -9,7 +9,7 @@
 2. **Golden masters générés depuis le code actuel** : 52 devis de référence (montants au centime **et** au millième), 8 aperçus PDF, 8 XML de facture électronique, table de fusion 3 voies (27 cas), comptage des enveloppes, comportement en 404. Ils **figent** ce que l'appli fait aujourd'hui, bon ou mauvais ; chaque suite a été vérifiée capable de détecter un écart (1 centime, 1 millième, 1 caractère).
 3. **3 devis à vérifier à la main** demain (mono-split, dépannage, bisplit avec acompte) : détail ligne par ligne dans `tests/golden/calculs-lisible.md` (§ 4).
 4. **Suite Q** (recette deux appareils) : non stabilisée en profondeur (un des deux contrôles instables n'est pas compris) ; elle est **isolée, pas masquée** : jouée dans un travail CI séparé, visible, non bloquant, avec la raison écrite dans `tests/run-all.sh` et le workflow ; une fenêtre de timing élargie (1,5 s → 6 s) pour le contrôle « voile ».
-5. Batterie locale sur la branche (commit `2c9fb33`, `unshare -n`, validateurs, PostgreSQL local) : **1 008 réussis, 1 échec, 0 SKIP** sans la suite Q ; suite Q seule : **61/62** (« voile » passe désormais, « acompte » reste rouge). L'échec unique est un **vrai petit bug du script Google Agenda le jour du changement d'heure** (§ 6.1). CI GitHub : RESULTAT_CI. Trois trouvailles à lire : le taux dépannage par défaut (90 €/h), le contrôle « hors ligne » de M0 qui était incomplet, et 5 contrôles de la suite E qui échoueront le 01/01/2027 (R12 confirmé).
+5. Batterie locale sur la branche (commit `2c9fb33`, `unshare -n`, validateurs, PostgreSQL local) : **1 008 réussis, 1 échec, 0 SKIP** sans la suite Q ; suite Q seule : **61/62** (« voile » passe désormais, « acompte » reste rouge). L'échec unique est un **vrai petit bug du script Google Agenda le jour du changement d'heure** (§ 6.1). CI GitHub (runner ubuntu-24.04, commit `4b5d1f0`) : **993 réussis, 1 échec (le même script Google), 2 SKIP** (le runner n'autorise pas `unshare -n` : gardes logicielles seules, écrit dans le rapport) ; **suite Q : 62/62 sur le runner**, « acompte » compris — l'instabilité tient donc bien à la machine, pas au code (probable → quasi certain). Un faux échec de l'aperçu (dossier de sortie) corrigé ensuite ; dernier passage : RESULTAT_CI_FINAL. Trois trouvailles à lire : le taux dépannage par défaut (90 €/h), le contrôle « hors ligne » de M0 qui était incomplet, et 5 contrôles de la suite E qui échoueront le 01/01/2027 (R12 confirmé).
 
 ## 2. Ce qui a été livré (nouveaux fichiers, sauf mention)
 | Fichier | Rôle | Test du plan |
@@ -45,7 +45,14 @@
 | **Total** | **1 008 / 1** | verdict ÉCHEC à cause du seul fn-apps-script |
 | suite Q (à part) | 61/1 | « acompte PC / solde téléphone » (§ 5) |
 
-CI GitHub (`.github/workflows/tests.yml`) : RESULTAT_CI_DETAIL
+CI GitHub (`.github/workflows/tests.yml`, commit `4b5d1f0`, première exécution complète lisible) :
+
+| Travail | Résultat | Détail |
+|---|---|---|
+| batterie complète (sans Q) | 993 réussis, 1 échec, 2 SKIP | échec = fn-apps-script (script Google, changement d'heure) ; SKIP = isolation du noyau absente sur le runner (gardes logicielles seules) ; aperçu : faux échec de chemin de sortie, corrigé au commit suivant |
+| suite Q (à part, non bloquante) | **62/62** | sur une machine neuve, « acompte » et « voile » passent |
+
+Dernier passage (commit `2ef69b0`) : RESULTAT_CI_FINAL_TABLEAU. Les rapports de chaque passage sont dans l'onglet **Checks** du commit (« tests — batterie complète », « tests — suite Q ») et en artefact de l'onglet Actions.
 
 ## 4. Les 3 devis à vérifier à la main demain (`tests/golden/calculs-lisible.md`, détail ligne par ligne)
 Horloge figée au 20/10/2026, régime franchise (TVA 0), paramètres par défaut de l'appli, stockage vide. Pour comparer : Nouveau devis › même nature › mêmes valeurs ; les lignes « Préparation », « Achat », « Provision SAV », « Déplacement », « Frais », « Marge sécurité » sont celles que l'appli ajoute toute seule.
