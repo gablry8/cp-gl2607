@@ -1,0 +1,86 @@
+# ClimPilot — batterie complète à chaque push et chaque demande de fusion (P0, 21/10/2026).
+# Aucun secret : les tests sont hors réseau (serveur simulé), SQL sur un PostgreSQL local du runner, validateurs clonés.
+# Le rapport (rapport.md / rapport.json / journaux) est joint à chaque exécution (onglet Actions › artefacts).
+# Protection de « main » (fusion interdite si rouge) : à activer par Gabriel dans Settings › Branches, règle « tests ».
+name: tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: batterie complète
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      CP_TEST_OUT: ${{ github.workspace }}/../climpilot-tests
+      PLAYWRIGHT_VERSION: 1.56.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Playwright + Chromium (version épinglée, tests/LISEZMOI.md)
+        run: |
+          npm i -g playwright@${PLAYWRIGHT_VERSION}
+          npx playwright@${PLAYWRIGHT_VERSION} install --with-deps chromium
+
+      - name: Modules Python (validateurs, SQL)
+        run: pip install pytest==9.1.1 "psycopg[binary]==3.3.6" factur-x==7.1 lxml==6.1.3 saxonche==13.0.0
+
+      - name: Validateurs CEN EN 16931 et FNFE BR-FR (versions épinglées)
+        run: |
+          git clone -q --depth 1 --branch validation-1.3.16 https://github.com/ConnectingEurope/eInvoicing-EN16931 "$RUNNER_TEMP/eInvoicing-EN16931"
+          git clone -q --depth 1 --branch v1.4.0.04 https://github.com/fnfempe/France_RFE "$RUNNER_TEMP/France_RFE"
+          echo "EN16931_XSLT=$RUNNER_TEMP/eInvoicing-EN16931/cii/xslt/EN16931-CII-validation.xslt" >> "$GITHUB_ENV"
+          echo "BRFR_DIR=$RUNNER_TEMP/France_RFE" >> "$GITHUB_ENV"
+
+      - name: PostgreSQL local (marqueur climpilot-test, socket seulement, aucune écoute réseau)
+        run: |
+          sudo apt-get install -y -qq postgresql-16 >/dev/null
+          D="$RUNNER_TEMP/pgbench"; mkdir -p "$D"; sudo chown postgres "$D"
+          sudo -u postgres /usr/lib/postgresql/16/bin/initdb -D "$D/data" -U postgres --auth=trust >/dev/null
+          sudo -u postgres /usr/lib/postgresql/16/bin/pg_ctl -D "$D/data" -l "$D/log.txt" -w start -o "-p 54329 -k $D -c listen_addresses= -c cluster_name=climpilot-test"
+          sudo chmod 755 "$D"
+          echo "PGHOST=$D" >> "$GITHUB_ENV"; echo "PGPORT=54329" >> "$GITHUB_ENV"
+
+      - name: Isolation réseau (unshare -n) disponible ?
+        id: netns
+        run: |
+          if unshare -n true 2>/dev/null; then echo "sans=0" >> "$GITHUB_OUTPUT"; echo "unshare -n : OUI";
+          else echo "sans=1" >> "$GITHUB_OUTPUT"; echo "unshare -n : NON — gardes logicielles seulement (CP_SANS_NETNS=1, indiqué dans le rapport)"; fi
+
+      - name: Batterie complète (tests/run-all.sh)
+        env:
+          CP_SANS_NETNS: ${{ steps.netns.outputs.sans }}
+        run: bash tests/run-all.sh
+
+      - name: Résumé
+        if: always()
+        run: |
+          if [ -f "$CP_TEST_OUT/rapport.md" ]; then sed -n '1,/^## Isolation/p' "$CP_TEST_OUT/rapport.md" >> "$GITHUB_STEP_SUMMARY"; else echo "pas de rapport (batterie interrompue)" >> "$GITHUB_STEP_SUMMARY"; fi
+
+      - name: Rapport et journaux (artefact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapport-tests-${{ github.run_number }}
+          path: |
+            ${{ env.CP_TEST_OUT }}/rapport.md
+            ${{ env.CP_TEST_OUT }}/rapport.json
+            ${{ env.CP_TEST_OUT }}/journaux/
+            ${{ env.CP_TEST_OUT }}/golden/
+          if-no-files-found: warn
+          retention-days: 30
