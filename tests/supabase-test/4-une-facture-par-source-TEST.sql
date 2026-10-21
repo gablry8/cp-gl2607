@@ -42,8 +42,8 @@ end $$;
 --      - solde de devis alors qu'un acompte vivant existe et que le montant du solde ≠ total − acompte (±0,011)
 --                                                                                → ok:false, raison 'acompte_ignore', doc = l'acompte ;
 --      - acompte de devis alors qu'un solde vivant existe                        → ok:false, raison 'solde_deja_emis', doc = le solde.
---      « Vivante » = aucun avoir TOTAL émis ne porte son numéro. Un avoir partiel ne libère pas. Les documents « reconstitués »
---      (anciennes factures importées) ne comptent pas. Les avoirs (série AV) et les payloads sans source ne sont pas concernés.
+--      « Vivante » = aucun avoir TOTAL (émis ou reconstitué/importé) ne porte son numéro. Un avoir partiel ne libère pas. Les factures
+--      « reconstituées » (anciennes, importées) ne comptent pas comme vivantes. Les avoirs (série AV) et les payloads sans source ne sont pas concernés.
 --      Un refus ne consomme aucun numéro et n'écrit rien.
 --   3. Droits explicites : revoke … from public, anon, authenticated ; grant … to authenticated (M4 C19 : toujours nommer public).
 -- Retour arrière : tests/supabase-test/4-une-facture-par-source-retour-arriere.sql (remet la fonction 1.10 telle quelle).
@@ -100,7 +100,7 @@ begin
 
   -- C1 (M3, 21/10/2026) — UNE SEULE FACTURE VIVANTE PAR SOURCE (série F seulement ; les avoirs ne sont pas concernés).
   -- Source = payload->'src' : {k: devis|dep|loc|ctr, id, w: acompte|solde|''|année}. Une facture est « vivante » tant
-  -- qu'aucun avoir TOTAL émis (type avoir, payload->'fac'->>'total' = 'true') ne porte son numéro dans payload->'src'->>'w'.
+  -- qu'aucun avoir TOTAL (type avoir, émis ou reconstitué, payload->'fac'->>'total' = 'true') ne porte son numéro dans payload->'src'->>'w'.
   -- Refus = ok:false + raison + la facture existante (l'appli la reprend, comme quand le registre la lui montre) ; aucun numéro consommé.
   -- Verrou consultatif par utilisateur : deux demandes simultanées pour la même source ne passent pas toutes les deux
   -- (le verrou de climpilot_seq est par année : deux dates à cheval sur le 1er janvier ne le partageraient pas).
@@ -111,7 +111,7 @@ begin
       where d.user_id = v_uid and d.serie = 'F' and d.origine = 'emis' and d.request_id <> p_request_id
         and d.payload->'src'->>'k' = v_k and coalesce(d.payload->'src'->>'id', '') = v_id and coalesce(d.payload->'src'->>'w', '') = v_w
         and not exists (select 1 from public.climpilot_documents a
-                          where a.user_id = v_uid and a.serie = 'AV' and a.origine = 'emis'
+                          where a.user_id = v_uid and a.serie = 'AV'
                             and a.payload->'fac'->>'total' = 'true'
                             and split_part(coalesce(a.payload->'src'->>'w', ''), '|', 1) = d.num)
       order by d.cree_le desc limit 1;
@@ -125,7 +125,7 @@ begin
           and d.payload->'src'->>'k' = 'devis' and coalesce(d.payload->'src'->>'id', '') = v_id
           and coalesce(d.payload->'src'->>'w', '') = case when v_w = 'solde' then 'acompte' else 'solde' end
           and not exists (select 1 from public.climpilot_documents a
-                            where a.user_id = v_uid and a.serie = 'AV' and a.origine = 'emis'
+                            where a.user_id = v_uid and a.serie = 'AV'
                               and a.payload->'fac'->>'total' = 'true'
                               and split_part(coalesce(a.payload->'src'->>'w', ''), '|', 1) = d.num)
         order by d.cree_le desc limit 1;

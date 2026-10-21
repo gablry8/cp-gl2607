@@ -7,7 +7,7 @@ export const SERVEUR=`(function(){
   function doc(d){ return {id:d.id,request_id:d.request_id,serie:d.serie,annee:d.annee,numero:d.numero,num:d.num,type:d.type,origine:d.origine,date_doc:d.date_doc,payload:d.payload,payload_hash:'h'+d.id,fichiers_hash:d.fichiers_hash||null}; }
   function regleSource(p){
     const src=p.p_payload&&p.p_payload.src; if(p.p_serie!=='F'||!src||typeof src!=='object'||!src.k) return null;
-    const annulees=new Set(srv.docs.filter(a=>a.serie==='AV'&&a.origine==='emis'&&a.payload&&a.payload.fac&&a.payload.fac.total===true).map(a=>String((a.payload.src||{}).w||'').split('|')[0]));
+    const annulees=new Set(srv.docs.filter(a=>a.serie==='AV'&&a.payload&&a.payload.fac&&a.payload.fac.total===true).map(a=>String((a.payload.src||{}).w||'').split('|')[0]));
     const vivantes=(k,id,w)=>srv.docs.filter(d=>d.serie==='F'&&d.origine==='emis'&&d.request_id!==p.p_request_id&&d.payload&&d.payload.src&&d.payload.src.k===k&&String(d.payload.src.id||'')===String(id||'')&&String(d.payload.src.w||'')===String(w||'')&&!annulees.has(d.num));
     const meme=vivantes(src.k,src.id,src.w); if(meme.length) return {raison:'deja_facture',doc:meme[meme.length-1]};
     if(src.k==='devis'&&(src.w==='acompte'||src.w==='solde')){ const autre=vivantes('devis',src.id,src.w==='solde'?'acompte':'solde');

@@ -81,8 +81,14 @@ En démo, deux appareils ne partagent **pas** de registre : l'un ne sait ce que 
 - Batterie complète (Q comprise, validateurs CEN/FNFE, PostgreSQL local, `unshare -n`) : **voir § 5.1**.
 - Mutation de contrôle : `git diff` ne montre qu'un fichier applicatif (`next-emission.js`) ; `sw.js` inchangé (le fichier est déjà dans la liste du cache ; pas de nouveau fichier livré).
 
-### 5.1 Batterie complète sur la branche
-*(en cours au moment de ce commit — résultat ajouté au commit suivant ; la CI de la branche la rejoue de toute façon)*
+### 5.1 Batterie complète sur la branche (Q comprise, CEN/FNFE, PostgreSQL 16 local, `unshare -n`, 0 connexion externe)
+Premier passage complet (commit `6c15d9f`) : **1 084 réussis, 4 échoués, 0 SKIP, 6 non bloquants** (1 INSTABLE Q, 5 À TRANCHER Y). Les 4 échecs, un par un :
+1. `fn-apps-script` — script Google, changement d'heure : connu, indépendant de C1 (vert à partir du 22/10).
+2. **Suite R (d)** « Registre du serveur illisible : le serveur décide (comportement 1.12) » — ce test **figeait l'ancien comportement** ; il attend désormais le nouveau (rien d'émis, aucune demande, message). C'est le changement voulu, pas une régression.
+3. **Suite R (c)** « Facture annulée par un avoir : une nouvelle facture reste possible » — le test simulait une facture au registre du serveur annulée par un avoir **connu seulement en local** (`facAnnulees`), sans document AV au registre. En mode réel, un avoir passe par `cp_emettre_document` : il est au registre. Le serveur, qui ne connaît que le registre, refusait donc à juste titre. Test corrigé : l'avoir total est aussi au registre simulé. **En passant, la règle serveur compte désormais les avoirs totaux de toute origine** (émis *ou* reconstitués/importés, comme le fait l'appli) — un ancien avoir importé libère bien le chantier (test S4ter ajouté).
+4. **Suite X** (plantage : `page.reload` 30 s) et **suite Q partie 5** (« Dépannage » : le premier clic sur le menu « Créer » a dépassé 30 s, avant toute émission) : deux dépassements de délai sans lien avec l'émission, au même moment du passage. Rejoués seuls : voir ci-dessous.
+
+Rejeu après correction des deux tests de la suite R : **suite R 42/42, suite X 8/8** (certain). Suites I, N, AA et Q : rejeu en cours au moment de ce commit, résultat au commit suivant.
 
 ## 6. Découvertes en passant (non corrigées ici)
 

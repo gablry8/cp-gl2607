@@ -218,17 +218,21 @@ const IDS=['aaaaaaaa-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-00000
   const rc=await p.evaluate(async c=>{ const d=__nouveauDevis(), an=+todayISO().slice(0,4);
     __srv.docs.push({id:'docAnnule',request_id:'demande-annulee',serie:'F',annee:an,numero:3,num:'F-'+an+'-003',type:'facture',origine:'emis',date_doc:todayISO(),
       payload:{v:1,src:{k:'devis',id:d.id,w:'solde'},type:'facture',date:todayISO(),fac:{num:'',date:todayISO(),montant:50,payeLe:null,mode:''}}});
+    /* C1 (21/10/2026) : en mode réel l'avoir est AU REGISTRE du serveur (série AV, total) — c'est lui que le serveur regarde pour libérer le chantier */
+    __srv.docs.push({id:'docAvoir',request_id:'demande-avoir',serie:'AV',annee:an,numero:1,num:'AV-'+an+'-001',type:'avoir',origine:'emis',date_doc:todayISO(),
+      payload:{v:1,src:{k:'avoir',id:'av1',w:'F-'+an+'-003'},type:'avoir',date:todayISO(),fac:{num:'',facNum:'F-'+an+'-003',montant:50,total:true}}});
     __srv.seq['F|'+an]=3; d.facAnnulees=[{num:'F-'+an+'-003',date:todayISO(),montant:50}]; save(LS.devis,DEVIS);
     const n0=__srv.docs.length; await facturerDevis(d.id,'solde'); eval(c);
     return {num:d.facSolde&&d.facSolde.num,nouveaux:__srv.docs.length-n0}; },close);
   rec('Émission (fiabilité)','Facture annulée par un avoir : une nouvelle facture reste possible (non bloquée)',rc.nouveaux===1&&/^F-\d{4}-004$/.test(rc.num||''),j(rc));
-  /* d) registre illisible : comme en 1.12, le serveur décide (la demande garde son request_id) — un seul numéro */
+  /* d) registre illisible : C1 (M3, 21/10/2026) — RIEN n'est émis, aucune demande au serveur, message « impossible de vérifier »
+     (avant : « le serveur décide », et il ne décidait rien — un téléphone pas à jour pouvait émettre un 2e solde) */
   dlg.length=0;
   const rd=await p.evaluate(async c=>{ const d=__nouveauDevis();
     __srv.fail.climpilot_documents=true; const a0=__srv.appels.filter(x=>x==='cp_emettre_document').length, n0=__srv.docs.length;
     await facturerDevis(d.id,'solde'); eval(c); __srv.fail.climpilot_documents=false;
     return {num:d.facSolde&&d.facSolde.num,appels:__srv.appels.filter(x=>x==='cp_emettre_document').length-a0,nouveaux:__srv.docs.length-n0}; },close);
-  rec('Émission (fiabilité)','Registre du serveur illisible : le serveur décide (comportement 1.12), une seule facture',rd.appels===1&&rd.nouveaux===1&&/^F-\d{4}-\d{3}$/.test(rd.num||''),j({rd,dlg:dlg.join(' | ')}));
+  rec('Émission (fiabilité)','Registre du serveur illisible : rien n\'est émis, aucune demande au serveur, message « impossible de vérifier » (C1)',rd.appels===0&&rd.nouveaux===0&&!rd.num&&/impossible de v[ée]rifier le registre/i.test(dlg.join(' | ')),j({rd,dlg:dlg.join(' | ')}));
   rec('Émission (fiabilité)','Aucune erreur JavaScript',errs.length===0,errs.join(' | '));
   await ctx.close();
 }

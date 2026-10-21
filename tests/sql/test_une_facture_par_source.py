@@ -169,6 +169,17 @@ def test_s4bis_acompte_annule_par_avoir_total_puis_refait_puis_solde_sur_le_nouv
         assert s_ok['ok']
 
 
+def test_s4ter_avoir_total_reconstitue_importe_libere_aussi():
+    with cnx(A) as c:
+        _, r1 = emettre(c, payload(w='solde', montant=273.00, total=273.00))
+        pl = {'v': 1, 'src': {'k': 'avoir', 'id': 'avx', 'w': r1['doc']['num']}, 'type': 'avoir', 'fac': {'num': '', 'facNum': r1['doc']['num'], 'montant': 273.00, 'total': True}}
+        r = c.execute('select public.cp_importer_ancien(%s,%s,%s,%s,%s,%s::jsonb)',
+                      (str(uuid.uuid4()), 'AV', 'avoir', 'AV-2025-007', '2025-06-01', json.dumps(pl))).fetchone()[0]
+        assert r['ok'] and r['doc']['origine'] == 'reconstitue'
+        _, r2 = emettre(c, payload(w='solde', montant=273.00, total=273.00))
+        assert r2['ok']
+
+
 # ---------- S6 : acomptes ----------
 def test_s6_deuxieme_acompte_refuse_et_acompte_apres_solde_refuse():
     with cnx(A) as c:
