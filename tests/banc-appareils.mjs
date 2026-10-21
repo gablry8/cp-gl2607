@@ -23,6 +23,27 @@ export function jsonb(v) {
 }
 export const COMPTE = { id: 'u-essai-gab', email: 'essai@exemple.invalid', mdp: 'mot-de-passe-essai' };
 
+/* C1 (M3, 21/10/2026) — même règle que la migration 20261021180000_une_facture_par_source.sql : une seule facture F VIVANTE par
+   source (payload.src : k, id, w) ; solde de devis cohérent avec l'acompte vivant (total − acompte ± 0,011) ; pas d'acompte après
+   le solde. « Vivante » = aucun avoir total (payload.fac.total === true) ne porte son numéro dans payload.src.w. */
+export function regleSource(docs, p) {
+  const src = p.p_payload && p.p_payload.src;
+  if (p.p_serie !== 'F' || !src || typeof src !== 'object' || !src.k) return null;
+  const annulees = new Set(docs.filter((a) => a.serie === 'AV' && a.origine === 'emis' && a.payload && a.payload.fac && a.payload.fac.total === true).map((a) => String((a.payload.src || {}).w || '').split('|')[0]));
+  const vivantes = (k, id, w) => docs.filter((d) => d.serie === 'F' && d.origine === 'emis' && d.request_id !== p.p_request_id && d.payload && d.payload.src && d.payload.src.k === k && String(d.payload.src.id || '') === String(id || '') && String(d.payload.src.w || '') === String(w || '') && !annulees.has(d.num));
+  const meme = vivantes(src.k, src.id, src.w); if (meme.length) return { raison: 'deja_facture', doc: meme[meme.length - 1] };
+  if (src.k === 'devis' && (src.w === 'acompte' || src.w === 'solde')) {
+    const autre = vivantes('devis', src.id, src.w === 'solde' ? 'acompte' : 'solde');
+    if (autre.length) {
+      const ex = autre[autre.length - 1];
+      if (src.w === 'acompte') return { raison: 'solde_deja_emis', doc: ex };
+      const f = p.p_payload.fac || {}, tot = Number(f.total), m = Number(f.montant), ac = Number((ex.payload.fac || {}).montant);
+      if (!isFinite(tot) || !isFinite(m) || !isFinite(ac) || Math.abs((tot - ac) - m) > 0.011) return { raison: 'acompte_ignore', doc: ex };
+    }
+  }
+  return null;
+}
+
 /* ---------------- serveur commun ---------------- */
 export function serveurCommun(debutISO) {
   const S = { etat: null, etatBloque: {}, n: 0, docs: [], seq: {}, events: [], coupe: {}, latence: {}, journal: [], enCours: {}, ecritures: 0, conflits: 0, historique: [] };
@@ -42,6 +63,7 @@ export function serveurCommun(debutISO) {
     if (nom === 'cp_emettre_document') {
       if (!/^1\.(1\d|[2-9]\d)/.test(p.p_client_version || '')) return { error: { message: 'ClimPilot doit être mis à jour' } };
       const ex = S.docs.find((d) => d.request_id === p.p_request_id); if (ex) return { data: { ok: true, deja: true, doc: pub(ex) } };
+      const refus = regleSource(S.docs, p); if (refus) return { data: { ok: false, raison: refus.raison, doc: pub(refus.doc) } };
       const an = +String(p.p_date).slice(0, 4), k = p.p_serie + '|' + an;
       const mx = Math.max(S.seq[k] || 0, ...S.docs.filter((d) => d.serie === p.p_serie && d.annee === an).map((d) => d.numero), p.p_min_numero || 0) + 1; S.seq[k] = mx;
       const d = { id: 'doc' + (S.docs.length + 1), request_id: p.p_request_id, serie: p.p_serie, annee: an, numero: mx, num: p.p_serie + '-' + an + '-' + String(mx).padStart(3, '0'),
@@ -88,6 +110,12 @@ export function serveurCommun(debutISO) {
       if (S.coupe[dev]) return { rejet: 'Failed to fetch' };
       /* état synchronisé momentanément injoignable pour cet appareil (le registre des factures, lui, répond) */
       if (S.etatBloque && S.etatBloque[dev] && ((sorte === 'rpc' && a === 'cp_state_push') || (sorte === 'from' && a && a.t === 'climpilot_state'))) return { rejet: 'Failed to fetch' };
+      /* C1 (M3, 21/10/2026) : registre des factures ILLISIBLE pour cet appareil (lecture en erreur), le reste répond ;
+         ou registre PENDU : la lecture ne revient pas tant que S.registrePendu[dev] est vrai (délai dépassé côté appli) */
+      if (sorte === 'from' && a && a.t === 'climpilot_documents') {
+        if (S.registreBloque && S.registreBloque[dev]) return { rejet: 'Failed to fetch' };
+        while (S.registrePendu && S.registrePendu[dev]) await new Promise((r) => setTimeout(r, 50));
+      }
       if (sorte === 'login') return a && a.email === COMPTE.email && a.password === COMPTE.mdp ? { ok: true } : { ok: false };
       return sorte === 'rpc' ? rpc(dev, a, b || {}) : from(a || {});
     } finally { S.enCours[dev]--; }

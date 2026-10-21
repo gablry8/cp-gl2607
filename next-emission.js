@@ -277,27 +277,78 @@
       if(d.model){ if(!d.model.echeance||String(d.model.echeance)<av.echeance){ d.model.echeance=av.echeance; d.model.echeanceTexte=av.echeanceTexte||''; } }
     }
     var mo=mode();
-    if(mo==='demo'){ return Promise.resolve(finir(S,d,numTest(d.type==='avoir'?'AV':'F',d.date),'demo',null)); }
+    if(mo==='demo'){
+      /* C1 (M3, 21/10/2026) — même règle en démonstration (décision de Gabriel) : en démo il n'y a pas de registre serveur
+         (les numéros TEST- sont locaux), la seule trace « déjà facturé ailleurs » est l'état synchronisé. Appareil jamais
+         relié au cloud : comme avant. Sinon : hors ligne → rien ; cloud muet → rien ; état plus récent sur le serveur pas
+         encore reçu → rien (il faut d'abord synchroniser). */
+      if(!cloud()) return Promise.resolve(finir(S,d,numTest(d.type==='avoir'?'AV':'F',d.date),'demo',null));
+      BUSY=true; var fin0=attenteVisible();
+      return aJour().then(function(v){ fin0(); BUSY=false;
+        if(v.horsligne){ bloque({raison:'horsligne'}); relire(sorte); return null; }
+        if(v.illisible){ illisible(); relire(sorte); return null; }
+        if(v.retard){ pasAJour(d); relire(sorte); return null; }
+        return finir(S,d,numTest(d.type==='avoir'?'AV':'F',d.date),'demo',null);
+      },function(e){ fin0(); BUSY=false; illisible(String(e&&e.message||e)); relire(sorte); return null; });
+    }
     BUSY=true; say('🔐 Émission de la facture… (numéro attribué par le serveur)');
+    var fin=attenteVisible();
     return sonde(true).then(function(info){
-      if(!info.ok){ BUSY=false; bloque(info); relire(sorte); return null; }
+      if(!info.ok){ fin(); BUSY=false; bloque(info); relire(sorte); return null; }
       /* 1.12 (recette du 14/10/2026) : déjà facturé depuis un autre appareil pas encore synchronisé ici ? On reprend la
          facture du registre du serveur au lieu d'en émettre une 2e pour le même chantier (une facture ne se supprime pas). */
       return dejaEmis(d).then(function(ex){
-        if(ex){ var lent=new Promise(function(ok){ setTimeout(function(){ ok({fait:false}); },25000); });
-          return Promise.race([rapprocher(),lent]).then(function(){ BUSY=false; recopierEcrans(d.src); relire(sorte); try{ updateBadges(); }catch(e){}
-          /* la facture du registre est-elle bien sur le chantier maintenant ? sinon (appareil pas à jour, formulaire ouvert…) on le dit */
-          if(!porte(ex)){ var t0='Une facture existe déjà sur le serveur pour '+(d.src.k==='dep'?'cette intervention':'ce chantier')+' : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nCet appareil n\'est pas encore à jour : quitte cet écran pour synchroniser, puis vérifie. Rien n\'a été émis.';
-            try{ alert(t0); }catch(e){ say(t0); } return null; }
-          var t=ex.autre
-            ?'Une facture '+(ex.src&&ex.src.w==='acompte'?'d\'acompte':'de solde')+' a été émise pour ce devis depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nElle est maintenant reprise ici. Rien n\'a été émis : vérifie le devis, puis relance « Facturer » si besoin.'
-            :'Déjà facturé depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nCette facture est reprise ici. Aucune nouvelle facture n\'a été émise.';
-          try{ alert(t); }catch(e){ say(t); } return ex.autre?null:ex.num; }); }
-        return demanderServeur(d,'F',d.type).then(function(r){ BUSY=false; if(!r||r.inconnu){ relire(sorte); return null; }
+        /* C1 : registre illisible ou trop lent → RIEN n'est émis (avant : « le serveur décide », et il ne décidait rien) */
+        if(ex&&ex.illisible){ fin(); BUSY=false; illisible(); relire(sorte); return null; }
+        if(ex) return reprendreAilleurs(sorte,d,ex).then(function(x){ fin(); return x; });
+        return demanderServeur(d,'F',d.type).then(function(r){ fin(); if(!r||r.inconnu){ BUSY=false; relire(sorte); return null; }
+          /* C1 : le serveur a refusé (facture vivante déjà au registre pour cette source, solde qui ignore l'acompte,
+             acompte après le solde) : la facture existante est reprise, comme si le registre nous l'avait montrée */
+          if(r.refus){ attentePut(srcCle(d.src),null); return reprendreAilleurs(sorte,d,r.refus); }
+          BUSY=false;
           if(r.differe) return reprendreServeur(sorte,d,r.doc);
           return finir(S,d,r.doc.num,'reel',r.doc); });
       });
-    }).catch(function(e){ BUSY=false; bloque({raison:'serveur',detail:String(e&&e.message||e)}); relire(sorte); return null; });
+    }).catch(function(e){ fin(); BUSY=false; bloque({raison:'serveur',detail:String(e&&e.message||e)}); relire(sorte); return null; });
+  }
+  /* indicateur pendant une vérification longue (registre lent) : un mot au bout de 4 s, un autre à 12 s ; rendu par la fonction retournée */
+  function attenteVisible(){
+    var t1=setTimeout(function(){ say('⏳ Vérification du registre des factures en cours…'); },4000);
+    var t2=setTimeout(function(){ say('⏳ Le registre tarde à répondre (réseau faible ?). Rien ne sera émis sans réponse.'); },12000);
+    return function(){ clearTimeout(t1); clearTimeout(t2); };
+  }
+  function illisible(detail){
+    var t='Impossible de vérifier le registre des factures (pas de réponse du cloud'+(detail?' : '+detail:'')+').\n\nRien n\'a été émis. Réessaie dans un instant, ou depuis un appareil qui a du réseau.';
+    try{ alert(t); }catch(e){ say(t); }
+  }
+  function pasAJour(d){
+    var t='Cet appareil n\'est pas à jour : une modification faite depuis un autre appareil n\'a pas encore été reçue ici.\n\nRien n\'a été émis. Quitte cet écran pour synchroniser, vérifie '+(d&&d.src&&d.src.k==='dep'?'l\'intervention':'le chantier')+', puis réessaie.';
+    try{ alert(t); }catch(e){ say(t); }
+  }
+  /* démo : l'appareil est-il à jour de l'état synchronisé ? (lecture légère : la date de la dernière écriture serveur) */
+  function aJour(){
+    if(navigator.onLine===false) return Promise.resolve({horsligne:true});
+    var q;
+    try{ q=window.sb.from('climpilot_state').select('updated_at').eq('user_id',window.SESS.user.id).maybeSingle(); }catch(e){ return Promise.resolve({illisible:true}); }
+    var delai=new Promise(function(ok){ setTimeout(function(){ ok({illisible:true}); },25000); });
+    return Promise.race([Promise.resolve(q).then(function(r){
+      if(!r||r.error) return {illisible:true};
+      if(!r.data) return {ok:true}; /* cloud vide : rien à recevoir */
+      var meta={}; try{ meta=load('cp2_sync',{})||{}; }catch(e){}
+      return r.data.updated_at&&meta.lastRemote&&r.data.updated_at!==meta.lastRemote?{retard:true}:{ok:true};
+    },function(){ return {illisible:true}; }),delai]);
+  }
+  /* facture trouvée ailleurs (registre du serveur, ou refus du serveur à l'émission) : reprise ici, message, rien d'émis */
+  function reprendreAilleurs(sorte,d,ex){
+    var lent=new Promise(function(ok){ setTimeout(function(){ ok({fait:false}); },25000); });
+    return Promise.race([rapprocher(),lent]).then(function(){ BUSY=false; recopierEcrans(d.src); relire(sorte); try{ updateBadges(); }catch(e){}
+      /* la facture du registre est-elle bien sur le chantier maintenant ? sinon (appareil pas à jour, formulaire ouvert…) on le dit */
+      if(!porte(ex)){ var t0='Une facture existe déjà sur le serveur pour '+(d.src.k==='dep'?'cette intervention':'ce chantier')+' : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nCet appareil n\'est pas encore à jour : quitte cet écran pour synchroniser, puis vérifie. Rien n\'a été émis.';
+        try{ alert(t0); }catch(e){ say(t0); } return null; }
+      var t=ex.autre
+        ?'Une facture '+(ex.src&&ex.src.w==='acompte'?'d\'acompte':'de solde')+' a été émise pour ce devis depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nElle est maintenant reprise ici. Rien n\'a été émis : vérifie le devis, puis relance « Facturer » si besoin.'
+        :'Déjà facturé depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nCette facture est reprise ici. Aucune nouvelle facture n\'a été émise.';
+      try{ alert(t); }catch(e){ say(t); } return ex.autre?null:ex.num; });
   }
   /* facture émise ailleurs pour le même chantier / la même intervention (même source), ni annulée ici ni par un avoir du
      registre ; une demande de CET appareil restée sans réponse suit son propre chemin (même request_id, voir demanderServeur) */
@@ -310,12 +361,16 @@
     }catch(e){}
     return false;
   }
+  /* C1 (M3, 21/10/2026) : si le registre ne se lit pas (erreur, ou plus de 25 s), on ne devine pas et on ne laisse PAS le
+     serveur décider — on renvoie {illisible:true} et emettre() n'émet rien. Avant, un null laissait partir l'émission : un
+     téléphone pas à jour pouvait émettre un 2e solde, ou un solde qui ignorait l'acompte (reproduit par Opus, M3 C1). */
+  var ILLISIBLE={illisible:true};
   function dejaEmis(d){
     if(!d||!d.src||!d.src.k||d.type==='avoir') return Promise.resolve(null);
     var cle=srcCle(d.src), a=attentes()[cle], rid0=a&&a.rid;
     var delai=new Promise(function(ok){ setTimeout(function(){ ok(null); },25000); });
-    return Promise.race([sourcesRegistre(),delai]).then(function(docs){
-      if(!docs) return null; /* registre illisible ou trop lent : le serveur décide, comme avant */
+    return Promise.race([sourcesRegistre().catch(function(){ return null; }),delai]).then(function(docs){
+      if(!docs) return ILLISIBLE; /* registre illisible ou trop lent : rien ne sera émis */
       /* seul un avoir TOTAL annule la facture ; après un avoir partiel, elle reste due (pas de 2e facture) */
       var annulees={};
       docs.forEach(function(x){ if(x&&x.type==='avoir'&&x.avt===true){ var w=String((x.src||{}).w||''); if(w) annulees[w.split('|')[0]]=1; } });
@@ -331,7 +386,7 @@
         if(A.length){ var o=A[A.length-1]; o.autre=true; return o; }
       }
       return null;
-    },function(){ return null; });
+    },function(){ return ILLISIBLE; });
   }
   /* copies ouvertes à l'écran (devis ouvert, fiche d'intervention) remises à jour après une reprise du registre :
      sinon « Enregistrer » réécrirait l'ancienne version, sans la facture */
@@ -385,7 +440,11 @@
     var pl=payloadDe(d), mini=maxLocal(serie,d.date);
     return rpc('cp_emettre_document',{p_request_id:r0,p_serie:serie,p_type:type,p_date:d.date,p_payload:pl,p_min_numero:mini,p_client_version:VERSION}).then(function(r){
       if(r&&r.error){ bloque({raison:absente(r.error)?'migration':'serveur',detail:String(r.error.message||'')}); return null; }
-      var out=r&&r.data; if(!out||!out.ok||!out.doc){ bloque({raison:'serveur',detail:'réponse vide'}); return null; }
+      var out=r&&r.data;
+      /* C1 (M3, 21/10/2026) : refus du serveur « une seule facture vivante par source » — ok:false, raison, et la facture
+         existante (deja_facture : même source ; acompte_ignore : l'acompte à déduire ; solde_deja_emis : acompte après solde) */
+      if(out&&out.ok===false&&out.raison&&out.doc){ var ex=out.doc, p=ex.payload||{}; ex.src=p.src||{}; ex.autre=out.raison!=='deja_facture'; return {refus:ex,raison:out.raison}; }
+      if(!out||!out.ok||!out.doc){ bloque({raison:'serveur',detail:'réponse vide'}); return null; }
       /* la demande avait déjà été servie avec un autre contenu (réponse perdue, puis document modifié) :
          le document du serveur fait foi — rien n'est recalculé sur l'appareil (voir reprendreServeur) */
       if(out.deja&&out.doc.payload&&JSON.stringify(out.doc.payload.fac||{})!==JSON.stringify(pl.fac||{})) out.differe=true;
@@ -550,9 +609,11 @@
   /* ---------- rapprochement avec le registre du serveur ---------- */
   function rapprocher(){
     if(mode()!=='reel'||!cloud()) return Promise.resolve({fait:false});
-    return window.sb.from('climpilot_documents').select('id,request_id,num,serie,type,origine,date_doc,payload,payload_hash,fichiers_hash').order('cree_le',{ascending:true}).then(function(r){
+    /* C1 (M3, 21/10/2026) : les plus récents d'abord côté serveur (plafond de lignes de PostgREST), puis remis dans l'ordre ici —
+       comme sourcesRegistre() ; avant, au-delà de 1 000 documents, les factures récentes n'auraient plus été vues */
+    return window.sb.from('climpilot_documents').select('id,request_id,num,serie,type,origine,date_doc,payload,payload_hash,fichiers_hash').order('cree_le',{ascending:false}).then(function(r){
       if(r.error) return {fait:false,erreur:r.error.message};
-      var docs=r.data||[], restaures=[], conflits=[];
+      var docs=(r.data||[]).slice().reverse(), restaures=[], conflits=[];
       /* 1.12 (recette du 14/10/2026) : une facture annulée par un avoir TOTAL du registre n'est jamais remise dans son
          chantier (l'annulation peut venir d'un autre appareil pas encore synchronisé ici) */
       var annulees={};

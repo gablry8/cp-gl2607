@@ -5,6 +5,17 @@ export const SERVEUR=`(function(){
   const srv={docs:[],seq:{},events:[],fichiers:{},appels:[],fail:{}};
   const jour=()=>todayISO();
   function doc(d){ return {id:d.id,request_id:d.request_id,serie:d.serie,annee:d.annee,numero:d.numero,num:d.num,type:d.type,origine:d.origine,date_doc:d.date_doc,payload:d.payload,payload_hash:'h'+d.id,fichiers_hash:d.fichiers_hash||null}; }
+  function regleSource(p){
+    const src=p.p_payload&&p.p_payload.src; if(p.p_serie!=='F'||!src||typeof src!=='object'||!src.k) return null;
+    const annulees=new Set(srv.docs.filter(a=>a.serie==='AV'&&a.origine==='emis'&&a.payload&&a.payload.fac&&a.payload.fac.total===true).map(a=>String((a.payload.src||{}).w||'').split('|')[0]));
+    const vivantes=(k,id,w)=>srv.docs.filter(d=>d.serie==='F'&&d.origine==='emis'&&d.request_id!==p.p_request_id&&d.payload&&d.payload.src&&d.payload.src.k===k&&String(d.payload.src.id||'')===String(id||'')&&String(d.payload.src.w||'')===String(w||'')&&!annulees.has(d.num));
+    const meme=vivantes(src.k,src.id,src.w); if(meme.length) return {raison:'deja_facture',doc:meme[meme.length-1]};
+    if(src.k==='devis'&&(src.w==='acompte'||src.w==='solde')){ const autre=vivantes('devis',src.id,src.w==='solde'?'acompte':'solde');
+      if(autre.length){ const ex=autre[autre.length-1]; if(src.w==='acompte') return {raison:'solde_deja_emis',doc:ex};
+        const f=p.p_payload.fac||{}, tot=Number(f.total), m=Number(f.montant), ac=Number((ex.payload.fac||{}).montant);
+        if(!isFinite(tot)||!isFinite(m)||!isFinite(ac)||Math.abs((tot-ac)-m)>0.011) return {raison:'acompte_ignore',doc:ex}; } }
+    return null;
+  }
   function rpc(name,p){ srv.appels.push(name);
     if(srv.fail.horsService) return Promise.reject(new Error('Failed to fetch'));
     if(name==='cp_serveur_info'){ if(srv.fail.migration) return Promise.resolve({error:{code:'PGRST202',message:'Could not find the function public.cp_serveur_info'}}); return Promise.resolve({data:{documents:true,version:'1.10'}}); }
@@ -13,6 +24,8 @@ export const SERVEUR=`(function(){
       if(srv.fail.migration) return Promise.resolve({error:{code:'PGRST202',message:'Could not find the function'}});
       if(!/^1\\.(1\\d|[2-9]\\d)/.test(p.p_client_version||'')) return Promise.resolve({error:{message:'ClimPilot doit être mis à jour'}});
       const ex=srv.docs.find(d=>d.request_id===p.p_request_id); if(ex) return Promise.resolve({data:{ok:true,deja:true,doc:doc(ex)}});
+      /* C1 (21/10/2026) : une seule facture F vivante par source, solde cohérent avec l'acompte, pas d'acompte après le solde (migration une_facture_par_source) */
+      const refus=regleSource(p); if(refus) return Promise.resolve({data:{ok:false,raison:refus.raison,doc:doc(refus.doc)}});
       const an=+String(p.p_date).slice(0,4), k=p.p_serie+'|'+an;
       const mx=Math.max(srv.seq[k]||0,...srv.docs.filter(d=>d.serie===p.p_serie&&d.annee===an).map(d=>d.numero),p.p_min_numero||0)+1; srv.seq[k]=mx;
       const d={id:'doc'+(srv.docs.length+1),request_id:p.p_request_id,serie:p.p_serie,annee:an,numero:mx,num:p.p_serie+'-'+an+'-'+String(mx).padStart(3,'0'),type:p.p_type,origine:'emis',date_doc:p.p_date,payload:JSON.parse(JSON.stringify(p.p_payload))};

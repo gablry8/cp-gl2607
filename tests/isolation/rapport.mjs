@@ -44,7 +44,7 @@ const ETAPES = [
   ['autotest-isolation', 'resIsolation.json'], ['suiteA', 'resA.json'], ['suiteB', 'resB.json'], ['suiteC', 'resC.json'], ['suiteD-memoire', 'resD.json'],
   ['suiteE-avoirs', 'resE.json'], ['suiteF-einvoice', 'resF.json'], ['suiteG-virgule', 'resG.json'], ['suiteH-superpdp', 'resH.json'], ['suiteI-emission', 'resI.json'],
   ['suiteJ-particuliers', 'resJ.json'], ['suiteK-fiscal', 'resK.json'], ['suiteL-documents', 'resL.json'], ['suiteM-adresse-copie', 'resM.json'], ['suiteN-passage-reel', 'resN.json'], ['suiteO-objectifs', 'resO.json'], ['suiteP-ameliorations', 'resP.json'], ['suiteQ-recette', 'resQ.json'], ['suiteR-fiabilite', 'resR.json'], ['suiteS-planning', 'resS.json'], ['suiteT-terrain', 'resT.json'],
-  /* P0 (21/10/2026) */ ['suiteU-fusion', 'resU.json'], ['suiteV-numerotation', 'resV.json'], ['suiteW-enveloppes', 'resW.json'], ['suiteX-mise-a-jour', 'resX.json'], ['suiteY-golden-docs', 'resY.json'], ['suiteZ-golden', 'resZ.json'], ['fn-signature', 'resFn-signature.json'],
+  /* P0 (21/10/2026) */ ['suiteU-fusion', 'resU.json'], ['suiteV-numerotation', 'resV.json'], ['suiteW-enveloppes', 'resW.json'], ['suiteX-mise-a-jour', 'resX.json'], ['suiteY-golden-docs', 'resY.json'], ['suiteZ-golden', 'resZ.json'], /* C1 */ ['suiteAA-registre-illisible', 'resAA.json'], ['fn-signature', 'resFn-signature.json'],
   ['fn-liste-blanche', 'resFn-liste-blanche.json'], ['fn-superpdp-envoi', 'resFn-superpdp-envoi.json'], ['fn-agenda', 'resFn-agenda.json'], ['fn-apps-script', 'resFn-apps-script.json'], ['sql', 'sql-junit.xml'], ['apercu-test', 'resApercu.json'],
 ];
 /* P0 (21/10/2026) : étapes jouées À PART (fichier separees.txt écrit par run-all.sh, ex. suiteQ-recette avec CP_SANS_Q=1) :

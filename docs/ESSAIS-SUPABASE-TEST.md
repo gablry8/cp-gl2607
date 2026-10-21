@@ -155,6 +155,12 @@ Chaque correction a d'abord un test qui échoue sur l'ancien code (suite R), pui
 - Tests : suite R (R4, 5 contrôles), 3 échecs sur l'ancien code. Batterie complète : 526 réussis, 0 échec, 0 SKIP.
 
 ## Pas encore essayé
+- **C1 — une seule facture vivante par source (21/10/2026, branche `correctif/c1-registre-illisible`)** : migration
+  `supabase/migrations/20261021180000_une_facture_par_source.sql` (script `tests/supabase-test/4-une-facture-par-source-TEST.sql` à
+  coller, verrou par marqueur, 5 « OK » ; retour arrière `4-une-facture-par-source-retour-arriere.sql`). Vérifiée hors ligne seulement :
+  PostgreSQL 16 local (16 tests, dont 8 soldes simultanés) et banc deux appareils (16 contrôles). Lève la limite notée plus haut
+  (« deux appareils qui émettent à la même seconde pour le même devis ne sont pas arrêtés par le serveur ») : le serveur refuse
+  désormais une 2e facture vivante pour la même source, un solde qui ignore l'acompte, un acompte après le solde.
 - **Agenda (20/10/2026)** : migration `20261020120000_agenda.sql` (script `essai-agenda-TEST.sql` à coller), fonction
   `agenda`, script Google Agenda. Vérifié hors ligne seulement : PGlite (droits, remplacement, garde-fous), fonction et
   script avec base et Google simulés. Le 20/10, la base de test ne contient aucune table `climpilot_busy`.

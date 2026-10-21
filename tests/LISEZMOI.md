@@ -165,3 +165,18 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   - R4 : année du document au 31/12.
 - serveur-simule.mjs : serveur Supabase simulé, partagé par les suites I et N.
 - functions/test-superpdp-envoi.mjs (7 contrôles) : en production, envoi depuis le registre (R2).
+
+## Ajouts 21/10/2026 (mission F, C1 — branche `correctif/c1-registre-illisible`)
+- suiteAA-registre-illisible.mjs (16 contrôles, banc deux appareils) : registre des factures **illisible** ou **lent** (plus de 25 s)
+  → rien n'est émis, aucune demande au serveur, message « impossible de vérifier » ; registre lisible → reprise de la facture émise
+  ailleurs, solde = total − acompte ; registre lu **périmé** → refus du serveur, reprise ; hors ligne inchangé ; **mode démonstration**
+  (numéros TEST-, pas de registre serveur) : même règle appuyée sur l'état synchronisé (cloud muet → rien ; état plus récent sur le
+  serveur pas encore reçu → rien, « pas à jour » ; après synchro → solde TEST = total − acompte).
+- banc-appareils.mjs : `S.registreBloque[dev]` (lecture du registre en erreur), `S.registrePendu[dev]` (lecture qui ne revient pas) ;
+  règle serveur `regleSource` (identique à la migration) dans le serveur commun ; même règle dans serveur-simule.mjs (suites I, N, R).
+- tests/sql/test_une_facture_par_source.py (16 contrôles, vrai PostgreSQL) : migration `20261021180000_une_facture_par_source.sql`
+  appliquée deux fois — 2e solde refusé avec la facture existante renvoyée et aucun numéro consommé ; solde qui ignore l'acompte refusé ;
+  solde cohérent accepté (±0,011) ; avoir total libère, avoir partiel non ; acompte annulé puis refait ; 2e acompte et acompte après
+  solde refusés ; une facture vivante par intervention / location / année de contrat ; autre utilisateur ; rejeu `request_id` ;
+  reconstituées hors règle ; 8 soldes simultanés → un seul accepté ; droits ; retour arrière = fonction 1.10.
+- tests/supabase-test/4-une-facture-par-source-TEST.sql (verrou par marqueur, 5 « OK ») et 4-une-facture-par-source-retour-arriere.sql.
