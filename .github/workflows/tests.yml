@@ -39,10 +39,12 @@ jobs:
             sans_q: '0'
             non_bloquant: true
     env:
-      CP_TEST_OUT: ${{ runner.temp }}/climpilot-tests   # hors du dépôt (tools/apercu/build.sh refuse une sortie dans le dépôt)
       PLAYWRIGHT_VERSION: 1.56.1
     steps:
       - uses: actions/checkout@v4
+
+      - name: Dossier de sortie hors du dépôt (tools/apercu/build.sh refuse une sortie dans le dépôt)
+        run: echo "CP_TEST_OUT=$RUNNER_TEMP/climpilot-tests" >> "$GITHUB_ENV"
 
       - uses: actions/setup-node@v4
         with:
