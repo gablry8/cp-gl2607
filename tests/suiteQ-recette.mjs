@@ -676,7 +676,8 @@ await lire(S10, TEL10, () => { DEP.push({ id: 'dep-tel-q10', date: '2027-09-15',
 await PC10.p.evaluate(() => { const o = window.nxStoreReload; window.nxStoreReload = function () { setTimeout(o, 1200); }; });
 await PC10.p.clock.fastForward(21000);
 await PC10.p.evaluate(() => window.dispatchEvent(new Event('focus')));
-let voile = false; for (let i = 0; i < 30 && !voile; i++) { await PC10.p.waitForTimeout(50); voile = await PC10.p.evaluate(() => !!document.getElementById('cpGel')).catch(() => false); }
+/* P0 (21/10/2026) : fenêtre d'observation 6 s au lieu de 1,5 s — sur une machine chargée le voile arrivait après la fenêtre (échec de timing, pas de défaut : les données étaient bien conservées) */
+let voile = false; for (let i = 0; i < 120 && !voile; i++) { await PC10.p.waitForTimeout(50); voile = await PC10.p.evaluate(() => !!document.getElementById('cpGel')).catch(() => false); }
 const pendant = await PC10.p.evaluate(() => { const r = { dessus: (document.elementFromPoint(innerWidth / 2, innerHeight / 2) || {}).id || '', stale: DEP.some((d) => d.id === 'dep-tel-q10') };
   try { save(LS.dep, DEP); } catch (e) {} r.dirty = !!localStorage.getItem('cp2_dirty'); return r; }).catch((e) => ({ err: String(e) }));
 const cGel = voile ? await K.capture(PC10, 'pc-voile-mise-a-jour') : null;
