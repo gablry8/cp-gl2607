@@ -39,10 +39,14 @@ const codes = Object.fromEntries((fs.existsSync(out('codes.txt')) ? fs.readFileS
 const ETAPES = [
   ['autotest-isolation', 'resIsolation.json'], ['suiteA', 'resA.json'], ['suiteB', 'resB.json'], ['suiteC', 'resC.json'], ['suiteD-memoire', 'resD.json'],
   ['suiteE-avoirs', 'resE.json'], ['suiteF-einvoice', 'resF.json'], ['suiteG-virgule', 'resG.json'], ['suiteH-superpdp', 'resH.json'], ['suiteI-emission', 'resI.json'],
-  ['suiteJ-particuliers', 'resJ.json'], ['suiteK-fiscal', 'resK.json'], ['suiteL-documents', 'resL.json'], ['suiteM-adresse-copie', 'resM.json'], ['suiteN-passage-reel', 'resN.json'], ['suiteO-objectifs', 'resO.json'], ['suiteP-ameliorations', 'resP.json'], ['suiteQ-recette', 'resQ.json'], ['suiteR-fiabilite', 'resR.json'], ['suiteS-planning', 'resS.json'], ['suiteT-terrain', 'resT.json'], ['fn-signature', 'resFn-signature.json'],
+  ['suiteJ-particuliers', 'resJ.json'], ['suiteK-fiscal', 'resK.json'], ['suiteL-documents', 'resL.json'], ['suiteM-adresse-copie', 'resM.json'], ['suiteN-passage-reel', 'resN.json'], ['suiteO-objectifs', 'resO.json'], ['suiteP-ameliorations', 'resP.json'], ['suiteQ-recette', 'resQ.json'], ['suiteR-fiabilite', 'resR.json'], ['suiteS-planning', 'resS.json'], ['suiteT-terrain', 'resT.json'],
+  /* P0 (21/10/2026) */ ['suiteU-fusion', 'resU.json'], ['suiteV-numerotation', 'resV.json'], ['suiteW-enveloppes', 'resW.json'], ['suiteX-mise-a-jour', 'resX.json'], ['suiteY-golden-docs', 'resY.json'], ['suiteZ-golden', 'resZ.json'], ['fn-signature', 'resFn-signature.json'],
   ['fn-liste-blanche', 'resFn-liste-blanche.json'], ['fn-superpdp-envoi', 'resFn-superpdp-envoi.json'], ['fn-agenda', 'resFn-agenda.json'], ['fn-apps-script', 'resFn-apps-script.json'], ['sql', 'sql-junit.xml'], ['apercu-test', 'resApercu.json'],
 ];
-const tableau = ETAPES.map(([nom, fichier]) => {
+/* P0 (21/10/2026) : étapes jouées À PART (fichier separees.txt écrit par run-all.sh, ex. suiteQ-recette avec CP_SANS_Q=1) :
+   retirées du tableau de ce passage, mais nommées dans le rapport — jamais comptées comme réussies ni comme non exécutées. */
+const separees = (() => { try { return fs.readFileSync(path.join(OUT, 'separees.txt'), 'utf8').split(/\s+/).filter(Boolean); } catch (e) { return []; } })();
+const tableau = ETAPES.filter(([nom]) => !separees.includes(nom)).map(([nom, fichier]) => {
   const c = codes[nom];
   const e = { etape: nom, code: c ? c.code : null, duree_s: c ? c.duree : null, PASS: 0, FAIL: 0, SKIP: 0, autres: 0, statut: '', echecs: [] };
   if (fichier.endsWith('.xml')) {
@@ -79,11 +83,11 @@ const total = tableau.reduce((t, e) => ({ PASS: t.PASS + e.PASS, FAIL: t.FAIL + 
 const nonExec = tableau.filter((e) => e.statut === 'NON EXÉCUTÉ').map((e) => e.etape);
 const echecs = tableau.filter((e) => /ÉCHEC/.test(e.statut)).map((e) => e.etape);
 const verdict = echecs.length ? 'ÉCHEC' : (nonExec.length || total.SKIP) ? 'INCOMPLET (voir non exécutés / SKIP)' : 'COMPLET, TOUT RÉUSSI';
-const rapport = { date: new Date().toISOString(), commit: sha, branche, arbre_modifie: !!sale, sortie: OUT, versions, etapes: tableau, total, non_executes: nonExec, echecs, isolation: iso, verdict };
+const rapport = { date: new Date().toISOString(), commit: sha, branche, arbre_modifie: !!sale, sortie: OUT, versions, etapes: tableau, total, non_executes: nonExec, separees, echecs, isolation: iso, verdict };
 fs.writeFileSync(out('rapport.json'), JSON.stringify(rapport, null, 1));
 
 const md = [];
-md.push('# Rapport de tests ClimPilot', '', `- Commit testé : \`${sha}\` (branche ${branche})${sale ? ' — ATTENTION : arbre de travail modifié' : ' — arbre propre'}`, `- Date : ${rapport.date}`, `- Verdict : **${verdict}** — ${total.PASS} réussis, ${total.FAIL} échoués, ${total.SKIP} SKIP${nonExec.length ? ', non exécutés : ' + nonExec.join(', ') : ''}`, '');
+md.push('# Rapport de tests ClimPilot', '', `- Commit testé : \`${sha}\` (branche ${branche})${sale ? ' — ATTENTION : arbre de travail modifié' : ' — arbre propre'}`, `- Date : ${rapport.date}`, `- Verdict : **${verdict}** — ${total.PASS} réussis, ${total.FAIL} échoués, ${total.SKIP} SKIP${nonExec.length ? ', non exécutés : ' + nonExec.join(', ') : ''}${separees.length ? ' — jouée(s) À PART, hors de ce passage : ' + separees.join(', ') + ' (voir tests/run-all.sh)' : ''}`, '');
 md.push('## Versions', '', '| Outil | Version |', '|---|---|');
 for (const [k, v] of Object.entries(versions)) md.push(`| ${k} | ${v == null ? 'absent' : typeof v === 'object' ? `${v.version} (${v.commit}) ${v.origine || ''}` : v} |`);
 md.push('', '## Résultats', '', '| Étape | Statut | Réussis | Échoués | SKIP | Code | Durée |', '|---|---|---:|---:|---:|---:|---:|');
