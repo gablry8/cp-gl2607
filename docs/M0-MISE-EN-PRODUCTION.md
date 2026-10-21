@@ -1,7 +1,7 @@
 # ClimPilot — M0 : fiche de mise en production (branche `fusion/avant-refonte`)
 
 > Rédigée le 20/10/2026, complétée le 21/10 par Claude (Fable 5.1) pour Gabriel Leroy. À lire avec `M0-COMPTE-RENDU.md`.
-> Corrigée le 21/10 après les relectures M3 et M4 (Opus 5.5) : hébergement de la copie d'essai (M4 C1) et contrôle 5 bis (M3 C4).
+> Corrigée le 21/10 après les relectures M3 et M4 (Opus 5.5) : hébergement de la copie d'essai (M4 C1) et contrôle 5 bis (M3 C4). Complétée le 21/10 au soir (après C1) : facturation réelle autorisée sur la copie d'essai, base de TEST uniquement, pour que le 5 bis soit probant ; copie 1131-fusion-C1 remise à part (zip + `LISEZ-MOI-ESSAI-C1.txt`).
 > Rien ici n'a été fait par l'IA sur le projet réel ni sur le projet de TEST : **chaque étape est ton geste**.
 > Les libellés de menus Supabase / GitHub / Netlify sont donnés de mémoire (hypothèse) : si un libellé diffère à l'écran, c'est l'écran qui a raison.
 >
@@ -19,7 +19,7 @@ La même appli que la branche (mêmes fichiers, mêmes calculs), avec trois diff
 Fabriquée par `tools/essai/construire-copie-essai.sh` (sur la branche) ; le zip t'est remis à part, il n'est pas dans le dépôt.
 
 ### 0.2 Configurer (5 min, une fois)
-1. Décompresse le zip → dossier `ClimPilot-ESSAI-1131-fusion`.
+1. Le zip se dépose tel quel sur Netlify (0.3). Pour vérifier ou modifier la configuration : décompresse-le → `essai-config.js`.
 2. Ouvre `essai-config.js` avec le Bloc-notes. Remplace les deux textes `REMPLACER …` par :
    - `url` : Supabase › projet **ClimPilot-TEST** › Settings › API › **Project URL** (forme `https://xxxx.supabase.co`, sans barre à la fin) ;
    - `key` : même page › Project API keys › **anon public** (c'est la clé *publique*, pas la `service_role`).
@@ -28,7 +28,7 @@ Fabriquée par `tools/essai/construire-copie-essai.sh` (sur la branche) ; le zip
 
 ### 0.3 Mettre en ligne (obligatoire : ouverte depuis un simple fichier, la copie démarre mais **sans cloud** — vérifié ; le téléphone a besoin d'une adresse https)
 Je ne sais pas où les copies 1.11/1.12 avaient été hébergées (pas dans le dépôt). **Une seule façon** :
-- **Netlify Drop** (gratuit, sans compte pour un essai ; hypothèse sur l'écran actuel) : `app.netlify.com/drop` → glisse le **dossier** décompressé → une adresse `https://….netlify.app` apparaît. Ferme le site quand l'essai est fini (ou laisse-le expirer).
+- **Netlify**, comme pour les copies 1.11 et 1.12 : ton site d'essai › **Deploys** › glisse le **zip** tel quel (fichiers à la racine du zip, sans le dézipper), puis F5 sur l'adresse du site (méthode de `ClimPilot_Essais/LISEZ-MOI-ESSAI.txt`). Sans site d'essai : `app.netlify.com/drop` avec le dossier décompressé.
 
 **Jamais sous `gablry8.github.io`** (ni un nouveau dépôt GitHub Pages `climpilot-essai`, ni un sous-dossier de `cp-gl2607`). Raison (M4 C1, certain sur un PC) : tous les sites `https://gablry8.github.io/…` ont la **même origine web** que la vraie appli, donc le même stockage du navigateur (même base IndexedDB `climpilot-store`, mêmes clés `cp2_*`) et les mêmes caches hors ligne. La copie afficherait tes **vraies données** et les enverrait sur la base de TEST, ce que tu ferais dans la copie reviendrait dans la vraie appli (qui le synchroniserait **en production**), et chaque service worker effacerait le cache de l'autre (la vraie appli ne s'ouvrirait plus hors ligne). Le script de construction ne change ni le nom de la base ni les clés : seule une **autre origine** (Netlify) sépare les deux.
 Si une copie a déjà été publiée sous `gablry8.github.io` : ne l'ouvre plus et dis-le-moi ; on vérifie d'abord, en lecture seule, l'état de la production.
@@ -36,7 +36,7 @@ Si une copie a déjà été publiée sous `gablry8.github.io` : ne l'ouvre plus 
 ### 0.4 Ouvrir
 - **PC** : Chrome/Edge → l'adresse https de la copie → le bandeau rouge doit être visible → connexion avec **ton compte du projet TEST** (pas celui du réel ; si le même e-mail existe sur les deux, le mot de passe est celui du TEST). Si tu vois « COPIE D'ESSAI BLOQUÉE », relis 0.2.
 - **Téléphone** : Safari (iPhone) ou Chrome (Android) → même adresse → Partager › **Sur l'écran d'accueil** → une icône « CP ESSAI », séparée de la vraie. Les deux ne se mélangent pas **parce que** l'adresse Netlify est une autre origine web que `gablry8.github.io` (certain sur PC ; probable sur téléphone, selon que l'icône d'accueil partage ou non le stockage du navigateur — M4 C1). Sous `gablry8.github.io`, elles se mélangeraient (0.3).
-- **Données d'essai réalistes** : sur la vraie appli, Outils › **⤓ Sauvegarde** ; sur la copie (PC), **⤒ Importer** (bouton en haut) → le fichier. La copie synchronise ensuite ces données sur le projet TEST, puis le téléphone-essai les reçoit. **Reste en mode démonstration** sur la copie (numéros `TEST-F-…`) : n'y active jamais la facturation réelle, n'y saisis aucune clé Super PDP réelle.
+- **Données d'essai réalistes** : sur la vraie appli, Outils › **⤓ Sauvegarde** ; sur la copie (PC), **⤒ Importer** (bouton en haut) → le fichier. La copie synchronise ensuite ces données sur le projet TEST, puis le téléphone-essai les reçoit. **Facturation réelle sur la copie : autorisée, base de TEST uniquement** (décision du 21/10, après C1) : en mode démonstration (numéros `TEST-F-…`) l'appli ne consulte **jamais** le registre serveur — le contrôle 5 bis ne prouve rien dans ce mode (certain, lu dans `next-emission.js`). Pour que l'essai soit probant : Paramètres › Entreprise › un **SIRET fictif** de 14 chiffres (par ex. `12345678900012`) si la copie n'en a pas, puis Paramètres › carte « Facturation réelle » › **Démarrer** (date du jour). Les `F-…` émis vont dans le registre de la base **TEST**, jamais dans le réel. **Interdit, sans exception : aucune clé Super PDP réelle sur la copie** (ni dans Paramètres, ni ailleurs) ; la copie reste en bac à sable Super PDP ou sans Super PDP.
 - **Fin de l'essai** : supprime l'icône sur le téléphone et le site hébergé ; la base TEST peut garder les données ou être vidée (Outils de la copie, ou SQL `delete from public.climpilot_state;` sur le projet TEST seulement).
 
 ---
@@ -62,7 +62,7 @@ Si une copie a déjà été publiée sous `gablry8.github.io` : ne l'ouvre plus 
 4. #2 et #3 (1.11, 1.12) sont contenues dans #4 : c'est **toi** qui les fermes ensuite.
 
 ### A3. LISTE DE CONTRÔLE — la même, deux fois : **ESSAI** (copie, base de TEST, avant A2) puis **PROD** (vraie appli, après A2)
-Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le compte est celui du TEST. En PROD : factures et avoirs **uniquement en mode démonstration** (`TEST-…`), jamais une vraie. Si un contrôle échoue : **n'insiste pas**, note ce que tu as vu ; en ESSAI → on corrige avant A2 ; en PROD → A4.
+Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le compte est celui du TEST ; la facturation réelle y est démarrée (base TEST, 0.4) pour les contrôles 5 bis et 5 ter. En PROD : factures et avoirs **uniquement en mode démonstration** (`TEST-…`), jamais une vraie ; 5 bis « sans objet » en PROD. Si un contrôle échoue : **n'insiste pas**, note ce que tu as vu ; en ESSAI → on corrige avant A2 ; en PROD → A4.
 
 | # | Contrôle (téléphone **et** PC) | Attendu | ESSAI | PROD |
 |---|---|---|:-:|:-:|
@@ -71,7 +71,7 @@ Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le c
 | 3 | Ouvrir un **ancien** devis (d'avant 1.12) | mêmes montants qu'avant, au centime | ☐ | ☐ |
 | 4 | Créer un devis (nature au choix), l'enregistrer | numéro `DV-…`, totaux cohérents, visible sur l'autre appareil après synchro | ☐ | ☐ |
 | 5 | Émettre une facture de **TEST** (mode démonstration) | `TEST-F-2026-NNN` qui **suit** le dernier, sans trou ni doublon | ☐ | ☐ |
-| 5 bis | **Acompte sur le PC, solde sur le téléphone « en ligne mais pas à jour »** (protocole M3 C4 ; **hypothèse** : non éprouvé sur un vrai appareil). Dans l'ordre : ① sur le téléphone, ouvre le devis et **commence à taper une note sans valider** (les mises à jour reçues attendent alors le prochain changement d'écran) ; ② sur le PC, facture l'**acompte** du même devis ; ③ attends **1 minute** ; ④ sur le téléphone, clique « Facturer le solde » | au ④ : message « Une facture d'acompte a été émise… depuis un autre appareil… Rien n'a été émis », **aucune** nouvelle facture. Au **2e clic** : solde = total − acompte, un seul `TEST-F-` de solde. Si le téléphone émet un solde au ④ (ou un solde sans l'acompte déduit) : **arrête l'essai et note les numéros** — c'est le cas à risque M3 C1 (contrôle demandé par le compte rendu § 4) | ☐ | ☐ |
+| 5 bis | **Acompte sur le PC, solde sur le téléphone « en ligne mais pas à jour »** (protocole M3 C4 ; **hypothèse** : non éprouvé sur un vrai appareil). **Préalable** : facturation réelle **démarrée** (sur l'ESSAI : copie, base de TEST, SIRET fictif, voir 0.4 ; en PROD : ce contrôle ne se fait **pas** tant que la facturation réelle n'est pas démarrée, le registre n'étant pas consulté en démonstration — en PROD, cocher « sans objet »). Dans l'ordre : ① sur le téléphone, ouvre le devis et **commence à taper une note sans valider** (les mises à jour reçues attendent alors le prochain changement d'écran) ; ② sur le PC, facture l'**acompte** du même devis ; ③ attends **1 minute** ; ④ sur le téléphone, clique « Facturer le solde » | au ④ : message « Une facture d'acompte a été émise… depuis un autre appareil… Rien n'a été émis », **aucune** nouvelle facture. Au **2e clic** : solde = total − acompte, un seul `F-` de solde (dans le registre de la base TEST). Si le téléphone émet un solde au ④ (ou un solde sans l'acompte déduit) : **arrête l'essai et note les numéros** — c'est le cas à risque M3 C1 (contrôle demandé par le compte rendu § 4) | ☐ | ☐ |
 | 5 ter | **Téléphone en mode avion**, « Facturer le solde » d'un devis, puis remets le réseau et attends la synchro | « Facture NON émise », rien de plus ; après le retour du réseau, **aucune** facture n'a été émise par le téléphone. Ce cas ne teste **que** le hors ligne : il ne parcourt pas le chemin « en ligne mais pas à jour » du 5 bis (M3 C4) | ☐ | ☐ |
 | 6 | Synchro entre deux appareils | modification sur le PC visible sur le téléphone, et inversement ; aucune « modification en attente » qui reste | ☐ | ☐ |
 | 7 | Mode avion, rouvrir l'appli | elle s'ouvre, les données sont là, l'écran Planning répond | ☐ | ☐ |
