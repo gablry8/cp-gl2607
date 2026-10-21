@@ -65,11 +65,13 @@ jobs:
 
       - name: PostgreSQL local (marqueur climpilot-test, socket seulement, aucune écoute réseau)
         run: |
-          sudo apt-get install -y -qq postgresql-16 >/dev/null
-          D="$RUNNER_TEMP/pgbench"; mkdir -p "$D"; sudo chown postgres "$D"
-          sudo -u postgres /usr/lib/postgresql/16/bin/initdb -D "$D/data" -U postgres --auth=trust >/dev/null
+          set -x
+          if [ ! -x /usr/lib/postgresql/16/bin/initdb ]; then sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-16; fi
+          sudo systemctl stop postgresql 2>/dev/null || true
+          D=/tmp/climpilot-pg; sudo mkdir -p "$D"; sudo chown postgres:postgres "$D"; sudo chmod 755 "$D"
+          sudo -u postgres /usr/lib/postgresql/16/bin/initdb -D "$D/data" -U postgres --auth=trust
           sudo -u postgres /usr/lib/postgresql/16/bin/pg_ctl -D "$D/data" -l "$D/log.txt" -w start -o "-p 54329 -k $D -c listen_addresses= -c cluster_name=climpilot-test"
-          sudo chmod 755 "$D"
+          psql -h "$D" -p 54329 -U postgres -tAc "show cluster_name"
           echo "PGHOST=$D" >> "$GITHUB_ENV"; echo "PGPORT=54329" >> "$GITHUB_ENV"
 
       - name: Isolation réseau (unshare -n) disponible ?
