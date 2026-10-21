@@ -9,6 +9,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  checks: write
+
 concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: true
@@ -81,11 +85,34 @@ jobs:
           else echo "sans=1" >> "$GITHUB_OUTPUT"; echo "unshare -n : NON — gardes logicielles seulement (CP_SANS_NETNS=1, indiqué dans le rapport)"; fi
 
       - name: Batterie (tests/run-all.sh)
+        id: batterie
         env:
           CP_SANS_NETNS: ${{ steps.netns.outputs.sans }}
           CP_SANS_Q: ${{ matrix.sans_q }}
           CP_SUITES: ${{ matrix.suites }}
-        run: bash tests/run-all.sh
+        run: |
+          set +e; bash tests/run-all.sh; code=$?; echo "code=$code" >> "$GITHUB_OUTPUT"; exit $code
+
+      # Le rapport est aussi publié dans l'onglet « Checks » du commit (lisible depuis l'API, sans télécharger l'artefact).
+      # GITHUB_TOKEN est fourni automatiquement par GitHub Actions : ce n'est pas un secret à poser.
+      - name: Rapport dans les Checks du commit
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOM: ${{ matrix.nom }}
+          CODE: ${{ steps.batterie.outputs.code }}
+        run: |
+          R="$CP_TEST_OUT/rapport.md"; T="$RUNNER_TEMP/check.txt"
+          { if [ -f "$R" ]; then sed -n '1,/^## Isolation/p' "$R"; else echo "PAS DE RAPPORT (batterie interrompue, code de sortie ${CODE:-?})"; fi
+            echo; echo '## Codes de sortie par étape'; cat "$CP_TEST_OUT/codes.txt" 2>/dev/null || echo '(aucun)'
+            echo; echo '## Fin des journaux des étapes en échec'
+            if [ -f "$CP_TEST_OUT/codes.txt" ]; then while read -r n c d; do [ "$c" != 0 ] && { echo "### $n (code $c)"; tail -n 25 "$CP_TEST_OUT/journaux/$n.log" 2>/dev/null | cut -c1-400; }; done < "$CP_TEST_OUT/codes.txt"; fi
+            echo; echo '## Journal du serveur local'; tail -n 5 "$CP_TEST_OUT/journaux/serveur-8765.log" 2>/dev/null
+            ls -la "$CP_TEST_OUT" 2>/dev/null | head -20; } > "$T" 2>&1
+          head -c 60000 "$T" > "$T.court"
+          jq -n --arg nom "tests — $NOM" --arg sha "$GITHUB_SHA" --arg concl "$( [ "${CODE:-1}" = 0 ] && echo success || echo failure )" --arg titre "batterie ClimPilot (code ${CODE:-?})" --rawfile txt "$T.court" \
+            '{name:$nom, head_sha:$sha, status:"completed", conclusion:$concl, output:{title:$titre, summary:"Rapport de tests/run-all.sh (sans secret).", text:$txt}}' \
+            | gh api "repos/$GITHUB_REPOSITORY/check-runs" --input - >/dev/null && echo "check-run publié" || echo "publication du check-run impossible (droits ?)"
 
       - name: Résumé
         if: always()
