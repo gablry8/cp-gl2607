@@ -1,7 +1,14 @@
-# ClimPilot — batterie complète à chaque push et chaque demande de fusion (P0, 21/10/2026).
+# ClimPilot — batterie complète à chaque push et chaque demande de fusion (P0, 21/10/2026 ; corrigée le 21/10 après M3 C5/C9).
 # Aucun secret : les tests sont hors réseau (serveur simulé), SQL sur un PostgreSQL local du runner, validateurs clonés.
 # Le rapport (rapport.md / rapport.json / journaux) est joint à chaque exécution (onglet Actions › artefacts).
-# Protection de « main » (fusion interdite si rouge) : à activer par Gabriel dans Settings › Branches, règle « tests ».
+# Protection de « main » (fusion interdite si rouge) : à activer par Gabriel dans Settings › Branches › « Require status checks » :
+#   exiger le contrôle DU TRAVAIL, nommé « batterie complète » (c'est lui qui porte le code de sortie de la batterie, sur le commit
+#   de la branche comme sur la demande de fusion). NE PAS exiger « rapport — batterie complète » : ce check-run publié par l'API est
+#   attaché à GITHUB_SHA, qui est le commit de fusion temporaire sur une demande de fusion (M3 C9.1) — il sert à lire le rapport, pas à bloquer.
+# Un seul travail : la suite Q (recette deux appareils) y est incluse et BLOQUANTE ; seuls ses 2 contrôles connus instables sont
+# enregistrés « INSTABLE » par la suite elle-même (non bloquants, listés dans le rapport, jamais comptés comme réussis) — M3 C5.
+# Codes de sortie de la batterie : 0 = complet et tout réussi ; 1 = échec ; 3 = incomplet (SKIP hors les 2 SKIP connus d'isolation,
+# non exécuté, ou passage partiel) — un passage incomplet n'est plus vert (M3 C9.3 / C9.4).
 name: tests
 
 on:
@@ -19,29 +26,16 @@ concurrency:
 
 jobs:
   tests:
-    name: ${{ matrix.nom }}
+    name: batterie complète
     runs-on: ubuntu-24.04
     timeout-minutes: 90
-    # Deux travaux : la batterie complète SANS la suite Q (bloquante pour « main »), et la suite Q seule — recette deux appareils,
-    # chronométrée, instable sur machine chargée (M0, 20/10/2026) — jouée à part, visible, non bloquante (continue-on-error).
-    # Ce n'est pas un masquage : son résultat est dans le résumé et l'artefact ; elle est à stabiliser (REFONTE-PLAN, P3).
-    continue-on-error: ${{ matrix.non_bloquant }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - nom: batterie complète (sans suite Q)
-            suites: ''
-            sans_q: '1'
-            non_bloquant: false
-          - nom: suite Q — recette deux appareils (instable, non bloquante)
-            suites: suiteQ-recette
-            sans_q: '0'
-            non_bloquant: true
     env:
       PLAYWRIGHT_VERSION: 1.56.1
     steps:
       - uses: actions/checkout@v4
+        with:
+          # M3 C9.2 : le jeton n'est pas laissé dans .git (aucune étape ne pousse ni ne lit le dépôt par git ensuite)
+          persist-credentials: false
 
       - name: Dossier de sortie hors du dépôt (tools/apercu/build.sh refuse une sortie dans le dépôt)
         run: echo "CP_TEST_OUT=$RUNNER_TEMP/climpilot-tests" >> "$GITHUB_ENV"
@@ -86,22 +80,21 @@ jobs:
           if unshare -n true 2>/dev/null; then echo "sans=0" >> "$GITHUB_OUTPUT"; echo "unshare -n : OUI";
           else echo "sans=1" >> "$GITHUB_OUTPUT"; echo "unshare -n : NON — gardes logicielles seulement (CP_SANS_NETNS=1, indiqué dans le rapport)"; fi
 
-      - name: Batterie (tests/run-all.sh)
+      - name: Batterie (tests/run-all.sh) — toutes les suites, suite Q comprise
         id: batterie
         env:
           CP_SANS_NETNS: ${{ steps.netns.outputs.sans }}
-          CP_SANS_Q: ${{ matrix.sans_q }}
-          CP_SUITES: ${{ matrix.suites }}
         run: |
           set +e; bash tests/run-all.sh; code=$?; echo "code=$code" >> "$GITHUB_OUTPUT"; exit $code
 
       # Le rapport est aussi publié dans l'onglet « Checks » du commit (lisible depuis l'API, sans télécharger l'artefact).
       # GITHUB_TOKEN est fourni automatiquement par GitHub Actions : ce n'est pas un secret à poser.
+      # Ce check-run « rapport — … » est attaché à GITHUB_SHA : il sert à LIRE le rapport, pas à protéger « main » (voir l'en-tête).
       - name: Rapport dans les Checks du commit
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          NOM: ${{ matrix.nom }}
+          NOM: batterie complète
           CODE: ${{ steps.batterie.outputs.code }}
         run: |
           R="$CP_TEST_OUT/rapport.md"; T="$RUNNER_TEMP/check.txt"
@@ -112,7 +105,7 @@ jobs:
             echo; echo '## Journal du serveur local'; tail -n 5 "$CP_TEST_OUT/journaux/serveur-8765.log" 2>/dev/null
             ls -la "$CP_TEST_OUT" 2>/dev/null | head -20; } > "$T" 2>&1
           head -c 60000 "$T" > "$T.court"
-          jq -n --arg nom "tests — $NOM" --arg sha "$GITHUB_SHA" --arg concl "$( [ "${CODE:-1}" = 0 ] && echo success || echo failure )" --arg titre "batterie ClimPilot (code ${CODE:-?})" --rawfile txt "$T.court" \
+          jq -n --arg nom "rapport — $NOM" --arg sha "$GITHUB_SHA" --arg concl "$( [ "${CODE:-1}" = 0 ] && echo success || echo failure )" --arg titre "batterie ClimPilot (code ${CODE:-?})" --rawfile txt "$T.court" \
             '{name:$nom, head_sha:$sha, status:"completed", conclusion:$concl, output:{title:$titre, summary:"Rapport de tests/run-all.sh (sans secret).", text:$txt}}' \
             | gh api "repos/$GITHUB_REPOSITORY/check-runs" --input - >/dev/null && echo "check-run publié" || echo "publication du check-run impossible (droits ?)"
 
@@ -125,7 +118,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: rapport-tests-${{ github.run_number }}-${{ strategy.job-index }}
+          name: rapport-tests-${{ github.run_number }}
           path: |
             ${{ env.CP_TEST_OUT }}/rapport.md
             ${{ env.CP_TEST_OUT }}/rapport.json

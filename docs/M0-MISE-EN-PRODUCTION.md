@@ -1,6 +1,7 @@
 # ClimPilot — M0 : fiche de mise en production (branche `fusion/avant-refonte`)
 
 > Rédigée le 20/10/2026, complétée le 21/10 par Claude (Fable 5.1) pour Gabriel Leroy. À lire avec `M0-COMPTE-RENDU.md`.
+> Corrigée le 21/10 après les relectures M3 et M4 (Opus 5.5) : hébergement de la copie d'essai (M4 C1) et contrôle 5 bis (M3 C4).
 > Rien ici n'a été fait par l'IA sur le projet réel ni sur le projet de TEST : **chaque étape est ton geste**.
 > Les libellés de menus Supabase / GitHub / Netlify sont donnés de mémoire (hypothèse) : si un libellé diffère à l'écran, c'est l'écran qui a raison.
 >
@@ -26,14 +27,15 @@ Fabriquée par `tools/essai/construire-copie-essai.sh` (sur la branche) ; le zip
 3. Le projet TEST doit être **actif** (Supabase met en pause les projets gratuits inutilisés : tableau de bord › Restore) et avoir la structure 1.10 (c'est le cas depuis le 05/10, `docs/ESSAIS-SUPABASE-TEST.md`).
 
 ### 0.3 Mettre en ligne (obligatoire : ouverte depuis un simple fichier, la copie démarre mais **sans cloud** — vérifié ; le téléphone a besoin d'une adresse https)
-Je ne sais pas où les copies 1.11/1.12 avaient été hébergées (pas dans le dépôt). Deux façons simples, au choix :
+Je ne sais pas où les copies 1.11/1.12 avaient été hébergées (pas dans le dépôt). **Une seule façon** :
 - **Netlify Drop** (gratuit, sans compte pour un essai ; hypothèse sur l'écran actuel) : `app.netlify.com/drop` → glisse le **dossier** décompressé → une adresse `https://….netlify.app` apparaît. Ferme le site quand l'essai est fini (ou laisse-le expirer).
-- **GitHub Pages** : nouveau dépôt **public** `climpilot-essai` → Add file › Upload files → glisse le contenu du dossier → Settings › Pages › Branch `main` / root → adresse `https://gablry8.github.io/climpilot-essai/`. (Public : la clé anon du projet TEST y sera visible, comme celle du réel l'est déjà dans `cp-gl2607` ; c'est une clé publique par construction.)
-Ne mets **pas** la copie dans `cp-gl2607` ni sur l'adresse de la vraie appli.
+
+**Jamais sous `gablry8.github.io`** (ni un nouveau dépôt GitHub Pages `climpilot-essai`, ni un sous-dossier de `cp-gl2607`). Raison (M4 C1, certain sur un PC) : tous les sites `https://gablry8.github.io/…` ont la **même origine web** que la vraie appli, donc le même stockage du navigateur (même base IndexedDB `climpilot-store`, mêmes clés `cp2_*`) et les mêmes caches hors ligne. La copie afficherait tes **vraies données** et les enverrait sur la base de TEST, ce que tu ferais dans la copie reviendrait dans la vraie appli (qui le synchroniserait **en production**), et chaque service worker effacerait le cache de l'autre (la vraie appli ne s'ouvrirait plus hors ligne). Le script de construction ne change ni le nom de la base ni les clés : seule une **autre origine** (Netlify) sépare les deux.
+Si une copie a déjà été publiée sous `gablry8.github.io` : ne l'ouvre plus et dis-le-moi ; on vérifie d'abord, en lecture seule, l'état de la production.
 
 ### 0.4 Ouvrir
 - **PC** : Chrome/Edge → l'adresse https de la copie → le bandeau rouge doit être visible → connexion avec **ton compte du projet TEST** (pas celui du réel ; si le même e-mail existe sur les deux, le mot de passe est celui du TEST). Si tu vois « COPIE D'ESSAI BLOQUÉE », relis 0.2.
-- **Téléphone** : Safari (iPhone) ou Chrome (Android) → même adresse → Partager › **Sur l'écran d'accueil** → une icône « CP ESSAI », séparée de la vraie (autre adresse = autres données, autre connexion : les deux ne se mélangent pas, certain).
+- **Téléphone** : Safari (iPhone) ou Chrome (Android) → même adresse → Partager › **Sur l'écran d'accueil** → une icône « CP ESSAI », séparée de la vraie. Les deux ne se mélangent pas **parce que** l'adresse Netlify est une autre origine web que `gablry8.github.io` (certain sur PC ; probable sur téléphone, selon que l'icône d'accueil partage ou non le stockage du navigateur — M4 C1). Sous `gablry8.github.io`, elles se mélangeraient (0.3).
 - **Données d'essai réalistes** : sur la vraie appli, Outils › **⤓ Sauvegarde** ; sur la copie (PC), **⤒ Importer** (bouton en haut) → le fichier. La copie synchronise ensuite ces données sur le projet TEST, puis le téléphone-essai les reçoit. **Reste en mode démonstration** sur la copie (numéros `TEST-F-…`) : n'y active jamais la facturation réelle, n'y saisis aucune clé Super PDP réelle.
 - **Fin de l'essai** : supprime l'icône sur le téléphone et le site hébergé ; la base TEST peut garder les données ou être vidée (Outils de la copie, ou SQL `delete from public.climpilot_state;` sur le projet TEST seulement).
 
@@ -51,7 +53,7 @@ Ne mets **pas** la copie dans `cp-gl2607` ni sur l'adresse de la vraie appli.
    ```
    Attendu : une ligne `avant-mise-en-production-M0` datée de maintenant. **Note l'`id`.** Gardée 120 jours (règle existante).
 4. **Liste de contrôle A3, colonne ESSAI** : faite et verte sur la copie d'essai. Sinon, on ne passe pas à A2.
-5. Facultatif mais conseillé : protection de `main` (GitHub › Settings › Branches : fusion interdite si tests rouges) — REFONTE-PLAN P0.
+5. Facultatif mais conseillé : protection de `main` (GitHub › Settings › Branches › « Require status checks » › le travail **« batterie complète »**, pas « rapport — … » : fusion interdite si tests rouges) — REFONTE-PLAN P0, M3 C9.
 
 ### A2. FUSION dans `main` (= publication GitHub Pages, sur tous tes appareils)
 1. Demande de fusion **#4** `fusion/avant-refonte → main` (brouillon) : « Ready for review » puis « Merge » en **merge commit** (pas squash, pour garder l'historique des 5 fusions). Note le numéro du commit de fusion (pour le retour arrière).
@@ -69,7 +71,8 @@ Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le c
 | 3 | Ouvrir un **ancien** devis (d'avant 1.12) | mêmes montants qu'avant, au centime | ☐ | ☐ |
 | 4 | Créer un devis (nature au choix), l'enregistrer | numéro `DV-…`, totaux cohérents, visible sur l'autre appareil après synchro | ☐ | ☐ |
 | 5 | Émettre une facture de **TEST** (mode démonstration) | `TEST-F-2026-NNN` qui **suit** le dernier, sans trou ni doublon | ☐ | ☐ |
-| 5 bis | **Acompte sur le PC, solde sur le téléphone** : facture l'acompte d'un devis sur le PC ; sur le téléphone **en mode avion**, « Facturer le solde » du même devis, puis remets le réseau | le téléphone signale « déjà facturé depuis un autre appareil », reprend l'acompte ; le solde émis ensuite = total − acompte, un seul `TEST-F-` de solde (contrôle demandé par le compte rendu § 4) | ☐ | ☐ |
+| 5 bis | **Acompte sur le PC, solde sur le téléphone « en ligne mais pas à jour »** (protocole M3 C4 ; **hypothèse** : non éprouvé sur un vrai appareil). Dans l'ordre : ① sur le téléphone, ouvre le devis et **commence à taper une note sans valider** (les mises à jour reçues attendent alors le prochain changement d'écran) ; ② sur le PC, facture l'**acompte** du même devis ; ③ attends **1 minute** ; ④ sur le téléphone, clique « Facturer le solde » | au ④ : message « Une facture d'acompte a été émise… depuis un autre appareil… Rien n'a été émis », **aucune** nouvelle facture. Au **2e clic** : solde = total − acompte, un seul `TEST-F-` de solde. Si le téléphone émet un solde au ④ (ou un solde sans l'acompte déduit) : **arrête l'essai et note les numéros** — c'est le cas à risque M3 C1 (contrôle demandé par le compte rendu § 4) | ☐ | ☐ |
+| 5 ter | **Téléphone en mode avion**, « Facturer le solde » d'un devis, puis remets le réseau et attends la synchro | « Facture NON émise », rien de plus ; après le retour du réseau, **aucune** facture n'a été émise par le téléphone. Ce cas ne teste **que** le hors ligne : il ne parcourt pas le chemin « en ligne mais pas à jour » du 5 bis (M3 C4) | ☐ | ☐ |
 | 6 | Synchro entre deux appareils | modification sur le PC visible sur le téléphone, et inversement ; aucune « modification en attente » qui reste | ☐ | ☐ |
 | 7 | Mode avion, rouvrir l'appli | elle s'ouvre, les données sont là, l'écran Planning répond | ☐ | ☐ |
 | 8 | Signature en ligne d'un devis de test (ESSAI : la fonction `signature` 1.10 est déployée sur TEST depuis le 05/10) | lien ouvert sur le téléphone, signature enregistrée | ☐ | ☐ |
@@ -98,6 +101,7 @@ puis :
 2. Les données saisies entre-temps restent ; les écrans 1.11/1.12 disparaissent, leurs données restent dans chaque appareil et dans la sauvegarde `avant-retour-arriere-1.10` (120 jours). Au retour en 1.12 plus tard, elles reviennent d'elles-mêmes depuis les appareils ; sinon, restaure cette sauvegarde (Outils › « Sauvegardes cloud » › Restaurer — depuis un seul appareil, les autres fermés, puis rouvre-les : la restauration écrase l'état serveur, R11 du plan).
 3. **Données perdues ?** Seulement si quelque chose a été cassé : restaure `avant-mise-en-production-M0` (A1) de la même façon ; tu perds alors ce qui a été saisi depuis.
 4. Serveur : rien à faire pour la partie A (aucune migration n'a été appliquée).
+5. **Parade M3 C11** (probable) : un appareil qui **revient en version récente avec des modifications pas encore envoyées** fusionne avec une base serveur qui n'a plus les 10 clés : sa copie locale, peut-être ancienne, peut l'emporter sur la version plus récente du serveur. Donc, sur chaque appareil qui revient (après un retour arrière **ou** après être resté longtemps fermé) : **ouvre l'appli et laisse la synchro finir avant de saisir quoi que ce soit** (attendre qu'il n'y ait plus de « modifications en attente »). Même règle qu'en A1-1. Rappel (certain) : tout appareil resté en 1.10 après la mise en production retire aussi les 10 clés du serveur à sa 1re modification — d'où le F5 sur **chaque** appareil en A2-3.
 
 ---
 

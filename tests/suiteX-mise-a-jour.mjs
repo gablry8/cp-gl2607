@@ -21,17 +21,42 @@ fs.writeFileSync(path.join(ANCIEN, 'sw.js'), swTxt.replace(/^const C='[^']+';/, 
 const cacheActuel = (swTxt.match(/^const C='([^']+)';/) || [])[1];
 rec(G, `sw.js : nom de cache lu (${cacheActuel}), ${listeSw.length} fichiers listés, tous présents sur le disque`, !!cacheActuel && listeSw.every((f) => fs.existsSync(path.join(RACINE, f))), listeSw.filter((f) => !fs.existsSync(path.join(RACINE, f))));
 
-/* serveur de la suite : racine commutable */
+/* serveur de la suite : racine commutable ; /_installer.html est une page synthétique qui n'enregistre QUE le service worker (étape 0) */
 let racine = ANCIEN; const journal = [];
+const INSTALLER = '<!doctype html><meta charset="utf-8"><title>installer</title><script>navigator.serviceWorker.register("sw.js");</script>';
 const srv = http.createServer((req, res) => {
-  const u = decodeURIComponent(req.url.split('?')[0]); const f = path.join(racine, u === '/' ? 'index.html' : u); journal.push(u);
+  const u = decodeURIComponent(req.url.split('?')[0]); journal.push(u);
+  if (u === '/_installer.html') { res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' }); res.end(INSTALLER); return; }
+  const f = path.join(racine, u === '/' ? 'index.html' : u);
   if (!f.startsWith(racine) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end('absent'); return; }
   res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(fs.readFileSync(f));
 });
 await new Promise((r) => srv.listen(8766, '127.0.0.1', r));
 const URL = 'http://localhost:8766/';
 
-const b = await lancerNavigateur(); const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'allow' }); await sansBibliothequesCloud(ctx);
+const b = await lancerNavigateur();
+
+/* 0. M3 C8 (21/10/2026) : le cache rempli par l'INSTALLATION (sw.js, addAll) contient-il tout ce que index.html charge ?
+   Avant ce contrôle, un fichier oublié dans sw.js passait la suite (mutation : ./next-terrain.js retiré, X 7/7) : la page ouverte en ligne
+   le faisait entrer dans le cache par le gestionnaire fetch avant le passage hors ligne. Ici, la page synthétique /_installer.html
+   n'enregistre que le service worker et ne charge rien d'autre : ce qui est dans le cache à la fin de l'installation vient d'addAll seul.
+   Besoins lus dans index.html (scripts src ET data-src, feuilles de style, manifeste, icône) et dans les CSS (polices url()). */
+{
+  racine = RACINE;
+  const idx = fs.readFileSync(path.join(RACINE, 'index.html'), 'utf8');
+  const besoins = new Set(['/', '/index.html']);
+  for (const m of idx.matchAll(/<script[^>]*\s(?:src|data-src)="([^"h][^"]*)"/g)) besoins.add('/' + m[1].split('?')[0]);
+  for (const m of idx.matchAll(/<link rel="(?:stylesheet|manifest|apple-touch-icon)" href="([^"h][^"]*)"/g)) besoins.add('/' + m[1]);
+  for (const css of [...besoins].filter((f) => f.endsWith('.css'))) { const t = fs.existsSync(path.join(RACINE, css)) ? fs.readFileSync(path.join(RACINE, css), 'utf8') : ''; for (const m of t.matchAll(/url\(\s*['"]?(?!data:|https?:)([^'")]+)['"]?\s*\)/g)) besoins.add('/' + m[1].replace(/^\.?\//, '')); }
+  const ctx0 = await b.newContext({ serviceWorkers: 'allow' }); const p0 = await ctx0.newPage(); const errs0 = []; p0.on('pageerror', (e) => errs0.push(String(e).slice(0, 160)));
+  await p0.goto(URL + '_installer.html');
+  const cles = await p0.evaluate(async ([re, n]) => { for (let i = 0; i < 120; i++) { const ks = await caches.keys(); const k = ks.find((x) => new RegExp(re).test(x)); if (k) { const c = await caches.open(k); const l = await c.keys(); if (l.length >= n) return l.map((r) => new URL(r.url).pathname).sort(); } await new Promise((r) => setTimeout(r, 250)); } return null; }, [cacheActuel.replace(/[-.]/g, '\\$&'), listeSw.length]);
+  const manquants = cles ? [...besoins].filter((f) => !cles.includes(f)) : [...besoins];
+  rec(G, `Installation seule (page sans appli) : le cache « ${cacheActuel} » contient tout ce que index.html charge (${besoins.size} fichiers nécessaires, ${cles ? cles.length : 0} en cache)`, !!cles && manquants.length === 0 && errs0.length === 0, j({ manquants, erreurs: errs0, fichiersEnCache: cles ? cles.length : null, requetesServeur: journal.length }));
+  await ctx0.close(); racine = ANCIEN; journal.length = 0;
+}
+
+const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'allow' }); await sansBibliothequesCloud(ctx);
 const p = await ctx.newPage(); const errs = []; p.on('pageerror', (e) => errs.push(String(e).slice(0, 160)));
 await p.route(/supabase/, (r) => r.abort());
 const caches = () => p.evaluate(async () => (await caches.keys()).sort());

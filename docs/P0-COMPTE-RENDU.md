@@ -3,6 +3,7 @@
 > Rédigé le 21/10/2026 par Claude (Fable 5.1) pour Gabriel Leroy, en autonomie de nuit (mission du 20/10 au soir, partie 2).
 > Branche `refonte/p0-filet` créée depuis `fusion/avant-refonte` au hash **`682b9b5`**. **Aucune ligne du code applicatif modifiée** (`index.html`, `next-*.js`, `sw.js`, `supabase/` intacts — vérifié par `git diff --stat 682b9b5 -- index.html next-*.js sw.js supabase/` : vide). `main`, production, bases Supabase : non touchés. Aucun secret.
 > Certitude : **certain** (exécuté ici) / **probable** / **hypothèse**.
+> **Mise à jour du 21/10 (après la relecture M3 d'Opus)** : ce compte rendu décrit l'état au commit `f5a8410`. Depuis : la suite Q est **bloquante** dans un travail CI unique (ses 2 contrôles connus instables sont marqués `INSTABLE`, non bloquants — M3 C5) ; A1 compte les `data-src` et la suite X vérifie le cache à l'installation (M3 C8) ; `persist-credentials: false`, code de sortie 3 sur SKIP non connu et verdict `PARTIEL` avec `CP_SUITES` (M3 C9) ; les 3 références golden « assujetti » sont `À TRANCHER`, non régénérées (M3 C2). Les chiffres et noms de travaux ci-dessous (« sans suite Q », « tests — … ») sont ceux d'avant cette correction.
 
 ## 1. Synthèse (5 lignes)
 1. Le filet est en place : **CI GitHub Actions** (batterie complète à chaque push et demande de fusion, sans secret, validateurs CEN/FNFE et PostgreSQL local inclus) et **9 tests de non-régression T1–T9** sous forme de 6 nouvelles suites (U fusion, V numérotation, W enveloppes/démarrage dégradé, X mise à jour hors réseau, Y golden documents + XML, Z golden calculs), toutes vertes ici.
@@ -93,6 +94,6 @@ Ce que l'appli calcule et qui mérite ton regard (**listé, rien corrigé**) :
 - Aucune règle fiscale ou réglementaire vérifiée ni modifiée.
 
 ## 8. Comment s'en servir
-- Lancer tout : `npm test` (ou `tests/run-all.sh`) ; golden calculs seuls : `npm run test:golden` ; sans la suite Q : `CP_SANS_Q=1 tests/run-all.sh`.
+- Lancer tout : `npm test` (ou `tests/run-all.sh`) ; golden calculs seuls : `npm run test:golden` (rapport PARTIEL, code 3 : débogage) ; sans la suite Q (débogage local) : `CP_SANS_Q=1 tests/run-all.sh` (PARTIEL aussi).
 - Un golden qui échoue = **un comportement a changé**. Lire la différence (le rapport donne la ligne, le montant avant → après, ou la première position du caractère différent), décider, puis seulement si le changement est voulu : `node tests/golden/generer.mjs` (calculs), `node tests/golden/generer-documents.mjs` (documents/XML), `CP_GOLDEN_REGEN=1 node tests/suiteW-enveloppes.mjs` (enveloppes), et commiter les fichiers régénérés **dans le même commit** que le changement.
-- Protection de `main` (geste de Gabriel) : GitHub › Settings › Branches › règle sur `main` › « Require status checks » › choisir **« batterie complète (sans suite Q) »**. Ne pas exiger le travail Q.
+- Protection de `main` (geste de Gabriel) : GitHub › Settings › Branches › règle sur `main` › « Require status checks » › choisir **« batterie complète »** (le travail ; depuis le 21/10 il inclut la suite Q). Ne pas exiger « rapport — batterie complète » (check-run attaché au commit de fusion temporaire sur une demande de fusion, M3 C9.1).

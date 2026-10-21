@@ -25,9 +25,26 @@ export const SCENARIO = `(function(){
   try{ nxPrintAvoir(av2.av.id); docs['avoir-partiel']=html(); close(); }catch(e){ docs['avoir-partiel']='ERREUR '+e; }
   const nums={ 'acompte-386':d1.facAcompte.num, 'solde-380-apres-acompte':d1.facSolde.num, 'solde-380-pro':d2.facSolde.num, 'depannage-380-particulier':DEP.find(o=>o.id==='depX').facNum, 'avoir-381-total':av1.av.num, 'avoir-381-partiel':av2.av.num };
   const xml={}; Object.keys(nums).forEach(k=>{ try{ xml[k]={num:nums[k],xml:nxEinvXML(nums[k]),chk:nxEinvChecks(nums[k])}; }catch(e){ xml[k]={num:nums[k],erreur:String(e)}; } });
-  /* régime assujetti TVA 20 % (bascule 2027) */
-  P.regimeTVA='assujetti'; P.tva=20; Object.assign(P.entreprise,{tvaIntra:'FR32123456789'});
-  const d3=acc[2]; facturerDevis(d3.id,'solde'); docs['facture-solde-assujetti']=html(); close();
+  return {docs,xml};
+})()`;
+
+/* M3 C2 (21/10/2026) : la bascule en régime assujetti se fait COMME DANS L'APPLI (réglage enregistré puis rebuildP(), next-regime.js nxrgApply)
+   et dans une ACTION SÉPARÉE du reste du scénario. Avant, « P.regimeTVA='assujetti' » était posé au milieu de la même action : le cache de
+   calcul (memoCompute, next-mobile.js, installé 400 ms après le chargement) prend l'empreinte des réglages UNE fois par action et renvoyait
+   le résultat en franchise déjà en mémoire — d'où une référence qui dépendait de la vitesse de la machine (152,25 € ou 182,70 €). */
+export const BASCULE_ASSUJETTI = `(function(){
+  const ov=load(LS.over,{}); ov.regimeTVA='assujetti'; ov.tva=20;
+  ov.entreprise=Object.assign({},ov.entreprise||{},P.entreprise,{tvaIntra:'FR32123456789'});
+  save(LS.over,ov); rebuildP();
+  return {regimeTVA:P.regimeTVA,tva:P.tva,memo:!!(window.compute&&window.compute._nxm)};
+})()`;
+/* régime assujetti TVA 20 % (bascule 2027) : facture de solde d'un devis accepté en franchise, puis avoir — référence « À TRANCHER » (suite Y) */
+export const SCENARIO_ASSUJETTI = `(function(){
+  const html=()=>{ const e=document.getElementById('nx-pdf-page'); return e?e.innerHTML:''; };
+  const close=()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.click(); };
+  const docs={}, xml={};
+  const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0);
+  const d3=acc[2]; /* même devis que dans la référence figée (3e devis accepté : ni acompte ni solde avant la bascule) */ facturerDevis(d3.id,'solde'); docs['facture-solde-assujetti']=html(); close();
   xml['solde-380-assujetti']={num:d3.facSolde.num,xml:nxEinvXML(d3.facSolde.num),chk:nxEinvChecks(d3.facSolde.num)};
   const av3=nxCreateAvoir({facNum:d3.facSolde.num,montant:50,motif:'Remise'}); xml['avoir-381-assujetti']={num:av3.av.num,xml:nxEinvXML(av3.av.num),chk:[]};
   return {docs,xml};

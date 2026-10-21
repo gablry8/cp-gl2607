@@ -11,6 +11,13 @@ const H = '2027-09-15T08:30:00+02:00'; // un mercredi de septembre 2027, entrepr
 const K = carnet('recette');
 let ETAPE = '';
 const r = (nom, ok, detail, captures) => { rec(G, nom, ok, detail); K.etape({ partie: ETAPE, nom, ok: ok === true ? 'PASS' : ok === false ? 'FAIL' : String(ok), detail: detail == null ? '' : String(detail).slice(0, 400), captures: (captures || []).filter(Boolean) }); };
+/* M3 C5 (21/10/2026) : DEUX contrôles de cette suite sont connus INSTABLES par construction du test, pas de l'appli (prouvé par Opus,
+   copie instrumentée : « acompte » dépend de ce que le téléphone a déjà rapproché au moment du clic — l'appli a raison dans les deux cas ;
+   « voile » suppose que le PC relit les données au retour sur la fenêtre, ce qui n'est pas toujours vrai — les données finissent justes).
+   Un échec de ces deux contrôles est enregistré « INSTABLE » : listé dans le rapport, jamais compté comme réussi, non bloquant.
+   Les 60 autres contrôles de la suite restent bloquants (ils sont les seuls à tester la synchro entre deux appareils).
+   À corriger ensuite (M3 C5, propositions 1 et 2) : retirer la course du test « acompte », attendre le repos du PC pour « voile ». */
+const rInstable = (nom, ok, detail, captures) => r(nom, ok === true ? true : 'INSTABLE', (ok === true ? '' : 'INSTABLE (M3 C5 : défaut connu du test, non bloquant) — ') + (detail == null ? '' : String(detail)), captures);
 const PARTIES = (process.env.CP_Q_PARTIES || '').split(',').filter(Boolean); // débogage : CP_Q_PARTIES=4,5
 const partie = (n) => !PARTIES.length || PARTIES.includes(String(n));
 const lireCles = (S, re) => Object.keys((S.etat && S.etat.data) || {}).filter((k) => re.test(k));
@@ -526,7 +533,7 @@ try {
   const nApresY = S7.docs.length;
   r('Avoir PARTIEL fait sur le PC : le téléphone pas à jour ne refacture pas le chantier (la facture reste due), il reprend ' + fX,
     !!fX && /^AV-/.test(String(av)) && nApresX === n0 && tX === fX, j({ fX, avoir: av, tX, docs: S7.docs.map((d) => d.num) }));
-  r('Acompte facturé sur le PC : le téléphone pas à jour ne facture pas un solde qui l’ignore ; il reprend l’acompte et s’arrête',
+  rInstable('Acompte facturé sur le PC : le téléphone pas à jour ne facture pas un solde qui l’ignore ; il reprend l’acompte et s’arrête',
     !!aY && nApresY === nApresX && tY.solde === null && tY.acompte === aY.num, j({ acompte: aY, tY, docs: S7.docs.map((d) => d.num), dialogues: TEL7.dialogues.slice(-1).map((d) => d.msg.slice(0, 160)) }));
   /* 4. relancé ensuite : le solde tient compte de l'acompte */
   TEL7.reponses.push(true, true);
@@ -684,7 +691,7 @@ const cGel = voile ? await K.capture(PC10, 'pc-voile-mise-a-jour') : null;
 await PC10.p.waitForTimeout(2500); await calme(S10, PC10);
 await noter(PC10, ids10[2], 'Après le rechargement'); await pret(S10, PC10);
 const apresA = { pc: await lire(S10, PC10, () => DEP.some((d) => d.id === 'dep-tel-q10')), srv: (S10.etat.data.cp2_dep || []).some((d) => d.id === 'dep-tel-q10') };
-r('Pendant le rechargement qui suit une mise à jour : voile sur l’écran, l’état d’avant n’est pas réenregistré, l’intervention du téléphone reste partout',
+rInstable('Pendant le rechargement qui suit une mise à jour : voile sur l’écran, l’état d’avant n’est pas réenregistré, l’intervention du téléphone reste partout',
   voile && pendant.dessus === 'cpGel' && pendant.stale === false && pendant.dirty === false && apresA.pc && apresA.srv, j({ voile, pendant, apresA }), [cGel]);
 /* b. enregistrement pendant un envoi réussi, puis mise à jour reçue avant l'envoi suivant */
 await pret(S10, TEL10); await revenir(S10, TEL10);

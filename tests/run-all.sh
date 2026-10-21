@@ -55,12 +55,12 @@ etape() { # etape <nom> <commande…> : journal dans journaux/<nom>.log, code de
 
 etape autotest-isolation node "$ICI/isolation/autotest.mjs"
 # P0 (21/10/2026) : nouvelles suites U V W X Y Z (fusion, numérotation, enveloppes, mise à jour, golden documents/XML, golden calculs).
-# Suite Q (recette deux appareils, chronométrée) : INSTABLE sur machine chargée (M0, 20/10 : 2 contrôles qui échouent selon la charge,
-# jamais le même ; les données étaient toujours justes). CP_SANS_Q=1 la retire de ce passage ; la CI la joue dans un travail SÉPARÉ,
-# visible mais non bloquant (.github/workflows/tests.yml). Elle n'est pas masquée : son résultat apparaît toujours. À stabiliser (P3).
+# Suite Q (recette deux appareils) : BLOQUANTE comme les autres, en CI aussi (M3 C5, 21/10/2026). Ses 2 seuls contrôles connus instables
+# (« acompte », « voile » : défauts du test, pas de l'appli) sont enregistrés « INSTABLE » par la suite elle-même — non bloquants, listés
+# dans le rapport. CP_SANS_Q=1 (débogage local seulement) la retire de ce passage : le rapport est alors « PARTIEL » (code 3).
 SUITES_DEFAUT="suiteA suiteB suiteC suiteD-memoire suiteE-avoirs suiteF-einvoice suiteG-virgule suiteH-superpdp suiteI-emission suiteJ-particuliers suiteK-fiscal suiteL-documents suiteM-adresse-copie suiteN-passage-reel suiteO-objectifs suiteP-ameliorations suiteQ-recette suiteR-fiabilite suiteS-planning suiteT-terrain suiteU-fusion suiteV-numerotation suiteW-enveloppes suiteX-mise-a-jour suiteY-golden-docs suiteZ-golden"
-if [ "${CP_SANS_Q:-0}" = 1 ]; then SUITES_DEFAUT=${SUITES_DEFAUT/suiteQ-recette /}; echo "suiteQ-recette" > "$CP_TEST_OUT/separees.txt"; echo "suiteQ-recette         SÉPARÉE (CP_SANS_Q=1 : suite chronométrée instable, jouée à part — voir tests/run-all.sh)"; fi
-# CP_SUITES (liste réduite) : les suites non demandées sont notées « jouées à part » dans le rapport, pas « non exécutées »
+if [ "${CP_SANS_Q:-0}" = 1 ]; then SUITES_DEFAUT=${SUITES_DEFAUT/suiteQ-recette /}; echo "suiteQ-recette" > "$CP_TEST_OUT/separees.txt"; echo "suiteQ-recette         ÉCARTÉE (CP_SANS_Q=1, débogage local : rapport PARTIEL, code 3)"; fi
+# CP_SUITES (liste réduite, débogage) : les suites non demandées sont notées « non jouées dans ce passage » ; le rapport est PARTIEL (code 3), pas « COMPLET »
 if [ -n "${CP_SUITES:-}" ]; then for s in $SUITES_DEFAUT; do case " $CP_SUITES " in *" $s "*) ;; *) echo "$s" >> "$CP_TEST_OUT/separees.txt";; esac; done; fi
 for s in ${CP_SUITES:-$SUITES_DEFAUT}; do
   etape "$s" timeout 1200 node "$ICI/$s.mjs"

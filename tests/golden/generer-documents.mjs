@@ -3,7 +3,7 @@
 // À lancer seulement après accord de Gabriel sur un changement vu et expliqué : node tests/golden/generer-documents.mjs
 import fs from 'fs'; import path from 'path'; import { fileURLToPath } from 'url';
 import { HORLOGE } from './cas-calculs.mjs';
-import { SCENARIO, normaliserHTML, normaliserXML } from './scenario-documents.mjs';
+import { SCENARIO, BASCULE_ASSUJETTI, SCENARIO_ASSUJETTI, normaliserHTML, normaliserXML } from './scenario-documents.mjs';
 import { pageFigee, fermer } from './page-figee.mjs';
 import { SEED } from '../lib.mjs';
 const ICI = path.dirname(fileURLToPath(import.meta.url));
@@ -11,9 +11,15 @@ export async function releverDocuments() {
   const { p, ctx, errs } = await pageFigee({ horloge: HORLOGE });
   await p.evaluate(SEED);
   const r = await p.evaluate(SCENARIO);
+  /* M3 C2 : le cache de calcul (memoCompute) doit être installé AVANT la bascule, sinon le résultat dépend de la vitesse de la machine ;
+     la bascule et la facturation assujettie sont ensuite deux actions séparées (p.evaluate), comme deux clics dans l'appli */
+  await p.waitForFunction(() => typeof window.compute === 'function' && window.compute._nxm === true, null, { timeout: 5000 }).catch(() => {});
+  const bascule = await p.evaluate(BASCULE_ASSUJETTI);
+  if (!bascule.memo) errs.push('memoCompute non installé avant la bascule (référence assujetti non reproductible)');
+  const r2 = await p.evaluate(SCENARIO_ASSUJETTI);
   const docs = {}, xml = {};
-  for (const [k, v] of Object.entries(r.docs)) docs[k] = normaliserHTML(v);
-  for (const [k, v] of Object.entries(r.xml)) xml[k] = v.erreur ? { erreur: v.erreur, num: v.num } : { num: v.num, xml: normaliserXML(v.xml), chk: v.chk };
+  for (const [k, v] of Object.entries({ ...r.docs, ...r2.docs })) docs[k] = normaliserHTML(v);
+  for (const [k, v] of Object.entries({ ...r.xml, ...r2.xml })) xml[k] = v.erreur ? { erreur: v.erreur, num: v.num } : { num: v.num, xml: normaliserXML(v.xml), chk: v.chk };
   await ctx.close();
   return { docs, xml, errs };
 }

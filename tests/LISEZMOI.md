@@ -44,7 +44,10 @@ un validateur absent = **SKIP**. Aucun de ces cas n'est compté comme réussi.
 | `BRFR_DIR` | dossier `France_RFE` | contrôles BR-FR en SKIP |
 | `PGHOST`, `PGPORT` | banc PostgreSQL local (socket) | tests SQL NON EXÉCUTÉS |
 | `CP_SANS_NETNS=1` | accepter de tourner sans isolation du noyau | le script s'arrête si `unshare -n` est impossible |
-| `CP_SUITES` | liste réduite de suites (débogage) | toutes |
+| `CP_SUITES` | liste réduite de suites (débogage) ; le rapport est alors **PARTIEL** (code 3), jamais « COMPLET » | toutes |
+| `CP_SANS_Q=1` | retire la suite Q (débogage local seulement ; rapport PARTIEL, code 3). En CI, Q est jouée et bloquante | Q jouée |
+
+Statuts d'un contrôle dans le rapport (M3 C5/C9, 21/10/2026) : `PASS` ; `FAIL` (bloquant) ; `SKIP` (non vérifié, rend le passage INCOMPLET — sauf les 2 SKIP connus de l'autotest d'isolation sans `unshare -n`) ; `INSTABLE` (suite Q : 2 contrôles au défaut de test connu, non bloquants, listés) ; `À TRANCHER` (suite Y : références « assujetti » en attente d'une décision de Gabriel, non bloquantes, listées). Les deux derniers ne sont **jamais** comptés comme réussis. Codes de sortie de `run-all.sh` : 0 complet et tout réussi ; 1 échec ; 3 incomplet ou partiel.
 
 ### Banc PostgreSQL local (tests SQL)
 
