@@ -4,7 +4,7 @@
 import { lancerNavigateur, URL_LOCALE, surveiller } from '../env.mjs';
 import { sansBibliothequesCloud } from '../lib.mjs';
 let b = null;
-export async function pageFigee({ horloge, mobile = false, assujetti = false, init = null } = {}) {
+export async function pageFigee({ horloge, mobile = false, assujetti = false, init = null, routes404 = [], attendrePret = true } = {}) {
   if (!b) b = await lancerNavigateur();
   const ctx = await b.newContext(mobile ? { viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 3 } : { viewport: { width: 1300, height: 900 } });
   await sansBibliothequesCloud(ctx);
@@ -15,12 +15,12 @@ export async function pageFigee({ horloge, mobile = false, assujetti = false, in
   p.on('dialog', (d) => d.accept().catch(() => {}));
   await p.route(/supabase/, (r) => r.abort());
   await p.route(/cdnjs|tesseract|unpkg|cdn\.jsdelivr|data\.geopf\.fr|fonts\.googleapis/, (r) => r.abort());
+  for (const re of routes404) await p.route(re, (r) => r.fulfill({ status: 404, body: 'absent (test)' }));
   if (horloge) await p.clock.setFixedTime(new Date(horloge));
   if (assujetti) await p.addInitScript(() => { try { localStorage.setItem('cp2_params_over', JSON.stringify({ regimeTVA: 'assujetti', tva: 20 })); } catch (e) {} });
   if (init) await p.addInitScript(init);
   await p.goto(URL_LOCALE + 'index.html');
-  await p.waitForFunction(() => window.nxStore && nxStore.ready && typeof window.NXD2 === 'object' && typeof window.compute === 'function', null, { timeout: 30000 });
-  await p.waitForTimeout(600);
+  if (attendrePret) { await p.waitForFunction(() => window.nxStore && nxStore.ready && typeof window.NXD2 === 'object' && typeof window.compute === 'function', null, { timeout: 30000 }); await p.waitForTimeout(600); }
   return { p, ctx, errs };
 }
 export async function fermer() { if (b) { await b.close(); b = null; } }
