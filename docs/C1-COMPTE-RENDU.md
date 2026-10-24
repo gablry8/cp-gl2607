@@ -3,6 +3,7 @@
 > Rédigé le 21/10/2026 par Claude (Fable 5.1) pour Gabriel Leroy. Branche **`correctif/c1-registre-illisible`**, créée depuis `refonte/p0-filet` (`ecf7329`, P0 corrigé après M3/M4). Dossier : `MISSION-F-C1-C3.md`, décisions de Gabriel (section 8) appliquées.
 > Méthode : **tests d'abord** (rouges sur le code d'avant, preuve conservée), puis correction appli + serveur, puis tests verts, puis batterie complète. Aucun appel à un Supabase réel ni de TEST : PostgreSQL 16 local et serveur simulé seulement. **Rien n'est fusionné, rien n'est appliqué sur un projet Supabase** : la migration attend ton essai sur ClimPilot-TEST, puis ton geste sur le réel.
 > Certitude : **certain** (exécuté ici), **probable** (déduit), **hypothèse**.
+> **Complété le 24/10/2026 (§ 9)** après tes essais sur la copie : erreur réseau *pendant* l'appel au serveur → « Résultat INCONNU » et non « NON émise » (supabase-js rend `{error, status:0}` sans rejeter la promesse). Commit `d5fab50`, tests d'abord, batterie complète rejouée, rien de fusionné.
 
 ## 1. Synthèse (5 lignes)
 
@@ -113,4 +114,48 @@ Rejeu après correction des deux tests de la suite R (commit `b6d7eb4`), suites 
 - Le comportement d'une appli **1.10** face au nouveau serveur : déduit du code (« réponse vide »), pas exécuté.
 - Aucune règle fiscale ou réglementaire touchée ni vérifiée (hors périmètre).
 
-*Fin du compte rendu C1. Prochaine étape : tes réponses (§ 7.1), ton essai sur TEST (§ 7.2-7.3), puis C3.*
+## 9. Correction du 24/10/2026 — erreur réseau PENDANT l'émission : « Résultat INCONNU », pas « NON émise »
+
+> Après tes essais sur la copie (base TEST) du 24/10 : 5 bis OK ; mode avion + Wi-Fi coupé → « Facture NON émise », rien émis, puis réseau revenu → solde F-2026-004 = 126 − 37,80 = 88,20 €, registre TEST 4 factures, 0 doublon. Commit `d5fab50` sur `correctif/c1-registre-illisible`, **rien n'est fusionné**.
+
+### 9.1 Le défaut (certain, lu dans `vendor/supabase-js-2.117.3.umd.js` puis reproduit)
+`demanderServeur()` ne connaissait que deux issues : une promesse **rejetée** (délai 25 s dépassé, ou réseau coupé dans l'ancien banc) → `inconnu()` ; une réponse `{error}` → `bloque()` « Facture NON émise… Rien n'a été facturé ». Or supabase-js 2.117.3 **ne rejette pas** la promesse quand `fetch` échoue (sans `throwOnError`) : il **résout** `{error:{message:'TypeError: Failed to fetch', details:'', hint:'', code:''}, data:null, status:0}`. Le réseau coupé *pendant* l'appel passait donc par `bloque()`, et l'appli affirmait « rien n'a été facturé » alors que la demande a pu arriver au serveur et la facture être enregistrée. Ton essai « mode avion avant le clic » ne pouvait pas le montrer : là, c'est `sonde()` (ou la lecture du registre) qui échoue en premier, et « NON émise » est juste. Le défaut n'apparaît que si la coupure survient entre la lecture du registre et la réponse du serveur.
+
+### 9.2 Ce qui a changé (un seul fichier applicatif, `next-emission.js`, +11 lignes)
+- `erreurReseau(r)` : `status === 0`, ou message commençant par `TypeError` / `FetchError` / `AbortError`, ou contenant `Failed to fetch` (Chrome), `Load failed` (Safari), `NetworkError` (Firefox).
+- `demanderServeur()` : si `erreurReseau(r)` → `inconnu(r.error)` (« Résultat INCONNU (TypeError: Failed to fetch)… la facture a PEUT-ÊTRE été enregistrée… Réessaie depuis CET appareil… ») et retour `{inconnu:true}` ; la demande **reste en attente** (même `request_id` au prochain clic). Avant ce test, toute autre `{error}` suit le chemin d'avant (`bloque`, migration absente, « ClimPilot doit être mis à jour »).
+- Rien d'autre : `sonde()` garde son comportement (une erreur réseau à la sonde = rien n'est parti → « NON émise » reste juste) ; l'avoir (`nxAvoirEmit`) passe par le même `demanderServeur` et gérait déjà `inconnu`. `index.html`, `sw.js` et les autres fichiers sont intacts (`git diff --stat` : 3 fichiers, 47 lignes, tous ajouts).
+
+### 9.3 Tests d'abord (certain)
+- `tests/serveur-simule.mjs` : `erreurReseauBib()` = la forme exacte de la bibliothèque ; deux cas : `fail.perdreReponseBib` (le document **est** enregistré, puis la bibliothèque rend `{error, status:0}`) et `fail.reseauCoupeBib` (coupure **avant** l'arrivée : rien d'enregistré, même réponse). L'ancien `fail.perdreReponse` (promesse rejetée) est conservé : il couvre le délai dépassé.
+- `tests/suiteI-emission.mjs`, bloc **I4b**, 5 contrôles : message « Résultat INCONNU » et jamais « NON émise » ; rien d'appliqué, demande en attente avec le `request_id` que le serveur a servi ; nouvelle tentative → la **même** facture (F-AAAA-001), un seul document ; coupure avant l'arrivée → INCONNU aussi, puis une seule facture (F-AAAA-002) sous le même `request_id` ; aucune erreur JavaScript.
+- **Rouge d'abord** sur `20682d6` : suite I **36 PASS, 2 FAIL** — les deux contrôles de message, avec la preuve dans le détail : « Facture NON émise : serveur injoignable (TypeError: Failed to fetch). Rien n'a été facturé » alors que `docs1:1` (la facture est au registre simulé) et que la nouvelle tentative retrouvait bien F-2026-001. Journal gardé : `avant-I/journaux/suiteI-emission.log` (dossier de sortie remis avec ce compte rendu).
+- **Vert après** (`d5fab50`) : **I 38/38**, puis **N 37/37, R 42/42, AA 16/16, Q 62/62** (aucun INSTABLE ce passage).
+
+### 9.4 Batterie complète
+Passage complet sur `d5fab50` (Q comprise, validateurs CEN `validation-1.3.16` et FNFE `v1.4.0.04`, PostgreSQL 16 local, `unshare -n`, 0 connexion externe établie) : **1 078 réussis, 3 échoués, 0 SKIP, 6 non bloquants** (1 INSTABLE Q « acompte », connu ; 5 À TRANCHER Y, inchangés — M3 C2). **SQL 51/51** (17 pour C1). Golden calculs (Z, 55) et documents (Y, 21) **identiques** : aucun montant ne bouge. Les 3 échecs, un par un, **aucun lié au changement** :
+
+| Étape | Échec | Cause | Vérification |
+|---|---|---|---|
+| `autotest-isolation` (1/20) | « seule la boucle locale existe » : `lo v0 v1` | la paire `veth` que j'ai dû ajouter pour Chromium 153 (§ 9.6.1) — par construction | les 19 autres contrôles d'isolation verts ; « connexions externes réellement établies : 0 » |
+| `suiteP-ameliorations` (1/138) | « Adresse avec une valeur inconnue… » : vue `nx_journee` au lieu de `dash` | course entre la lecture de la vue de départ (2,3 s) et le basculement automatique vers « Ma journée » (1,4 s après l'amorçage) — un délai de test, pas l'appli ; sans rapport avec l'émission | **rejouée seule : 138/138** |
+| `suiteT-terrain` (plantage) | `C.veille.find(…)` indéfini à T3 | **on est samedi** : `joursVeille()` (next-messages.js) ne propose pas « demain » le samedi (il saute au lundi), et le test sème des rendez-vous « demain » sans tenir compte du jour — défaut du test lié à la date (le dossier P0 notait déjà que le côté Node des suites utilise la vraie date). Verte mardi 21/10 ; le sera lundi. Pas d'émission dans cette suite | lecture du code (certain) ; non rejouable aujourd'hui sans fausser la date de Node |
+
+`suiteX-mise-a-jour` avait aussi 1 rouge dans le passage complet (« hors ligne après mise à jour » : `navigator.onLine` resté vrai) : c'est encore la `veth` (Chromium se croit en ligne). **Rejouée seule dans l'espace isolé sans veth : 8/8.** `fn-apps-script` : vert (12/12, le changement d'heure est passé).
+
+Bilan : **aucune régression** ; les 3 rouges sont deux artefacts du banc d'aujourd'hui (version de Chromium) et un test dépendant du jour de la semaine.
+
+### 9.5 Ce que ça change pour toi
+- Si le réseau tombe **pendant** le clic « Facturer » (entre la lecture du registre et la réponse) : message « Résultat INCONNU » au lieu de « NON émise ». Tu refais le même clic, **depuis le même appareil** : si la facture était passée, elle est reprise (même numéro, pas de doublon) ; sinon elle est émise. Ne la refais pas depuis un autre appareil (le serveur refuserait de toute façon un doublon de source depuis C1, mais le message serait moins clair).
+- Tes essais du 24/10 restent valables : « mode avion avant le clic » donne toujours « NON émise », à juste titre.
+- Pour vérifier le nouveau cas sur un vrai téléphone, il faudrait couper le réseau **au moment précis** de l'envoi : difficile à provoquer à la main ; c'est le banc qui le couvre (hypothèse : sur un vrai appareil, le message exact de Safari est « TypeError: Load failed », couvert par `erreurReseau`).
+
+### 9.6 Découvertes en passant (non corrigées, hors C1)
+1. **Banc de test et Chromium récent** (certain ici) : la machine d'aujourd'hui a Playwright 1.63 / Chromium 153 (le dépôt fige 1.56.1 / Chromium 141, et Chromium 141 ne se télécharge pas d'ici). Dans l'espace réseau isolé, Chromium 153 **ignore** `Network.emulateNetworkConditions{offline:false}` (`env.mjs`) : `navigator.onLine` reste `false`, l'appli refuse d'émettre (« pas de réseau ») et toute la partie « mode réel » de la batterie plante (suite I s'arrête à I5 sur le code d'origine, sans mon changement). Contournement **hors dépôt** pour ce passage : une paire `veth` sans route dans l'espace isolé (Chromium se croit en ligne ; `curl`/`socket` vers l'extérieur : « Network is unreachable », 0 connexion établie). Conséquence : le contrôle d'isolation « seule la boucle locale existe » est rouge **par construction** (interfaces `lo v0 v1`), les autres contrôles d'isolation et le compte « connexions externes réellement établies : 0 » restent probants. La CI, qui respecte le figeage, n'est pas touchée ; à régler en P0 le jour où la version de Playwright est montée.
+2. `fail.horsService` du serveur simulé rejette encore la promesse (`Promise.reject`), ce que la vraie bibliothèque ne fait pas : les suites I3/I3b restent justes (l'échec est pris à la sonde, même issue), mais le banc gagnerait à rendre la forme réelle partout. Non changé ici pour ne pas élargir C1.
+
+### 9.7 Ce que tu fais maintenant
+Rien de plus que § 7 : la correction est sur la branche (`d5fab50` + ce compte rendu), **pas fusionnée**. Une nouvelle copie d'essai construite depuis la branche corrigée est dans « Claude outputs » (`ClimPilot-ESSAI-1131-fusion.zip`, même nom de cache : le service worker est « réseau d'abord », la nouvelle `next-emission.js` est servie dès la première ouverture en ligne) ; seul `next-emission.js` change par rapport à ta copie du 21/10. Puis fusion, migration sur le réel, puis C3.
+
+*Fin du compte rendu C1 (complété le 24/10/2026, § 9). Prochaine étape : fusion de la branche quand tu le décides, migration sur le réel, puis C3.*
+
