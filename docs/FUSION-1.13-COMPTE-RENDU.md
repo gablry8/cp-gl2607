@@ -34,7 +34,8 @@ Le nom de cache n'est pas comparé numériquement : le service worker supprime t
 ## 3. Vérification
 - Suites locales sur `5d012cf` : **A 14/14, P 138/138 (nom de cache), X 8/8 (mise à jour hors réseau), V 8/8 ; I 38/38 et N 37/37** (ces deux-là hors espace réseau isolé : Chromium 153 local, artefact connu C1 § 9.6 ; dans `unshare -n` elles plantent à I5/N1 **avant et après** le changement, donc sans rapport).
 - I7 (certain) : la version envoyée au serveur par `cpStatePushRpc` est bien `window.CP_VERSION` = `1.13.0`.
-- **CI GitHub sur `5d012cf` : passage #17 en cours au moment de ce commit — verdict reporté ici dès réception**.
+- **CI GitHub** : passage #18 sur `ed7a5a8` (23:04 UTC) : **1 100 réussis, 1 échoué** — `suiteR-fiabilite`, contrôle « date affichée » de l'export complet : la page est en Europe/Paris (25/10 après minuit), le runner GitHub en UTC (encore le 24/10) ; le test comparait les deux dates « locales ». **Défaut du test, pas de l'appli** (certain : rejoué ici à 23:06 UTC, rouge avant / 42/42 après la correction `timeZone:'Europe/Paris'`, commit suivant). Même famille que la suite T du 24/10 : c'est le 5e test dépendant de l'horloge réelle trouvé en deux jours (R12) — P0-suite doit figer les 3 restants (E:53, N:30, V:11). Verdict du passage suivant reporté ci-dessous.
+- **CI GitHub sur le commit de tête : {{CI2}}**.
 - Golden calculs (Z) et documents (Y) : identiques (aucun calcul touché ; les 5 « À TRANCHER » M3 C2 restent en attente de ta comptable).
 - Secrets : `grep eyJ|sk-ant|@gmail|IBAN|FR76` sur les fichiers modifiés : rien. La clé anon du projet **TEST** est dans le zip de la copie d'essai **seulement** (jamais dans le dépôt).
 
