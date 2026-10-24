@@ -5,6 +5,13 @@ import fs from 'fs'; import path from 'path'; import vm from 'vm'; import { file
 const ICI = path.dirname(fileURLToPath(import.meta.url));
 const SRC = fs.readFileSync(path.join(ICI, '../../tools/apps-script/ClimPilot-Agenda.gs'), 'utf8');
 const R = []; const rec = (n, ok, d) => R.push([ok === true ? 'PASS' : 'FAIL', n, ok === true ? '' : JSON.stringify(d)]);
+/* 24/10/2026 : « aujourd'hui » FIGÉ (mardi 06/10/2026 10:00, Paris) dans le test ET dans le script (Date injectée dans le contexte vm),
+   au lieu de la vraie date : même résultat quel que soit le jour du passage. Aucun jour testé (j(0) à j(12)) n'y est un jour de changement
+   d'heure ; la fenêtre de 60 jours traverse le 25/10 (calcul « calendrier » du script vérifié). Le changement d'heure est testé à part (dates fixes).
+   Avec la vraie date, le contrôle « 12 h – 13 h » échouait 4 jours avant chaque changement d'heure (21/10/2026, 24/03/2027) : le script
+   (heure_ = heures écoulées depuis minuit) décale d'une heure un rendez-vous ce jour-là — défaut du script, non corrigé ici (hors tests/). */
+const REF = new Date('2026-10-06T10:00:00+02:00');
+class DateFigee extends Date { constructor(...a) { if (a.length) super(...a); else super(REF.getTime()); } static now() { return REF.getTime(); } }
 
 function faux(occupations, evPrincipal) {
   const envois = [], logs = [];
@@ -14,7 +21,7 @@ function faux(occupations, evPrincipal) {
   const mkEv = (evs) => (e) => ({ getStartTime: () => e.d, getEndTime: () => e.f, getDescription: () => e.desc || '', isAllDayEvent: () => !!e.jour,
     getMyStatus: () => e.statut || 'YES', getTransparency: () => e.dispo ? 'TRANSPARENT' : 'OPAQUE', deleteEvent: () => { evs.splice(evs.indexOf(e), 1); } });
   const principal = mkCal('principal', evPrincipal), agendas = [];
-  const g = {
+  const g = { Date: DateFigee,
     console: { warn: (m) => logs.push(m), log() {} },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => ({ AGENDA_URL: 'https://fn.exemple/agenda', AGENDA_CLE: 'cle-de-test-assez-longue-1234' })[k] || null }) },
     Session: { getScriptTimeZone: () => 'Europe/Paris' },
@@ -31,7 +38,7 @@ function faux(occupations, evPrincipal) {
   vm.createContext(g); vm.runInContext(SRC, g);
   return { g, envois, logs, principal, agendas };
 }
-const j = (n) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return d; };
+const j = (n) => { const d = new Date(REF.getTime()); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + n); return d; };
 const iso = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Paris', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
 const h = (n, hh, mm = 0) => { const d = j(n); d.setHours(hh, mm); return d; };
 

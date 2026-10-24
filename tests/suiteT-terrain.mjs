@@ -5,7 +5,12 @@ import { ecrireResultats, out } from './env.mjs';
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
 const j=o=>JSON.stringify(o);
 
-const {p,ctx,errs}=await page({mobile:false});
+/* 24/10/2026 : horloge du navigateur FIGÉE au mardi 20/10/2026 10:00 (date de référence des suites golden, golden/cas-calculs.mjs).
+   L'appli (joursVeille, next-messages.js) ne propose pas « demain » le samedi (elle passe au lundi) et ajoute le lundi le vendredi :
+   avec la vraie date, le rendez-vous semé « demain » sortait de la veille le samedi → plantage du 24/10 en CI (C.veille.find indéfini).
+   Toutes les dates de cette suite sont calculées DANS la page (aucune côté Node) : figer la page suffit. Valeur fixe, CP_HORLOGE ignorée ici. */
+const HORLOGE_T='2026-10-20T10:00:00+02:00';
+const {p,ctx,errs}=await page({mobile:false,horloge:HORLOGE_T});
 await seed(p);
 await p.waitForFunction(()=>typeof window.nxmsgCandidats==='function'&&typeof window.nxtrTournee==='function'&&window.nxjAjouts&&window.nxjAjouts.length>=4,null,{timeout:15000});
 /* jeu : un chantier demain matin (client avec tel+mail), un dépannage demain après-midi, un contrat dont la visite est dans 10 jours, un chantier accepté dans 3 jours sans matériel réservé */

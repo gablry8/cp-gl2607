@@ -33,8 +33,10 @@ export async function page(opts={}){
   if(opts.depart!==false) await p.addInitScript(()=>{ try{ if(!localStorage.getItem('cpnext_home')) localStorage.setItem('cpnext_home',JSON.stringify({adr:"1 Rue de l'Exemple 60000 Beauvais",lon:2.0807,lat:49.4295,source:'manuel'})); }catch(e){} });
   if(opts.init) await p.addInitScript(opts.init);
   /* P0 (T9, 21/10/2026) : horloge figée OPTIONNELLE pour toute la batterie — CP_HORLOGE=2026-10-20T10:00:00+02:00 par exemple.
-     Pas activée par défaut : le côté Node des suites utilise encore la vraie date (R12). Les suites golden (Y, Z) figent la leur. */
-  if(process.env.CP_HORLOGE) await p.clock.setFixedTime(new Date(process.env.CP_HORLOGE));
+     Pas activée par défaut : le côté Node des suites utilise encore la vraie date (R12). Les suites golden (Y, Z) figent la leur.
+     24/10/2026 : une suite peut figer la sienne par opts.horloge (prioritaire sur CP_HORLOGE), pour un résultat identique quel que soit le jour réel. */
+  const horloge=opts.horloge||process.env.CP_HORLOGE;
+  if(horloge) await p.clock.setFixedTime(new Date(horloge));
   await p.goto(URL_LOCALE+'index.html');
   await p.waitForTimeout(opts.wait||2200);
   return {p,ctx,errs};
