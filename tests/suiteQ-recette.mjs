@@ -11,13 +11,16 @@ const H = '2027-09-15T08:30:00+02:00'; // un mercredi de septembre 2027, entrepr
 const K = carnet('recette');
 let ETAPE = '';
 const r = (nom, ok, detail, captures) => { rec(G, nom, ok, detail); K.etape({ partie: ETAPE, nom, ok: ok === true ? 'PASS' : ok === false ? 'FAIL' : String(ok), detail: detail == null ? '' : String(detail).slice(0, 400), captures: (captures || []).filter(Boolean) }); };
-/* M3 C5 (21/10/2026) : DEUX contrôles de cette suite sont connus INSTABLES par construction du test, pas de l'appli (prouvé par Opus,
-   copie instrumentée : « acompte » dépend de ce que le téléphone a déjà rapproché au moment du clic — l'appli a raison dans les deux cas ;
-   « voile » suppose que le PC relit les données au retour sur la fenêtre, ce qui n'est pas toujours vrai — les données finissent justes).
-   Un échec de ces deux contrôles est enregistré « INSTABLE » : listé dans le rapport, jamais compté comme réussi, non bloquant.
-   Les 60 autres contrôles de la suite restent bloquants (ils sont les seuls à tester la synchro entre deux appareils).
-   À corriger ensuite (M3 C5, propositions 1 et 2) : retirer la course du test « acompte », attendre le repos du PC pour « voile ». */
-const rInstable = (nom, ok, detail, captures) => r(nom, ok === true ? true : 'INSTABLE', (ok === true ? '' : 'INSTABLE (M3 C5 : défaut connu du test, non bloquant) — ') + (detail == null ? '' : String(detail)), captures);
+/* M3 C5 (21/10/2026) : deux contrôles (« acompte » en Q7, « voile » en Q10) étaient enregistrés « INSTABLE » : défaut du TEST, pas de l'appli (prouvé par Opus
+   sur une copie instrumentée). P0-suite (24/10/2026) : la course est retirée de chacun, ils sont de nouveau BLOQUANTS — plus aucun contrôle de cette suite
+   n'est INSTABLE.
+   - Q7 « acompte » : registre des factures coupé pour le téléphone pendant l'émission du PC (parade de docs/C1-COMPTE-RENDU.md § 6.3), rapprochement tardif
+     FORCÉ puis état « pas à jour » VÉRIFIÉ (mise en place contrôlée, pas supposée), registre rouvert juste avant les clics du téléphone ;
+   - Q10 « voile » : le PC est AU REPOS (ni envoi ni lecture) avant son retour simulé sur la fenêtre, puis de nouveau avant l'événement « focus ». */
+/* attendre que le rapprochement de DÉMARRAGE d'un appareil (next-emission.js, boot : 2,5 s après le chargement des modules) soit passé : 8 s depuis le chargement de la page */
+const apresRapprochementDeDemarrage = async (A) => { for (let i = 0; i < 120; i++) { if (await A.p.evaluate(() => performance.now() > 8000 && typeof window.nxEmisRapprocher === 'function').catch(() => false)) return true; await A.p.waitForTimeout(100); } return false; };
+/* l'appareil est AU REPOS : ni envoi ni lecture en cours (cpVerifierDistant ignore le retour sur la fenêtre sinon), magasin prêt, pas de voile — attente bornée à 10 s */
+const auRepos = (A) => A.p.waitForFunction(() => !_cpPushing && !_cpPulling && !window.__cpGel && (!window.nxStore || nxStore.ready), null, { timeout: 10000, polling: 100 }).then(() => true, () => false);
 const PARTIES = (process.env.CP_Q_PARTIES || '').split(',').filter(Boolean); // débogage : CP_Q_PARTIES=4,5
 const partie = (n) => !PARTIES.length || PARTIES.includes(String(n));
 const lireCles = (S, re) => Object.keys((S.etat && S.etat.data) || {}).filter((k) => re.test(k));
@@ -514,27 +517,54 @@ const ids7 = await lire(S7, PC7, () => DEVIS.filter((d) => d.statut === 'accepte
 try {
   /* 1. le téléphone ne reçoit plus la synchro ; le PC facture le devis X puis fait un avoir PARTIEL dessus */
   S7.etatBloque.tel = true;
+  /* P0-suite (24/10/2026, parade de C1 § 6.3) : registre des factures COUPÉ pour le téléphone pendant que le PC émet. Son rapprochement de démarrage
+     (boot → rapprocher, 2,5 s après chaque chargement) tombait n'importe quand : avant la facture de X, entre l'avoir et l'acompte, ou après l'acompte du PC
+     (trois issues, observées sur 4 passages de l'ancien code) — et le contrôle « acompte » dépendait de la vitesse de la machine. Dans les trois cas l'appli
+     avait raison : un téléphone qui connaît l'acompte facture un solde = total − acompte.
+     Constat en plus (P0-suite, mesuré) : couper le registre ne suffit pas seul. La reprise de la facture X par le téléphone (« Facturer » → reprendreAilleurs →
+     rapprocher) relit TOUT le registre et ramène aussi l'acompte de Y s'il y est déjà. Le PC émet donc l'acompte de Y seulement APRÈS la reprise de X
+     (même ordre de numéros : F-…-001, AV-…-001, F-…-002), chaque étape avec sa mise en place contrôlée. */
+  S7.registreBloque = { tel: true };
   PC7.reponses.push(true, true, true);
   const fX = await lire(S7, PC7, async (x) => { await nxEmisSonde(true); await facturerDevis(x, 'solde'); const d = DEVIS.find((y) => y.id === x); return d.facSolde && d.facSolde.num; }, ids7[0]);
   await PC7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, PC7);
   const av = await lire(S7, PC7, async (n) => { const r = await nxAvoirEmit({ facNum: n, montant: 20, motif: 'Geste commercial' }); return r && (r.err || (r.av && r.av.num) || r.num || JSON.stringify(r).slice(0, 80)); }, fX);
   await PC7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, PC7);
-  /* 2. le PC facture aussi l'ACOMPTE du devis Y */
-  const aY = await lire(S7, PC7, async (x) => { await facturerDevis(x, 'acompte'); const d = DEVIS.find((y) => y.id === x); return d.facAcompte ? { num: d.facAcompte.num, montant: d.facAcompte.montant } : null; }, ids7[1]);
-  await PC7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, PC7);
+  /* mise en place n° 1, VÉRIFIÉE (pas supposée) : le rapprochement de démarrage du téléphone est passé (registre coupé : il a échoué), on en FORCE un autre (le pire cas :
+     il tombe tard), et le téléphone ne connaît toujours pas la facture de X ; ensuite seulement, le registre lui est rouvert (son clic en a besoin) */
+  const demarragePasse = await apresRapprochementDeDemarrage(TEL7);
+  const tardifX = await TEL7.p.evaluate(() => nxEmisRapprocher().then((x) => ({ fait: x.fait }), (e) => ({ err: String(e && e.message || e) })));
+  const ignoreX = await lire(S7, TEL7, (x) => { const d = DEVIS.find((y) => y.id === x) || {}; return d.facSolde ? d.facSolde.num : null; }, ids7[0]);
+  r('Mise en place (avoir partiel) : registre coupé, le téléphone ne connaît pas la facture de X, même si son rapprochement tombe tard (il est vraiment pas à jour)',
+    demarragePasse && !!fX && /^AV-/.test(String(av)) && tardifX.fait === false && ignoreX === null, j({ demarragePasse, tardifX, ignoreX, fX, avoir: av }));
+  S7.registreBloque = {};
   const n0 = S7.docs.length;
-  /* 3. le téléphone pas à jour : « Facturer » sur X (avoir partiel ailleurs) puis « Facturer le solde » de Y (acompte ailleurs) */
+  /* 3. le téléphone pas à jour : « Facturer » sur X (avoir partiel ailleurs) */
   TEL7.reponses.push(true, true, true, true);
   const tX = await lire(S7, TEL7, async (x) => { await nxEmisSonde(true); await facturerDevis(x, 'solde'); const d = DEVIS.find((y) => y.id === x); return d.facSolde && d.facSolde.num; }, ids7[0]);
   await TEL7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, TEL7);
   const nApresX = S7.docs.length;
+  /* 2. (après la reprise de X) le PC facture l'ACOMPTE du devis Y, registre de nouveau coupé pour le téléphone */
+  S7.registreBloque = { tel: true };
+  PC7.reponses.push(true, true);
+  const aY = await lire(S7, PC7, async (x) => { await facturerDevis(x, 'acompte'); const d = DEVIS.find((y) => y.id === x); return d.facAcompte ? { num: d.facAcompte.num, montant: d.facAcompte.montant } : null; }, ids7[1]);
+  await PC7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, PC7);
+  /* mise en place n° 2, VÉRIFIÉE : même méthode, pour l'acompte de Y */
+  const tardifY = await TEL7.p.evaluate(() => nxEmisRapprocher().then((x) => ({ fait: x.fait }), (e) => ({ err: String(e && e.message || e) })));
+  const ignoreY = await lire(S7, TEL7, (x) => { const d = DEVIS.find((y) => y.id === x) || {}; return { acompte: d.facAcompte ? d.facAcompte.num : null, solde: d.facSolde ? d.facSolde.num : null }; }, ids7[1]);
+  r('Mise en place (acompte) : registre coupé, le téléphone ne connaît pas l’acompte de Y du PC, même si son rapprochement tombe tard (il est vraiment pas à jour)',
+    !!aY && tardifY.fait === false && ignoreY.acompte === null && ignoreY.solde === null, j({ tardifY, ignoreY, acompte: aY && aY.num }));
+  S7.registreBloque = {};
+  const nAvantY = S7.docs.length;
+  /* 3. (suite) « Facturer le solde » de Y (acompte ailleurs) */
+  TEL7.reponses.push(true, true);
   const tY = await lire(S7, TEL7, async (x) => { await facturerDevis(x, 'solde'); const d = DEVIS.find((y) => y.id === x); return { solde: d.facSolde ? { num: d.facSolde.num, montant: d.facSolde.montant } : null, acompte: d.facAcompte ? d.facAcompte.num : null }; }, ids7[1]);
   await TEL7.p.evaluate(fermerPdf).catch(() => {}); await calme(S7, TEL7);
   const nApresY = S7.docs.length;
   r('Avoir PARTIEL fait sur le PC : le téléphone pas à jour ne refacture pas le chantier (la facture reste due), il reprend ' + fX,
     !!fX && /^AV-/.test(String(av)) && nApresX === n0 && tX === fX, j({ fX, avoir: av, tX, docs: S7.docs.map((d) => d.num) }));
-  rInstable('Acompte facturé sur le PC : le téléphone pas à jour ne facture pas un solde qui l’ignore ; il reprend l’acompte et s’arrête',
-    !!aY && nApresY === nApresX && tY.solde === null && tY.acompte === aY.num, j({ acompte: aY, tY, docs: S7.docs.map((d) => d.num), dialogues: TEL7.dialogues.slice(-1).map((d) => d.msg.slice(0, 160)) }));
+  r('Acompte facturé sur le PC : le téléphone pas à jour ne facture pas un solde qui l’ignore ; il reprend l’acompte et s’arrête',
+    !!aY && nApresY === nAvantY && tY.solde === null && tY.acompte === aY.num, j({ acompte: aY, tY, docs: S7.docs.map((d) => d.num), dialogues: TEL7.dialogues.slice(-1).map((d) => d.msg.slice(0, 160)) }));
   /* 4. relancé ensuite : le solde tient compte de l'acompte */
   TEL7.reponses.push(true, true);
   const tY2 = await lire(S7, TEL7, async (x) => { await facturerDevis(x, 'solde'); const d = DEVIS.find((y) => y.id === x); const c = compute(d), tot = (typeof window.nxBillTotal === 'function') ? nxBillTotal(d, c) : c.totalTTC; return { solde: d.facSolde ? d.facSolde.montant : null, attendu: Math.round((tot - d.facAcompte.montant) * 100) / 100 }; }, ids7[1]);
@@ -557,7 +587,7 @@ try {
   r('Acompte annulé par un avoir total puis refait sur le PC : le téléphone pas à jour reprend le NOUVEL acompte, pas l’acompte annulé, sans 3e facture',
     !!zA && /^AV-/.test(String(zAv)) && !!zB && zB !== zA.num && tZ === zB && S7.docs.length === nZ, j({ acompteAnnule: zA && zA.num, avoir: zAv, nouvelAcompte: zB, tel: tZ, docs: S7.docs.map((d) => d.num), dialogue: TEL7.dialogues.slice(-1).map((d) => d.msg.slice(0, 160)) }));
 } catch (e) { r('Avoir partiel et acompte — essai interrompu', false, String(e && e.message || e).slice(0, 300)); }
-S7.etatBloque.tel = false;
+S7.etatBloque.tel = false; S7.registreBloque = {};
 r('Aucune erreur JavaScript (avoir, acompte)', PC7.errs.length + TEL7.errs.length === 0, PC7.errs.concat(TEL7.errs).join(' | '));
 await PC7.ctx.close(); await TEL7.ctx.close();
 }
@@ -680,8 +710,13 @@ try {
 /* a. gel pendant le rechargement */
 await lire(S10, PC10, () => go('dep')); await PC10.p.waitForTimeout(300);
 await lire(S10, TEL10, () => { DEP.push({ id: 'dep-tel-q10', date: '2027-09-15', cNom: 'Client fictif Q10', itype: 'dep', statut: 'a_faire' }); save(LS.dep, DEP); }); await pret(S10, TEL10);
+/* P0-suite (24/10/2026) : attendre le REPOS du PC. cpVerifierDistant (index.html) ignore le retour sur la fenêtre tant que le PC envoie ou lit (_cpPushing, _cpPulling) :
+   le contrôle « voile » supposait que le PC relisait les données à ce moment-là, ce qui n'est pas toujours vrai (les données finissaient justes, sans voile observé). */
+await pret(S10, PC10);
+const reposAvant = await auRepos(PC10);
 await PC10.p.evaluate(() => { const o = window.nxStoreReload; window.nxStoreReload = function () { setTimeout(o, 1200); }; });
 await PC10.p.clock.fastForward(21000);
+const reposApres = await auRepos(PC10); /* les minuteries échues pendant le décalage de l'horloge ont pu lancer un envoi : on attend qu'il finisse */
 await PC10.p.evaluate(() => window.dispatchEvent(new Event('focus')));
 /* P0 (21/10/2026) : fenêtre d'observation 6 s au lieu de 1,5 s — sur une machine chargée le voile arrivait après la fenêtre (échec de timing, pas de défaut : les données étaient bien conservées) */
 let voile = false; for (let i = 0; i < 120 && !voile; i++) { await PC10.p.waitForTimeout(50); voile = await PC10.p.evaluate(() => !!document.getElementById('cpGel')).catch(() => false); }
@@ -691,8 +726,8 @@ const cGel = voile ? await K.capture(PC10, 'pc-voile-mise-a-jour') : null;
 await PC10.p.waitForTimeout(2500); await calme(S10, PC10);
 await noter(PC10, ids10[2], 'Après le rechargement'); await pret(S10, PC10);
 const apresA = { pc: await lire(S10, PC10, () => DEP.some((d) => d.id === 'dep-tel-q10')), srv: (S10.etat.data.cp2_dep || []).some((d) => d.id === 'dep-tel-q10') };
-rInstable('Pendant le rechargement qui suit une mise à jour : voile sur l’écran, l’état d’avant n’est pas réenregistré, l’intervention du téléphone reste partout',
-  voile && pendant.dessus === 'cpGel' && pendant.stale === false && pendant.dirty === false && apresA.pc && apresA.srv, j({ voile, pendant, apresA }), [cGel]);
+r('Pendant le rechargement qui suit une mise à jour : voile sur l’écran, l’état d’avant n’est pas réenregistré, l’intervention du téléphone reste partout',
+  reposAvant && reposApres && voile && pendant.dessus === 'cpGel' && pendant.stale === false && pendant.dirty === false && apresA.pc && apresA.srv, j({ reposAvant, reposApres, voile, pendant, apresA }), [cGel]);
 /* b. enregistrement pendant un envoi réussi, puis mise à jour reçue avant l'envoi suivant */
 await pret(S10, TEL10); await revenir(S10, TEL10);
 S10.latence.tel = 900;
