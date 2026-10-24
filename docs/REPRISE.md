@@ -1,4 +1,15 @@
-# ClimPilot — reprise du travail (Cowork ou Codex) — mise à jour du 08/10/2026
+# ClimPilot — reprise du travail (Cowork ou Codex) — mise à jour du 25/10/2026
+
+## Où en est-on (25/10/2026) — à lire avant tout le reste
+- **Production (`main`) = 1.10.0** (`1c91cca`, 08/10). Tout ce qui suit est sur des branches.
+- **`release/1.13.0`** = M0 (7 branches réunies) + P0 (CI, golden, suites U-Z) + C1 (registre illisible, règle serveur « une facture
+  vivante par source ») + tests indépendants du jour + **version unique 1.13.0** (`VERSION`, `NX_VERSION`, cache `climpilot-next-1130-production`).
+  Demande de fusion en brouillon vers `main` ; fusion, protection de `main`, migration C1 sur le réel = gestes de Gabriel
+  (`docs/FUSION-1.13-COMPTE-RENDU.md`, 10 lignes en tête). Après la fusion : toute nouvelle branche part de `main`.
+- Règles de la refonte (topo du 24/10, Project `claude/ClimPilot-TOPO-24-10.md`) : tests d'abord, golden identiques, **gel des
+  fonctionnalités jusqu'au palier PRO v1**, une branche vit une semaine au plus, comptes rendus avec 10 lignes de décision en tête.
+- Plan : `REFONTE-PLAN.md` § 9 (missions F-C3, S, P0-suite, P1 → P6) ; audits outillés du 24/10 dans le Project.
+- Les sections ci-dessous (05/10 → 20/10) restent exactes pour l'historique, mais la branche de travail qu'elles nomment est périmée.
 
 Ce fichier suffit pour reprendre le travail sans l'historique des conversations. Le détail est dans
 `docs/CORRECTIONS-1.10.md` (ce qui a été fait et pourquoi) et `tests/LISEZMOI.md` (comment tester).
