@@ -198,8 +198,9 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   const {p,ctx}=await page({mobile:false});
   await p.evaluate(SERVEUR);
   const r=await p.evaluate(async()=>{ const a=await cpStatePushRpc({x:1},null,false); const v=__srv.dernierPush&&__srv.dernierPush.p_client_version;
-    __srv.fail.ancienServeur=true; __srv.dernierPush=null; const b=await cpStatePushRpc({x:2},null,false); return {a:a.data&&a.data.ok,v,b:b.data&&b.data.ok,sansVersion:__srv.dernierPush&&!('p_client_version' in __srv.dernierPush)}; });
-  rec('Synchro','Envoi de la version (1.10) ; serveur pas encore migré : repli sur l\'ancien appel',r.a&&r.v==='1.10.0'&&r.b&&r.sansVersion,JSON.stringify(r));
+    __srv.fail.ancienServeur=true; __srv.dernierPush=null; const b=await cpStatePushRpc({x:2},null,false); return {a:a.data&&a.data.ok,v,attendu:window.CP_VERSION,b:b.data&&b.data.ok,sansVersion:__srv.dernierPush&&!('p_client_version' in __srv.dernierPush)}; });
+  /* 25/10/2026 (1.13.0) : la version attendue est celle de l'appli (window.CP_VERSION), plus une valeur en dur — le test vérifie que c'est bien ELLE qui part au serveur */
+  rec('Synchro','Envoi de la version de l\'appli (CP_VERSION, forme N.N.N) ; serveur pas encore migré : repli sur l\'ancien appel',r.a&&r.v===r.attendu&&/^\d+\.\d+\.\d+$/.test(r.v||'')&&r.b&&r.sansVersion,JSON.stringify(r));
   await ctx.close();
 }
 

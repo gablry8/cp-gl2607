@@ -9,7 +9,7 @@
 
 ---
 
-## Partie 0 — Copie d'essai `ClimPilot-ESSAI-1131-fusion.zip` (base de TEST, jamais la réelle)
+## Partie 0 — Copie d'essai `ClimPilot-ESSAI-1130-production.zip` (base de TEST, jamais la réelle)
 
 ### 0.1 Ce que c'est
 La même appli que la branche (mêmes fichiers, mêmes calculs), avec trois différences, et rien d'autre :
@@ -58,7 +58,7 @@ Si une copie a déjà été publiée sous `gablry8.github.io` : ne l'ouvre plus 
 ### A2. FUSION dans `main` (= publication GitHub Pages, sur tous tes appareils)
 1. Demande de fusion **#4** `fusion/avant-refonte → main` (brouillon) : « Ready for review » puis « Merge » en **merge commit** (pas squash, pour garder l'historique des 5 fusions). Note le numéro du commit de fusion (pour le retour arrière).
 2. Attends la publication GitHub Pages (1 à 3 min ; onglet Actions ou Settings › Pages).
-3. Sur **chaque** appareil : ouvrir ClimPilot, F5 (ou fermer/rouvrir). Nouveau cache `climpilot-next-1131-fusion`, l'ancien `…-1100-production` supprimé automatiquement (vérifié en simulation : données conservées, ouverture hors ligne OK).
+3. Sur **chaque** appareil : ouvrir ClimPilot, F5 (ou fermer/rouvrir). Nouveau cache `climpilot-next-1130-production`, l'ancien `…-1100-production` supprimé automatiquement (vérifié en simulation : données conservées, ouverture hors ligne OK).
 4. #2 et #3 (1.11, 1.12) sont contenues dans #4 : c'est **toi** qui les fermes ensuite.
 
 ### A3. LISTE DE CONTRÔLE — la même, deux fois : **ESSAI** (copie, base de TEST, avant A2) puis **PROD** (vraie appli, après A2)
@@ -67,7 +67,7 @@ Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le c
 | # | Contrôle (téléphone **et** PC) | Attendu | ESSAI | PROD |
 |---|---|---|:-:|:-:|
 | 1 | Ouverture avec les données existantes | mêmes clients, devis, factures, locations ; aucun bandeau rouge d'erreur (en ESSAI, seul le bandeau « VERSION D'ESSAI ») | ☐ | ☐ |
-| 2 | Petit texte sous le logo « ClimPilot » (en-tête) | « ClimPilot Next 1.12.0 … » (numéro non aligné, compte rendu § 7) | ☐ | ☐ |
+| 2 | Petit texte sous le logo « ClimPilot » (en-tête) | « ClimPilot Next 1.13.0 … » (version unique depuis la 1.13.0 : `VERSION`, `NX_VERSION`, cache `1130` alignés — P2 du 25/10) | ☐ | ☐ |
 | 3 | Ouvrir un **ancien** devis (d'avant 1.12) | mêmes montants qu'avant, au centime | ☐ | ☐ |
 | 4 | Créer un devis (nature au choix), l'enregistrer | numéro `DV-…`, totaux cohérents, visible sur l'autre appareil après synchro | ☐ | ☐ |
 | 5 | Émettre une facture de **TEST** (mode démonstration) | `TEST-F-2026-NNN` qui **suit** le dernier, sans trou ni doublon | ☐ | ☐ |
@@ -97,7 +97,7 @@ Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le c
 select public.cp_backup_row(user_id, data, 'avant-retour-arriere-1.10') from public.climpilot_state;
 ```
 puis :
-1. **Appli** : sur GitHub, « Revert » sur la demande #4 (ou `git revert -m 1 <commit de fusion>` sur `main`) → republie la 1.10.0 (`1c91cca`). F5 sur chaque appareil : le service worker 1.10 reprend la main et supprime le cache 1131.
+1. **Appli** : sur GitHub, « Revert » sur la demande #4 (ou `git revert -m 1 <commit de fusion>` sur `main`) → republie la 1.10.0 (`1c91cca`). F5 sur chaque appareil : le service worker 1.10 reprend la main et supprime le cache 1130.
 2. Les données saisies entre-temps restent ; les écrans 1.11/1.12 disparaissent, leurs données restent dans chaque appareil et dans la sauvegarde `avant-retour-arriere-1.10` (120 jours). Au retour en 1.12 plus tard, elles reviennent d'elles-mêmes depuis les appareils ; sinon, restaure cette sauvegarde (Outils › « Sauvegardes cloud » › Restaurer — depuis un seul appareil, les autres fermés, puis rouvre-les : la restauration écrase l'état serveur, R11 du plan).
 3. **Données perdues ?** Seulement si quelque chose a été cassé : restaure `avant-mise-en-production-M0` (A1) de la même façon ; tu perds alors ce qui a été saisi depuis.
 4. Serveur : rien à faire pour la partie A (aucune migration n'a été appliquée).
