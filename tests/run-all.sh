@@ -56,9 +56,11 @@ etape() { # etape <nom> <commande…> : journal dans journaux/<nom>.log, code de
 etape autotest-isolation node "$ICI/isolation/autotest.mjs"
 # P0 (21/10/2026) : nouvelles suites U V W X Y Z (fusion, numérotation, enveloppes, mise à jour, golden documents/XML, golden calculs).
 # C1 (21/10/2026) : suite AA (registre des factures illisible / lent, refus du serveur, mode démonstration — deux appareils).
-# Suite Q (recette deux appareils) : BLOQUANTE comme les autres, en CI aussi (M3 C5, 21/10/2026). Ses 2 seuls contrôles connus instables
-# (« acompte », « voile » : défauts du test, pas de l'appli) sont enregistrés « INSTABLE » par la suite elle-même — non bloquants, listés
-# dans le rapport. CP_SANS_Q=1 (débogage local seulement) la retire de ce passage : le rapport est alors « PARTIEL » (code 3).
+# Suite Q (recette deux appareils) : BLOQUANTE comme les autres, en CI aussi (M3 C5, 21/10/2026). Ses deux contrôles qui étaient enregistrés « INSTABLE »
+# (« acompte » en Q7, « voile » en Q10 : défauts du test, pas de l'appli) sont de nouveau bloquants depuis P0-suite (24/10/2026) : course retirée de chacun
+# (registre du téléphone coupé pendant l'émission du PC, repos du PC attendu) — plus aucun contrôle INSTABLE ; le statut reste géré par rapport.mjs, inutilisé.
+# CP_SANS_Q=1 (débogage local seulement) la retire de ce passage : le rapport est alors « PARTIEL » (code 3).
+# Indépendance du jour réel (R12, 24/10/2026) : faketime '2027-01-05 10:00:00' bash tests/run-all.sh doit rester vert (date de référence : REF dans tests/lib.mjs).
 SUITES_DEFAUT="suiteA suiteB suiteC suiteD-memoire suiteE-avoirs suiteF-einvoice suiteG-virgule suiteH-superpdp suiteI-emission suiteJ-particuliers suiteK-fiscal suiteL-documents suiteM-adresse-copie suiteN-passage-reel suiteO-objectifs suiteP-ameliorations suiteQ-recette suiteR-fiabilite suiteS-planning suiteT-terrain suiteU-fusion suiteV-numerotation suiteW-enveloppes suiteX-mise-a-jour suiteY-golden-docs suiteZ-golden suiteAA-registre-illisible"
 if [ "${CP_SANS_Q:-0}" = 1 ]; then SUITES_DEFAUT=${SUITES_DEFAUT/suiteQ-recette /}; echo "suiteQ-recette" > "$CP_TEST_OUT/separees.txt"; echo "suiteQ-recette         ÉCARTÉE (CP_SANS_Q=1, débogage local : rapport PARTIEL, code 3)"; fi
 # CP_SUITES (liste réduite, débogage) : les suites non demandées sont notées « non jouées dans ce passage » ; le rapport est PARTIEL (code 3), pas « COMPLET »

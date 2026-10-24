@@ -1,6 +1,6 @@
 import { ecrireResultats, out as sortie } from './env.mjs';
 // Suite F — facture électronique : XML CII EN 16931 (XSD + règles officielles CEN), mention CIBS 2027, carte « prêt »
-import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
+import {page,rec,RES,closeBrowser,seed,REF} from './lib.mjs';
 import {execSync} from 'child_process';
 import fs from 'fs';
 /* F1 génération + validation */
@@ -34,11 +34,12 @@ if(process.env.BRFR_DIR&&CEN){
   await ctx.close();
 }
 {
-  const {p,ctx}=await page({mobile:false});
+  /* P0-suite (R12, 24/10/2026) : horloge figée à la date de référence (avant : vraie date, donc 2026 « en dur » dans le titre et faux dès le 01/01/2027) */
+  const {p,ctx}=await page({mobile:false,horloge:REF.horloge});
   await seed(p);
   const r=await p.evaluate(async()=>{ const d=DEVIS.find(x=>x.statut==='accepte'&&compute(x).totalHT>0); facturerDevis(d.id,'solde'); await new Promise(r=>setTimeout(r,200)); const t=(document.getElementById('nx-pdf-page')||{}).textContent||''; document.getElementById('nx-pdf-close').click(); go('nx_docs'); await new Promise(r=>setTimeout(r,100)); const c=(document.getElementById('nxeiCard')||{}).innerText||'';
     return {pdf293:/293 B/.test(t),card:/Facture électronique/.test(c),manque:/SIRET/.test(c)}; });
-  rec('Facture électronique','En 2026 : mention 293 B conservée',r.pdf293);
+  rec('Facture électronique','En '+REF.an+' : mention 293 B conservée',r.pdf293);
   rec('Facture électronique','Registre : carte « Facture électronique » avec ce qui manque (SIRET…)',r.card&&r.manque,JSON.stringify(r));
   await ctx.close();
 }

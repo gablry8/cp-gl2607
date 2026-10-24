@@ -140,7 +140,7 @@ const IDS=['aaaaaaaa-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-00000
   const {p,ctx,errs}=await page({mobile:false});
   p.removeAllListeners('dialog'); p.on('dialog',d=>d.accept().catch(()=>{}));
   await seed(p); await p.evaluate(SERVEUR); await p.evaluate(SESSION);
-  await p.evaluate(()=>{ for(let i=0;i<3;i++) __srv.docs.push({id:'doc'+(i+1),request_id:'r'+i,serie:'F',annee:2026,numero:i+1,num:'F-2026-00'+(i+1),type:'facture',origine:'emis',date_doc:todayISO(),payload:{src:{k:'devis',id:'x'+i,w:'solde'}}});
+  await p.evaluate(()=>{ for(let i=0;i<3;i++) __srv.docs.push({id:'doc'+(i+1),request_id:'r'+i,serie:'F',annee:+__REF.an,numero:i+1,num:'F-'+__REF.an+'-00'+(i+1),type:'facture',origine:'emis',date_doc:todayISO(),payload:{src:{k:'devis',id:'x'+i,w:'solde'}}});
     for(let i=0;i<1205;i++) __srv.events.push({rid:'e'+i,doc:'doc1',type:'note',donnees:{}});
     const t=new Date().toISOString();
     __srv.sigs.push({token:'t1',user_id:'u1',doc_type:'devis',doc_id:'zz1',doc_num:'D-1',statut:'signe',created_at:t,doc_html:'<p>x</p>'},{token:'t2',user_id:'u1',doc_type:'devis',doc_id:'zz2',doc_num:'D-2',statut:'en_attente',created_at:t,doc_html:'<p>y</p>'});
@@ -154,11 +154,12 @@ const IDS=['aaaaaaaa-0000-4000-8000-000000000001','aaaaaaaa-0000-4000-8000-00000
     const [dl]=await Promise.all([p.waitForEvent('download',{timeout:30000}),p.evaluate(()=>nxaExportComplet())]);
     const nom=dl.suggestedFilename(), pth=out('export-complet.json'); await dl.saveAs(pth);
     const o=JSON.parse(fs.readFileSync(pth,'utf8')), s=o.serveur||{};
-    const info=await p.evaluate(()=>({i:JSON.parse(localStorage.getItem('cpnext_dernier_export')||'null'),appels:__srv.appels.filter(a=>a==='from:climpilot_doc_events').length,sync:SYNC_KEYS.indexOf('cpnext_dernier_export')>=0,txt:(document.getElementById('nxaBackups')||{}).innerText||''}));
+    const info=await p.evaluate(()=>({i:JSON.parse(localStorage.getItem('cpnext_dernier_export')||'null'),appels:__srv.appels.filter(a=>a==='from:climpilot_doc_events').length,sync:SYNC_KEYS.indexOf('cpnext_dernier_export')>=0,txt:(document.getElementById('nxaBackups')||{}).innerText||'',jour:new Date().toLocaleDateString('fr-FR')}));
     rec('Export complet','Fichier JSON daté',/^ClimPilot_export_complet_\d{4}-\d{2}-\d{2}\.json$/.test(nom)&&o.format==='climpilot-export-complet-1',nom+' '+o.format);
     rec('Export complet','Contient l\'état (devis, clients…), le registre, le journal et les signatures',!!(o.etat&&o.etat.all&&o.etat.all.cp2_devis&&o.etat.all.cp2_devis.length)&&(s.climpilot_documents||[]).length===3&&(s.climpilot_signatures||[]).length===2&&(o.erreurs||[]).length===0,j({docs:(s.climpilot_documents||[]).length,sig:(s.climpilot_signatures||[]).length,err:o.erreurs}));
     rec('Export complet','Pagination : 1 205 événements récupérés en plusieurs pages',(s.climpilot_doc_events||[]).length===1205&&info.appels>=2,j({n:(s.climpilot_doc_events||[]).length,appels:info.appels}));
-    rec('Export complet','Clé synchronisée cpnext_dernier_export : horodatage ISO + taille en octets, date affichée',!!(info.i&&info.i.at&&Date.now()-Date.parse(info.i.at)<60000&&info.i.octets===fs.statSync(pth).size)&&info.sync&&/Dernière copie hors Supabase/.test(info.txt)&&info.txt.indexOf(new Date().toLocaleDateString('fr-FR'))>=0,j({i:info.i,txt:info.txt.slice(0,300)}));
+    /* P0-suite (R12, 24/10/2026) : la date attendue est celle de la PAGE (Europe/Paris), plus celle de Node (fuseau de la machine, UTC) : entre 22 h et minuit UTC la veille de Paris ≠ le jour de Node et le contrôle échouait */
+    rec('Export complet','Clé synchronisée cpnext_dernier_export : horodatage ISO + taille en octets, date affichée',!!(info.i&&info.i.at&&Date.now()-Date.parse(info.i.at)<60000&&info.i.octets===fs.statSync(pth).size)&&info.sync&&/Dernière copie hors Supabase/.test(info.txt)&&info.txt.indexOf(info.jour)>=0,j({i:info.i,txt:info.txt.slice(0,300)}));
     /* une table en erreur : fichier quand même, mais signalé INCOMPLET et non compté comme export complet */
     const avant=info.i&&info.i.at;
     await p.evaluate(()=>{ __srv.fail.climpilot_signatures=true; });

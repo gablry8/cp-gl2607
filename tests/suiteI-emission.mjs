@@ -2,7 +2,7 @@ import { ecrireResultats } from './env.mjs';
 // Suite I — émission sécurisée (1.10) : modes, serveur simulé, reprise, fusion, rapprochement, onglets.
 // Le serveur simulé reprend la logique de la migration SQL (testée, elle, sur un vrai PostgreSQL :
 // tests/sql/test_migration.py). Cette suite vérifie le comportement de l'APPLI face à ce serveur.
-import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
+import {page,rec,RES,closeBrowser,seed,REF} from './lib.mjs';
 import { SERVEUR } from './serveur-simule.mjs';
 import fs from 'fs';
 
@@ -187,16 +187,16 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
 {
   const {p,ctx}=await page({mobile:false});
   const r=await p.evaluate(()=>{ const t=todayISO();
-    const base={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:''}],cp2_facseq:{year:2026,seq:5},cp2_avoirs:[],cp2_docs:[]};
-    const cloud={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:'',facSolde:{num:'F-2026-006',date:t,montant:1000}}],cp2_facseq:{year:2026,seq:6},cp2_avoirs:[{id:'av1',num:'AV-2026-001'}],cp2_docs:[{id:'F-2026-006|devis|D|solde',num:'F-2026-006'}]};
-    const tel={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:'rappeler le client'}],cp2_facseq:{year:2026,seq:5},cp2_avoirs:[],cp2_docs:[]};
+    const base={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:''}],cp2_facseq:{year:+__REF.an,seq:5},cp2_avoirs:[],cp2_docs:[]};
+    const cloud={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:'',facSolde:{num:('F-'+__REF.an+'-006'),date:t,montant:1000}}],cp2_facseq:{year:+__REF.an,seq:6},cp2_avoirs:[{id:'av1',num:('AV-'+__REF.an+'-001')}],cp2_docs:[{id:('F-'+__REF.an+'-006|devis|D|solde'),num:('F-'+__REF.an+'-006')}]};
+    const tel={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:'rappeler le client'}],cp2_facseq:{year:+__REF.an,seq:5},cp2_avoirs:[],cp2_docs:[]};
     const m=cpMerge(base,tel,cloud);
     /* vieille sauvegarde restaurée (sans la facture), base = dernier état synchronisé qui l'avait */
     const m2=cpMerge(cloud,{cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:'ancienne'}]},cloud);
     return {fac:m.cp2_devis[0].facSolde&&m.cp2_devis[0].facSolde.num,notes:m.cp2_devis[0].notes,seq:m.cp2_facseq.seq,reg:m.cp2_docs.length,fac2:m2.cp2_devis[0].facSolde&&m2.cp2_devis[0].facSolde.num}; });
-  rec('Synchro','Conflit PC / téléphone : la facture émise sur le PC est conservée (et la note du téléphone aussi)',r.fac==='F-2026-006'&&r.notes==='rappeler le client',JSON.stringify(r));
+  rec('Synchro','Conflit PC / téléphone : la facture émise sur le PC est conservée (et la note du téléphone aussi)',r.fac===('F-'+REF.an+'-006')&&r.notes==='rappeler le client',JSON.stringify(r));
   rec('Synchro','Compteurs : le plus grand l\'emporte ; registre fusionné sans perte',r.seq===6&&r.reg===1,JSON.stringify(r));
-  rec('Synchro','Restauration d\'une ancienne sauvegarde puis synchro : la facture n\'est pas perdue',r.fac2==='F-2026-006',JSON.stringify(r));
+  rec('Synchro','Restauration d\'une ancienne sauvegarde puis synchro : la facture n\'est pas perdue',r.fac2===('F-'+REF.an+'-006'),JSON.stringify(r));
   await ctx.close();
 }
 

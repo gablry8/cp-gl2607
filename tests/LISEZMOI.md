@@ -47,7 +47,7 @@ un validateur absent = **SKIP**. Aucun de ces cas n'est compté comme réussi.
 | `CP_SUITES` | liste réduite de suites (débogage) ; le rapport est alors **PARTIEL** (code 3), jamais « COMPLET » | toutes |
 | `CP_SANS_Q=1` | retire la suite Q (débogage local seulement ; rapport PARTIEL, code 3). En CI, Q est jouée et bloquante | Q jouée |
 
-Statuts d'un contrôle dans le rapport (M3 C5/C9, 21/10/2026) : `PASS` ; `FAIL` (bloquant) ; `SKIP` (non vérifié, rend le passage INCOMPLET — sauf les 2 SKIP connus de l'autotest d'isolation sans `unshare -n`) ; `INSTABLE` (suite Q : 2 contrôles au défaut de test connu, non bloquants, listés) ; `À TRANCHER` (suite Y : références « assujetti » en attente d'une décision de Gabriel, non bloquantes, listées). Les deux derniers ne sont **jamais** comptés comme réussis. Codes de sortie de `run-all.sh` : 0 complet et tout réussi ; 1 échec ; 3 incomplet ou partiel.
+Statuts d'un contrôle dans le rapport (M3 C5/C9, 21/10/2026) : `PASS` ; `FAIL` (bloquant) ; `SKIP` (non vérifié, rend le passage INCOMPLET — sauf les 2 SKIP connus de l'autotest d'isolation sans `unshare -n`) ; `INSTABLE` (statut conservé mais **plus utilisé** depuis P0-suite, 24/10/2026 : les deux contrôles de la suite Q qui le portaient sont redevenus bloquants) ; `À TRANCHER` (suite Y : références « assujetti » en attente d'une décision de Gabriel, non bloquantes, listées). `INSTABLE` et `À TRANCHER` ne sont **jamais** comptés comme réussis. Codes de sortie de `run-all.sh` : 0 complet et tout réussi ; 1 échec ; 3 incomplet ou partiel.
 
 ### Banc PostgreSQL local (tests SQL)
 
@@ -180,3 +180,20 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   solde refusés ; une facture vivante par intervention / location / année de contrat ; autre utilisateur ; rejeu `request_id` ;
   reconstituées hors règle ; 8 soldes simultanés → un seul accepté ; droits ; retour arrière = fonction 1.10.
 - tests/supabase-test/4-une-facture-par-source-TEST.sql (verrou par marqueur, 5 « OK ») et 4-une-facture-par-source-retour-arriere.sql.
+
+## Ajouts 24/10/2026 (P0-suite — branche `refonte/p0-suite`, tests et docs seulement)
+- **Suite Q, contrôles « acompte » (Q7) et « voile » (Q10) : de nouveau BLOQUANTS** (plus aucun INSTABLE). Q7 : le registre des factures est coupé pour le téléphone
+  (`S.registreBloque`) pendant que le PC émet, un rapprochement tardif est FORCÉ puis l'état « pas à jour » est vérifié (deux contrôles « Mise en place »), le registre n'est
+  rouvert qu'avant le clic du téléphone ; le PC émet l'acompte de Y seulement APRÈS la reprise de X (la reprise relit tout le registre : constat P0-suite, voir
+  `docs/P0-SUITE-COMPTE-RENDU.md` § 2). Q10 : le PC est au repos (ni envoi ni lecture) avant son retour simulé sur la fenêtre (`cpVerifierDistant` l'ignore sinon).
+- **Suite T, T5b** (M3 C10) : tournée dont les adresses n'ont aucune coordonnée → « Ma journée » lance `completerGeo`, une fois par adresse, affiche « en cours de calcul »,
+  se réaffiche avec les km quand c'est fini (géocodage simulé ralenti à 0,7 s pour observer l'état « en cours »).
+- **Faux serveur** (`serveur-simule.mjs`) : `fail.horsService` rend la forme réelle de supabase-js 2.117.3 (réponse RÉSOLUE `{error:{message:'TypeError: Failed to fetch'}, data:null, status:0}`),
+  plus une promesse rejetée ; suite I (I3) : deux contrôles de plus (message « serveur injoignable » inchangé, forme de la réponse).
+- **Indépendance du jour réel (R12)** : `tests/lib.mjs` exporte `REF` (date de référence figée = celle des suites golden : mardi 20/10/2026 10:00 Paris ; `REF.horloge`, `REF.jour`,
+  `REF.an`) et pose `window.__REF` dans chaque page. Une suite dont le résultat dépend du jour fige sa page par `page({horloge:REF.horloge})` et écrit ses attendus avec `REF.an` :
+  suites E (avoirs), F (2e bloc), M (M6). **Vérification : `faketime '2027-01-05 10:00:00' bash tests/run-all.sh`** (paquet `faketime`) doit rester vert.
+  Les « 2026 » restants dans les suites sont classés dans `docs/P0-SUITE-COMPTE-RENDU.md` § 4 (commentaires datés, barèmes légaux 2026, calendrier, données de test sans lien avec le jour).
+- **Chromium récent (Playwright ≥ 1.63, Chromium ≥ 153) dans `unshare -n`** : il ignore `Network.emulateNetworkConditions{offline:false}` et se croit hors ligne, la suite I s'arrête alors à I5.
+  Contournement **hors dépôt** utilisé pour ces essais : dans l'espace réseau isolé, une paire `veth` avec adresses privées (10.9.9.1/24 et 10.9.9.2/24) et **sans route** (rien ne peut sortir).
+  Conséquence : le contrôle « seule la boucle locale existe » de l'autotest est rouge par construction, et la suite X (hors ligne) doit être rejouée sans veth (8/8). Non corrigé dans `env.mjs`.
