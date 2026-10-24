@@ -125,6 +125,35 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   await ctx.close();
 }
 
+/* I4b (C1, 24/10/2026) réponse perdue telle que la VRAIE bibliothèque la rend : supabase-js 2.117.3 ne rejette pas la promesse
+   quand le réseau coupe, elle résout {error:{message:'TypeError: Failed to fetch'}, status:0}. La demande a PEUT-ÊTRE été servie :
+   l'appli doit dire « Résultat INCONNU » (jamais « NON émise … Rien n'a été facturé »), garder la demande en attente (même request_id),
+   et la nouvelle tentative doit retrouver la MÊME facture. Même message quand la coupure survient AVANT l'arrivée (indistinguable). */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  p.removeAllListeners('dialog'); const dlg=[]; p.on('dialog',d=>{ dlg.push(d.message()); d.accept().catch(()=>{}); });
+  await seed(p); await p.evaluate(SERVEUR); await p.evaluate(REEL);
+  const r=await p.evaluate(async c=>{ const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0); const d=acc[0];
+    /* a) coupure APRÈS l'enregistrement : le serveur a la facture, l'appli reçoit {error, status:0} */
+    __srv.fail.perdreReponseBib=true; await facturerDevis(d.id,'solde'); eval(c);
+    const apresPerte=!!d.facSolde, att=nxEmisAttentes(), rid1=Object.values(att)[0]&&Object.values(att)[0].rid, docs1=__srv.docs.length;
+    await facturerDevis(d.id,'solde'); eval(c);
+    /* b) coupure AVANT l'arrivée : rien côté serveur, même réponse de la bibliothèque */
+    const d2=acc[1]; __srv.fail.reseauCoupeBib=true; await facturerDevis(d2.id,'solde'); eval(c);
+    const apresCoupe=!!d2.facSolde, att2=nxEmisAttentes(), rid2=Object.values(att2)[0]&&Object.values(att2)[0].rid, docs2=__srv.docs.length;
+    await facturerDevis(d2.id,'solde'); eval(c);
+    return {apresPerte,att:Object.keys(att).length,rid1,docs1,num:d.facSolde&&d.facSolde.num,srvRid:__srv.docs[0]&&__srv.docs[0].request_id,
+      apresCoupe,att2:Object.keys(att2).length,rid2,docs2,num2:d2.facSolde&&d2.facSolde.num,srvRid2:__srv.docs[1]&&__srv.docs[1].request_id,
+      docs:__srv.docs.map(x=>x.num),attFin:Object.keys(nxEmisAttentes()).length}; },close);
+  const inconnus=dlg.filter(m=>/Résultat INCONNU/.test(m)), nonEmises=dlg.filter(m=>/NON émise/.test(m));
+  rec('Émission','Réponse perdue (forme supabase-js : {error, status:0}) : message « Résultat INCONNU », jamais « NON émise »',inconnus.length>=1&&nonEmises.length===0&&/TypeError/.test(inconnus[0]||''),dlg.join(' / ').slice(0,300));
+  rec('Émission','Réponse perdue (forme supabase-js) : rien d\'appliqué, demande gardée en attente avec le request_id servi',!r.apresPerte&&r.att===1&&r.docs1===1&&r.rid1===r.srvRid,JSON.stringify(r));
+  rec('Émission','Nouvelle tentative : MÊME facture retrouvée (F-AAAA-001), un seul document au registre',/^F-\d{4}-001$/.test(r.num||'')&&r.num===r.docs[0]&&r.docs.filter(n=>n===r.num).length===1,JSON.stringify(r));
+  rec('Émission','Réseau coupé AVANT l\'arrivée (même forme) : INCONNU aussi, rien d\'émis ; nouvelle tentative = une seule facture, même request_id',inconnus.length===2&&!r.apresCoupe&&r.docs2===1&&r.att2===1&&/^F-\d{4}-002$/.test(r.num2||'')&&r.rid2===r.srvRid2&&r.docs.length===2&&r.attFin===0,JSON.stringify(r));
+  rec('Émission','Aucune erreur JavaScript (réponse perdue, forme supabase-js)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
 /* I5 avoir en mode réel ; rapprochement : facture disparue localement remise en place ; doublons signalés */
 {
   const {p,ctx}=await page({mobile:false});

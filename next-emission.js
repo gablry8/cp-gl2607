@@ -64,6 +64,13 @@
     return Promise.race([window.sb.rpc(name,params),new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('délai dépassé (25 s)')); },25000); })]);
   }
   function absente(err){ var m=String((err&&(err.message||''))+' '+(err&&err.code||'')); return /PGRST202|Could not find the function|does not exist/i.test(m); }
+  /* réponse de supabase-js quand la requête n'a pas abouti au niveau réseau (fetch en échec, abandon) : status 0, message
+     « TypeError: Failed to fetch » / « TypeError: Load failed » (Safari) / « FetchError: … » / « AbortError: … ». Le serveur n'a
+     pas répondu, mais il a peut-être reçu la demande : à distinguer d'une vraie erreur du serveur (status 4xx/5xx, message PostgREST). */
+  function erreurReseau(r){
+    if(!r||!r.error) return false; if(r.status===0) return true;
+    return /^(TypeError|FetchError|AbortError)\b|Failed to fetch|Load failed|NetworkError/i.test(String(r.error.message||''));
+  }
   function sonde(force){
     if(!cloud()) return Promise.resolve(INFO={t:Date.now(),ok:false,raison:'cloud'});
     if(!force&&INFO.ok!==null&&Date.now()-INFO.t<120000) return Promise.resolve(INFO);
@@ -439,6 +446,10 @@
     attentePut(cle,{rid:r0,at:Date.now(),serie:serie});
     var pl=payloadDe(d), mini=maxLocal(serie,d.date);
     return rpc('cp_emettre_document',{p_request_id:r0,p_serie:serie,p_type:type,p_date:d.date,p_payload:pl,p_min_numero:mini,p_client_version:VERSION}).then(function(r){
+      /* C1 (24/10/2026) : réseau coupé PENDANT l'appel — supabase-js (2.117.3) ne rejette pas la promesse, il renvoie
+         {error:{message:'TypeError: Failed to fetch'}, status:0}. La demande a PEUT-ÊTRE atteint le serveur : résultat INCONNU,
+         pas « NON émise » ; la demande reste en attente (même request_id au prochain clic). Idem délai dépassé (reprise ci-dessous). */
+      if(erreurReseau(r)){ inconnu(r.error); return {inconnu:true}; }
       if(r&&r.error){ bloque({raison:absente(r.error)?'migration':'serveur',detail:String(r.error.message||'')}); return null; }
       var out=r&&r.data;
       /* C1 (M3, 21/10/2026) : refus du serveur « une seule facture vivante par source » — ok:false, raison, et la facture

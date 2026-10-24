@@ -16,8 +16,12 @@ export const SERVEUR=`(function(){
         if(!isFinite(tot)||!isFinite(m)||!isFinite(ac)||Math.abs((tot-ac)-m)>0.011) return {raison:'acompte_ignore',doc:ex}; } }
     return null;
   }
+  /* forme exacte de supabase-js 2.117.3 (postgrest-js, fetch en échec, sans throwOnError) : promesse RÉSOLUE, status 0 */
+  function erreurReseauBib(){ return {error:{message:'TypeError: Failed to fetch',details:'',hint:'',code:''},data:null,count:null,status:0,statusText:''}; }
   function rpc(name,p){ srv.appels.push(name);
     if(srv.fail.horsService) return Promise.reject(new Error('Failed to fetch'));
+    /* C1 (24/10/2026) : réseau coupé AVANT l'arrivée de la demande d'émission, rendu comme la vraie bibliothèque (rien d'enregistré) */
+    if(name==='cp_emettre_document'&&srv.fail.reseauCoupeBib){ srv.fail.reseauCoupeBib=false; return Promise.resolve(erreurReseauBib()); }
     if(name==='cp_serveur_info'){ if(srv.fail.migration) return Promise.resolve({error:{code:'PGRST202',message:'Could not find the function public.cp_serveur_info'}}); return Promise.resolve({data:{documents:true,version:'1.10'}}); }
     if(name==='cp_state_push'){ if(srv.fail.ancienServeur&&p.p_client_version) return Promise.resolve({error:{code:'PGRST202',message:'Could not find the function public.cp_state_push(p_client_version, ...)'}}); srv.dernierPush=p; return Promise.resolve({data:{ok:true,updated_at:new Date().toISOString()}}); }
     if(name==='cp_emettre_document'){
@@ -31,6 +35,9 @@ export const SERVEUR=`(function(){
       const d={id:'doc'+(srv.docs.length+1),request_id:p.p_request_id,serie:p.p_serie,annee:an,numero:mx,num:p.p_serie+'-'+an+'-'+String(mx).padStart(3,'0'),type:p.p_type,origine:'emis',date_doc:p.p_date,payload:JSON.parse(JSON.stringify(p.p_payload))};
       srv.docs.push(d);
       if(srv.fail.perdreReponse){ srv.fail.perdreReponse=false; return Promise.reject(new Error('connexion coupée après l\\'enregistrement')); }
+      /* C1 (24/10/2026) : réponse perdue telle que la VRAIE bibliothèque la rend — supabase-js 2.117.3 (vendor) ne rejette pas
+         la promesse quand le réseau coupe : elle résout {error:{message:'TypeError: Failed to fetch'}, status:0}. Le document EST enregistré. */
+      if(srv.fail.perdreReponseBib){ srv.fail.perdreReponseBib=false; return Promise.resolve(erreurReseauBib()); }
       return Promise.resolve({data:{ok:true,deja:false,doc:doc(d)}});
     }
     if(name==='cp_document_fichiers'){ const d=srv.docs.find(x=>x.id===p.p_id); if(!d) return Promise.resolve({error:{message:'introuvable'}});
