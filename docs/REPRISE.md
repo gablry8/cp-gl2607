@@ -302,6 +302,12 @@ temps ». Détail, installation et repères : **`docs/AGENDA.md`**.
   sur des boutons ✏️ de 29 px qui existaient déjà, largeur qui varie avec la police ; suite E « Émettre » masqué par le
   bouton Assistant une fois sur deux, passe seule) ; suite P adaptée au nom de cache 1130.
 
+## Branche `refonte/p0-suite` (24/10/2026) — tests et docs seulement, NON fusionnée
+Partie du sommet de `refonte/ci-dates` (= C1 + correctif des tests dépendants de la date) : `ci-dates` n'était pas encore fusionnée dans `correctif/c1-registre-illisible` ; la fusionner d'abord, cette branche s'y ajoute ensuite sans conflit. Compte rendu : **`docs/P0-SUITE-COMPTE-RENDU.md`**.
+- Suite Q, contrôles « acompte » et « voile » : de nouveau **bloquants** (plus aucun INSTABLE). Suite T : T5b (la tournée déclenche `completerGeo`). Faux serveur : « hors service » = forme réelle de supabase-js.
+- **R12** : la batterie ne dépend plus du jour réel (`REF` dans `tests/lib.mjs` = mardi 20/10/2026 10:00 Paris, la date des golden) ; contrôle : `faketime '2027-01-05 10:00:00' bash tests/run-all.sh`. Les « 2026 » restants sont des barèmes légaux, des faits de calendrier ou des commentaires (classés au § 5.3 du compte rendu) : décision de Gabriel attendue.
+- Batterie complète : 1 111 réussis, 0 échoué (hors artefacts de banc liés à Chromium 153 dans `unshare -n`, voir `tests/LISEZMOI.md`).
+
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
 Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).
