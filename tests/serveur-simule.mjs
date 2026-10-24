@@ -19,7 +19,9 @@ export const SERVEUR=`(function(){
   /* forme exacte de supabase-js 2.117.3 (postgrest-js, fetch en échec, sans throwOnError) : promesse RÉSOLUE, status 0 */
   function erreurReseauBib(){ return {error:{message:'TypeError: Failed to fetch',details:'',hint:'',code:''},data:null,count:null,status:0,statusText:''}; }
   function rpc(name,p){ srv.appels.push(name);
-    if(srv.fail.horsService) return Promise.reject(new Error('Failed to fetch'));
+    /* P0-suite (24/10/2026) : serveur « hors service » rendu comme la vraie bibliothèque — réponse RÉSOLUE {error, status:0}, pas une promesse rejetée
+       (avant : Promise.reject(new Error('Failed to fetch')), forme que supabase-js 2.117.3 ne produit pas) */
+    if(srv.fail.horsService) return Promise.resolve(erreurReseauBib());
     /* C1 (24/10/2026) : réseau coupé AVANT l'arrivée de la demande d'émission, rendu comme la vraie bibliothèque (rien d'enregistré) */
     if(name==='cp_emettre_document'&&srv.fail.reseauCoupeBib){ srv.fail.reseauCoupeBib=false; return Promise.resolve(erreurReseauBib()); }
     if(name==='cp_serveur_info'){ if(srv.fail.migration) return Promise.resolve({error:{code:'PGRST202',message:'Could not find the function public.cp_serveur_info'}}); return Promise.resolve({data:{documents:true,version:'1.10'}}); }

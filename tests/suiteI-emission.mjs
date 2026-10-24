@@ -54,10 +54,17 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   await seed(p); await p.evaluate(SERVEUR); await p.evaluate(REEL);
   const r=await p.evaluate(async c=>{ const d=DEVIS.find(x=>x.statut==='accepte'&&compute(x).totalHT>0);
     __srv.fail.migration=true; await facturerDevis(d.id,'solde'); eval(c); const a=!!d.facSolde;
-    __srv.fail.migration=false; __srv.fail.horsService=true; await facturerDevis(d.id,'solde'); eval(c); const b=!!d.facSolde;
-    return {a,b,docs:__srv.docs.length,mode:nxEmisMode()}; },close);
+    __srv.fail.migration=false; __srv.fail.horsService=true;
+    /* P0-suite (24/10/2026) : le faux serveur « hors service » doit rendre la forme de la VRAIE bibliothèque (supabase-js 2.117.3, fetch en échec,
+       sans throwOnError) : promesse RÉSOLUE {error:{message:'TypeError: Failed to fetch'}, data:null, status:0}, jamais une promesse rejetée */
+    const forme=await window.sb.rpc('cp_serveur_info',{}).then(x=>({resolue:true,x}),e=>({resolue:false,rejet:String(e&&e.message||e)}));
+    await facturerDevis(d.id,'solde'); eval(c); const b=!!d.facSolde; const modeB=nxEmisMode();
+    return {a,b,docs:__srv.docs.length,mode:nxEmisMode(),forme,modeB}; },close);
   rec('Émission','Migration absente : facture NON émise (le chantier reste à facturer)',!r.a&&r.docs===0&&dlg.some(m=>/NON émise/.test(m)&&/migration/.test(m)),JSON.stringify(r)+' '+dlg.join(' / ').slice(0,200));
   rec('Émission','Serveur injoignable : facture NON émise, aucun numéro local',!r.b&&r.docs===0,JSON.stringify(r));
+  rec('Émission','Serveur injoignable : le message dit « serveur injoignable » et le mode reste bloqué pour cette raison (même constat qu\'avant le changement de forme)',dlg.some(m=>/NON émise/.test(m)&&/serveur injoignable/.test(m))&&r.modeB.mode==='bloque'&&r.modeB.raison==='serveur',JSON.stringify(r.modeB)+' '+dlg.join(' / ').slice(0,300));
+  rec('Émission','Faux serveur hors service : forme de supabase-js — réponse RÉSOLUE {error:{message:\'TypeError: Failed to fetch\'}, data:null, status:0}, pas une promesse rejetée',
+    r.forme.resolue===true&&!!r.forme.x&&r.forme.x.status===0&&r.forme.x.data===null&&!!r.forme.x.error&&r.forme.x.error.message==='TypeError: Failed to fetch',JSON.stringify(r.forme));
   await ctx.close();
 }
 
