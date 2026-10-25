@@ -94,7 +94,7 @@ Suites corrigées : E 19/19, F 9/9 (validateurs CEN et FNFE exécutés), M 23/23
 
 ## 6. Batterie complète
 
-Passage à la date réelle (24/10/2026, commit `787f120`) : **1 109 réussis, 2 échoués, 0 SKIP**, 5 « À TRANCHER » (suite Y, inchangés — M3 C2). Les 2 échecs sont les artefacts de la `veth` ci-dessous (autotest 1/20, suite X 1/8) ; rejoués dans l'espace isolé sans veth : **autotest 20/20, X 8/8** → **1 111 réussis, 0 échoué**. Après les deux dernières retouches (`b24ca72`) : suites I 40/40, N 37/37, R 42/42, T 25/25 rejouées, puis la batterie complète sous faketime (§ 5.4) ; un dernier passage complet à la date réelle est rejoué sur le commit qui porte ce document (résultat consigné ci-dessous par le dernier commit de documentation).
+Passage à la date réelle (24/10/2026, commit `787f120`) : **1 109 réussis, 2 échoués, 0 SKIP**, 5 « À TRANCHER » (suite Y, inchangés — M3 C2). Les 2 échecs sont les artefacts de la `veth` ci-dessous (autotest 1/20, suite X 1/8) ; rejoués dans l'espace isolé sans veth : **autotest 20/20, X 8/8** → **1 111 réussis, 0 échoué**. Après les deux dernières retouches (`b24ca72`) : suites I 40/40, N 37/37, R 42/42, T 25/25 rejouées, puis la batterie complète sous faketime (§ 5.4) ; **passage final à la date réelle (25/10/2026 00 h UTC) sur le commit `c8fc241`, arbre propre : 1 109 réussis, 2 échoués (les mêmes 2 artefacts de veth, rejoués sans veth sur ce commit : autotest 20/20, X 8/8), 0 SKIP, 5 « À TRANCHER »** — soit 1 111 réussis, 0 échoué.
 
 | Étape | Résultat |
 |---|---|
@@ -104,7 +104,7 @@ Passage à la date réelle (24/10/2026, commit `787f120`) : **1 109 réussis, 2 
 | SQL (PostgreSQL 16 local, marqueur `climpilot-test`) | **51/51** |
 | Aperçu isolé | 11/11 |
 | Validateurs | CEN `validation-1.3.16` et FNFE `v1.4.0.04` exécutés (suite F 9/9, 0 SKIP) |
-| Isolation réseau | 0 connexion externe établie ; 0 tentative vers le Supabase réel |
+| Isolation réseau | 0 connexion externe établie ; 3 tentatives vers l'adresse du Supabase réel vues par Playwright (page de signature, adresse écrite en dur), toutes servies par une simulation du test, 0 arrivée au réseau du navigateur |
 
 **Banc de test (certain, déjà vu en C1 § 9.6.1)** : la machine d'aujourd'hui a Playwright 1.63 / Chromium 153 (le dépôt fige 1.56.1). Dans `unshare -n`, Chromium 153 ignore `Network.emulateNetworkConditions{offline:false}` et se croit hors ligne : la suite I s'arrête à I5 (vu ici avant contournement). Contournement **hors dépôt** : une paire `veth` avec adresses privées (10.9.9.1/24, 10.9.9.2/24) **sans route** (rien ne peut sortir ; « connexions externes réellement établies : 0 ») ; effet de bord : « seule la boucle locale existe » (autotest) et la suite X (hors ligne) sont rouges **par construction** ; rejouées dans l'espace isolé sans veth (`bash tests/run-all.sh` normal) : **autotest 20/20, X 8/8**.
 
