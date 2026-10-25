@@ -7,12 +7,12 @@
 
 1. **Tu valides la version unique `1.13.0`** (`VERSION`, « Next 1.13.0 » sous le logo, cache `climpilot-next-1130-production`) — décision proposée en M0 § 7, appliquée ici ; dis-moi si tu veux un autre numéro.
 2. **Tu valides une seule fusion** (`release/1.13.0 → main`, merge commit) au lieu de trois (#4 puis P0 puis C1) : même contenu, un seul retour arrière. Les PR #2, #3, #4 seront fermées sans fusion après.
-3. **Lundi** : copie d'essai `ClimPilot-ESSAI-1130-production.zip` sur Netlify (config TEST déjà remplie), liste A3 **colonne ESSAI** complète (14 contrôles, ~1 h). Un échec = tu notes et tu me le dis, on ne fusionne pas.
+3. **Lundi** : copie d'essai `ClimPilot-ESSAI-1130-production.zip` sur Netlify (config TEST déjà remplie), liste A3 **colonne ESSAI** complète (15 contrôles : le 5 bis du 24/10 est acquis, le 5 ter est refait ; ~1 h ; en ESSAI les numéros sont `F-…` et `AV-…` du registre TEST, voir M0 § A3 mis à jour le 25/10 au soir). Un échec = tu notes et tu me le dis, on ne fusionne pas.
 4. Activer la **protection de `main`** (Settings › Branches › Add rule › `main` › Require status checks › « batterie complète »).
-5. Mot de passe ClimPilot unique et long + verrouillage des appareils (M4 C4/C12), adresse `noreply` GitHub (M4 C17).
+5. Verrouillage des appareils (M4 C12), adresse `noreply` GitHub (M4 C17). Mot de passe (M4 C4) : l'appli n'a **pas** d'écran pour le changer (vérifié le 25/10) → écran à ajouter à la mission sécurité ; ne rien bricoler dans Supabase d'ici là.
 6. **Sauvegarde serveur avant fusion** (SQL Editor du projet **RÉEL**) : coller tout `tests/supabase-test/5-REEL-avant-fusion-1.13.sql` (ajouté le 25/10 : refuse de tourner sur TEST ; `cp_backup_row` ne rend rien, le script affiche ensuite la sauvegarde) → 1re ligne `avant-1.13.0`, noter son `id`.
 7. **Fusion** : PR #5 › « Ready for review » › « Merge pull request » (merge commit, pas squash) ; attendre la publication Pages (1-3 min).
-8. **Sur chaque appareil** : ouvrir ClimPilot, F5 ; sous le logo : « Next 1.13.0 ». Puis liste A3 **colonne PROD** (factures en mode démonstration seulement).
+8. **Sur chaque appareil** : ouvrir ClimPilot, F5 ; sous le logo : « Next 1.13.0 » (sur le PC ; sur le téléphone ce texte est masqué, voulu : menu ☰ › la ligne « Objectifs & feux » doit exister). Puis liste A3 **colonne PROD** (factures en mode démonstration seulement).
 9. **Migration C1 sur le réel** (SQL Editor, projet réel) : coller tout `tests/supabase-test/5-REEL-migration-C1.sql` (= la migration telle quelle + la partie 3 du script TEST, avec un verrou « pas sur TEST » ; vérifié le 25/10 sur PostgreSQL local) → 5 « OK ». Retour arrière : `4-une-facture-par-source-retour-arriere.sql`.
 10. Fermer #2, #3, #4 ; supprimer les branches contenues (`claude/*`, `fusion/avant-refonte`, `refonte/p0-filet`, `correctif/c1-*`, `refonte/ci-dates`, `refonte/p0-suite`). Ensuite seulement : C3 depuis `main`.
 

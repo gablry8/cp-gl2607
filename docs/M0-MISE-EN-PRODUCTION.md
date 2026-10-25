@@ -45,7 +45,7 @@ Si une copie a déjà été publiée sous `gablry8.github.io` : ne l'ouvre plus 
 ## Partie A — Mise en production de l'appli seule
 
 ### A1. AVANT (10 min)
-1. **Appareils synchronisés** : PC puis téléphone, ouvre ClimPilot, attends que la synchro soit au repos (pas de « modifications en attente »). Un appareil resté hors ligne longtemps : l'ouvrir d'abord et le laisser se synchroniser.
+1. **Appareils synchronisés** : PC puis téléphone, ouvre ClimPilot, attends que la synchro soit au repos : en bas du menu, « ✓ synchronisé » (et non « ☁ à synchroniser… ») ; sur le téléphone, ouvre le menu ☰ pour le voir. Un appareil resté hors ligne longtemps : l'ouvrir d'abord et le laisser se synchroniser.
 2. **Sauvegarde manuelle** : Outils › **⤓ Sauvegarde** → fichier gardé hors du téléphone (PC + clé/cloud).
 3. **Sauvegarde serveur** (SQL Editor du projet **RÉEL**, nouvelle requête) : colle **tout** `tests/supabase-test/5-REEL-avant-fusion-1.13.sql`
    (25/10/2026 : il refuse de tourner sur le projet de TEST, puis fait exactement ceci) :
@@ -65,25 +65,25 @@ Si une copie a déjà été publiée sous `gablry8.github.io` : ne l'ouvre plus 
 5. **Après la liste A3 PROD** : migration C1 sur le **réel** (SQL Editor) : colle **tout** `tests/supabase-test/5-REEL-migration-C1.sql` (migration telle quelle + les 5 contrôles ; refuse de tourner sur TEST) → **5 lignes « OK »**. Retour arrière : `tests/supabase-test/4-une-facture-par-source-retour-arriere.sql`.
 
 ### A3. LISTE DE CONTRÔLE — la même, deux fois : **ESSAI** (copie, base de TEST, avant A2) puis **PROD** (vraie appli, après A2)
-Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le compte est celui du TEST ; la facturation réelle y est démarrée (base TEST, 0.4) pour les contrôles 5 bis et 5 ter. En PROD : factures et avoirs **uniquement en mode démonstration** (`TEST-…`), jamais une vraie ; 5 bis « sans objet » en PROD. Si un contrôle échoue : **n'insiste pas**, note ce que tu as vu ; en ESSAI → on corrige avant A2 ; en PROD → A4.
+Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le compte est celui du TEST ; la facturation réelle y est démarrée (base TEST, 0.4) pour les contrôles 5 bis et 5 ter — **donc en ESSAI les numéros sont ceux du registre TEST** (`F-2026-…`, `AV-2026-…`), pas `TEST-…` (mise à jour du 25/10). En PROD : factures et avoirs **uniquement en mode démonstration** (`TEST-…`), jamais une vraie ; 5 bis « sans objet » en PROD. Si un contrôle échoue : **n'insiste pas**, note ce que tu as vu ; en ESSAI → on corrige avant A2 ; en PROD → A4.
 
 | # | Contrôle (téléphone **et** PC) | Attendu | ESSAI | PROD |
 |---|---|---|:-:|:-:|
 | 1 | Ouverture avec les données existantes | mêmes clients, devis, factures, locations ; aucun bandeau rouge d'erreur (en ESSAI, seul le bandeau « VERSION D'ESSAI ») | ☐ | ☐ |
-| 2 | Petit texte sous le logo « ClimPilot » (en-tête) | « ClimPilot Next 1.13.0 … » (version unique depuis la 1.13.0 : `VERSION`, `NX_VERSION`, cache `1130` alignés — P2 du 25/10) | ☐ | ☐ |
+| 2 | Petit texte sous le logo « ClimPilot » (en-tête) | **PC** (fenêtre large) : « ClimPilot Next 1.13.0 … » (version unique depuis la 1.13.0 : `VERSION`, `NX_VERSION`, cache `1130` alignés — P2 du 25/10). **Téléphone** : ce texte est masqué sur petit écran (voulu, `index.html` l. 145) → ouvre le menu ☰ : la ligne « Objectifs & feux » existe (elle n'existe pas en 1.10) | ☐ | ☐ |
 | 3 | Ouvrir un **ancien** devis (d'avant 1.12) | mêmes montants qu'avant, au centime | ☐ | ☐ |
 | 4 | Créer un devis (nature au choix), l'enregistrer | numéro `DV-…`, totaux cohérents, visible sur l'autre appareil après synchro | ☐ | ☐ |
-| 5 | Émettre une facture de **TEST** (mode démonstration) | `TEST-F-2026-NNN` qui **suit** le dernier, sans trou ni doublon | ☐ | ☐ |
+| 5 | Émettre une facture d'essai | **PROD** (mode démonstration) : `TEST-F-2026-NNN` qui **suit** le dernier, sans trou ni doublon. **ESSAI** (facturation réelle démarrée sur la base TEST) : `F-2026-NNN` du registre TEST, qui suit le dernier (F-2026-004 ou plus), sans trou ni doublon | ☐ | ☐ |
 | 5 bis | **Acompte sur le PC, solde sur le téléphone « en ligne mais pas à jour »** (protocole M3 C4 ; **hypothèse** : non éprouvé sur un vrai appareil). **Préalable** : facturation réelle **démarrée** (sur l'ESSAI : copie, base de TEST, SIRET fictif, voir 0.4 ; en PROD : ce contrôle ne se fait **pas** tant que la facturation réelle n'est pas démarrée, le registre n'étant pas consulté en démonstration — en PROD, cocher « sans objet »). Dans l'ordre : ① sur le téléphone, ouvre le devis et **commence à taper une note sans valider** (les mises à jour reçues attendent alors le prochain changement d'écran) ; ② sur le PC, facture l'**acompte** du même devis ; ③ attends **1 minute** ; ④ sur le téléphone, clique « Facturer le solde » | au ④ : message « Une facture d'acompte a été émise… depuis un autre appareil… Rien n'a été émis », **aucune** nouvelle facture. Au **2e clic** : solde = total − acompte, un seul `F-` de solde (dans le registre de la base TEST). Si le téléphone émet un solde au ④ (ou un solde sans l'acompte déduit) : **arrête l'essai et note les numéros** — c'est le cas à risque M3 C1 (contrôle demandé par le compte rendu § 4) | ☐ | ☐ |
 | 5 ter | **Téléphone en mode avion**, « Facturer le solde » d'un devis, puis remets le réseau et attends la synchro | « Facture NON émise », rien de plus ; après le retour du réseau, **aucune** facture n'a été émise par le téléphone. Ce cas ne teste **que** le hors ligne : il ne parcourt pas le chemin « en ligne mais pas à jour » du 5 bis (M3 C4) | ☐ | ☐ |
-| 6 | Synchro entre deux appareils | modification sur le PC visible sur le téléphone, et inversement ; aucune « modification en attente » qui reste | ☐ | ☐ |
+| 6 | Synchro entre deux appareils | modification sur le PC visible sur le téléphone, et inversement ; le bas du menu revient à « ✓ synchronisé » (plus de « ☁ à synchroniser… ») | ☐ | ☐ |
 | 7 | Mode avion, rouvrir l'appli | elle s'ouvre, les données sont là, l'écran Planning répond | ☐ | ☐ |
 | 8 | Signature en ligne d'un devis de test (ESSAI : la fonction `signature` 1.10 est déployée sur TEST depuis le 05/10) | lien ouvert sur le téléphone, signature enregistrée | ☐ | ☐ |
 | 9 | Planning : planifier deux chantiers le même matin | avertissement « même moment » ; après confirmation, carte bordée de rouge | ☐ | ☐ |
 | 10 | Ma journée : cartes Messages et Tournée | présentes ; sur le téléphone, le bouton « 🎙️ Assistant » ne recouvre **aucun** bouton d'une fenêtre (bug corrigé en M0) | ☐ | ☐ |
-| 11 | Avoir partiel sur une facture de TEST (téléphone) | bouton « Émettre l'avoir » cliquable, `TEST-AV-…` créé | ☐ | ☐ |
+| 11 | Avoir partiel sur la facture d'essai du n° 5 (téléphone) | bouton « Émettre l'avoir » cliquable ; **PROD** : `TEST-AV-…` créé ; **ESSAI** : `AV-2026-…` du registre TEST | ☐ | ☐ |
 | 12 | Objectifs & feux, suivi Urssaf/comptable : cocher une déclaration | la coche est visible sur l'autre appareil après synchro (clés 1.11/1.12 synchronisées) | ☐ | ☐ |
-| 13 | Retour SAV, demande d'avis, relevé bancaire (CSV d'essai), bilan fluides | écrans qui s'ouvrent et enregistrent, sans bandeau rouge | ☐ | ☐ |
+| 13 | Retour SAV, demande d'avis, relevé bancaire (fichier fictif [`tools/essai/releve-essai-fictif.csv`](../tools/essai/releve-essai-fictif.csv) : 3 lignes, un crédit de 123,45 €), bilan fluides | écrans qui s'ouvrent et enregistrent, sans bandeau rouge ; le relevé affiche 3 lignes du 24 au 26/10/2026. **En PROD : charge le relevé puis ferme sans valider** (rien n'est gardé tant que tu ne valides pas) | ☐ | ☐ |
 | 14 | Recherche Ctrl K / menus Créer et Outils (PC) | actions et écrans trouvés | ☐ | — |
 
 ### A4. RETOUR ARRIÈRE (revenir à la 1.10.0) — et ce qui arrive aux données 1.11/1.12
@@ -100,7 +100,7 @@ Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le c
 select public.cp_backup_row(user_id, data, 'avant-retour-arriere-1.10') from public.climpilot_state;
 ```
 puis :
-1. **Appli** : sur GitHub, « Revert » sur la demande #5 (ou `git revert -m 1 <commit de fusion>` sur `main`) → republie la 1.10.0 (`1c91cca`). F5 sur chaque appareil : le service worker 1.10 reprend la main et supprime le cache 1130.
+1. **Appli** : sur GitHub, « Revert » sur la demande #5 (ou `git revert -m 1 <commit de fusion>` sur `main`) → republie la 1.10.0 (`1c91cca`). **Si `main` est protégée** (« batterie complète » obligatoire) : la demande de retour arrière n'aura **jamais** cette coche, puisque la 1.10 n'a pas de CI → sur cette demande-là seulement, coche « Merge without waiting for requirements to be met (bypass branch protections) » avant « Merge » (jamais pour une fusion normale). F5 sur chaque appareil : le service worker 1.10 reprend la main et supprime le cache 1130.
 2. Les données saisies entre-temps restent ; les écrans 1.11/1.12 disparaissent, leurs données restent dans chaque appareil et dans la sauvegarde `avant-retour-arriere-1.10` (120 jours). Au retour en 1.12 plus tard, elles reviennent d'elles-mêmes depuis les appareils ; sinon, restaure cette sauvegarde (Outils › « Sauvegardes cloud » › Restaurer — depuis un seul appareil, les autres fermés, puis rouvre-les : la restauration écrase l'état serveur, R11 du plan).
 3. **Données perdues ?** Seulement si quelque chose a été cassé : restaure `avant-1.13.0` (A1) de la même façon ; tu perds alors ce qui a été saisi depuis.
 4. Serveur : si la migration C1 (A2-5) a été appliquée, colle `tests/supabase-test/4-une-facture-par-source-retour-arriere.sql` (remet la fonction 1.10 mot pour mot, 2 « OK ») ; sinon rien à faire.
