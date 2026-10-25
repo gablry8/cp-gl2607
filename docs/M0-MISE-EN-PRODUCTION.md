@@ -61,7 +61,7 @@ Si une copie a déjà été publiée sous `gablry8.github.io` : ne l'ouvre plus 
 1. Demande de fusion **#5** `release/1.13.0 → main` (brouillon ; mise à jour du 25/10 : elle **contient** #4 `fusion/avant-refonte`, #3 et #2, plus P0, C1 et la P0-suite — ne fusionne **pas** #4) : « Ready for review » puis « Merge » en **merge commit** (pas squash, pour garder l'historique). Note le numéro du commit de fusion (pour le retour arrière).
 2. Attends la publication GitHub Pages (1 à 3 min ; onglet Actions ou Settings › Pages).
 3. Sur **chaque** appareil : ouvrir ClimPilot, F5 (ou fermer/rouvrir). Nouveau cache `climpilot-next-1130-production`, l'ancien `…-1100-production` supprimé automatiquement (vérifié en simulation : données conservées, ouverture hors ligne OK).
-4. #2, #3 et #4 sont contenues dans #5 : c'est **toi** qui les fermes ensuite, **sans** les fusionner (« Close pull request »).
+4. #2, #3 et #4 sont contenues dans #5 (leurs derniers commits sont dans `release/1.13.0`, vérifié le 25/10) : après la fusion de #5, GitHub les marquera probablement « Merged » **d'elles-mêmes**, c'est normal. Celles qui restent ouvertes, c'est **toi** qui les fermes, **sans** les fusionner (« Close pull request »).
 5. **Après la liste A3 PROD** : migration C1 sur le **réel** (SQL Editor) : colle **tout** `tests/supabase-test/5-REEL-migration-C1.sql` (migration telle quelle + les 5 contrôles ; refuse de tourner sur TEST) → **5 lignes « OK »**. Retour arrière : `tests/supabase-test/4-une-facture-par-source-retour-arriere.sql`.
 
 ### A3. LISTE DE CONTRÔLE — la même, deux fois : **ESSAI** (copie, base de TEST, avant A2) puis **PROD** (vraie appli, après A2)

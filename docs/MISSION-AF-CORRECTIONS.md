@@ -26,7 +26,7 @@
 | **AF2 — Montants et compta** | M1, M2, M3, M4, M6 | AF1 et S fusionnées ; décisions 4-6 ; réponse comptable n° 5 pour M4 | Opus 5.5 · élevée | Fable 5.1 |
 | **AF3 — Fiche fluide conforme** | C1, C2, C3, T12 | AF1 fusionnée (D5, D6 touchent la même fiche) ; décision 7 | Fable 5.1 · élevée | Opus 5.5 |
 | **AF4 — Mentions des factures et devis** | C4, C5, C6, C7, C8 | réponses de ta comptable (sauf C6, C7) ; régénération des golden documents **avec ton accord** | Opus 5.5 · élevée | Fable 5.1 |
-| **AF5 — Écrans qui font perdre du temps** | T2, T3, T4, T5, T6, T7, T8, K1, K5, K13 | aucun conflit avec AF1-AF4 si lancée seule | Sonnet 5.5 · moyenne | Opus 5.5 · moyenne |
+| **AF5 — Écrans qui font perdre du temps** | T2, T3, T4, T5, T6, T7, T8, K1, K5, K13, A11 | aucun conflit avec AF1-AF4 si lancée seule | Sonnet 5.5 · moyenne | Opus 5.5 · moyenne |
 | ailleurs | **D1** (conflit entre appareils) et **D4** (n° de fiche fluide en double) → **P3** (données, tes décisions R1 et R2 du TOPO) ; **T18** (ouverture lente en cave) → **P4** (service worker) ; M5, M7, M8, T1, T9-T11, T13-T17, K2-K12 → `docs/APRES-PRO-V1.md` ou petites tâches de P4 | — | — | — |
 
 Règles communes (celles du TOPO) : une branche par mission depuis `main`, tests d'abord (rouges sur l'ancien code, prouvés), golden calculs (Z) et documents (Y) **identiques** sauf régénération écrite et validée par toi, batterie complète verte, CI verte, compte rendu avec 10 lignes de décision en tête, **jamais deux missions qui touchent le code de l'appli en même temps**.
@@ -157,6 +157,7 @@ Règles communes (celles du TOPO) : une branche par mission depuis `main`, tests
 | K1 | Paramètres parle de « Notion en direct », « base Notion = 75 €/h », « Revenir aux valeurs Notion » (`index.html` l. 781-824) alors que l'appli utilise des prix embarqués ; bloc code d'accès : « tes données restent uniquement sur cet ordinateur » (l. 813), faux (synchro) | textes exacts : « Prix embarqués (07/2026) », « Revenir aux prix embarqués », « tes données sont sur tes appareils et synchronisées sur ton espace en ligne » |
 | K5 | Mails et SMS de signature signés « Gabriel Leroy » en dur (`next-signature.js` l. 36-41) | signature tirée de Paramètres › Entreprise, comme `next-messages.js` l. 28 |
 | K13 | Le bouton flottant « Assistant » recouvre le bas du contenu sur téléphone (TOPO A14) | marge basse réservée sous le contenu de chaque écran |
+| A11 (TOPO) | `next-emission.js` l. 850 appelle `money()`, qui n'est pas défini pour ce fichier : l'erreur est avalée et la carte Paramètres › « Facturation réelle » affiche les montants au format `1234.56 €` | même formatage que le reste de l'appli : le formateur global `eur` (`index.html` l. 1031, `1 234,56 €`). Attention : la variable locale de la l. 850 s'appelle aussi `eur` et masque le global, la renommer. Test : la carte affiche `1 234,56 €` pour 1234.56 |
 
 ---
 
