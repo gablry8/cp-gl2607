@@ -1,0 +1,334 @@
+{
+ "statique": {
+  "go": [
+   "addons",
+   "regime",
+   "statut",
+   "activite",
+   "commande",
+   "assistant",
+   "cerfa",
+   "devis2",
+   "mod-entretien",
+   "adresse",
+   "avoir",
+   "superpdp",
+   "emission",
+   "objectifs"
+  ],
+  "compute": [
+   "addons",
+   "devis2"
+  ],
+  "recalc": [
+   "addons",
+   "devis2"
+  ],
+  "updateBadges": [
+   "addons",
+   "relance",
+   "avoir",
+   "objectifs"
+  ],
+  "renderDash": [
+   "addons",
+   "statut",
+   "objectifs"
+  ],
+  "showStep": [
+   "addons",
+   "statut"
+  ],
+  "formToDevis": [
+   "addons",
+   "devis2"
+  ],
+  "loadDevisToForm": [
+   "addons",
+   "devis2"
+  ],
+  "saveDevis": [
+   "addons",
+   "devis2"
+  ],
+  "migrate": [
+   "statut"
+  ],
+  "renderPlanning": [
+   "addons",
+   "adresse",
+   "planning"
+  ],
+  "openFlu": [
+   "cerfa",
+   "flu-guide"
+  ],
+  "saveFlu": [
+   "cerfa",
+   "flu-guide"
+  ],
+  "nextFacNum": [
+   "emission"
+  ],
+  "renderList": [
+   "statut"
+  ],
+  "printDevis": [
+   "devis2"
+  ],
+  "openDevis": [
+   "devis2"
+  ]
+ },
+ "doubleExecution": {
+  "next-addons.js": {
+   "doublonsId": [
+    "nxNavOverlay",
+    "nxTaskModal",
+    "nxTaskTitle",
+    "nxTaskDue",
+    "nxTaskPriority",
+    "nxTaskCat",
+    "nxTaskLink",
+    "nxTemplateModal",
+    "nxTplName",
+    "nxTplDesc",
+    "nxContextScanner",
+    "nxCtxScanTitle"
+   ],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-regime.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-siren.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-icons.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-statut.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-pdf.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-activite.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-relance.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-commande.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-assistant.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-signature.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-cerfa.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-journee.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-devis2.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-mod-split.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-mod-gainable.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-mod-kit.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-mod-depannage.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-mod-entretien.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-mod-chambre.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-mod-autres.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-catalogue.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-fiabilite.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-mobile.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-adresse.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-flu-guide.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-dim.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-fournisseur.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-avoir.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-einvoice.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-superpdp.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-emission.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-particuliers.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-taux.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-documents.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-objectifs.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-rentab.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-avis.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-banque.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-flubilan.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-raccourcis.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-planning.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-messages.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  },
+  "next-terrain.js": {
+   "doublonsId": [],
+   "erreurs": [],
+   "erreurTest": null
+  }
+ },
+ "couche404": {
+  "next-planning.js": {
+   "demarre": true,
+   "cles": 51,
+   "message": null,
+   "vue": "v-nx_journee",
+   "erreurs": []
+  },
+  "next-emission.js": {
+   "demarre": true,
+   "cles": 48,
+   "message": null,
+   "vue": "v-nx_journee",
+   "erreurs": []
+  }
+ }
+}
