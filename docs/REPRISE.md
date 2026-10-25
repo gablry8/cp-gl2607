@@ -45,6 +45,263 @@ tests/run-all.sh          # puis lire $CP_TEST_OUT/rapport.md
 ```
 Sans droit `unshare -n` (isolation réseau du noyau), lancer avec `CP_SANS_NETNS=1` : le rapport l'indiquera.
 
+## EN PRODUCTION depuis le 08/10/2026 (accord explicite de Gabriel)
+- Sauvegarde serveur avant mise en production : `climpilot_backups` id 13, raison `avant-mise-en-production-1.10` (20 devis, 15 clients).
+- Appli **1.10.0** publiée : PR #1 fusionnée par Gabriel (`main` = `1c91cca`), vérifiée en ligne.
+- Migration `20261002120000_documents_emis.sql` appliquée sur le projet réel. Gabriel l'a collée dans le SQL Editor, car `apply_migration` est annulé depuis la session. Vérifié : tables, 6 fonctions, colonnes de signature, écriture directe de l'état retirée, 0 document.
+- Fonction `signature` v4 (1.10) déployée, `verify_jwt` = false.
+- **Pas encore mises à jour** : `assistant` (v4) et `superpdp` (v1). Il faut d'abord que Gabriel pose `ALLOWED_USER_IDS` (et `ANTHROPIC_API_KEY` pour assistant) dans Edge Functions › Secrets.
+- Facturation réelle **non démarrée** : mode démonstration, numéros TEST.
+- Conseiller de sécurité Supabase :
+  - fonctions SECURITY DEFINER appelables par `authenticated` : voulu, elles vérifient `auth.uid()` ;
+  - « protection des mots de passe divulgués » désactivée : à voir par Gabriel.
+
+## 1.11 « Objectifs & feux » — branche `claude/objectifs-feux` (11/10/2026, PAS en production)
+Partie de `claude/quirky-pasteur-ds9m47` (= 1.10.0 en production). Côté appli seulement : **aucune migration ni fonction serveur**
+(le serveur accepte toute clé de synchronisation, `cp_state_push` ne filtre pas).
+- `next-objectifs.js` (menu Accueil › « Objectifs & feux ») : plan d'action du 09/10/2026 dans l'appli.
+  - Objectif de CA HT mois par mois sur 36 mois, plancher (charges + paie + équipe, cotisations du profil fiscal) ; mêmes formules que `Plan_Objectifs_2027-2030.xlsx` (vérifié par la suite O).
+  - « Mes 3 objectifs » : CA de l'année à date, contrats d'entretien (15 / 40 / 70), part du plus gros client (< 70 % puis < 50 %).
+  - Feux : lancement (dont la règle ACRE selon la date de fermeture de l'ancienne EI, art. D131-6-1 CSS / circulaire CNAV 2026-12), société, apprenti (art. R6223-22), technicien. Règles de gestion proposées, sauf les règles légales citées.
+  - « Combien coûte un salarié ? » : coût ESTIMÉ 2026, prix minimum, heures minimum, coût d'une augmentation.
+  - « Pour la comptable » + « Mon suivi » : déclarations Urssaf (échéances officielles, autoentrepreneur.urssaf.fr) et envois à la comptable, cochés et datés ; contrôles avant envoi ; exports ; point du mois en PDF.
+  - « À faire maintenant » + pastille du menu + ligne sur le tableau de bord.
+  - Stockage : `cpnext_objectifs` (réglages) et `cpnext_objsuivi` (cases et relevés, liste à identifiants → fusion multi-appareils par élément).
+- `next-regime.js` : facturier, livre des recettes, synthèse et mail = mêmes règles que le livre des recettes de l'appli (essais exclus, avoirs, factures annulées, remboursements) ; fichiers `DEMONSTRATION_…` tant que la facturation réelle n'a pas démarré.
+- `next-addons.js` : libellé de version « Next 1.11.0 » (affichage seulement ; `CP_VERSION` envoyé au serveur reste 1.10.0). `sw.js` : `climpilot-next-1110-objectifs`.
+- Relecture indépendante du 11/10 (8 points, tous corrigés et testés, suite O20) : 1re déclaration Urssaf = périodes avant le 90e jour
+  regroupées avec la suivante (montant depuis le début) ; 90 jours comptés depuis la date de début du profil fiscal ; « à jour jusqu'au »
+  = fin de la plus récente période cochée, tous rythmes confondus (pas de faux retards après un changement mois ↔ trimestre) ;
+  bouton « C'est envoyé » dans le rappel ; migration de l'ancien format sans écrasement ; part du plus gros client sur 6 mois glissants.
+- Performance : cache le temps d'un affichage (`avecCache`) + `nxrgLignesRecettes/Impayes(…, F)` réutilisent les factures déjà calculées.
+- Tests : suite O (`tests/suiteO-objectifs.mjs`, 78 contrôles), dont gros volume (1 800 factures : écran < 1,5 s),
+  synchro réelle entre deux appareils (O21 : vrai pushState/pullState/cpMerge sur un serveur commun simulé) et affichage téléphone
+  du suivi (O13 : aucun débordement ; échouait avant la correction du 12/10 : 111 et 164 px).
+- Essais faits par Claude le 12/10 sur la copie d'essai exacte (PC 1300 px et iPhone 13 simulés) : date d'EI 2026 → ACRE rouge,
+  2025 → vert ; trésorerie ; case cochée ; début de plan passé → suivi + 3 rappels + pastille ; point du mois ; export DEMONSTRATION_.
+- Batterie complète du 12/10 avec les validateurs CEN et FNFE : 534 réussis, 0 échec, 0 SKIP (SQL non exécuté : aucun changement SQL).
+- À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.11.zip` (base de TEST) : menu Accueil › Objectifs & feux ;
+  date de fermeture de l'EI ; trésorerie ; une case cochée sur le PC puis vue sur le téléphone ; point du mois (PDF) ; pastille du menu.
+- Mise en production : fusion de cette branche dans `main` par Gabriel, puis mise à jour de chaque appareil (F5). Rien côté Supabase.
+
+## 1.12 « Améliorations » — branche `claude/ameliorations-1.12` (12/10/2026, PAS en production)
+Partie de `claude/objectifs-feux` (1.11, demande de fusion n°2) : elle CONTIENT la 1.11. Côté appli seulement : aucune migration
+ni fonction serveur (nouvelles clés de synchronisation acceptées telles quelles par `cp_state_push`).
+- `next-rentab.js` (carte d'Objectifs & feux) : main-d'œuvre facturée ÷ heures réelles (bloc « Réalité terrain » du devis +
+  heures de SAV liées), comparée au taux du plan ; « tout compris / h » pour information ; retours SAV non facturés
+  (`cpnext_sav`) : heures, km, pièces, motif, coût estimé, comparé à la provision SAV facturée.
+- `next-avis.js` : demande d'avis Google après paiement (60 jours, une fois par client, `cpnext_avis`), mail ou SMS préparés,
+  texte neutre ; lien dans Paramètres › Mon entreprise (`avisGoogle`, https seulement).
+- `next-banque.js` : import du relevé bancaire CSV, lu sur l'appareil (ni enregistré ni envoyé). Crédits rapprochés des impayés
+  du même montant au centime ; n° de facture COMPLET ou nom du client → « sûr ». Jamais coché d'office : montant déjà au livre
+  des recettes à 7 jours près, période déjà déclarée / envoyée, particulier payé avant la fin du délai L221-10. Paiement par le
+  même chemin que le bouton « Payée », à la date de la ligne (modifiable). Empreintes des lignes rapprochées (`cpnext_bqvus`).
+  Colonne de montants sans aucun négatif → refus. Trésorerie : jamais d'écrasement d'une saisie plus récente.
+- `next-flubilan.js` (écran Fluides) : déclaration annuelle à l'organisme agréé, 7 rubriques de l'arrêté du 21/11/2025 (art. 1er,
+  5°), avant le 31/01 ; chargées / récupérées calculées depuis les fiches Cerfa, le reste saisi ; contrôle de cohérence du stock ;
+  copie (« NON RENSEIGNÉ », jamais 0 par défaut), CSV, impression ; une case = un élément synchronisé (`cpnext_flubilan`) ;
+  rappel dans « À faire » seulement si attestation de capacité ou fiches.
+- Bouteilles dans le camion (`next-flubilan.js`, écran Fluides, `cpnext_adr`) : seuil ADR 1.1.3.6, kg de fluide inflammable
+  (catégorie 2) × 3 + kg non inflammable / litres d'azote (catégorie 3) × 1 ≤ 1 000 points (OPPBTP « quantités limitées » ;
+  FDS des fournisseurs, rubrique 14) ; rappel de ce qui reste obligatoire (extincteur 2 kg, formation ADR 1.3, arrimage).
+- Raccourcis (`next-raccourcis.js`, 13/10) : menu « Créer » (retour SAV), menu « Outils » (relevé, déclaration des fluides,
+  bouteilles ADR), recherche Ctrl K (actions + écrans du menu, crochet `window.nxExtraSearch` dans `next-addons.js`),
+  ouverture par l'adresse `index.html?ouvrir=…` et raccourcis de l'icône (`manifest.json` « shortcuts » ; pas sur iPhone).
+- `next-objectifs.js` : extensions `nxobjAjouts`, conseils non bloquants dans « Lancer l'entreprise », attestation de capacité,
+  coût du km dans « Mes réglages ». Conseils ajoutés le 13/10 : RGE QualiPAC (seulement pour la PAC air/eau aidée) et
+  partenaire CEE (PAC air/air et meubles frigorifiques sans RGE) ; détail et sources dans la doc du projet
+  `claude/rge-cee-fluides-lancement.md`.
+- `index.html` : champ avisGoogle, chargement des 5 modules (rentab, avis, banque, flubilan, raccourcis).
+  `sw.js` : `climpilot-next-1126-synchro-sure` (après la recette du 14/10 au soir).
+- Relecture indépendante du 12/10 : 2 défauts bloquants (n° de facture trouvé dans une date ou une référence ; virement déjà
+  marqué payé à la main qui payait une 2e facture) et 6 importants (débit lu comme crédit, période déjà déclarée, date des chèques
+  et espèces, « 0 kg » pour une case vide, seuil du voyant, deux « €/h » contradictoires), plus 9 mineurs : tous corrigés et testés
+  (suite P, partie P6b et suivantes ; les cas bloquants échouent sur le code d'avant correction).
+- Tests : suite P (`tests/suiteP-ameliorations.mjs`, 138 contrôles), ajoutée à `tests/run-all.sh`.
+- Tests : suite Q (`tests/suiteQ-recette.mjs`, 62 contrôles, environ 15 min), ajoutée à `tests/run-all.sh` ;
+  `CP_Q_PARTIES=4,5` pour n'en jouer qu'une partie.
+- À essayer par Gabriel sur la copie d'essai `ClimPilot-ESSAI-1.12.zip` : Objectifs & feux (rentabilité, retour SAV, liste de
+  lancement), Paramètres (lien d'avis), relevé bancaire (fichier CSV de sa banque, sur des factures d'essai), écran Fluides,
+  menus « Créer » / « Outils » et recherche Ctrl K.
+- Mise en production : fusion de cette branche (elle contient la 1.11) dans `main` par Gabriel, puis F5 sur chaque appareil.
+
+### Recette « deux appareils » du 14/10/2026 (suite Q)
+Banc d'essai `tests/banc-appareils.mjs` : un PC (1300 px) et un iPhone 13 simulés, sur UN serveur commun simulé côté Node
+(état : règle de `cp_state_push` ; registre des factures : règles de `cp_emettre_document`, numérotation partagée). Le client
+Supabase de l'appli est remplacé avant son chargement : vrai démarrage (`initCloud`), vrai écran de connexion, rechargements
+de l'appli compris. Coupure réseau par appareil, retour sur l'appli (`visibilitychange`), réseau lent, modules lents.
+Scénarios de `tests/suiteQ-recette.mjs` (captures et `etapes.json` dans `<CP_TEST_OUT>/recette/`, rapport pour Gabriel) :
+ouverture d'un 2e appareil, ancienne version restée en cache, connexion d'un nouvel appareil, journée complète (facturation
+réelle démarrée, factures depuis les deux appareils, même devis facturé des deux côtés, chèque, relevé bancaire importé sur
+les deux, retour SAV, avis, fluides hors ligne, bouteilles, liste de lancement, hors ligne, devis ouvert pendant une mise à
+jour, suppression, raccourcis, tous les écrans, contrôle du registre), dépannage préparé sur le PC et facturé sur le téléphone.
+Défauts trouvés et corrigés (chaque test échoue sur le code d'avant) :
+1. **Synchro partie avant le chargement des modules** (`index.html`, `cpQuandPret`) : à l'ouverture, les données des modules
+   (retours SAV, bouteilles, registre des factures…) n'étaient pas reçues, et un envoi à ce moment-là les retirait du serveur.
+   La synchro attend maintenant l'événement `nxstoreready`.
+2. **Données inconnues retirées du serveur** (`cpGarderAbsentes`, `cpCompleterLocal`) : un appareil resté sur une ancienne
+   version (ou qui n'avait pas encore reçu une donnée) renvoyait l'état sans elle. Une donnée présente sur le serveur et absente
+   de l'appareil est maintenant renvoyée telle quelle, et rangée dès que l'appareil sait la lire.
+3. **Prix en double à chaque nouvel appareil** (`seedPieces`, `seedAdiaArticles`, `nxDedupPrix`) : les articles de départ
+   avaient un identifiant tiré au hasard sur chaque appareil (base de test : 84 lignes pour 28 articles). Identifiants fixes
+   (`pd_…`, `adia_…`) et nettoyage des copies identiques, au démarrage et à chaque fusion ; un article modifié à la main est gardé.
+4. **Même chantier facturé deux fois** (`next-emission.js`, `dejaEmis`) : un appareil pas encore synchronisé émettait une
+   2e facture (F-…-003 puis F-…-004) pour un devis ou un dépannage déjà facturé ailleurs. Avant d'émettre, l'appli lit le
+   registre du serveur (sélection légère `src:payload->src`, sinon lecture complète) et reprend la facture existante.
+5. **Rechargements en chaîne entre deux appareils** (`save` dans `index.html`, `ajouterRegistre`) : une donnée réécrite à
+   l'identique, et le registre réécrit avec une nouvelle date à chaque ouverture, déclenchaient une synchro ; l'autre appareil
+   tombait en conflit et se rechargeait. Plus de synchro pour une réécriture identique ; une entrée du registre garde sa date.
+6. **Raccourci de l'icône perdu** (`next-raccourcis.js`) quand l'appli se recharge juste après l'ouverture (mise à jour reçue
+   d'un autre appareil) : la cible est gardée quelques secondes pour l'onglet (`sessionStorage`) et rouverte seulement après
+   un rechargement fait par l'appli (`cpReload` pose `__cpRechargeAuto`), jamais après un F5.
+Relecture indépendante des corrections (même jour) : 4 défauts importants trouvés, reproduits par un test puis corrigés :
+7. **Renvois sans fin entre deux appareils** : le serveur (jsonb) rend les objets avec les clés dans un autre ordre ; le
+   catalogue de l'assistant, recalculé à l'identique, passait pour modifié (9 envois et 7 rechargements sans rien toucher,
+   test Q6). `save` compare maintenant le contenu sans tenir compte de l'ordre des clés (`cpStable`). Le banc simule cet ordre.
+8. **Avoir partiel** : seul un avoir TOTAL (`payload->fac->total`) rend un chantier refacturable depuis un autre appareil.
+9. **Solde calculé sans l'acompte émis ailleurs** (et acompte après un solde émis ailleurs) : l'appli reprend l'autre
+   facture du devis, s'arrête et demande de relancer ; le solde relancé vaut total − acompte (test Q7).
+10. **Fiche ouverte périmée après la reprise** (devis ouvert, fiche d'intervention `curDep`) : recopiée, sinon « Enregistrer »
+   effaçait le numéro repris (test Q5).
+11. **Reprise d'une facture annulée** (2e relecture) : le rapprochement remettait dans le chantier une facture annulée par un
+   avoir total fait sur un autre appareil. Une facture visée par un avoir total du registre n'est plus jamais remise ; après
+   une reprise, l'appli vérifie que la facture est bien sur le chantier, sinon elle demande de synchroniser (test Q7).
+Garde-fous ajoutés : pas de synchro dans un onglet en lecture seule ; complément de données reporté pendant un formulaire et
+limité à un rechargement par minute ; registre lu avec un délai maximum de 25 s et les plus récents d'abord (plafond de
+1 000 lignes du serveur) ; clés propres à l'appareil (`NX_BK_SKIP`) jamais renvoyées. À faire plus tard : le rapprochement
+au démarrage lit encore le registre du plus ancien au plus récent (au-delà de 1 000 factures, les plus récentes manqueraient).
+Reprise du 14/10 au soir (suite Q, parties Q8 et Q9 ; chaque test échoue sur le code d'avant) :
+12. **Retour sur « Ma journée » après chaque mise à jour reçue** : le rechargement (seule façon sûre de relire toutes les
+   données, voir ci-dessous) ramenait l'appareil sur « Ma journée », en haut. `cpReload` garde pour l'onglet l'écran ouvert et
+   sa position (`__cpVue`, jamais un formulaire) ; `next-raccourcis.js` y revient avec le message « Mis à jour depuis ton autre
+   appareil » (seulement après un rechargement fait par l'appli ; un F5 repart sur « Ma journée » ; un raccourci passe avant).
+13. **Texte tapé effacé par une mise à jour** (Paramètres, fiche client, texte copié depuis une autre appli puis retour) : les
+   champs où l'on tape sont suivis (`_cpChamps`, hors recherche) ; tant que l'un d'eux, encore à l'écran, diffère de sa valeur
+   d'affichage, la mise à jour ou la fusion attend le prochain changement d'écran (`cpBusyForm`, message « appliquée au
+   prochain changement d'écran »). Un enregistrement fait par un geste (bouton, case, champ quitté : `markDirty` dans les
+   400 ms) clôt la saisie, pour que les envois ne restent pas bloqués. Rien n'est perdu : les modifications enregistrées
+   restent marquées à envoyer et sont fusionnées en changeant d'écran.
+14. **PC resté ouvert sans voir les changements du téléphone** : la synchro ne se faisait qu'en sortant de l'appli. Vérification
+   légère (`cpVerifierDistant` : `select('updated_at')`, pas les données) quand la fenêtre revient au premier plan et toutes les
+   minutes ; les données ne sont lues que si elles ont changé. Le banc d'essai coupe la vérification de chaque minute
+   (`__cpSansVerifMinute`), sauf pour les parties Q9 et Q10, pour que les rechargements tombent aux moments voulus.
+Relecture indépendante de ces trois corrections (même soir, suite Q, partie Q10 ; chaque test échoue sur le code d'avant) :
+15. **Perte d'une modification faite pendant un envoi** (déjà là avant le 14/10) : un enregistrement fait pendant l'appel au
+   serveur était marqué « envoyé » (succès) puis écrasé par la mise à jour suivante, ou écrasé tout de suite par la fusion
+   (conflit). `pushState` relit l'appareil au moment de fusionner, et garde « à envoyer » ce qui a été enregistré pendant
+   l'appel (`_cpEcritures`), avec un nouvel envoi aussitôt.
+16. **État d'avant réenregistré pendant le rechargement** : entre l'écriture des données reçues et le vrai rechargement
+   (jusqu'à 1,5 s), un clic pouvait réenregistrer l'état gardé en mémoire. Gel (`cpGeler`) : voile sur l'écran (« Mise à jour
+   depuis ton autre appareil… »), plus aucune écriture des données synchronisées (`nxStore.geler`, next-store.js), rien
+   marqué à envoyer ; si l'envoi échoue après une fusion, rechargement quand même.
+17. **Recherche ou filtre qui bloquait les mises à jour** (`#srch`, `#depFilter`…, champs dont le seul rôle est de
+   réafficher) et champ d'une fenêtre fermée : ignorés. Un enregistrement clôt seulement la saisie de son bloc (carte,
+   fenêtre, formulaire ; l'écran pour un bouton hors bloc), et seulement s'il a lieu pendant le geste.
+18. **Fiche client** rouverte sur le même client ; une seule lecture du serveur à la fois ; envoi automatique seulement s'il
+   reste quelque chose à envoyer (`cpEnvoiSiBesoin`).
+Deuxième relecture (même soir) :
+19. **Appli bloquée sous le voile sur réseau lent** : après une fusion, l'appli renvoyait l'état sous le voile (appel sans
+   délai maximum). La fusion est maintenant rangée sur l'appareil avec, pour base, la version du serveur et « à envoyer » ;
+   l'appli se recharge tout de suite et l'envoi repart après, sans conflit (suite O, O21 : le redémarrage, simplement compté
+   par `cpTestReload`, est rejoué à la main).
+20. **Rechargement coupé à 1,5 s** (`nxStoreReload`, next-store.js) : une grosse donnée gardée seulement dans IndexedDB
+   (iPhone) pouvait ne pas être écrite alors que la date de synchro l'était. Attente portée à 8 s au plus, sous le voile.
+Gardé volontairement : chaque mise à jour reçue recharge l'appli (environ 1 s). L'appliquer sans recharger demanderait de
+relire à la main toutes les données gardées en mémoire par une quarantaine de modules ; un oubli renverrait au serveur une
+donnée périmée. Le rechargement reste donc, mais on revient au même écran, à la même hauteur, et jamais pendant une saisie.
+Pas faisable ici (réseau fermé vers Supabase) : synchro réelle avec la base de test, iPhone réel, Netlify, relevé de sa banque.
+
+## Branche `claude/fiabilite-19-10` (19/10/2026) — corrections de fiabilité, NON déployées
+Partie de `main` (`1c91cca`), car `claude/quirky-pasteur-ds9m47` n'en contient pas le commit de fusion ; le commit de documentation
+`217661b` y est repris. Attention : `claude/ameliorations-1.12` (1.11 + 1.12, non fusionnée) touche aussi `index.html`,
+`next-emission.js`, `sw.js` et `tests/run-all.sh` : fusion à faire avec soin, après essais. Constats : audit du 18/10
+(voir `docs/ESSAIS-SUPABASE-TEST.md`, « Audit de fiabilité du 18/10/2026 »). Tests : nouvelle suite `tests/suiteR-fiabilite.mjs`.
+1. **Boîte de réception** (fait) : à valider = les 100 plus récentes + nombre exact (badge) ; traités = les 25 derniers ;
+   carte dédiée aux demandes du site (champs lisibles, « À rappeler avant le … », « ACTIVITÉ BLOQUÉE », liens tel:/mailto:,
+   « Traité » / « Écarter ») ; une ligne abîmée ne casse plus la liste.
+2. **Encaissement** (fait) : « Annuler » sur le mode de règlement n'enregistre plus rien ; bouton ↺ « Annuler
+   l'encaissement » avec trace ; le journal du serveur ne reçoit un paiement que s'il a vraiment eu lieu.
+3. **Export complet hors Supabase** (fait) : Outils › Sauvegardes › « Export complet (fichier) » ; clé synchronisée
+   `cpnext_dernier_export` (`at` ISO du dernier export complet, `octets`) ; rappel discret au-delà de 7 jours ; texte
+   faux sur la copie Google Drive retiré. À faire par Gabriel : un export par semaine, rangé hors de Supabase.
+4. **Émission** (fait, appli seulement) : « résultat inconnu, réessaie depuis CET appareil » après une réponse perdue ;
+   facture déjà émise pour la même source reprise au lieu d'un second numéro. Reste possible : une règle SQL dans
+   `cp_emettre_document` (même source = même facture), à préparer et tester sur le projet de test avant toute production.
+5. **Suite** : copie d'essai (projet de test à relancer par Gabriel, clé anon du projet de test à mettre dans la copie
+   seulement), essais de Gabriel, puis fusion dans `main` par lui ; ensuite rapprocher avec `claude/ameliorations-1.12`.
+   Autres points de l'audit non traités ici : nouvel appareil qui écrase des réglages au premier passage (fusion sans
+   base), synchro sans délai d'attente, fonction `superpdp` en ligne (v1) qui ne lit pas `document_id`, signature
+   (refus non vérifié, erreur de base présentée comme « lien introuvable »).
+
+## Fusion `claude/fiabilite-sur-1.12` (19/10/2026) = `claude/ameliorations-1.12` + `claude/fiabilite-19-10`
+Branche de travail à utiliser désormais (les copies d'essai de Gabriel sont en 1.11 / 1.12). Fusion sans réécriture d'historique.
+- Conflits résolus en gardant les deux apports : `sw.js` (cache `climpilot-next-1127-fiabilite`, liste des fichiers de la 1.12),
+  `tests/run-all.sh` et `tests/isolation/rapport.mjs` (suites O, P, Q **et** R).
+- `next-emission.js` : la 1.12 vérifiait déjà le registre du serveur avant d'émettre (`dejaEmis`, recette du 14/10, plus complet :
+  acompte / solde croisés, avoir total lu dans le registre). **On garde celui de la 1.12** ; de la branche fiabilité ne reste que
+  le message « Résultat INCONNU… réessaie depuis CET appareil » après une réponse perdue. Registre illisible : comme en 1.12,
+  le serveur décide (la demande garde son request_id). Les contrôles R4 de la suite R sont adaptés à ce comportement.
+- Déjà corrigé en 1.12, signalé par l'audit : modification faite pendant un envoi gardée (synchro sûre).
+- Batterie complète sur la fusion (19/10/2026, hors réseau, isolation du noyau) : **804 réussis, 0 échoué** — suites A à R
+  (767), suite F avec les validateurs EN 16931 / FNFE (9), tests SQL sur PostgreSQL 16 local (28) ; aucune requête de l'appli
+  ni des tests n'a quitté la machine.
+
+## Branche `claude/optimisation-20-10` (20/10/2026, depuis `claude/fiabilite-sur-1.12`) — NON déployée
+Demande de Gabriel : « est-ce que le logiciel est optimisé ? ». Mesure faite sur une copie servie en local (Chromium,
+écran 390 px, après installation du service worker) :
+
+| Situation | Avant | Après |
+|---|---|---|
+| Réseau normal | 2,5 s | 2,6 s |
+| Téléphone moyen (processeur ÷ 4) | 3,3 s | 2,9 s |
+| Réseau faible (1,5 s par fichier) | 17,4 s | 8,5 s |
+| Réseau presque coupé (5 s par fichier) | plus de 30 s | 10,3 s |
+
+Ouverture hors ligne : supabase-js et Chart.js chargés depuis la copie (avant : seulement s'ils restaient dans le cache du
+navigateur).
+
+- `sw.js` : réseau d'abord comme avant, mais quand une copie existe on n'attend pas plus de **2,5 s** ; la réponse du réseau,
+  si elle arrive, met la copie à jour pour l'ouverture suivante. Une réponse en erreur (404, 503) sert aussi la copie.
+  Cache `climpilot-next-1128-optim`.
+- `vendor/` : **supabase-js 2.117.3** et **Chart.js 4.5.0** embarqués, avec `integrity`. Avant : `supabase-js@2` sans version
+  ni empreinte (changeait tout seul à chaque version publiée) et hors du cache (sans réseau à l'ouverture : « cloud non chargé »).
+  Chart.js : fichier npm identique à celui du CDN (même empreinte sha384). Licences MIT dans `vendor/LISEZMOI.md`.
+- Tests : les fichiers `vendor/` sont remplacés au niveau du **contexte** du navigateur (`sansBibliothequesCloud` dans
+  `tests/lib.mjs`) : le service worker les met en cache et les routes de page ne voient pas ce qu'il sert (sans cela,
+  supabase-js se chargeait au 2e chargement et l'écran de connexion bloquait la suite O). Batterie du 20/10/2026 :
+  **774 réussis, 0 échoué**, 2 SKIP (validateurs CEN / FNFE absents), SQL non exécuté (pas de PostgreSQL local).
+- Constat du 20/10 sur `claude/fiabilite-sur-1.12` (machine lente, 2 batteries en parallèle) : la suite Q (recette deux
+  appareils, chronométrée) a échoué 1 fois sur 62 à chaque passage, jamais au même contrôle (voile pendant un
+  rechargement, téléphone « pas à jour » déjà à jour, essai interrompu) ; résultat des factures toujours juste.
+  Contrôles sensibles au temps, à fiabiliser si cela se reproduit sur une machine normale.
+- Pas fait, volontairement : chargement à la demande des modules (gain faible au regard du risque), minification (étape de
+  construction en plus pour un gain que la compression de GitHub Pages donne déjà).
+
+## Branche `claude/planning-20-10` (20/10/2026, depuis `claude/fiabilite-sur-1.12`) — planning par demi-journée, NON déployée
+Choix de Gabriel du 19/10 : synchro Google Agenda toutes les 15 min, « que je ne me retrouve pas avec deux clients en même
+temps ». Détail, installation et repères : **`docs/AGENDA.md`**.
+- Appli : `next-planning.js` (moment Matin / Après-midi / Journée, conflits, confirmation avant de planifier sur un moment
+  pris, envoi des demi-journées occupées, moments Google au planning) ; clé `k` sur les événements de `planEvents`,
+  `data-k` / `data-iso` sur les cartes et les jours ; champ Moment dans le devis (`momentPlanif`, protégé et remis à zéro
+  à la copie comme `datePlanif`). Cache `climpilot-next-1129-planning`.
+- Serveur (préparé) : migration `20261020120000_agenda.sql`, fonction `agenda`. Script Google : `tools/apps-script/`.
+- Tests : suite S (appli), fn-agenda, fn-apps-script, `tests/sql/test_agenda.py`.
+- **Phase 2, messages** (`next-messages.js`, 20/10) : dans Ma journée, les messages prêts à envoyer depuis le téléphone
+  (SMS ou mail, rien ne part seul, aucun service payant) : veille (interventions de demain, le vendredi : lundi),
+  entretien (clients SOUS CONTRAT seulement, 21 jours avant / en retard), confirmation d'un créneau venu du site
+  (avec l'acompte), rappel des avis à demander (next-avis). Compte SMS GSM (160 / 70 caractères), version « 1 SMS »
+  sans caractères spéciaux à l'envoi, journal `cpnext_msgs` (jamais deux fois), bouton « Plus de messages » par client.
+- **Phase 3, terrain** (`next-terrain.js`, 20/10) : tournée du jour (ordre matin → journée → après-midi puis plus
+  proche, km estimés vol d'oiseau × 1,3, itinéraire complet Google Maps depuis le point de départ) ; pointage
+  ▶ / ■ (quart d'heure, ajouté à `hReel` du devis / de l'intervention, journal `cpnext_pointages`) ; alerte matériel
+  (chantier accepté sous 7 jours sans `matReserve`) ; « 📅 Planifier ce créneau » sur une réservation du site
+  (→ intervention DEP avec `moment`, `site`, `acompte`, fiche client, demande marquée traitée, conflit vérifié) ;
+  suivi d'acompte « ✔ Reçu » → créneau ferme (planning et message). Extension `window.nxjAjouts` dans Ma journée.
+  Cache `climpilot-next-1130-terrain`. Tests : suite T (22).
+- Batterie complète du 20/10 sur cette branche : 826 réussis ; 2 points hors code (suite A « petits boutons » = INFO
+  sur des boutons ✏️ de 29 px qui existaient déjà, largeur qui varie avec la police ; suite E « Émettre » masqué par le
+  bouton Assistant une fois sur deux, passe seule) ; suite P adaptée au nom de cache 1130.
+
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 
 Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Supabase de test, 52/52 ; essais de l'appli sur les appareils de Gabriel du 06 au 08/10, avec un bug trouvé et corrigé (voir `docs/ESSAIS-SUPABASE-TEST.md`) ; corrections issues de ces essais (messages Super PDP, décision annulable, confirmation pour un devis non accepté).
@@ -66,7 +323,7 @@ Déjà fait : décision explicite de facturation réelle (R1, 05/10) ; projet Su
    - **adhésion à un médiateur de la consommation** : obligatoire avant le premier devis à un particulier.
 4. **Sécurité avant la production** :
    - double authentification sur GitHub et sur Supabase ;
-   - sauvegarde des données : export régulier, à définir ;
+   - sauvegarde des données : « Export complet » chaque semaine (branche `claude/fiabilite-19-10`), fichier rangé hors de Supabase ;
    - vérifier l'absence de secrets dans le dépôt public.
 5. **Déploiement réel**, uniquement par Gabriel et avec son accord, dans l'ordre de `docs/CORRECTIONS-1.10.md` (« Ordre de déploiement envisagé ») :
    - migration sur le projet réel ;
