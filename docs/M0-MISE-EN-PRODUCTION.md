@@ -2,6 +2,7 @@
 
 > Rédigée le 20/10/2026, complétée le 21/10 par Claude (Fable 5.1) pour Gabriel Leroy. À lire avec `M0-COMPTE-RENDU.md`.
 > Corrigée le 21/10 après les relectures M3 et M4 (Opus 5.5) : hébergement de la copie d'essai (M4 C1) et contrôle 5 bis (M3 C4). Complétée le 21/10 au soir (après C1) : facturation réelle autorisée sur la copie d'essai, base de TEST uniquement, pour que le 5 bis soit probant ; copie 1131-fusion-C1 remise à part (zip + `LISEZ-MOI-ESSAI-C1.txt`).
+> Mise à jour du 25/10/2026 (relecture P10, Opus) : la fusion se fait par la **PR #5** (`release/1.13.0`, qui contient tout), sauvegarde et migration du réel par deux scripts prêts à coller (`tests/supabase-test/5-REEL-*.sql`, vérifiés sur PostgreSQL local), libellé de sauvegarde unique `avant-1.13.0`.
 > Rien ici n'a été fait par l'IA sur le projet réel ni sur le projet de TEST : **chaque étape est ton geste**.
 > Les libellés de menus Supabase / GitHub / Netlify sont donnés de mémoire (hypothèse) : si un libellé diffère à l'écran, c'est l'écran qui a raison.
 >
@@ -46,20 +47,22 @@ Si une copie a déjà été publiée sous `gablry8.github.io` : ne l'ouvre plus 
 ### A1. AVANT (10 min)
 1. **Appareils synchronisés** : PC puis téléphone, ouvre ClimPilot, attends que la synchro soit au repos (pas de « modifications en attente »). Un appareil resté hors ligne longtemps : l'ouvrir d'abord et le laisser se synchroniser.
 2. **Sauvegarde manuelle** : Outils › **⤓ Sauvegarde** → fichier gardé hors du téléphone (PC + clé/cloud).
-3. **Sauvegarde serveur** (SQL Editor du projet **RÉEL**, nouvelle requête) :
+3. **Sauvegarde serveur** (SQL Editor du projet **RÉEL**, nouvelle requête) : colle **tout** `tests/supabase-test/5-REEL-avant-fusion-1.13.sql`
+   (25/10/2026 : il refuse de tourner sur le projet de TEST, puis fait exactement ceci) :
    ```sql
-   select public.cp_backup_row(user_id, data, 'avant-mise-en-production-M0') from public.climpilot_state;
+   select public.cp_backup_row(user_id, data, 'avant-1.13.0') from public.climpilot_state;
    select id, raison, created_at, nb_devis, nb_clients, nb_dep, nb_loc from public.climpilot_backups order by id desc limit 3;
    ```
-   Attendu : une ligne `avant-mise-en-production-M0` datée de maintenant. **Note l'`id`.** Gardée 120 jours (règle existante).
+   Attendu : 1re ligne `avant-1.13.0` datée de maintenant, avec tes nombres de devis et de clients. **Note l'`id`.** Gardée 120 jours (règle existante).
 4. **Liste de contrôle A3, colonne ESSAI** : faite et verte sur la copie d'essai. Sinon, on ne passe pas à A2.
 5. Facultatif mais conseillé : protection de `main` (GitHub › Settings › Branches › « Require status checks » › le travail **« batterie complète »**, pas « rapport — … » : fusion interdite si tests rouges) — REFONTE-PLAN P0, M3 C9.
 
 ### A2. FUSION dans `main` (= publication GitHub Pages, sur tous tes appareils)
-1. Demande de fusion **#4** `fusion/avant-refonte → main` (brouillon) : « Ready for review » puis « Merge » en **merge commit** (pas squash, pour garder l'historique des 5 fusions). Note le numéro du commit de fusion (pour le retour arrière).
+1. Demande de fusion **#5** `release/1.13.0 → main` (brouillon ; mise à jour du 25/10 : elle **contient** #4 `fusion/avant-refonte`, #3 et #2, plus P0, C1 et la P0-suite — ne fusionne **pas** #4) : « Ready for review » puis « Merge » en **merge commit** (pas squash, pour garder l'historique). Note le numéro du commit de fusion (pour le retour arrière).
 2. Attends la publication GitHub Pages (1 à 3 min ; onglet Actions ou Settings › Pages).
 3. Sur **chaque** appareil : ouvrir ClimPilot, F5 (ou fermer/rouvrir). Nouveau cache `climpilot-next-1130-production`, l'ancien `…-1100-production` supprimé automatiquement (vérifié en simulation : données conservées, ouverture hors ligne OK).
-4. #2 et #3 (1.11, 1.12) sont contenues dans #4 : c'est **toi** qui les fermes ensuite.
+4. #2, #3 et #4 sont contenues dans #5 : c'est **toi** qui les fermes ensuite, **sans** les fusionner (« Close pull request »).
+5. **Après la liste A3 PROD** : migration C1 sur le **réel** (SQL Editor) : colle **tout** `tests/supabase-test/5-REEL-migration-C1.sql` (migration telle quelle + les 5 contrôles ; refuse de tourner sur TEST) → **5 lignes « OK »**. Retour arrière : `tests/supabase-test/4-une-facture-par-source-retour-arriere.sql`.
 
 ### A3. LISTE DE CONTRÔLE — la même, deux fois : **ESSAI** (copie, base de TEST, avant A2) puis **PROD** (vraie appli, après A2)
 Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le compte est celui du TEST ; la facturation réelle y est démarrée (base TEST, 0.4) pour les contrôles 5 bis et 5 ter. En PROD : factures et avoirs **uniquement en mode démonstration** (`TEST-…`), jamais une vraie ; 5 bis « sans objet » en PROD. Si un contrôle échoue : **n'insiste pas**, note ce que tu as vu ; en ESSAI → on corrige avant A2 ; en PROD → A4.
@@ -90,17 +93,17 @@ Sur l'ESSAI : les « données existantes » sont celles importées (0.4) et le c
 - Cet envoi n'a lieu que si l'appareil **modifie quelque chose** (sinon il ne pousse pas) : c'est donc probable dès la première saisie.
 - Les **copies locales** ne sont pas touchées : la 1.10 n'efface pas les clés qu'elle ne connaît pas (certain pour la synchro, probable pour le reste de l'appli : aucun nettoyage trouvé). Elles ne sont plus **affichées**, mais restent dans l'appareil et **remontent** au serveur dès que l'appareil repasse en 1.12 (les clés sont alors de nouveau synchronisées).
 - Les champs ajoutés **dans** un devis ou une intervention (moment du planning, heures pointées, matériel réservé, acompte du site) restent dans les objets : la 1.10 modifie les devis sur place sans enlever les champs qu'elle ne connaît pas (certain pour `formToDevis`, probable pour les autres écrans).
-- Les sauvegardes serveur automatiques (quotidiennes) contiennent l'état **entier**, 1.12 comprise ; la sauvegarde `avant-mise-en-production-M0` de A1, elle, est **d'avant** : elle ne contient aucune donnée 1.12.
+- Les sauvegardes serveur automatiques (quotidiennes) contiennent l'état **entier**, 1.12 comprise ; la sauvegarde `avant-1.13.0` de A1, elle, est **d'avant** : elle ne contient aucune donnée 1.12.
 
 **Donc, avant de revenir en arrière, une sauvegarde serveur de plus** (SQL Editor, projet réel) :
 ```sql
 select public.cp_backup_row(user_id, data, 'avant-retour-arriere-1.10') from public.climpilot_state;
 ```
 puis :
-1. **Appli** : sur GitHub, « Revert » sur la demande #4 (ou `git revert -m 1 <commit de fusion>` sur `main`) → republie la 1.10.0 (`1c91cca`). F5 sur chaque appareil : le service worker 1.10 reprend la main et supprime le cache 1130.
+1. **Appli** : sur GitHub, « Revert » sur la demande #5 (ou `git revert -m 1 <commit de fusion>` sur `main`) → republie la 1.10.0 (`1c91cca`). F5 sur chaque appareil : le service worker 1.10 reprend la main et supprime le cache 1130.
 2. Les données saisies entre-temps restent ; les écrans 1.11/1.12 disparaissent, leurs données restent dans chaque appareil et dans la sauvegarde `avant-retour-arriere-1.10` (120 jours). Au retour en 1.12 plus tard, elles reviennent d'elles-mêmes depuis les appareils ; sinon, restaure cette sauvegarde (Outils › « Sauvegardes cloud » › Restaurer — depuis un seul appareil, les autres fermés, puis rouvre-les : la restauration écrase l'état serveur, R11 du plan).
-3. **Données perdues ?** Seulement si quelque chose a été cassé : restaure `avant-mise-en-production-M0` (A1) de la même façon ; tu perds alors ce qui a été saisi depuis.
-4. Serveur : rien à faire pour la partie A (aucune migration n'a été appliquée).
+3. **Données perdues ?** Seulement si quelque chose a été cassé : restaure `avant-1.13.0` (A1) de la même façon ; tu perds alors ce qui a été saisi depuis.
+4. Serveur : si la migration C1 (A2-5) a été appliquée, colle `tests/supabase-test/4-une-facture-par-source-retour-arriere.sql` (remet la fonction 1.10 mot pour mot, 2 « OK ») ; sinon rien à faire.
 5. **Parade M3 C11** (probable) : un appareil qui **revient en version récente avec des modifications pas encore envoyées** fusionne avec une base serveur qui n'a plus les 10 clés : sa copie locale, peut-être ancienne, peut l'emporter sur la version plus récente du serveur. Donc, sur chaque appareil qui revient (après un retour arrière **ou** après être resté longtemps fermé) : **ouvre l'appli et laisse la synchro finir avant de saisir quoi que ce soit** (attendre qu'il n'y ait plus de « modifications en attente »). Même règle qu'en A1-1. Rappel (certain) : tout appareil resté en 1.10 après la mise en production retire aussi les 10 clés du serveur à sa 1re modification — d'où le F5 sur **chaque** appareil en A2-3.
 
 ---
