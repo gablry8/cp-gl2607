@@ -1,6 +1,12 @@
 // Batterie de tests ClimPilot — Playwright (Chromium), serveur local :8765
 import { devices, lancerNavigateur, URL_LOCALE } from './env.mjs';
+import { HORLOGE } from './golden/cas-calculs.mjs';
 export const RES=[];
+/* P0-suite (R12, 24/10/2026) — DATE DE RÉFÉRENCE FIGÉE de la batterie : la même que celle des suites golden (mardi 20/10/2026 10:00, Paris).
+   Une suite dont le résultat dépend du jour (numéros de série de l'année en cours, année d'un affichage, dates relatives) fige l'horloge de sa page
+   sur REF.horloge (option page({horloge:REF.horloge})) et écrit ses attendus avec REF.an / REF.jour — jamais avec une année tapée à la main. Dans la page,
+   la même référence est disponible sous window.__REF (mêmes champs). Vérification : faketime '2027-01-05 10:00:00' bash tests/run-all.sh doit rester vert. */
+export const REF={horloge:HORLOGE,jour:HORLOGE.slice(0,10),an:HORLOGE.slice(0,4),annee:+HORLOGE.slice(0,4)};
 /* 20/10/2026 : supabase-js et Chart.js sont embarqués (vendor/) et mis en cache par le service worker.
    Les routes de page ne voient pas ce que le service worker sert : on remplace donc ces fichiers au niveau du
    CONTEXTE (avec PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1, posé par run-all.sh), pour que les tests restent
@@ -31,6 +37,7 @@ export async function page(opts={}){
   else geoMock(p,false);
   /* point de départ des trajets FICTIF (le code n'en contient plus : sans lui, pas de calcul de distance) */
   if(opts.depart!==false) await p.addInitScript(()=>{ try{ if(!localStorage.getItem('cpnext_home')) localStorage.setItem('cpnext_home',JSON.stringify({adr:"1 Rue de l'Exemple 60000 Beauvais",lon:2.0807,lat:49.4295,source:'manuel'})); }catch(e){} });
+  await p.addInitScript(r=>{ window.__REF=r; },REF);
   if(opts.init) await p.addInitScript(opts.init);
   /* P0 (T9, 21/10/2026) : horloge figée OPTIONNELLE pour toute la batterie — CP_HORLOGE=2026-10-20T10:00:00+02:00 par exemple.
      Pas activée par défaut : le côté Node des suites utilise encore la vraie date (R12). Les suites golden (Y, Z) figent la leur.

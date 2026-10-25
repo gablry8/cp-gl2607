@@ -3,7 +3,8 @@
 ## Où en est-on (25/10/2026) — à lire avant tout le reste
 - **Production (`main`) = 1.10.0** (`1c91cca`, 08/10). Tout ce qui suit est sur des branches.
 - **`release/1.13.0`** = M0 (7 branches réunies) + P0 (CI, golden, suites U-Z) + C1 (registre illisible, règle serveur « une facture
-  vivante par source ») + tests indépendants du jour + **version unique 1.13.0** (`VERSION`, `NX_VERSION`, cache `climpilot-next-1130-production`).
+  vivante par source ») + tests indépendants du jour + **P0-suite** (intégrée le 25/10 : Q bloquante, T5b, faux serveur
+  réaliste, R12 batterie indépendante de la date) + **version unique 1.13.0** (`VERSION`, `NX_VERSION`, cache `climpilot-next-1130-production`).
   Demande de fusion en brouillon vers `main` ; fusion, protection de `main`, migration C1 sur le réel = gestes de Gabriel
   (`docs/FUSION-1.13-COMPTE-RENDU.md`, 10 lignes en tête). Après la fusion : toute nouvelle branche part de `main`.
 - Règles de la refonte (topo du 24/10, Project `claude/ClimPilot-TOPO-24-10.md`) : tests d'abord, golden identiques, **gel des
@@ -312,6 +313,12 @@ temps ». Détail, installation et repères : **`docs/AGENDA.md`**.
 - Batterie complète du 20/10 sur cette branche : 826 réussis ; 2 points hors code (suite A « petits boutons » = INFO
   sur des boutons ✏️ de 29 px qui existaient déjà, largeur qui varie avec la police ; suite E « Émettre » masqué par le
   bouton Assistant une fois sur deux, passe seule) ; suite P adaptée au nom de cache 1130.
+
+## Branche `refonte/p0-suite` (24/10/2026) — tests et docs seulement, **intégrée à `release/1.13.0` le 25/10/2026**
+Partie du sommet de `refonte/ci-dates` (= C1 + correctif des tests dépendants de la date). Fusionnée dans `release/1.13.0` le 25/10 (un seul conflit, `tests/suiteR-fiabilite.mjs`, contrôle « date affichée » corrigé des deux côtés : version P0-suite gardée, date lue dans la page) ; la branche `refonte/p0-suite` est contenue dans la release et sera supprimée avec les autres après la fusion dans `main`. Compte rendu : **`docs/P0-SUITE-COMPTE-RENDU.md`**.
+- Suite Q, contrôles « acompte » et « voile » : de nouveau **bloquants** (plus aucun INSTABLE). Suite T : T5b (la tournée déclenche `completerGeo`). Faux serveur : « hors service » = forme réelle de supabase-js.
+- **R12** : la batterie ne dépend plus du jour réel (`REF` dans `tests/lib.mjs` = mardi 20/10/2026 10:00 Paris, la date des golden) ; contrôle : `faketime '2027-01-05 10:00:00' bash tests/run-all.sh`. Les « 2026 » restants sont des barèmes légaux, des faits de calendrier ou des commentaires (classés au § 5.3 du compte rendu) : décision de Gabriel attendue.
+- Batterie complète : 1 111 réussis, 0 échoué (hors artefacts de banc liés à Chromium 153 dans `unshare -n`, voir `tests/LISEZMOI.md`).
 
 ## Ce qui reste à faire, dans l'ordre (plan du 08/10/2026)
 

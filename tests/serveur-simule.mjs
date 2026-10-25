@@ -19,7 +19,9 @@ export const SERVEUR=`(function(){
   /* forme exacte de supabase-js 2.117.3 (postgrest-js, fetch en échec, sans throwOnError) : promesse RÉSOLUE, status 0 */
   function erreurReseauBib(){ return {error:{message:'TypeError: Failed to fetch',details:'',hint:'',code:''},data:null,count:null,status:0,statusText:''}; }
   function rpc(name,p){ srv.appels.push(name);
-    if(srv.fail.horsService) return Promise.reject(new Error('Failed to fetch'));
+    /* P0-suite (24/10/2026) : serveur « hors service » rendu comme la vraie bibliothèque — réponse RÉSOLUE {error, status:0}, pas une promesse rejetée
+       (avant : Promise.reject(new Error('Failed to fetch')), forme que supabase-js 2.117.3 ne produit pas) */
+    if(srv.fail.horsService) return Promise.resolve(erreurReseauBib());
     /* C1 (24/10/2026) : réseau coupé AVANT l'arrivée de la demande d'émission, rendu comme la vraie bibliothèque (rien d'enregistré) */
     if(name==='cp_emettre_document'&&srv.fail.reseauCoupeBib){ srv.fail.reseauCoupeBib=false; return Promise.resolve(erreurReseauBib()); }
     if(name==='cp_serveur_info'){ if(srv.fail.migration) return Promise.resolve({error:{code:'PGRST202',message:'Could not find the function public.cp_serveur_info'}}); return Promise.resolve({data:{documents:true,version:'1.10'}}); }
@@ -56,7 +58,7 @@ export const SERVEUR=`(function(){
   const CHAMPS={
     demande:{besoin:'panne',profil:'pro',equipement:'Vitrine réfrigérée',commune:'Creil',description:'Vitrine en panne depuis ce matin',marque:'Je ne sais pas',code:'Ne refroidit plus',bloquant:'Oui, marchandise ou service en danger',depuis:'Depuis ce matin',nom:'Boulangerie Test',telephone:'06 12 34 56 78',email:'contact@exemple.fr',rappel:'Le matin'},
     reservation:{prestation:'Entretien climatisation',profil:'Particulier',jour:'Mardi 27 octobre',moment:'Matin',nom:'Mme Exemple',telephone:'07 00 00 00 01',email:'mme@exemple.fr',adresse:'1 rue de l\\'Exemple',commune:'Beauvais',equipement:'Daikin FTXM25',cgv:'Oui',execution:'Oui'},
-    retractation:{nom:'M. Exemple',email:'m@exemple.fr',date:'2026-10-10',prestation:'Entretien climatisation du 12/10',message:'Je me rétracte.'}};
+    retractation:{nom:'M. Exemple',email:'m@exemple.fr',date:__REF.an+'-10-10',prestation:'Entretien climatisation du 12/10',message:'Je me rétracte.'}};
   const LIB={demande:'Demande',reservation:'Réservation',retractation:'Rétractation'};
   /* ligne déposée par le site (même forme que toRow de la fonction « site-demande ») : site_demande, site_reservation, site_retractation */
   srv.ligneSite=function(type,o){ o=o||{}; const ch=Object.assign({},CHAMPS[type],o.champs||{});

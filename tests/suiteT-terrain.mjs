@@ -2,14 +2,14 @@ import { ecrireResultats, out } from './env.mjs';
 // Suite T — messages (next-messages.js) et terrain (next-terrain.js), 20/10/2026 : veille, entretien sous contrat,
 // confirmation de créneau, compte SMS, exclusion d'un client ; tournée du jour, pointage, alerte matériel,
 // demande du site → intervention, suivi d'acompte → créneau ferme.
-import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
+import {page,rec,RES,closeBrowser,seed,REF} from './lib.mjs';
 const j=o=>JSON.stringify(o);
 
 /* 24/10/2026 : horloge du navigateur FIGÉE au mardi 20/10/2026 10:00 (date de référence des suites golden, golden/cas-calculs.mjs).
    L'appli (joursVeille, next-messages.js) ne propose pas « demain » le samedi (elle passe au lundi) et ajoute le lundi le vendredi :
    avec la vraie date, le rendez-vous semé « demain » sortait de la veille le samedi → plantage du 24/10 en CI (C.veille.find indéfini).
    Toutes les dates de cette suite sont calculées DANS la page (aucune côté Node) : figer la page suffit. Valeur fixe, CP_HORLOGE ignorée ici. */
-const HORLOGE_T='2026-10-20T10:00:00+02:00';
+const HORLOGE_T=REF.horloge; /* P0-suite (R12) : la date de référence figée de lib.mjs (même valeur qu'avant : 2026-10-20T10:00:00+02:00) */
 const {p,ctx,errs}=await page({mobile:false,horloge:HORLOGE_T});
 await seed(p);
 await p.waitForFunction(()=>typeof window.nxmsgCandidats==='function'&&typeof window.nxtrTournee==='function'&&window.nxjAjouts&&window.nxjAjouts.length>=4,null,{timeout:15000});
@@ -86,6 +86,32 @@ const D=await p.evaluate(()=>{
     return {ok,dbl,h,hReel:x.hReel,n:L.length,h2,aReel:a.hReel,encours:localStorage.getItem('cpnext_pointage')}; });
   rec('Terrain','Pointage : un seul à la fois ; 95 min → 1,5 h ajoutée au réel de l’intervention ; journal',q.ok===true&&q.dbl===false&&q.h===1.5&&q.hReel==='1.5'&&q.n>=1,j(q));
   rec('Terrain','Pointage : minimum un quart d’heure, ajouté au réel du devis, plus rien en cours',q.h2===0.25&&q.aReel==='0.25'&&q.encours==='null',j(q));
+}
+/* T5b (M3 C10, P0-suite 24/10/2026) : tournée dont deux adresses n'ont AUCUNE coordonnée en mémoire. Le contrôle T5 ci-dessus calcule les siennes d'avance (nxadDistance) :
+   le recalcul par completerGeo (next-terrain.js) n'y était jamais ATTENDU ni vérifié. Ici, « Ma journée » doit lancer le calcul de CES deux adresses (une fois chacune), afficher
+   « en cours de calcul », puis se réafficher toute seule avec les km quand le calcul est fini. Le géocodage simulé de lib.mjs est ralenti (0,7 s) pour que l'état « en cours » soit
+   observé à coup sûr. Indépendant des autres étapes du jeu (d'autres adresses peuvent aussi manquer de coordonnées). */
+{
+  const geocodees={};
+  await p.route(/data\.geopf\.fr\/geocodage/, async r=>{ const q=new URL(r.request().url()).searchParams.get('q')||''; geocodees[q]=(geocodees[q]||0)+1; await new Promise(z=>setTimeout(z,700)); await r.fallback(); });
+  const A1="9 rue des Essais, 60200 Compiègne", A2="14 avenue du Test, 60300 Senlis";
+  const avant=await p.evaluate(async([A1,A2])=>{ const t=dISO(new Date());
+    const a=DEVIS.find(d=>d.id==='t-a'), x=DEP.find(d=>d.id==='t-dep');
+    a.cAdr='9 rue des Essais'; a.cVille='60200 Compiègne'; save(LS.devis,DEVIS); x.cAdr='14 avenue du Test'; x.cVille='60300 Senlis'; save(LS.dep,DEP);
+    window.__geoAppels=[]; const o=window.nxadDistance; window.nxadDistance=function(ad){ window.__geoAppels.push(ad); return o.apply(this,arguments); };
+    const T=nxtrTournee(t), mes=T.stops.filter(s=>s.adr===A1||s.adr===A2);
+    return {manque:T.manque,mesArrets:mes.length,mesSansGeo:mes.every(s=>!s.geo),geo1:nxadGeo(A1),geo2:nxadGeo(A2)}; },[A1,A2]);
+  const ouvert=await p.evaluate(async()=>{ go('nx_journee'); nxjMode('matin'); await new Promise(z=>setTimeout(z,150)); const card=document.getElementById('nxTournee');
+    return {carte:!!card,texte:card?card.textContent:'',appels:window.__geoAppels.slice()}; });
+  const fini=await p.waitForFunction(([A1,A2])=>{ const c=document.getElementById('nxTournee'); return !!c&&!/en cours de calcul/.test(c.textContent)&&!!nxadGeo(A1)&&!!nxadGeo(A2); },[A1,A2],{timeout:15000,polling:100}).then(()=>true,()=>false);
+  const apres=await p.evaluate(async([A1,A2])=>{ await new Promise(z=>setTimeout(z,400)); const t=dISO(new Date()), T=nxtrTournee(t), c=document.getElementById('nxTournee');
+    return {manque:T.manque,km:T.km,geo1:!!nxadGeo(A1),geo2:!!nxadGeo(A2),texte:c?c.textContent:'',kmAffiches:c?(c.querySelector('.nxt-km')||{}).textContent||'':'',appels:window.__geoAppels.slice()}; },[A1,A2]);
+  const unefois=(L,a)=>L.filter(x=>x===a).length===1, sansDoublon=L=>new Set(L).size===L.length;
+  rec('Terrain','Tournée sans coordonnées : « Ma journée » lance le calcul des adresses manquantes (completerGeo), une seule fois par adresse, et affiche « en cours de calcul »',
+    avant.mesArrets===2&&avant.mesSansGeo&&!avant.geo1&&!avant.geo2&&avant.manque>=2&&ouvert.carte&&/adresses en cours de calcul/.test(ouvert.texte)&&unefois(ouvert.appels,A1)&&unefois(ouvert.appels,A2)&&sansDoublon(ouvert.appels),j({avant,ouvert:{carte:ouvert.carte,appels:ouvert.appels,enCours:/en cours de calcul/.test(ouvert.texte)}}));
+  rec('Terrain','Tournée sans coordonnées : le calcul terminé, la carte se réaffiche toute seule avec les km (plus « en cours »), aucune adresse manquante, pas de calcul répété',
+    fini&&apres.manque===0&&apres.geo1&&apres.geo2&&apres.km>0&&/≈ \d+ km aller-retour/.test(apres.kmAffiches)&&!/en cours de calcul/.test(apres.texte)&&unefois(apres.appels,A1)&&unefois(apres.appels,A2)&&sansDoublon(apres.appels)&&geocodees[A1]===1&&geocodees[A2]===1,
+    j({fini,apres:{manque:apres.manque,km:apres.km,kmAffiches:apres.kmAffiches,appels:apres.appels},geocodees}));
 }
 /* T6 alerte matériel */
 {

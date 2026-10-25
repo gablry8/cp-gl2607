@@ -3,7 +3,7 @@ import { ecrireResultats } from './env.mjs';
 // mode de conclusion ≠ urgence, « à préciser » bloque toute demande de paiement, délai de 7 jours (L221-10)
 // sur tous les parcours (facture, encaissement, intervention, relance), paiement reçu malgré tout tracé,
 // rétractation selon le mode, contrat de dépannage avant travaux, remise de l'exemplaire avec preuve.
-import {page,rec,RES,closeBrowser,seed,getBrowser,sansBibliothequesCloud} from './lib.mjs';
+import {page,rec,RES,closeBrowser,seed,getBrowser,sansBibliothequesCloud,REF} from './lib.mjs';
 import fs from 'fs';
 
 /* boîtes de dialogue simulées dans la page + petites aides */
@@ -113,11 +113,11 @@ await seed(p); await p.evaluate(PREP);
 {
   const r=await p.evaluate(async c=>{
     const out={};
-    for(const [k,conc,extra] of [['preciser',null],['hors',{mode:'hors_etablissement',date:'2026-09-28'}],['distance',{mode:'distance',date:'2026-09-28'}],['locaux',{mode:'locaux',date:'2026-09-28'}],['pro',null,{cType:'Professionnel'}]]){
+    for(const [k,conc,extra] of [['preciser',null],['hors',{mode:'hors_etablissement',date:(__REF.an+'-09-28')}],['distance',{mode:'distance',date:(__REF.an+'-09-28')}],['locaux',{mode:'locaux',date:(__REF.an+'-09-28')}],['pro',null,{cType:'Professionnel'}]]){
       const d=J.devis(conc,extra); cur=JSON.parse(JSON.stringify(d)); printDevis(); const h=document.getElementById('devisDoc').innerHTML; eval(c);
       printDevis(); const h2=document.getElementById('devisDoc').innerHTML; eval(c);
       out[k]={n:(h.match(/data-retractation/g)||[]).length,n2:(h2.match(/data-retractation/g)||[]).length,l221:/data-l221-10/.test(h),
-        titre:(h.match(/client particulier — ([^)]*)\)/)||[])[1]||'',j8:/à partir du 06\/10\/2026/.test(h),formulaire:/Formulaire de rétractation/.test(h),
+        titre:(h.match(/client particulier — ([^)]*)\)/)||[])[1]||'',j8:new RegExp('à partir du 06/10/'+__REF.an).test(h),formulaire:/Formulaire de rétractation/.test(h),
         anticipe:/demande expressément que les travaux commencent/.test(h),remise:/Exemplaire client/.test(h),bad:(h.match(/undefined|NaN/g)||[]).length}; }
     return out; },close);
   rec('Particuliers','Devis « à préciser » : rétractation + avertissement de paiement (7 jours)',r.preciser.n===1&&r.preciser.l221&&/à distance ou hors établissement/.test(r.preciser.titre),j(r.preciser));
@@ -175,29 +175,29 @@ await seed(p); await p.evaluate(PREP);
   const r=await p.evaluate(()=>{ J.reset(); const d=J.devis({mode:'hors_etablissement',date:todayISO()}); cur=JSON.parse(JSON.stringify(d)); renderFBloc();
     const t0=(document.getElementById('nxPartBloc')||{}).textContent||'';
     /* sans accusé signé : rien n'est enregistré */
-    nxPartRemisePapier('devis',d.id); document.getElementById('nxrDate').value='2026-10-01'; document.getElementById('nxrOk').click();
+    nxPartRemisePapier('devis',d.id); document.getElementById('nxrDate').value=(__REF.an+'-10-01'); document.getElementById('nxrOk').click();
     const sansAccuse=!(DEVIS.find(x=>x.id===d.id).conclusion||{}).remise&&__dlg.some(m=>/Sans accusé/.test(m)); document.getElementById('nxPartM').remove();
-    nxPartRemisePapier('devis',d.id); document.getElementById('nxrDate').value='2026-10-01'; document.getElementById('nxrAccuse').checked=true; document.getElementById('nxrOk').click();
+    nxPartRemisePapier('devis',d.id); document.getElementById('nxrDate').value=(__REF.an+'-10-01'); document.getElementById('nxrAccuse').checked=true; document.getElementById('nxrOk').click();
     cur=JSON.parse(JSON.stringify(DEVIS.find(x=>x.id===d.id))); renderFBloc();
     const t1=(document.getElementById('nxPartBloc')||{}).textContent||'';
-    const e=J.devis({mode:'distance',date:todayISO()},{signature:{at:'2026-10-01T10:00:00Z',nom:'Mme Test',token:'tok1',copieLe:'2026-10-02T09:00:00Z'}}); cur=JSON.parse(JSON.stringify(e)); renderFBloc();
+    const e=J.devis({mode:'distance',date:todayISO()},{signature:{at:(__REF.an+'-10-01T10:00:00Z'),nom:'Mme Test',token:'tok1',copieLe:(__REF.an+'-10-02T09:00:00Z')}}); cur=JSON.parse(JSON.stringify(e)); renderFBloc();
     const t2=(document.getElementById('nxPartBloc')||{}).textContent||'';
     return {t0,t1,t2,sansAccuse,rem:DEVIS.find(x=>x.id===d.id).conclusion.remise}; });
   rec('Particuliers','Exemplaire client : « non confirmé » sans preuve',/Exemplaire client : non confirmé/.test(r.t0),r.t0.slice(0,200));
   rec('Particuliers','Exemplaire papier : rien n\'est enregistré sans accusé de remise signé',r.sansAccuse,j(r.sansAccuse));
-  rec('Particuliers','Exemplaire papier : « déclarée remise le » avec les pièces remises (contrat + formulaire de rétractation)',/déclarée remise le 01\/10\/2026/.test(r.t1)&&/Formulaire de rétractation/.test(r.t1)&&r.rem&&r.rem.accuseSigne===true&&r.rem.pieces.includes('retractation'),r.t1.slice(0,260));
-  rec('Particuliers','Exemplaire électronique : téléchargement enregistré par le serveur affiché',/téléchargé par le client le 02\/10\/2026/.test(r.t2),r.t2.slice(0,200));
+  rec('Particuliers','Exemplaire papier : « déclarée remise le » avec les pièces remises (contrat + formulaire de rétractation)',new RegExp('déclarée remise le 01/10/'+REF.an).test(r.t1)&&/Formulaire de rétractation/.test(r.t1)&&r.rem&&r.rem.accuseSigne===true&&r.rem.pieces.includes('retractation'),r.t1.slice(0,260));
+  rec('Particuliers','Exemplaire électronique : téléchargement enregistré par le serveur affiché',new RegExp('téléchargé par le client le 02/10/'+REF.an).test(r.t2),r.t2.slice(0,200));
   /* synchro des signatures : la date de remise ne vient que de la ligne du serveur portant le même jeton */
-  const r2=await p.evaluate(()=>{ const a=J.devis({mode:'distance',date:todayISO()},{signature:{at:'2026-10-01T10:00:00Z',nom:'X',token:'tokA'}}), b=J.devis({mode:'distance',date:todayISO()},{signature:{at:'2026-10-01T10:00:00Z',nom:'Y',token:'tokB'}});
-    nxsRemises([{statut:'signe',doc_type:'devis',doc_id:a.id,token:'tokA',copie_le:'2026-10-02T08:00:00Z',support_durable_accord:true},{statut:'signe',doc_type:'devis',doc_id:b.id,token:'AUTRE',copie_le:'2026-10-02T08:00:00Z'}]);
+  const r2=await p.evaluate(()=>{ const a=J.devis({mode:'distance',date:todayISO()},{signature:{at:(__REF.an+'-10-01T10:00:00Z'),nom:'X',token:'tokA'}}), b=J.devis({mode:'distance',date:todayISO()},{signature:{at:(__REF.an+'-10-01T10:00:00Z'),nom:'Y',token:'tokB'}});
+    nxsRemises([{statut:'signe',doc_type:'devis',doc_id:a.id,token:'tokA',copie_le:(__REF.an+'-10-02T08:00:00Z'),support_durable_accord:true},{statut:'signe',doc_type:'devis',doc_id:b.id,token:'AUTRE',copie_le:(__REF.an+'-10-02T08:00:00Z')}]);
     return {a:DEVIS.find(x=>x.id===a.id).signature,b:DEVIS.find(x=>x.id===b.id).signature}; });
-  const r3=await p.evaluate(()=>{ const a=J.devis(null), b=J.devis({mode:'hors_etablissement',date:'2026-09-30',preuve:{type:'papier',ref:'bon signé'}});
-    nxsApplySig({doc_type:'devis',doc_id:a.id,statut:'signe',signed_at:'2026-10-01T22:30:00Z',signer_nom:'Mme Test',doc_hash:'abcdef0123456789',token:'tokS'});
-    nxsApplySig({doc_type:'devis',doc_id:b.id,statut:'signe',signed_at:'2026-10-01T22:30:00Z',signer_nom:'Mme Test',doc_hash:'abc',token:'tokT'});
+  const r3=await p.evaluate(()=>{ const a=J.devis(null), b=J.devis({mode:'hors_etablissement',date:(__REF.an+'-09-30'),preuve:{type:'papier',ref:'bon signé'}});
+    nxsApplySig({doc_type:'devis',doc_id:a.id,statut:'signe',signed_at:(__REF.an+'-10-01T22:30:00Z'),signer_nom:'Mme Test',doc_hash:'abcdef0123456789',token:'tokS'});
+    nxsApplySig({doc_type:'devis',doc_id:b.id,statut:'signe',signed_at:(__REF.an+'-10-01T22:30:00Z'),signer_nom:'Mme Test',doc_hash:'abc',token:'tokT'});
     return {a:DEVIS.find(x=>x.id===a.id).conclusion,b:DEVIS.find(x=>x.id===b.id).conclusion}; });
-  rec('Particuliers','Signature en ligne : date de conclusion = horodatage serveur (jour à Paris) + preuve, mode NON deviné',r3.a&&r3.a.date==='2026-10-02'&&r3.a.mode==='a_preciser'&&r3.a.preuve.type==='signature_en_ligne',j(r3.a));
-  rec('Particuliers','Signature en ligne : une conclusion déjà saisie n\'est pas écrasée',r3.b.date==='2026-09-30'&&r3.b.mode==='hors_etablissement'&&r3.b.preuve.type==='papier',j(r3.b));
-  rec('Particuliers','Synchro : date de remise reprise du serveur (jeton identique seulement)',r2.a.copieLe==='2026-10-02T08:00:00Z'&&r2.a.supportDurable===true&&!r2.b.copieLe,j(r2));
+  rec('Particuliers','Signature en ligne : date de conclusion = horodatage serveur (jour à Paris) + preuve, mode NON deviné',r3.a&&r3.a.date===(REF.an+'-10-02')&&r3.a.mode==='a_preciser'&&r3.a.preuve.type==='signature_en_ligne',j(r3.a));
+  rec('Particuliers','Signature en ligne : une conclusion déjà saisie n\'est pas écrasée',r3.b.date===(REF.an+'-09-30')&&r3.b.mode==='hors_etablissement'&&r3.b.preuve.type==='papier',j(r3.b));
+  rec('Particuliers','Synchro : date de remise reprise du serveur (jeton identique seulement)',r2.a.copieLe===(REF.an+'-10-02T08:00:00Z')&&r2.a.supportDurable===true&&!r2.b.copieLe,j(r2));
 }
 
 /* J11 dépannage : contrôle AVANT le démarrage des travaux (fenêtre bloquante, report tracé) */
@@ -258,9 +258,9 @@ await ctx.close();
   p.on('pageerror',e=>errs.push(e.message));
   const tok='11111111-2222-4333-8444-555555555555', appels=[]; let etat='en_attente';
   await p.route(/functions\/v1\/signature/, async r=>{ const body=JSON.parse(r.request().postData()||'{}'); appels.push(body);
-    const doc={statut:etat,doc_type:'devis',doc_num:'D-2026-010',titre:'Climatisation',client_nom:'Mme Test',montant_ttc:1200,doc_html:'<p>Devis</p><div data-retractation="1">Rétractation</div>',doc_hash:'abc',
-      signed_at:etat==='signe'?'2026-10-02T08:00:00Z':null,signer_nom:etat==='signe'?'Mme Test':null,signature_png:null,copie_le:null};
-    let out=doc; if(body.action==='copie') out={ok:true,copie_le:'2026-10-02T09:00:00Z',doc_num:'D-2026-010',doc_html:'<p>Devis</p><div data-retractation="1">Rétractation</div>',doc_hash:'abc',signed_at:'2026-10-02T08:00:00Z',signer_nom:'Mme Test',consentement:'J\'ai lu le devis'};
+    const doc={statut:etat,doc_type:'devis',doc_num:('D-'+REF.an+'-010'),titre:'Climatisation',client_nom:'Mme Test',montant_ttc:1200,doc_html:'<p>Devis</p><div data-retractation="1">Rétractation</div>',doc_hash:'abc',
+      signed_at:etat==='signe'?(REF.an+'-10-02T08:00:00Z'):null,signer_nom:etat==='signe'?'Mme Test':null,signature_png:null,copie_le:null};
+    let out=doc; if(body.action==='copie') out={ok:true,copie_le:(REF.an+'-10-02T09:00:00Z'),doc_num:('D-'+REF.an+'-010'),doc_html:'<p>Devis</p><div data-retractation="1">Rétractation</div>',doc_hash:'abc',signed_at:(REF.an+'-10-02T08:00:00Z'),signer_nom:'Mme Test',consentement:'J\'ai lu le devis'};
     await r.fulfill({status:200,contentType:'application/json',headers:{'access-control-allow-origin':'*'},body:JSON.stringify(out)}); });
   await p.goto('http://localhost:8765/signer.html#t='+tok); await p.waitForTimeout(600);
   const avant=await p.evaluate(()=>({sd:!!document.getElementById('sd'),anti:!!document.getElementById('anti')}));
