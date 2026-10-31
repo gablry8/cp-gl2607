@@ -1396,11 +1396,18 @@ function renderDash(){
 function priceVente(achat,marge){marge=Number(marge)||0;return marge>=100?achat:achat/(1-marge/100);}
 function findPrix(nom){return PRIX.find(p=>p.nom===nom);}
 function venteOf(nom,fb){const p=findPrix(nom);if(!p)return 0;if(p.pv!=null)return Number(p.pv);return priceVente(p.achat,p.marge??fb);}
+/* C3 (mission F, 29/10/2026) — article absent de la base de prix (renommé, supprimé, ancienne sauvegarde…) : la ligne reste à 0 €
+   (AUCUN calcul ne change), mais elle le dit (texte validé par Gabriel le 21/10/2026) et compute() expose la liste « absents »
+   (champ NOUVEAU, calculé à chaque fois, jamais enregistré dans le devis). Les articles complémentaires (extras) gardent leur
+   texte d'origine « absent du catalogue » : les natures clim murale, gainable et « kit » le reconnaissent pour leurs alertes. */
+const CP_ABSENT_TXT='⚠️ absent de la base de prix — compté 0 €, à corriger';
 
 function compute(d){
-  const lines=[], mat=[];
-  const add=(group,label,detail,ht,achat,meta)=>lines.push({group,label,detail,ht:ht||0,achat:achat||0,
-    qte:meta&&meta.qte!=null?meta.qte:1, unite:meta&&meta.unite?meta.unite:'forfait', pu:meta&&meta.pu!=null?meta.pu:(ht||0)});
+  const lines=[], mat=[], absents=[];
+  const add=(group,label,detail,ht,achat,meta)=>{const l={group,label,detail,ht:ht||0,achat:achat||0,
+    qte:meta&&meta.qte!=null?meta.qte:1, unite:meta&&meta.unite?meta.unite:'forfait', pu:meta&&meta.pu!=null?meta.pu:(ht||0)};
+    if(meta&&meta.absent){l.absent=meta.absent;if(absents.indexOf(meta.absent)<0)absents.push(meta.absent);}
+    lines.push(l);};
   const pushMat=(nom,qte,unite,achatU,venteU)=>{if(qte>0)mat.push({nom,qte,unite,achatU:achatU||0,venteU:venteU||0,ht:(venteU||0)*qte});};
 
   (d.machines||[]).forEach((m,i)=>{const pv=priceVente(m.achat,m.marge);
@@ -1409,28 +1416,28 @@ function compute(d){
 
   (d.splits||[]).forEach((s,i)=>{const L=Number(s.long)||0;
     if(s.liaison&&L>0){const u=venteOf(s.liaison,P.marges.Cuivre);const p=findPrix(s.liaison);
-      add('Matériel',`Liaison split ${i+1} (${s.liaison}, ${s.puiss} kW)`,`${L} m × ${eur(u)}/m`,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u});pushMat(s.liaison,L,'m',p?p.achat:0,u);}
+      add('Matériel',`Liaison split ${i+1} (${s.liaison}, ${s.puiss} kW)`,p?`${L} m × ${eur(u)}/m`:CP_ABSENT_TXT,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u,absent:p?null:s.liaison});pushMat(s.liaison,L,'m',p?p.achat:0,u);}
     if(s.cableInter&&L>0){const u=venteOf(s.cableInter,P.marges['Câble']);const p=findPrix(s.cableInter);
-      add('Matériel',`Câble interco. split ${i+1} (${s.cableInter})`,`${L} m × ${eur(u)}/m`,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u});pushMat(s.cableInter,L,'m',p?p.achat:0,u);}});
+      add('Matériel',`Câble interco. split ${i+1} (${s.cableInter})`,p?`${L} m × ${eur(u)}/m`:CP_ABSENT_TXT,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u,absent:p?null:s.cableInter});pushMat(s.cableInter,L,'m',p?p.achat:0,u);}});
 
   if(d.groupCable&&(Number(d.groupLong)||0)>0){const u=venteOf(d.groupCable,P.marges['Câble']);const p=findPrix(d.groupCable);const L=Number(d.groupLong);
-    add('Matériel',`Alimentation groupe ext. (${d.groupCable})`,`${L} m × ${eur(u)}/m`,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u});pushMat(d.groupCable,L,'m',p?p.achat:0,u);}
+    add('Matériel',`Alimentation groupe ext. (${d.groupCable})`,p?`${L} m × ${eur(u)}/m`:CP_ABSENT_TXT,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u,absent:p?null:d.groupCable});pushMat(d.groupCable,L,'m',p?p.achat:0,u);}
 
   let goulTot=0;
   (d.goulottes||[]).forEach(gx=>{const L=Number(gx.long)||0;if(gx.type&&gx.type!=='Aucune'&&L>0){const u=venteOf(gx.type,P.marges.Goulotte);const p=findPrix(gx.type);
-    add('Matériel',`Goulotte (${gx.type})`,`${L} m × ${eur(u)}/m`,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u});pushMat(gx.type,L,'m',p?p.achat:0,u);goulTot+=L;}});
+    add('Matériel',`Goulotte (${gx.type})`,p?`${L} m × ${eur(u)}/m`:CP_ABSENT_TXT,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u,absent:p?null:gx.type});pushMat(gx.type,L,'m',p?p.achat:0,u);goulTot+=L;}});
   if(goulTot>0&&(P.accGoulParM||0)>0){const accV=goulTot*P.accGoulParM;add('Matériel','Accessoires goulotte',`${goulTot} m × ${eur(P.accGoulParM)}/m (estimé)`,accV,accV*0.6,{qte:goulTot,unite:'m',pu:P.accGoulParM});}
 
   if((Number(d.condLong)||0)>0){const u=venteOf('Tuyau condensats',P.marges.Condensats);const p=findPrix('Tuyau condensats');const L=Number(d.condLong);
-    add('Matériel','Évacuation condensats',`${L} m × ${eur(u)}/m`,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u});pushMat('Tuyau condensats',L,'m',p?p.achat:0,u);}
+    add('Matériel','Évacuation condensats',p?`${L} m × ${eur(u)}/m`:CP_ABSENT_TXT,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u,absent:p?null:'Tuyau condensats'});pushMat('Tuyau condensats',L,'m',p?p.achat:0,u);}
   if(d.support&&d.support!=='Aucun'){const u=venteOf(d.support,P.marges.Supports);const p=findPrix(d.support);
-    add('Matériel',`Support (${d.support})`,'',u,p?p.achat:0,{qte:1,unite:'u',pu:u});pushMat(d.support,1,'u',p?p.achat:0,u);}
+    add('Matériel',`Support (${d.support})`,p?'':CP_ABSENT_TXT,u,p?p.achat:0,{qte:1,unite:'u',pu:u,absent:p?null:d.support});pushMat(d.support,1,'u',p?p.achat:0,u);}
   if(d.pompeType&&d.pompeType!=='Aucune'){const q=Math.max(1,Number(d.pompeQte)||1);const u=venteOf(d.pompeType,P.marges.Pompe);const p=findPrix(d.pompeType);
-    add('Matériel',`Pompe de relevage (${d.pompeType})`,`${q} × ${eur(u)}`,u*q,(p?p.achat:0)*q,{qte:q,unite:'u',pu:u});pushMat(d.pompeType,q,'u',p?p.achat:0,u);}
+    add('Matériel',`Pompe de relevage (${d.pompeType})`,p?`${q} × ${eur(u)}`:CP_ABSENT_TXT,u*q,(p?p.achat:0)*q,{qte:q,unite:'u',pu:u,absent:p?null:d.pompeType});pushMat(d.pompeType,q,'u',p?p.achat:0,u);}
 
   (d.extras||[]).forEach(x=>{const q=Number(x.qte)||0;if(!x.nom||q<=0)return;
     const p=findPrix(x.nom);
-    if(!p){add('Matériel',x.nom,'⚠️ absent du catalogue — prix 0, à corriger',0,0,{qte:q,unite:'u',pu:0});return;}
+    if(!p){add('Matériel',x.nom,'⚠️ absent du catalogue — prix 0, à corriger',0,0,{qte:q,unite:'u',pu:0,absent:x.nom});return;}
     const u=venteOf(x.nom,p.marge);
     add('Matériel',x.nom,`${fmtQ(q)} ${p.unite} × ${eur(u)}`,u*q,(p.achat||0)*q,{qte:q,unite:p.unite,pu:u});
     pushMat(x.nom,q,p.unite,p.achat||0,u);});
@@ -1478,7 +1485,7 @@ function compute(d){
   const gainHNet=heures>0?benefNet/heures:0;
   const acomptePct=d.acompteOn?(Number(d.acomptePct)||0):0;
   const acompte=totalTTC*acomptePct/100, solde=totalTTC-acompte;
-  return {lines,mat,totalHT,tva,tvaRate,franchise,totalTTC,coutReel,matAchat,moAchat,benefice,margePct,gainH,cotis,benefNet,gainHNet,mo,heures,rate,acomptePct,acompte,solde};
+  return {lines,mat,totalHT,tva,tvaRate,franchise,totalTTC,coutReel,matAchat,moAchat,benefice,margePct,gainH,cotis,benefNet,gainHNet,mo,heures,rate,acomptePct,acompte,solde,absents};
 }
 
 /* ============ WIZARD ============ */
@@ -1512,12 +1519,18 @@ function migrate(d){
   return d;
 }
 function openDevis(id){cur=migrate(JSON.parse(JSON.stringify(DEVIS.find(d=>d.id===id))));go('wizard');loadDevisToForm();curStep=0;showStep();}
+/* C3 (29/10/2026) : une valeur enregistrée qui n'est plus dans la liste (article renommé ou supprimé, ancienne sauvegarde) reste
+   choisie et signalée. Avant, le formulaire la remplaçait SANS RIEN DIRE par le premier choix de la liste (liaison, câble) ou par
+   « Aucun(e) » (support, pompe, goulotte) dès l'ouverture du devis : le montant changeait à l'enregistrement. */
+function cpOptAbsente(v,liste,aussi){if(v==null||v===''||liste.includes(v)||(aussi||[]).includes(v))return '';
+  const a=String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return `<option value="${a}" selected>${a}${findPrix(v)?'':' (absent de la base de prix)'}</option>`;}
 function fillSelects(){
   const su=PRIX.filter(p=>p.cat==='Supports').map(p=>p.nom);
-  document.getElementById('f_support').innerHTML='<option>Aucun</option>'+su.map(n=>`<option>${n}</option>`).join('');
+  document.getElementById('f_support').innerHTML='<option>Aucun</option>'+su.map(n=>`<option>${n}</option>`).join('')+cpOptAbsente(cur&&cur.support,su,['Aucun']);
   const po=PRIX.filter(p=>p.cat==='Pompe').map(p=>p.nom);
-  document.getElementById('f_pompeType').innerHTML='<option>Aucune</option>'+po.map(n=>`<option>${n}</option>`).join('');
-  document.getElementById('f_groupCable').innerHTML=GROUP_CABLES.map(n=>`<option>${n}</option>`).join('');
+  document.getElementById('f_pompeType').innerHTML='<option>Aucune</option>'+po.map(n=>`<option>${n}</option>`).join('')+cpOptAbsente(cur&&cur.pompeType,po,['Aucune']);
+  document.getElementById('f_groupCable').innerHTML=GROUP_CABLES.map(n=>`<option>${n}</option>`).join('')+cpOptAbsente(cur&&cur.groupCable,GROUP_CABLES);
   document.getElementById('f_zone').innerHTML=Object.keys(P.zone).map(n=>`<option>${n}</option>`).join('');
   document.getElementById('f_mes').innerHTML=Object.keys(P.mes).map(n=>`<option>${n}</option>`).join('');
   document.getElementById('f_brasure').innerHTML=Object.keys(P.bras).map(n=>`<option>${n}</option>`).join('');
@@ -1620,9 +1633,9 @@ function renderSplits(){if(!cur)return;
    <div class="subcard"><h3>Split ${i+1} ${cur.splits.length>1?`<button class="iconbtn d" style="float:right" onclick="delSplit(${i})">🗑</button>`:''}</h3>
    <div class="frm">
      <label>Puissance<select class="s-puiss" onchange="onPuissChange(${i})">${SPLIT_POWERS.map(p=>`<option value="${p}" ${p==s.puiss?'selected':''}>${p} kW</option>`).join('')}</select></label>
-     <label>Liaison cuivre (auto)<select class="s-liaison">${liais.map(n=>`<option ${n===s.liaison?'selected':''}>${n}</option>`).join('')}</select></label>
+     <label>Liaison cuivre (auto)<select class="s-liaison">${liais.map(n=>`<option ${n===s.liaison?'selected':''}>${n}</option>`).join('')}${cpOptAbsente(s.liaison,liais)}</select></label>
      <label>Longueur liaison (m)<input type="number" class="s-long" value="${s.long||0}"></label>
-     <label>Câble interconnexion<select class="s-cable">${SPLIT_CABLES.map(n=>`<option ${n===s.cableInter?'selected':''}>${n}</option>`).join('')}</select></label>
+     <label>Câble interconnexion<select class="s-cable">${SPLIT_CABLES.map(n=>`<option ${n===s.cableInter?'selected':''}>${n}</option>`).join('')}${cpOptAbsente(s.cableInter,SPLIT_CABLES)}</select></label>
    </div></div>`).join('');
 }
 function onPuissChange(i){const c=document.querySelectorAll('#splitList .subcard')[i];const kw=+c.querySelector('.s-puiss').value;c.querySelector('.s-liaison').value=liaisonForPower(kw);}
@@ -1631,7 +1644,7 @@ function renderGoulottes(){if(!cur)return;
   const types=PRIX.filter(p=>p.cat==='Goulotte'&&p.unite==='m').map(p=>p.nom);
   document.getElementById('goulList').innerHTML=(cur.goulottes||[]).map((gx,i)=>`
    <div class="grow frm" style="margin-bottom:8px;align-items:end">
-     <label>Type<select class="g-type">${['Aucune',...types].map(n=>`<option ${n===gx.type?'selected':''}>${n}</option>`).join('')}</select></label>
+     <label>Type<select class="g-type">${['Aucune',...types].map(n=>`<option ${n===gx.type?'selected':''}>${n}</option>`).join('')}${cpOptAbsente(gx.type,types,['Aucune'])}</select></label>
      <label>Longueur (m)<input type="number" class="g-long" value="${gx.long||0}" onchange="recalc()"></label>
      <div>${cur.goulottes.length>1?`<button class="iconbtn d" onclick="delGoulotte(${i})">🗑 retirer</button>`:''}</div>
    </div>`).join('');
@@ -1672,9 +1685,17 @@ function showStep(){
   buildTabs();
   document.getElementById('wizTitle').textContent=cur.cNom||'Sans nom';
   document.getElementById('wizStatus').innerHTML=statusTag(cur.statut);
-  if(curStep===6)recalc();
+  if(curStep===6)recalc(); else cpAbsentsWizard(compute(cur)); /* C3 : bandeau dès l'ouverture du devis */
 }
-function recalc(){formToDevis();const c=compute(cur);
+/* C3 (29/10/2026) : bandeau rouge « N article(s) absent(s) de la base de prix, compté(s) 0 € » en tête du formulaire (ancien format),
+   à l'ouverture et au récapitulatif. Contenu et style : next-fiabilite.js (nxAbsentsBandeau, même style que « Montant différent »). */
+function cpAbsentsWizard(c){try{const v=document.getElementById('v-wizard');if(!v)return;
+  const a=(cur&&c&&Array.isArray(c.absents))?c.absents:[];let b=document.getElementById('nxAbsWiz');
+  if(!b){if(!a.length)return;b=document.createElement('div');b.id='nxAbsWiz';const h=v.querySelector('.flexhead');
+    if(h&&h.parentNode===v)v.insertBefore(b,h.nextSibling);else v.insertBefore(b,v.firstChild);}
+  b.innerHTML=(a.length&&typeof window.nxAbsentsBandeau==='function')?window.nxAbsentsBandeau(a):'';
+}catch(e){console.warn('ClimPilot (C3) bandeau des articles absents :',e);}}
+function recalc(){formToDevis();const c=compute(cur);cpAbsentsWizard(c);
   document.getElementById('recapDetail').innerHTML=c.lines.map(l=>`<div class="recap-line"><div class="lbl">${l.label}${l.detail?` <span class="sub2">— ${l.detail}</span>`:''}</div><div>${eur(l.ht)}</div></div>`).join('')||'<div class="empty">Rien à chiffrer.</div>';
   document.getElementById('recapTotals').innerHTML=`<h2>💰 Totaux</h2>
     <div class="recap-line"><div class="lbl">Total HT</div><div><b>${eur(c.totalHT)}</b></div></div>
@@ -1830,18 +1851,50 @@ function editPrix(id){const p=id?PRIX.find(x=>x.id===id):{};
   document.getElementById('mp_id').value=(p&&p.src!=='notion'&&p.src!=='seed')?(p.id||''):'';
   document.getElementById('mp_nom').value=p.nom||'';document.getElementById('mp_cat').value=p.cat||'Consommables';document.getElementById('mp_unite').value=p.unite||'unité';document.getElementById('mp_achat').value=p.achat||0;document.getElementById('mp_marge').value=p.marge??35;document.getElementById('mp_verif').checked=!!p.verif;
   openModal('mPrix');}
+/* C3 (mission F, 29/10/2026) — renommer ou supprimer un article utilisé par des devis NON facturés : confirmation qui liste ces devis.
+   Renommer : « renommer aussi dans ces N devis » (propagation, décision de Gabriel du 21/10/2026 : même article, même prix, montants
+   inchangés) ou « renommer seulement l'article » (les devis gardent l'ancien nom : alerte, compté 0 €). Supprimer : « supprimer quand
+   même » (alerte sur les devis) ou annuler. Un devis facturé (facture émise ou annulée par avoir) n'est JAMAIS modifié. */
+function cpNomsApres(customs){const s=new Set(customs.map(c=>c.nom));NOTION_PRIX.forEach(p=>s.add(p.nom));buildPrixMatos(MATOS).forEach(p=>s.add(p.nom));return s;}
+function cpDevisFacture(d){return !!(d.facAcompte||d.facSolde||(Array.isArray(d.facAnnulees)&&d.facAnnulees.length));}
+/* compte (et remplace si « nouveau » est donné) les noms d'articles égaux à « ancien » : champs d'articles de l'ancien format,
+   données des lots au nouveau format (jamais le client, les notes, le numéro ni ce qui a été figé à l'envoi) */
+const CP_CHAMPS_ARTICLES=['splits','goulottes','groupCable','support','pompeType','extras'];
+function cpRemplacerNom(o,ancien,nouveau){let n=0;
+  const voir=(x,k)=>{const v=x[k];if(v===ancien){n++;if(nouveau!=null)x[k]=nouveau;}else if(v&&typeof v==='object')Object.keys(v).forEach(q=>voir(v,q));};
+  if(!o||typeof o!=='object')return 0;
+  if(o.v===2)(o.lots||[]).forEach(l=>{if(l&&l.data&&typeof l.data==='object')Object.keys(l.data).forEach(q=>voir(l.data,q));});
+  else CP_CHAMPS_ARTICLES.forEach(k=>voir(o,k));
+  return n;}
+/* devis non facturés (hors refusés) dont le montant dépend de cet article : il est dans leur matériel chiffré */
+function cpDevisConcernes(nom){return DEVIS.filter(d=>{if(!d||cpDevisFacture(d)||d.statut==='refuse')return false;
+  try{const c=compute(JSON.parse(JSON.stringify(d)));return (c.mat||[]).concat(...(c.options||[]).map(o=>o.mat||[])).some(m=>m&&m.nom===nom);}
+  catch(e){console.warn('ClimPilot (C3) devis '+(d.num||d.id)+' non calculé :',e);return false;}});}
+function cpListeDevis(L){return L.slice(0,15).map(d=>'• '+(d.num||d.id)+(d.cNom?' — '+d.cNom:'')).join('\n')+(L.length>15?'\n… et '+(L.length-15)+' autre(s)':'');}
 function savePrix(){const id=document.getElementById('mp_id').value;
   const o={id:id||uid(),nom:document.getElementById('mp_nom').value.trim(),cat:document.getElementById('mp_cat').value,unite:document.getElementById('mp_unite').value,achat:+document.getElementById('mp_achat').value,marge:+document.getElementById('mp_marge').value,verif:document.getElementById('mp_verif').checked,src:'local'};
   if(!o.nom){alert('Nom obligatoire.');return;}
   const customs=load(LS.custom,[]);
   const i=customs.findIndex(p=>p.id===o.id||p.nom===o.nom);
+  /* C3 : renommage d'un article local dont l'ancien nom disparaît de la base */
+  const avant=id?customs.find(p=>p.id===id):null, ancien=(avant&&avant.nom!==o.nom)?avant.nom:null;
+  let propager=[];
+  if(ancien){const apres=customs.slice();if(i>=0)apres[i]={...apres[i],...o,id:apres[i].id};else apres.push(o);
+    if(!cpNomsApres(apres).has(ancien)){const L=cpDevisConcernes(ancien);
+      if(L.length){const n=L.length;
+        if(confirm('L\'article « '+ancien+' » est utilisé par '+n+' devis non facturé'+(n>1?'s':'')+' :\n'+cpListeDevis(L)+'\n\nOK = renommer aussi dans '+(n>1?'ces '+n+' devis':'ce devis')+' (« '+o.nom+' » : montants inchangés)\nAnnuler = autre choix (renommer seulement l\'article, ou ne rien enregistrer)'))propager=L;
+        else if(!confirm('Renommer seulement l\'article « '+ancien+' » en « '+o.nom+' » ?\n'+(n>1?'Les '+n+' devis gardent':'Le devis garde')+' « '+ancien+' », qui n\'existera plus dans la base de prix : ils afficheront l\'alerte et cet article y sera compté 0 €.\n\nOK = renommer seulement l\'article\nAnnuler = ne rien enregistrer'))return;}}}
   if(i>=0)customs[i]={...customs[i],...o,id:customs[i].id};else customs.push(o);
-  save(LS.custom,customs);rebuildPrix();closeModal('mPrix');renderPrix();toast('Article local enregistré');}
+  if(propager.length){propager.forEach(d=>cpRemplacerNom(d,ancien,o.nom));save(LS.devis,DEVIS);}
+  save(LS.custom,customs);rebuildPrix();closeModal('mPrix');renderPrix();toast(propager.length?'Article renommé, aussi dans '+propager.length+' devis':'Article local enregistré');}
 function delPrix(id){
   const customs=load(LS.custom,[]);const p=customs.find(x=>x.id===id);
   if(!p){toast('Les articles Notion se modifient dans Notion');return;}
   const overrides=NOTION_PRIX.some(n=>n.nom===p.nom);
-  if(!confirm(overrides?'Supprimer la version locale et revenir au prix Notion ?':'Supprimer cet article ?'))return;
+  /* C3 : l'article disparaît de la base (pas de prix Notion ou embarqué du même nom derrière) et des devis non facturés l'utilisent */
+  const L=cpNomsApres(customs.filter(x=>x.id!==id)).has(p.nom)?[]:cpDevisConcernes(p.nom);
+  if(L.length){if(!confirm('L\'article « '+p.nom+' » est utilisé par '+L.length+' devis non facturé'+(L.length>1?'s':'')+' :\n'+cpListeDevis(L)+'\n\nOK = supprimer quand même ('+(L.length>1?'ces devis afficheront':'ce devis affichera')+' l\'alerte : article absent de la base de prix, compté 0 €)\nAnnuler = ne rien supprimer'))return;}
+  else if(!confirm(overrides?'Supprimer la version locale et revenir au prix Notion ?':'Supprimer cet article ?'))return;
   save(LS.custom,customs.filter(x=>x.id!==id));rebuildPrix();renderPrix();toast(overrides?'↺ Prix Notion rétabli':'Article supprimé');}
 
 /* ============ PARAMS (Notion + surcharges locales) ============ */
@@ -2385,7 +2438,8 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
   };
   let catHTML='';
   CATS.forEach(([key,titre])=>{
-    const ls=c.lines.filter(l=>catOf(l)===key && l.ht>0.005);
+    /* C3 : une ligne d'article absent de la base de prix (0 €) est imprimée AVEC sa mention, au lieu de disparaître du devis */
+    const ls=c.lines.filter(l=>catOf(l)===key && (l.ht>0.005||l.absent));
     if(!ls.length) return;
     const sub=ls.reduce((s,l)=>s+l.ht,0);
     let sublines;
@@ -2393,7 +2447,7 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
       sublines=`<tr><td style="padding:6px 12px;color:#444;font-size:10.5px">Consommables (visserie, colliers, mastic, ruban…)</td><td style="padding:6px 12px;text-align:right;color:#444;font-size:10.5px">${eur(sub)}</td></tr>`;
     } else {
       sublines=ls.map(l=>{const det=subDetail(l);
-        return `<tr><td style="padding:6px 12px;color:#333;font-size:10.5px">${clientLabel(l)}${det?` <span style="color:#8a93a0">— ${det}</span>`:''}</td><td style="padding:6px 12px;text-align:right;color:#333;font-size:10.5px">${eur(l.ht)}</td></tr>`;
+        return `<tr><td style="padding:6px 12px;color:#333;font-size:10.5px">${clientLabel(l)}${det?` <span style="color:#8a93a0">— ${det}</span>`:''}${l.absent?` <span data-absent="1" style="color:#b42318;font-weight:700">${CP_ABSENT_TXT}</span>`:''}</td><td style="padding:6px 12px;text-align:right;color:#333;font-size:10.5px">${eur(l.ht)}</td></tr>`;
       }).join('');
     }
     catHTML+=`<tr style="background:${TINT}"><td style="padding:9px 12px;font-weight:700;color:${NV};border-top:1px solid #dce3ec">${titre}</td><td style="padding:9px 12px;text-align:right;font-weight:700;color:${NV};border-top:1px solid #dce3ec">${eur(sub)}</td></tr>${sublines}`;
@@ -3623,7 +3677,11 @@ function buildMail(to,subject,body){
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   toast('✉️ Brouillon ouvert dans ta messagerie — texte aussi copié');
 }
-function mailDevis(){formToDevis();const c=compute(cur);const E=P.entreprise||{};
+function mailDevis(){formToDevis();const c=compute(cur);
+  /* C3 (décision de Gabriel du 21/10/2026) : un article absent de la base de prix (compté 0 €) → confirmation avant l'envoi, pas de
+     blocage. Refus : rien n'est envoyé et le statut ne bouge pas (false = « pas envoyé », lu par next-statut.js). */
+  if(typeof window.nxAbsentsOk==='function'&&!window.nxAbsentsOk(cur,c))return false;
+  const E=P.entreprise||{};
   buildMail(cur.cMail,'Devis '+cur.num+' — '+(E.nom||'GL Froid & Clim'),
 'Bonjour'+(cur.cNom?' '+cur.cNom:'')+',\n\nSuite à notre échange, voici notre devis '+cur.num+' ('+cur.type+') pour un montant de '+eur(c.totalHT)+' HT — TVA non applicable, art. 293 B du CGI.\n\nIl est valable '+devisValidite(P.entreprise)+'. Je reste disponible pour toute question ou ajustement.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:'')+'\n\n(Pense à joindre le PDF généré par « Aperçu / PDF »)');}
 function mailRelance(id){const d=DEVIS.find(x=>x.id===id);if(!d)return;const c=compute(d);const E=P.entreprise||{};

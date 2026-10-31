@@ -112,6 +112,16 @@
       if(lot.option){ options.push(e); return; }
       lots.push(e); lines=lines.concat(r.lines); mat=mat.concat(e.mat); heures+=e.heures;
     });
+    /* C3 (mission F, 29/10/2026) : articles absents de la base de prix (comptés 0 €), lots ET options. Les lignes sont marquées par
+       l'ancien moteur (liaison, câbles, goulotte, condensats, support, pompe, articles — clim murale, gainable, natures « kit ») et par
+       le réseau du gainable ; les natures « kit » (next-mod-kit.js) le disent dans leur alerte, d'où la lecture du texte ici.
+       Calculé à chaque fois, JAMAIS enregistré dans le devis ; aucun montant ne change (la ligne reste à 0 €). */
+    var absents=[], KIT_ABS=/^« (.+) » : absent de la base de prix et sans prix d'achat$/, RX_LIGNE_ABS=/^⚠️ absent (?:du catalogue|de la base de prix)/;
+    var noteAbs=function(n){ if(n&&absents.indexOf(n)<0) absents.push(n); };
+    lots.concat(options).forEach(function(x){
+      (x.lines||[]).forEach(function(l){ if(typeof l.absent==='string') noteAbs(l.absent); else if(!l.absent&&Math.abs(Number(l.ht)||0)<0.005&&RX_LIGNE_ABS.test(l.detail||'')) l.absent=true; });
+      (x.warnings||[]).forEach(function(w){ var m=KIT_ABS.exec(w); if(m) noteAbs(m[1]); });
+    });
     var common=[], addC=function(g,l,dt,ht,a,m){ common.push(mkLine(g,l,dt,RND?r2(ht):ht,a,m)); };
     /* frais de dossier, de commande, achat du matériel et marge de sécurité : selon la nature (ex. : pas sur une sous-traitance au taux convenu,
        pas d'achat ni de frais de commande sans matériel à acheter). Par défaut (ancien format, clim, gainable…) : comme avant. */
@@ -196,7 +206,7 @@
     return {v:2,lines:all,mat:mat,totalHT:totalHT,tva:tva,tvaRate:tvaRate,tvaBreak:tvaBreak,franchise:fr,totalTTC:totalTTC,
       coutReel:coutReel,matAchat:matAchat,moAchat:moAchat,benefice:benefice,margePct:margePct,gainH:gainH,cotis:cotis,
       benefNet:benefNet,gainHNet:gainHNet,mo:mo,heures:heures,rate:rate,acomptePct:acomptePct,acompte:acompte,solde:solde,billTTC:billTTC,billBreak:billBreak,ctrTTC:ctrTTC,ctrHT:sum(ctrLots,function(x){ return (x.ht||0)+(x.commonShare||0); }),ctrAll:ctrLots.length>0&&ctrLots.length===lots.length,
-      lots:lots,common:common,options:options,warnings:warnings,nbDepl:nD,joursEstim:Math.max(1,Math.ceil(heures/(CFG().hPerDay||6)))};
+      lots:lots,common:common,options:options,warnings:warnings,nbDepl:nD,joursEstim:Math.max(1,Math.ceil(heures/(CFG().hPerDay||6))),absents:absents};
   }
   window.compute=function(d){ return (d&&d.v===2)?computeV2(d):LEGACY(d); };
   window.compute._nxd2=true;
@@ -505,7 +515,7 @@
     if(root()) return;
     var dash=document.getElementById('v-dash'), parent=dash?dash.parentNode:document.querySelector('.content'); if(!parent) return;
     var s=document.createElement('section'); s.className='view'; s.id='v-'+VIEW;
-    s.innerHTML='<div id="nxd2Banner"></div><div id="nxd2Head"></div><div class="nxd2-tabs" id="nxd2Tabs"></div><div id="nxd2Body"></div><div class="nxd2-bar" id="nxd2Bar"></div>';
+    s.innerHTML='<div id="nxd2Banner"></div><div id="nxd2Head"></div><div id="nxd2Abs"></div><div class="nxd2-tabs" id="nxd2Tabs"></div><div id="nxd2Body"></div><div class="nxd2-bar" id="nxd2Bar"></div>';
     parent.appendChild(s);
     s.addEventListener('input',function(e){ var el=e.target; if(!el.dataset||!el.dataset.k) return; if(el.tagName==='SELECT'||el.type==='checkbox'||el.type==='radio') return; apply(el,false); });
     s.addEventListener('change',function(e){ var el=e.target; if(!el.dataset||!el.dataset.k) return; apply(el,true); });
@@ -723,9 +733,11 @@
   /* les alertes rangées par gravité : ce qui fausse le montant d'abord, puis ce qui est compté 0 €, puis le reste */
   var RX_FIX=/compté deux fois|Montant différent|calcul impossible|non chiffré sur cet appareil|deux solutions|Aucune des deux solutions/i,
       RX_ZERO=/non compté|rien de compté|aucun[e]? [^:]*compté|n'est pas comptée|prix d'achat à saisir|absent de la base|0 € compté|coché mais 0 €|prix à saisir/i;
-  function alertGroups(c){ var g={fix:[],zero:[],info:[]}, abs=[];
-    (c.warnings||[]).forEach(function(w){ var m=/^(?:Lot \d+ — )?Article « (.+) » absent de la base de prix$/.exec(w); if(m){ if(abs.indexOf(m[1])<0) abs.push(m[1]); return; } (RX_FIX.test(w)?g.fix:RX_ZERO.test(w)?g.zero:g.info).push(w); });
-    if(abs.length) g.zero.unshift(abs.length>1?abs.length+' articles absents de ta base de prix (comptés 0 €) : '+abs.join(' ; '):'Article « '+abs[0]+' » absent de ta base de prix (compté 0 €)'); if(c.margePct<20) g.fix.push('Marge sous 20 % : ce chantier semble sous-facturé.'); return g; }
+  function alertGroups(c){ var g={fix:[],zero:[],info:[]}, abs=[], bandeau=!!(c.absents&&c.absents.length);
+    (c.warnings||[]).forEach(function(w){ var m=/^(?:Lot \d+ — )?Article « (.+) » absent de la base de prix$/.exec(w); if(m){ if(abs.indexOf(m[1])<0) abs.push(m[1]); return; }
+      if(bandeau&&/^(?:Lot \d+ — )?« .+ » : absent de la base de prix et sans prix d'achat$/.test(w)) return;   /* C3 : déjà dans le bandeau rouge */
+      (RX_FIX.test(w)?g.fix:RX_ZERO.test(w)?g.zero:g.info).push(w); });
+    if(abs.length&&!bandeau) g.zero.unshift(abs.length>1?abs.length+' articles absents de ta base de prix (comptés 0 €) : '+abs.join(' ; '):'Article « '+abs[0]+' » absent de ta base de prix (compté 0 €)'); if(c.margePct<20) g.fix.push('Marge sous 20 % : ce chantier semble sous-facturé.'); return g; }
   function alerts(c){
     var a=[], d=cur, hist, g=alertGroups(c), ttl=function(t,n){ return '<div style="font-weight:700;font-size:13px;margin:10px 0 2px">'+t+' ('+n+')</div>'; };
     if(g.fix.length) a.push(ttl('🔴 À corriger avant d\'envoyer',g.fix.length)+g.fix.map(function(w){ return '<div class="nxd2-warn red">'+esc(w)+'</div>'; }).join(''));
@@ -746,8 +758,10 @@
     var bar=document.getElementById('nxd2Bar');
     if(bar) bar.innerHTML='<div class="t"><b>'+money(c.franchise?c.totalHT:c.totalTTC)+'</b> '+(c.franchise?'net':'TTC')+' · marge <b style="color:'+(c.margePct<20?'var(--red)':'var(--green)')+'">'+pct(c.margePct)+'</b> · '+fq(r2(c.heures))+' h'+
       (c.options.length?' · +'+c.options.length+' option(s)':'')+(dirty?' · <span style="color:var(--orange,#d97706)">non enregistré</span>':'')+
-      (function(){ var g=alertGroups(c), n=g.fix.length+g.zero.length; return n?' · <a href="#" style="color:'+(g.fix.length?'var(--red,#c0392b)':'var(--orange,#d97706)')+';font-weight:700" onclick="nxd2.alertes();return false">⚠ '+n+' point'+(n>1?'s':'')+' à régler</a>':''; })()+'</div>'+
+      (function(){ var g=alertGroups(c), n=g.fix.length+g.zero.length+(c.absents&&c.absents.length?1:0); return n?' · <a href="#" style="color:'+(g.fix.length?'var(--red,#c0392b)':'var(--orange,#d97706)')+';font-weight:700" onclick="nxd2.alertes();return false">⚠ '+n+' point'+(n>1?'s':'')+' à régler</a>':''; })()+'</div>'+
       '<button class="btn-dark btn-sm" onclick="nxd2.save()">💾 Enregistrer</button>';
+    /* C3 : bandeau rouge des articles absents de la base de prix, sur tous les onglets (ouverture comprise) */
+    var ab=document.getElementById('nxd2Abs'); if(ab){ try{ ab.innerHTML=(c.absents&&c.absents.length&&typeof window.nxAbsentsBandeau==='function')?window.nxAbsentsBandeau(c.absents):''; }catch(e){ console.warn('ClimPilot (C3) bandeau des articles absents :',e); } }
     c.lots.concat(c.options).forEach(function(x){ var el=document.getElementById('nxd2LotTot'+x.i); if(el) el.textContent=x.alt?('total '+money(x.altTotalHT)+' HT si retenue'):(money(x.ht)+' HT'+(x.option?' (option)':'')); });
     (cur.lots||[]).forEach(function(lot,i){ var m=MODS[lot.module]; if(m&&m.live){ try{ m.live(lot,i,api); }catch(e){} } });
   }
@@ -831,16 +845,18 @@
     return '';
   }
   function clientLab(l){ try{ return clientLabel(l); }catch(e){ return l.label; } }
+  function absM(l){ return l&&l.absent?' <span data-absent="1" style="color:#b42318;font-weight:700">⚠️ absent de la base de prix — compté 0 €, à corriger</span>':''; }
   function catsHTML(lines,d){
     var out='';
     CATS.forEach(function(ct){
-      var ls=lines.filter(function(l){ return catOf(l)===ct[0]&&Math.abs(l.ht)>0.005; }); if(!ls.length) return;
+      /* C3 : une ligne d'article absent de la base de prix (0 €) est imprimée AVEC sa mention, au lieu de disparaître du devis */
+      var ls=lines.filter(function(l){ return catOf(l)===ct[0]&&(Math.abs(l.ht)>0.005||l.absent); }); if(!ls.length) return;
       var subT=sum(ls,function(l){return l.ht;}), sub='';
       if(ct[0]==='divers'){
         var isA=function(l){ return l.label==='Frais administratifs devis'; }, isC=function(l){ return l.label==='Frais commande matériel'; }, isS=function(l){ return /^Marge sécurité/.test(l.label); };
         var isFee=function(l){ return isA(l)||isC(l)||isS(l); }, co=ls.filter(function(l){ return !isFee(l)&&/onsommables/i.test(l.label); }), ot=ls.filter(function(l){ return !isFee(l)&&!/onsommables/i.test(l.label); }), fe=ls.filter(isFee);
         if(co.length) sub+=row('Consommables (visserie, colliers, mastic, ruban…)',sum(co,function(l){return l.ht;}));
-        sub+=ot.map(function(l){ return row(esc(clientLab(l)),l.ht); }).join('');
+        sub+=ot.map(function(l){ return row(esc(clientLab(l))+absM(l),l.ht); }).join('');
         if(fe.length){ var nm=[fe.some(isA)?'dossier':'',fe.some(isC)?'commande':''].filter(Boolean), lb=nm.length?'Frais de '+nm.join(' et de '):'';
           if(fe.some(isS)) lb=lb?lb+', aléas de chantier':'Aléas de chantier'; sub+=row(lb,sum(fe,function(l){return l.ht;})); } }
       else if(ct[0]==='mo'&&!d.pdfDetailMO){
@@ -848,8 +864,8 @@
         var hh=sum(h,function(l){return num(l.qte);}), hv=sum(h,function(l){return l.ht;});
         var pus=h.map(function(l){ return r2(l.pu); }).filter(function(v,k,a){ return a.indexOf(v)===k; });
         if(h.length) sub+=row((ls.some(function(l){ return l.catLabel; })?'Main-d’œuvre (intervention, préparation et suivi)':'Main-d’œuvre (pose, raccordements, préparation et suivi)')+' <span style="color:#8a93a0">— '+fq(r2(hh))+' h'+(pus.length===1?' × '+money(pus[0])+' HT':'')+'</span>',hv);
-        sub+=o.map(function(l){ var dt=lineDetail(l); return row(esc(clientLab(l))+(dt?' <span style="color:#8a93a0">— '+dt+'</span>':''),l.ht); }).join('');
-      } else sub=ls.map(function(l){ var dt=l.pdf||lineDetail(l); return row(esc(clientLab(l))+(dt?' <span style="color:#8a93a0">— '+esc(dt)+'</span>':''),l.ht); }).join('');
+        sub+=o.map(function(l){ var dt=lineDetail(l); return row(esc(clientLab(l))+(dt?' <span style="color:#8a93a0">— '+dt+'</span>':'')+absM(l),l.ht); }).join('');
+      } else sub=ls.map(function(l){ var dt=l.pdf||lineDetail(l); return row(esc(clientLab(l))+(dt?' <span style="color:#8a93a0">— '+esc(dt)+'</span>':'')+absM(l),l.ht); }).join('');
       var head=ct[1]; for(var q=0;q<ls.length;q++){ if(ls[q].catLabel){ head=ls[q].catLabel; break; } }
       out+=row(head,subT,{head:true,bg:TINT})+sub;
     });
@@ -992,6 +1008,8 @@
     sign:function(){
       if(typeof window.nxsSendDevis!=='function'){ say('Signature en ligne indisponible'); return; }
       if(!String(cur.cNom||'').trim()){ say('Renseigne le client avant d\'envoyer le devis'); return; }
+      /* C3 : article compté 0 € → confirmation AVANT tout (refus : rien envoyé, rien enregistré, modifications gardées) */
+      if(typeof window.nxAbsentsOk==='function'&&!window.nxAbsentsOk(cur)) return;
       protect(cur); derive(cur); cur.updatedAt=Date.now(); delete cur._statutSet;
       var id=cur.id; window.nxsSendDevis();
       try{ var i=DEVIS.findIndex(function(x){ return x.id===id; });
