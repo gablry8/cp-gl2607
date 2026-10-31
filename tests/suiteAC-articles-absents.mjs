@@ -67,8 +67,10 @@ const AIDE = `(function(){
       ['ht','pu','achat','qte'].forEach(function(k){ if(m3(l[k])!==m3(m[k])) e.push('ligne '+(i+1)+' '+k+' '+l[k]+' / '+m[k]); }); });
     return e; }
   /* dialogues : confirm() scripté et noté ; brouillons de mail (mailto:) notés au lieu d'être ouverts */
-  var D={conf:[],rep:[],mails:[]};
+  var D={conf:[],rep:[],mails:[],toasts:[]};
   window.confirm=function(m){ D.conf.push(String(m)); return D.rep.length?D.rep.shift():false; };
+  /* relecture P10 : messages « toast » notés (le message de renommage doit dire où est resté le stock) */
+  var ot=window.toast; window.toast=function(m){ D.toasts.push(String(m)); return typeof ot==='function'?ot.apply(this,arguments):undefined; };
   var oc=HTMLAnchorElement.prototype.click;
   HTMLAnchorElement.prototype.click=function(){ if(/^mailto:/.test(this.href||'')){ D.mails.push(this.href); return; } return oc.apply(this,arguments); };
   function raz(r){ D.conf.length=0; D.mails.length=0; D.rep=(r||[]).slice(); }
@@ -212,12 +214,16 @@ const SC_BASE = `(async function(){ var H=window.__c3, D=H.D, R=[];
   var listeOk=function(q,oui,non){ return oui.every(function(d){ return q.indexOf(d.num)>=0; })&&non.every(function(d){ return q.indexOf(d.num)<0; }); };
   /* C3-T7a : renommer un article local utilisé par 2 devis non facturés et 1 facturé — « renommer aussi » */
   var tA=tot('c3-b-a'), tB=tot('c3-b-b'), gF=gele('c3-b-f');
+  /* relecture P10 : « commandé » et stock posés sous l'ancien nom avant le renommage */
+  CMD['Liaison locale C3']=true; save(LS.cmd,CMD); STOCK['Liaison locale C3']=7; save('cp2_stock',STOCK);
   editPrix('c3art1'); document.getElementById('mp_nom').value='Liaison locale C3 renommée'; H.raz([true]); savePrix(); await H.attendre();
   var q=D.conf.slice();
   R.push(['C3-T7 renommer : une confirmation liste les 2 devis non facturés, pas le devis facturé',q.length===1&&listeOk(q[0],[A,B],[F])&&/renommer aussi/.test(q[0]),JSON.stringify(q)]);
   R.push(['C3-T7 « renommer aussi » : les 2 devis prennent le nouveau nom, montants identiques au centime, aucun absent',
     (H.lire('c3-b-a').splits[0].liaison==='Liaison locale C3 renommée')&&(H.lire('c3-b-b').lots[0].data.splits[0].liaison==='Liaison locale C3 renommée')&&tot('c3-b-a')===tA&&tot('c3-b-b')===tB&&!abs('c3-b-a').length&&!abs('c3-b-b').length,
     JSON.stringify({avant:[tA,tB],apres:[tot('c3-b-a'),tot('c3-b-b')],absents:[abs('c3-b-a'),abs('c3-b-b')]})]);
+  R.push(['C3-T7 « renommer aussi » : « commandé » suit le nouveau nom (pas de double commande), l\\'ancien est gardé',CMD['Liaison locale C3 renommée']===true&&CMD['Liaison locale C3']===true,JSON.stringify({ancien:CMD['Liaison locale C3'],nouveau:CMD['Liaison locale C3 renommée']})]);
+  R.push(['C3-T7 « renommer aussi » : le stock reste sous l\\'ancien nom tant qu\\'un devis accepté (le facturé) l\\'utilise, et c\\'est dit',STOCK['Liaison locale C3']===7&&!STOCK['Liaison locale C3 renommée']&&D.toasts.some(function(x){ return /stock laissé sous l/.test(x); }),JSON.stringify({ancien:STOCK['Liaison locale C3'],nouveau:STOCK['Liaison locale C3 renommée'],toasts:D.toasts.slice(-2)})]);
   R.push(['C3-T7 « renommer aussi » : le devis facturé n\\'est pas touché, l\\'article est renommé dans la base',gele('c3-b-f')===gF&&!!findPrix('Liaison locale C3 renommée')&&!findPrix('Liaison locale C3'),'']);
   /* C3-T7c : annuler aux deux questions → rien n'est enregistré */
   var gA=gele('c3-b-a'), gB=gele('c3-b-b');

@@ -1870,6 +1870,19 @@ function cpRemplacerNom(o,ancien,nouveau){let n=0;
 function cpDevisConcernes(nom){return DEVIS.filter(d=>{if(!d||cpDevisFacture(d)||d.statut==='refuse')return false;
   try{const c=compute(JSON.parse(JSON.stringify(d)));return (c.mat||[]).concat(...(c.options||[]).map(o=>o.mat||[])).some(m=>m&&m.nom===nom);}
   catch(e){console.warn('ClimPilot (C3) devis '+(d.num||d.id)+' non calculé :',e);return false;}});}
+/* Relecture P10 (31/10/2026) : « À commander » (CMD) et le stock (STOCK) sont rangés par NOM d'article. Après « renommer aussi » :
+   « commandé » est recopié sous le nouveau nom (l'ancien reste pour les devis qui le gardent) : pas de double commande ; le stock passe
+   au nouveau nom seulement si plus aucun devis accepté n'utilise l'ancien nom, sinon il reste où il est (pour ne pas le compter deux
+   fois) et la fonction renvoie false pour que le message le dise. */
+function cpSuivreCommande(ancien,nouveau){let ok=true;
+  if(CMD[ancien]&&!CMD[nouveau]){CMD[nouveau]=CMD[ancien];save(LS.cmd,CMD);}
+  if(Object.prototype.hasOwnProperty.call(STOCK,ancien)&&Number(STOCK[ancien])>0){
+    const encore=DEVIS.some(d=>{if(!d||d.statut!=='accepte')return false;
+      try{return (compute(JSON.parse(JSON.stringify(d))).mat||[]).some(m=>m&&m.nom===ancien);}
+      catch(e){console.warn('ClimPilot (C3) devis '+(d.num||d.id)+' non calculé :',e);return true;}});
+    if(encore)ok=false;
+    else{STOCK[nouveau]=(Number(STOCK[nouveau])||0)+Number(STOCK[ancien]);delete STOCK[ancien];save('cp2_stock',STOCK);}}
+  return ok;}
 function cpListeDevis(L){return L.slice(0,15).map(d=>'• '+(d.num||d.id)+(d.cNom?' — '+d.cNom:'')).join('\n')+(L.length>15?'\n… et '+(L.length-15)+' autre(s)':'');}
 function savePrix(){const id=document.getElementById('mp_id').value;
   const o={id:id||uid(),nom:document.getElementById('mp_nom').value.trim(),cat:document.getElementById('mp_cat').value,unite:document.getElementById('mp_unite').value,achat:+document.getElementById('mp_achat').value,marge:+document.getElementById('mp_marge').value,verif:document.getElementById('mp_verif').checked,src:'local'};
@@ -1885,8 +1898,9 @@ function savePrix(){const id=document.getElementById('mp_id').value;
         if(confirm('L\'article « '+ancien+' » est utilisé par '+n+' devis non facturé'+(n>1?'s':'')+' :\n'+cpListeDevis(L)+'\n\nOK = renommer aussi dans '+(n>1?'ces '+n+' devis':'ce devis')+' (« '+o.nom+' » : montants inchangés)\nAnnuler = autre choix (renommer seulement l\'article, ou ne rien enregistrer)'))propager=L;
         else if(!confirm('Renommer seulement l\'article « '+ancien+' » en « '+o.nom+' » ?\n'+(n>1?'Les '+n+' devis gardent':'Le devis garde')+' « '+ancien+' », qui n\'existera plus dans la base de prix : ils afficheront l\'alerte et cet article y sera compté 0 €.\n\nOK = renommer seulement l\'article\nAnnuler = ne rien enregistrer'))return;}}}
   if(i>=0)customs[i]={...customs[i],...o,id:customs[i].id};else customs.push(o);
-  if(propager.length){propager.forEach(d=>cpRemplacerNom(d,ancien,o.nom));save(LS.devis,DEVIS);}
-  save(LS.custom,customs);rebuildPrix();closeModal('mPrix');renderPrix();toast(propager.length?'Article renommé, aussi dans '+propager.length+' devis':'Article local enregistré');}
+  let stockSuivi=true;
+  if(propager.length){propager.forEach(d=>cpRemplacerNom(d,ancien,o.nom));save(LS.devis,DEVIS);stockSuivi=cpSuivreCommande(ancien,o.nom);}
+  save(LS.custom,customs);rebuildPrix();closeModal('mPrix');renderPrix();toast(propager.length?'Article renommé, aussi dans '+propager.length+' devis'+(stockSuivi?'':' — stock laissé sous l\'ancien nom (un devis accepté l\'utilise encore) : vérifie « À commander »'):'Article local enregistré');}
 function delPrix(id){
   const customs=load(LS.custom,[]);const p=customs.find(x=>x.id===id);
   if(!p){toast('Les articles Notion se modifient dans Notion');return;}

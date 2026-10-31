@@ -1,8 +1,7 @@
 # ClimPilot — Mission F, C3 : « article absent de la base de prix, compté 0 € » doit se voir — compte rendu
 
 > Rédigé le 30/10/2026 par Claude (Opus 5.5), exécutant de la mission P3 (= partie C3 de `docs/MISSION-F-C1-C3.md`, sections 5 à 9),
-> pour Gabriel Leroy. Branche **`correctif/c3-article-absent`**, créée depuis `release/1.13.0` (`f456f32`). **Rien n'est commité,
-> poussé, fusionné ni déployé par moi** ; aucune base Supabase touchée (aucun accès). Décisions de Gabriel du 21/10 appliquées
+> pour Gabriel Leroy. Branche **`correctif/c3-article-absent`**, créée depuis `release/1.13.0` (`f456f32`). **Commité et poussé le 31/10 par la session principale (tests d'abord : CI rouge, puis correction : CI verte), relu par un second modèle ; rien n'est fusionné ni déployé** ; aucune base Supabase touchée (aucun accès). Décisions de Gabriel du 21/10 appliquées
 > (section 8 du dossier : textes validés, confirmation à l'envoi, propagation du renommage, repère dans la liste remis à P4).
 > **Environnement de cette nuit : pas de Chromium.** Les suites Playwright n'ont PAS tourné ici ; c'est la CI qui fait foi.
 > Ce qui a tourné ici est listé au § 6 (dont un banc auxiliaire jsdom, hors dépôt).
@@ -29,7 +28,7 @@
 - **À l'envoi** : confirmation « Ce devis contient N article(s) compté(s) 0 € (…). L'envoyer quand même ? » — liste « Envoyer », « Mail au client » (deux formats), « Faire signer en ligne » (deux formats). Refus = rien envoyé, statut inchangé.
 - **Base de prix** : renommer / supprimer un article utilisé par des devis non facturés → confirmation qui **liste ces devis** ; « renommer aussi » propage le nouveau nom (montants identiques) ; un devis facturé n'est jamais touché.
 - **Assistant** : les noms de repli écrits en dur sont vérifiés dans la base ; s'ils manquent, un article existant de la même catégorie est pris et c'est dit.
-- **Tests** : nouvelle suite `tests/suiteAC-articles-absents.mjs` (130 contrôles, C3-T1 à C3-T11). Dans le banc jsdom : **56/56 scénarios de page verts sur le nouveau code, 38 rouges sur l'ancien** (les 18 verts restants sont les témoins et invariants) ; golden calculs (52 cas) et documents (16) **identiques** sur les deux codes.
+- **Tests** : nouvelle suite `tests/suiteAC-articles-absents.mjs` (131 contrôles depuis la relecture du 31/10, C3-T1 à C3-T11). Dans le banc jsdom : **56/56 scénarios de page verts sur le nouveau code, 38 rouges sur l'ancien** (les 18 verts restants sont les témoins et invariants) ; golden calculs (52 cas) et documents (16) **identiques** sur les deux codes.
 
 ## 2. Constats sur le code d'origine (`f456f32`)
 
@@ -106,7 +105,7 @@ Méthode imposée cette nuit : les tests sont écrits **sans pouvoir être exéc
 | C3-T11 (sauvegarde restaurée) | pas de bandeau ; ancien format : le formulaire remplace les noms (total du récapitulatif ≠) | bandeau + `cpOptAbsente` | 3 rouges, 2 verts / 5 verts |
 | « absents jamais enregistré » | vert avant et après (témoin) | — | vert / vert |
 
-Total : **130 contrôles** ; attendu sur `f456f32` : environ **27 verts (18 témoins et invariants du banc + 9 contrôles Playwright « aucune erreur JavaScript » et « restauration ») et 103 rouges** (probable) ; après correction : **130 verts** (probable, CI à confirmer).
+Total : **129 contrôles** à la CI du 31/10 : sur le commit des tests seuls (`6a7ff18`, code `f456f32`) **29 verts et 100 rouges** (CI certain) ; après correction (`86eaeca`) **129 verts**, batterie complète réussie (1 236 contrôles). La relecture a ajouté 2 contrôles (« commandé » et stock au renommage) : **131**.
 
 ## 6. Vérifié ici, et ce qui attend la CI
 
@@ -147,7 +146,10 @@ cas('f-c3-gainable-absents', 'C3 GAINABLE v2 : liaison et câble d\'interconnexi
 ## 8. Ce que ça change pour toi
 
 - Un article qui n'est plus dans ta base **se voit** : bandeau rouge à l'ouverture du devis, mention sur la ligne (écran et PDF), question avant l'envoi. Tu choisis : corriger (base de prix ou devis) ou envoyer quand même.
-- Renommer un article dans Base de prix : ClimPilot te liste les devis en cours qui l'utilisent et propose de les mettre à jour (montants identiques). Supprimer : même liste, « supprimer quand même » ou annuler. Les devis facturés ne bougent jamais.
+- Renommer un article dans Base de prix : ClimPilot te liste les devis **non facturés** qui l'utilisent (brouillons, mais aussi envoyés et acceptés ; pas les refusés) et propose de les mettre à jour (montants identiques si tu ne changes pas le prix en même temps). Supprimer : même liste, « supprimer quand même » ou annuler. Les devis facturés ne bougent jamais ; un devis envoyé garde son montant figé à l'envoi.
+- « À commander » et le stock sont rangés par nom d'article. Après « renommer aussi » (ajout de la relecture du 31/10) : « commandé » suit le nouveau nom (pas de double commande) ; le stock suit aussi, **sauf** si un devis accepté (par exemple déjà facturé) utilise encore l'ancien nom : il reste alors sous l'ancien nom et le message te le dit — vérifie « À commander ».
+- La mention rouge « absent de la base de prix — compté 0 € » **part chez le client** si tu envoies quand même : PDF et document de signature en ligne (décision 2, à valider ; une variante neutre est possible).
+- À la première ouverture après la mise à jour, tes anciens devis dont un nom a disparu s'allument en rouge, **y compris facturés et refusés** (la propagation ne les corrige pas, c'est voulu). Pas de repère dans la liste des devis pour les retrouver d'avance (remis à P4).
 - Un ancien devis (ou une vieille sauvegarde) avec un nom disparu **garde ce nom** à l'ouverture au lieu d'être modifié en douce.
 - Rien ne change pour un devis dont tous les articles existent (golden identiques).
 - **Essai proposé sur la copie d'essai** (~15 min) : 1) Base de prix › créer un article local « Liaison test », l'utiliser dans un brouillon clim murale ; noter le total ; 2) renommer l'article → la question liste le brouillon → OK → rouvrir : même total, pas de bandeau ; 3) renommer encore → Annuler puis OK (« seulement l'article ») → rouvrir : bandeau rouge, ligne à 0 € ; 4) « Envoyer » depuis la liste → question → Annuler : toujours « Brouillon » ; 5) Aperçu / PDF : la ligne apparaît avec la mention.
