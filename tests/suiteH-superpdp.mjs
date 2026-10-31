@@ -194,7 +194,7 @@ const wait=(p,ms=250)=>p.waitForTimeout(ms);
   rec('Super PDP','P6 : environnement inattendu → facture pro vers le vrai client (SIREN), pas de -TEST, circuit officiel',/552100554/.test(x)&&!/000000002/.test(x)&&!/-TEST/.test(m)&&/circuit officiel/.test(m),m.slice(0,300));
   await p.click('#nxpdpGo'); await wait(p,300);
   const s=await p.evaluate(n=>{ const e=nxEmisEntree(n), s=__state.lastSend||{}, h=nxPdpLastStatus(n)||{}; return {doc:s.document_id,sid:e&&e.sid,xml:!!s.xml,ext:s.external_id,env:h.env,brut:h.env_brut}; },nums.pro);
-  rec('Super PDP','P6 : environnement inattendu → identifiant du document du registre envoyé, jamais le XML de l\'appareil',s.doc&&s.doc===s.sid&&!s.xml&&s.ext===nums.pro,JSON.stringify(s));
+  rec('Super PDP','P6 : environnement inattendu → identifiant du document du registre envoyé, jamais le XML de l\'appareil',!!(s.doc&&s.doc===s.sid&&!s.xml&&s.ext===nums.pro),JSON.stringify(s));
   rec('Super PDP','P6 : historique : envoi classé réel + valeur brute « Production » enregistrée',s.env==='production'&&s.brut==='Production',JSON.stringify(s));
   rec('Super PDP','Aucune erreur JavaScript (environnement inattendu)',errs.length===0,errs.join(' | '));
   await ctx.close();

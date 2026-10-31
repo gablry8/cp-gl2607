@@ -9,10 +9,10 @@ Branche `correctif/p6-env-superpdp` (depuis `release/1.13.0` = f456f32). Rien n'
 2. Attendre la CI : la suite H (6 nouveaux contrôles H3) n'a pas pu tourner ici (pas de Chromium) ; tout le reste a tourné (§ 7).
 3. Supabase TEST › SQL Editor : coller tout `tests/supabase-test/6-droits-anon-TEST.sql` → 27 lignes, toutes « OK » (« OK (table absente) » est normal). Sinon : STOP, noter l'affichage.
 4. Avec la copie d'essai branchée sur TEST : se connecter, synchroniser, émettre une facture d'essai, faire une sauvegarde, ouvrir un lien de signature sans être connecté → tout doit marcher comme avant.
-5. Supabase RÉEL (après 3 et 4, et après la fusion 1.13.0) : coller tout `tests/supabase-test/6-REEL-droits-anon.sql` → 19 lignes, toutes « OK ».
+5. Supabase RÉEL (après 3 et 4, et après la fusion 1.13.0) : coller tout `tests/supabase-test/6-REEL-droits-anon.sql` → 19 lignes, toutes « OK » (« OK (table absente) » est normal pour une table pas encore créée, par exemple celle de l'agenda).
 6. Fonction `superpdp` (TEST puis réel) : poser d'abord le secret `ALLOWED_USER_IDS`, puis déployer la version du dépôt (procédure § 6).
-7. Après le déploiement : écran « Facture électronique » → « Connecté — compte de TEST » attendu pour ton compte bac à sable ; s'il affiche « compte réel » avec « Type de compte annoncé par la plateforme : « … » », t'arrêter et transmettre la valeur affichée. (Vérifié en lecture seule le 31/10 : ton compte enregistré sur le projet réel vaut bien `sandbox`, il reste donc en bac à sable.)
-8. Te déconnecter puis reconnecter SUPER PDP une fois : la valeur brute de l'environnement est alors enregistrée (contrôle SQL § 6).
+7. Après le déploiement : écran « Facture électronique » → « Connecté — compte de TEST » attendu pour ton compte bac à sable ; s'il affiche « compte réel » avec « Type de compte annoncé par la plateforme : « … » », t'arrêter et transmettre la valeur affichée.
+8. Facultatif, plus tard : la valeur brute de l'environnement (`env_brut`) n'est enregistrée qu'à la prochaine connexion à SUPER PDP. Une déconnexion efface les identifiants : ne le fais que si tu as ton `client_id` et ton `client_secret` sous la main (contrôle SQL § 6).
 9. Retour arrière à tout moment : `tests/supabase-test/6-droits-anon-retour-arriere.sql` (droits) ; redéployer la version précédente de `superpdp` (fonction).
 10. À trancher plus tard (non fait, volontairement) : changer ou non les droits par défaut de Supabase pour les futures tables (§ 4) ; d'ici là, chaque migration retire elle-même les droits du visiteur (garde automatique, test 14).
 
@@ -41,9 +41,9 @@ Branche `correctif/p6-env-superpdp` (depuis `release/1.13.0` = f456f32). Rien n'
     `env:'production', env_brut:'Production'`. La préparation `setup()` traite désormais tout environnement autre que `sandbox` comme
     le réel (H1 `sandbox` et H2 `production` inchangés).
 
-## 2. Constat M4 C19 / S-5 — cinq petites fonctions exécutables sans connexion (certain)
-- **Constat** : `cp_serveur_info`, `cp_version_ok`, `cp_arr_len`, `cp_doc_json`, `cp_num_txt` restaient exécutables par le visiteur non
-  connecté (droit par défaut `public` jamais retiré). Risque faible (version, calculs), mais inutile.
+## 2. M4 C19 — droits d'exécution des cinq petites fonctions (certain)
+- **Ce qui change** : `cp_serveur_info`, `cp_version_ok`, `cp_arr_len`, `cp_doc_json`, `cp_num_txt` ne sont plus exécutables sans
+  connexion (droit par défaut `public` retiré). Elles ne renvoient ni donnée ni secret : c'est du rangement, pas une urgence.
 - **Qui les appelle** (vérifié dans le code, certain) : l'appli appelle seulement `cp_serveur_info`, **après connexion**
   (`next-emission.js:78`, dans `sonde`, qui renvoie « cloud » sans appel si personne n'est connecté, l. 75). Les quatre autres ne sont
   appelées que par des fonctions `security definer` (émission, import, synchronisation, sauvegarde), qui s'exécutent avec les droits de
@@ -51,9 +51,9 @@ Branche `correctif/p6-env-superpdp` (depuis `release/1.13.0` = f456f32). Rien n'
 - **Correction** (migration `supabase/migrations/20261031120000_droits_anon.sql`) : `revoke execute … from public, anon` puis
   `grant execute … to authenticated, service_role` (garde l'appli connectée telle quelle, par prudence).
 
-## 3. Constat S-6 — droits laissés au visiteur non connecté sur des tables (certain)
-- **Constat** : des tables ClimPilot gardaient les droits que Supabase donne par défaut au rôle `anon` ; la protection par compte (RLS)
-  les bloquait déjà. Retrait = défense en profondeur.
+## 3. Droits des tables pour le visiteur non connecté (certain)
+- **Ce qui change** : les droits que Supabase donne par défaut au rôle `anon` sur les tables ClimPilot sont retirés. La protection par
+  compte (RLS) reste la barrière principale ; c'est une deuxième barrière (défense en profondeur).
 - **Vérifications** (certain) : toutes les lectures/écritures de tables de l'appli exigent une session (`SESS.user` : `index.html`,
   `next-assistant.js`, `next-signature.js`, `next-catalogue.js`, `next-emission.js`, `next-planning.js`) ; la page de signature appelle
   la fonction serveur `signature`, qui lit la base avec la **clé de service** (`supabase/functions/signature/index.ts:108`) ; idem
@@ -70,8 +70,8 @@ elle-même ces droits (`revoke … from public, anon`, règle déjà suivie depu
 les migrations du dépôt et échoue si un objet de `public` reste accessible au visiteur. Non couvert : une table créée à la main dans le
 tableau de bord.
 
-## 5. Constat S-8 — script d'essai n° 1 et projet TEST (certain)
-- **Constat** : `tests/supabase-test/1-structure-migration-essais.sql` créait `zz_resultats` et `zz_ok` accessibles sans connexion.
+## 5. Script d'essai n° 1 et projet TEST (certain)
+- **Ce qui change** : `tests/supabase-test/1-structure-migration-essais.sql` crée désormais `zz_resultats` et `zz_ok` sans accès pour le visiteur non connecté (tables d'essais, aucune donnée personnelle).
 - **Correction, sans changer ce qu'il teste** : `zz_resultats` sans aucun droit pour `public`, `anon`, `authenticated`, protection par
   compte activée ; `zz_ok` en `security definer` ; le droit d'exécuter `zz_ok` n'est donné à `anon`/`authenticated` que le temps des
   essais et retiré en fin de script (une seule transaction). Prouvé : mêmes 36 contrôles (A : 2, B : 34), tous réussis, avant et après.
@@ -94,7 +94,8 @@ Procédure de `docs/CORRECTIONS-1.10.md` (Livraison, point 5) et `docs/ESSAIS-SU
 
 ## 7. Ce qui a été vérifié ici / ce qui attend la CI
 - PostgreSQL 16 local (`cluster_name=climpilot-test`) : `pytest tests/sql` → **66 passed** (51 existants + 15 nouveaux). Avant la
-  correction : nouveaux tests 12 FAIL / 2 PASS (les deux qui passent vérifient que l'appli connectée marche, avant comme après).
+  correction : nouveaux tests 13 FAIL / 2 PASS (les deux qui passent vérifient que l'appli connectée marche, avant comme après ; parmi les
+  13 rouges, les tests 01, 04, 13 et 14 prouvent l'ancien comportement, les autres échouent parce que la migration et les scripts n'existaient pas).
 - Verrous éprouvés : script RÉEL avec marqueur → « STOP », rien modifié ; script TEST sans marqueur → « STOP », rien modifié.
 - Lignes de contrôle : 19 « OK » (RÉEL), 27 « OK » (TEST) ; et sur une base sans migration elles affichent bien « À REVOIR » (test 15).
 - Fonctions serveur (`node tests/functions/*.mjs`) : 5 fichiers verts (agenda 18, apps-script 12, liste-blanche 20, signature 10,
