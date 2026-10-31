@@ -8,7 +8,7 @@ import fs from 'fs';
   await seed(p);
   await p.evaluate(()=>{ EQUIP.push({id:'eq1',client:'Boulangerie Dupré',type:'Monosplit',marque:'Daikin',modele:'FTXM25',fluide:'R32',charge:0.9}); save('cp2_equip',EQUIP);
     CTR.push({id:'ct1',clientNom:'Boulangerie Dupré',type:'Climatisation',prix:180,visites:1,prochaineVisite:dISO(new Date()),actif:true,facs:[]}); save('cp2_contrats',CTR);
-    FLU.push({id:'fl1',num:'FF-2026-001',date:dISO(new Date()),client:'Boulangerie Dupré',desc:'Split',fluide:'R32',charge:0.9,qv:0.2}); save('cp2_fluides',FLU);
+    FLU.push({id:'fl1',num:'FF-'+__REF.an+'-001',date:dISO(new Date()),client:'Boulangerie Dupré',desc:'Split',fluide:'R32',charge:0.9,qv:0.2}); save('cp2_fluides',FLU);
     localStorage.setItem('cpnext_refs',JSON.stringify({ftxm25:{ref:'FTXM25',fluide:'R32',charge:0.9}})); });
   const [dl]=await Promise.all([p.waitForEvent('download'),p.evaluate(()=>exportJSON())]);
   const path=out('bk.json'); await dl.saveAs(path);

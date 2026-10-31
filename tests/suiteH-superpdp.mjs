@@ -22,9 +22,9 @@ const MOCK=`(function(env){
         case 'connect': if(body.client_secret!=='bonsecret') return {data:{erreur:'identifiants',message:'SUPER PDP refuse ces identifiants : invalid_client'}}; S.connecte=true; return {data:{connecte:true,env:S.env,company:co}};
         case 'disconnect': S.connecte=false; return {data:{connecte:false}};
         case 'validate': S.lastXml=body.xml; return {data:{rapport:S.valid?{is_valid:true,profil:'EN16931',erreurs:[],avertissements:[]}:{is_valid:false,erreurs:[{message:'BR-FR-12 : adresse électronique du vendeur manquante',location:'/rsm:CrossIndustryInvoice'}],avertissements:[]}}};
-        case 'send': S.sent++; S.lastSend=body; return {data:{id:1000+S.sent,direction:'out',events:[{status_code:'api:uploaded',status_text:'uploaded',created_at:'2026-10-01T10:00:00Z'}],env:S.env}};
-        case 'invoice': return {data:{id:body.id,events:[{status_code:'api:uploaded',created_at:'2026-10-01T10:00:00Z'},{status_code:S.codeInvoice||'fr:205',status_text:S.codeInvoice==='fr:213'?'Rejetée':'Approuvée',created_at:'2026-10-01T11:00:00Z'}]}};
-        case 'list': return {data:{items:[{id:55,direction:'in',numero:'FA-889',date:'2026-09-28',vendeur:'Clim Distribution',total:1250.4,events:[{code:'fr:203',texte:'Mise à disposition',at:'2026-09-28T09:00:00Z'}]}],has_after:false}};
+        case 'send': S.sent++; S.lastSend=body; return {data:{id:1000+S.sent,direction:'out',events:[{status_code:'api:uploaded',status_text:'uploaded',created_at:(__REF.an+'-10-01T10:00:00Z')}],env:S.env}};
+        case 'invoice': return {data:{id:body.id,events:[{status_code:'api:uploaded',created_at:(__REF.an+'-10-01T10:00:00Z')},{status_code:S.codeInvoice||'fr:205',status_text:S.codeInvoice==='fr:213'?'Rejetée':'Approuvée',created_at:(__REF.an+'-10-01T11:00:00Z')}]}};
+        case 'list': return {data:{items:[{id:55,direction:'in',numero:'FA-889',date:(__REF.an+'-09-28'),vendeur:'Clim Distribution',total:1250.4,events:[{code:'fr:203',texte:'Mise à disposition',at:(__REF.an+'-09-28T09:00:00Z')}]}],has_after:false}};
         case 'event': S.lastEvent=body; return {data:{ok:true}};
         case 'directory': return {data:{entreprises:[{formal_name:'BOULANGERIE DUPRE'}],entrees:body.number==='552100554'?[{id:1}]:[],erreur_annuaire:null}};
         case 'download': return {data:{type:'application/xml',base64:btoa('<x/>')}};
@@ -38,7 +38,7 @@ async function setup(env,opts={}){
   const {p,ctx,errs}=await page({mobile:opts.mobile!==false?true:false});
   await p.evaluate(MOCK+'('+JSON.stringify(env)+')');
   await seed(p);
-  if(env==='production') await p.evaluate(()=>{ localStorage.setItem('cp2_facturation',JSON.stringify({debut:todayISO(),decideLe:'test',anciens:{},renommes:{},v:1})); /* 1.10 : facturation réelle démarrée explicitement */ Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:'12 rue A',cp:'60000',ville:'Beauvais',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); });
+  if(env!=='sandbox') await p.evaluate(()=>{ localStorage.setItem('cp2_facturation',JSON.stringify({debut:todayISO(),decideLe:'test',anciens:{},renommes:{},v:1})); /* 1.10 : facturation réelle démarrée explicitement */ Object.assign(P.entreprise,{nom:'Gabriel Leroy',siret:'12345678900012',adresse:'12 rue A',cp:'60000',ville:'Beauvais',natureChantier:'S',assurance:'Assureur Test n° 0001',assuranceZone:'France métropolitaine' /* 1.10 : mentions exigées en mode réel (suite L) */}); });
   /* une facture pro (SIREN) et une facture particulier */
   const nums=await p.evaluate(async()=>{
     const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0);
@@ -173,6 +173,30 @@ const wait=(p,ms=250)=>p.waitForTimeout(ms);
   const v=await V(p);
   rec('Super PDP','Sans connexion cloud : message, pas de plantage',/Connecte-toi au cloud/.test(v),v.slice(0,200));
   rec('Super PDP','Aucune erreur JavaScript (compte réel)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+/* H3 — P6 (31/10/2026, M4 C7) : environnement annoncé par la plateforme autre que exactement « sandbox » (ici « Production »)
+   → compte RÉEL avec tous ses contrôles (avant : tout ce qui n'était pas exactement « production » passait en bac à sable) ;
+   la valeur brute est montrée sur l'écran et enregistrée dans l'historique des envois. */
+{
+  const {p,ctx,errs,nums}=await setup('Production',{mobile:false});
+  await p.evaluate(()=>{ __state.connecte=true; });
+  await p.evaluate(()=>go('nx_pdp')); await wait(p,500);
+  const v=await V(p);
+  rec('Super PDP','P6 : environnement « Production » (valeur inattendue) → écran « compte réel », valeur reçue affichée',/Connecté — compte réel/.test(v)&&!/compte de TEST/.test(v)&&/« Production »/.test(v),v.slice(0,400));
+  await p.evaluate(n=>nxPdpSend(n),nums.part); await wait(p,400);
+  let m=await T(p);
+  rec('Super PDP','P6 : environnement inattendu → facture particulier refusée comme en compte réel',/particulier/.test(m)&&/2027/.test(m)&&!(await p.$('#nxpdpGo')),m.slice(0,200));
+  await p.evaluate(()=>closeModal('mPdp'));
+  await p.evaluate(n=>nxPdpSend(n),nums.pro); await wait(p,500);
+  m=await T(p);
+  const x=await p.evaluate(()=>__state.lastXml||'');
+  rec('Super PDP','P6 : environnement inattendu → facture pro vers le vrai client (SIREN), pas de -TEST, circuit officiel',/552100554/.test(x)&&!/000000002/.test(x)&&!/-TEST/.test(m)&&/circuit officiel/.test(m),m.slice(0,300));
+  await p.click('#nxpdpGo'); await wait(p,300);
+  const s=await p.evaluate(n=>{ const e=nxEmisEntree(n), s=__state.lastSend||{}, h=nxPdpLastStatus(n)||{}; return {doc:s.document_id,sid:e&&e.sid,xml:!!s.xml,ext:s.external_id,env:h.env,brut:h.env_brut}; },nums.pro);
+  rec('Super PDP','P6 : environnement inattendu → identifiant du document du registre envoyé, jamais le XML de l\'appareil',!!(s.doc&&s.doc===s.sid&&!s.xml&&s.ext===nums.pro),JSON.stringify(s));
+  rec('Super PDP','P6 : historique : envoi classé réel + valeur brute « Production » enregistrée',s.env==='production'&&s.brut==='Production',JSON.stringify(s));
+  rec('Super PDP','Aucune erreur JavaScript (environnement inattendu)',errs.length===0,errs.join(' | '));
   await ctx.close();
 }
 /* H-erreurs — messages précis : service absent (404), service injoignable, hors ligne, erreur HTTP */

@@ -44,7 +44,10 @@ un validateur absent = **SKIP**. Aucun de ces cas n'est compté comme réussi.
 | `BRFR_DIR` | dossier `France_RFE` | contrôles BR-FR en SKIP |
 | `PGHOST`, `PGPORT` | banc PostgreSQL local (socket) | tests SQL NON EXÉCUTÉS |
 | `CP_SANS_NETNS=1` | accepter de tourner sans isolation du noyau | le script s'arrête si `unshare -n` est impossible |
-| `CP_SUITES` | liste réduite de suites (débogage) | toutes |
+| `CP_SUITES` | liste réduite de suites (débogage) ; le rapport est alors **PARTIEL** (code 3), jamais « COMPLET » | toutes |
+| `CP_SANS_Q=1` | retire la suite Q (débogage local seulement ; rapport PARTIEL, code 3). En CI, Q est jouée et bloquante | Q jouée |
+
+Statuts d'un contrôle dans le rapport (M3 C5/C9, 21/10/2026) : `PASS` ; `FAIL` (bloquant) ; `SKIP` (non vérifié, rend le passage INCOMPLET — sauf les 2 SKIP connus de l'autotest d'isolation sans `unshare -n`) ; `INSTABLE` (statut conservé mais **plus utilisé** depuis P0-suite, 24/10/2026 : les deux contrôles de la suite Q qui le portaient sont redevenus bloquants) ; `À TRANCHER` (suite Y : références « assujetti » en attente d'une décision de Gabriel, non bloquantes, listées). `INSTABLE` et `À TRANCHER` ne sont **jamais** comptés comme réussis. Codes de sortie de `run-all.sh` : 0 complet et tout réussi ; 1 échec ; 3 incomplet ou partiel.
 
 ### Banc PostgreSQL local (tests SQL)
 
@@ -162,3 +165,47 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   - R4 : année du document au 31/12.
 - serveur-simule.mjs : serveur Supabase simulé, partagé par les suites I et N.
 - functions/test-superpdp-envoi.mjs (7 contrôles) : en production, envoi depuis le registre (R2).
+
+## Ajouts 21/10/2026 (mission F, C1 — branche `correctif/c1-registre-illisible`)
+- suiteAA-registre-illisible.mjs (16 contrôles, banc deux appareils) : registre des factures **illisible** ou **lent** (plus de 25 s)
+  → rien n'est émis, aucune demande au serveur, message « impossible de vérifier » ; registre lisible → reprise de la facture émise
+  ailleurs, solde = total − acompte ; registre lu **périmé** → refus du serveur, reprise ; hors ligne inchangé ; **mode démonstration**
+  (numéros TEST-, pas de registre serveur) : même règle appuyée sur l'état synchronisé (cloud muet → rien ; état plus récent sur le
+  serveur pas encore reçu → rien, « pas à jour » ; après synchro → solde TEST = total − acompte).
+- banc-appareils.mjs : `S.registreBloque[dev]` (lecture du registre en erreur), `S.registrePendu[dev]` (lecture qui ne revient pas) ;
+  règle serveur `regleSource` (identique à la migration) dans le serveur commun ; même règle dans serveur-simule.mjs (suites I, N, R).
+- tests/sql/test_une_facture_par_source.py (16 contrôles, vrai PostgreSQL) : migration `20261021180000_une_facture_par_source.sql`
+  appliquée deux fois — 2e solde refusé avec la facture existante renvoyée et aucun numéro consommé ; solde qui ignore l'acompte refusé ;
+  solde cohérent accepté (±0,011) ; avoir total libère, avoir partiel non ; acompte annulé puis refait ; 2e acompte et acompte après
+  solde refusés ; une facture vivante par intervention / location / année de contrat ; autre utilisateur ; rejeu `request_id` ;
+  reconstituées hors règle ; 8 soldes simultanés → un seul accepté ; droits ; retour arrière = fonction 1.10.
+- tests/supabase-test/4-une-facture-par-source-TEST.sql (verrou par marqueur, 5 « OK ») et 4-une-facture-par-source-retour-arriere.sql.
+
+## Ajouts 24/10/2026 (P0-suite — branche `refonte/p0-suite`, tests et docs seulement)
+- **Suite Q, contrôles « acompte » (Q7) et « voile » (Q10) : de nouveau BLOQUANTS** (plus aucun INSTABLE). Q7 : le registre des factures est coupé pour le téléphone
+  (`S.registreBloque`) pendant que le PC émet, un rapprochement tardif est FORCÉ puis l'état « pas à jour » est vérifié (deux contrôles « Mise en place »), le registre n'est
+  rouvert qu'avant le clic du téléphone ; le PC émet l'acompte de Y seulement APRÈS la reprise de X (la reprise relit tout le registre : constat P0-suite, voir
+  `docs/P0-SUITE-COMPTE-RENDU.md` § 2). Q10 : le PC est au repos (ni envoi ni lecture) avant son retour simulé sur la fenêtre (`cpVerifierDistant` l'ignore sinon).
+- **Suite T, T5b** (M3 C10) : tournée dont les adresses n'ont aucune coordonnée → « Ma journée » lance `completerGeo`, une fois par adresse, affiche « en cours de calcul »,
+  se réaffiche avec les km quand c'est fini (géocodage simulé ralenti à 0,7 s pour observer l'état « en cours »).
+- **Faux serveur** (`serveur-simule.mjs`) : `fail.horsService` rend la forme réelle de supabase-js 2.117.3 (réponse RÉSOLUE `{error:{message:'TypeError: Failed to fetch'}, data:null, status:0}`),
+  plus une promesse rejetée ; suite I (I3) : deux contrôles de plus (message « serveur injoignable » inchangé, forme de la réponse).
+- **Indépendance du jour réel (R12)** : `tests/lib.mjs` exporte `REF` (date de référence figée = celle des suites golden : mardi 20/10/2026 10:00 Paris ; `REF.horloge`, `REF.jour`,
+  `REF.an`) et pose `window.__REF` dans chaque page. Une suite dont le résultat dépend du jour fige sa page par `page({horloge:REF.horloge})` et écrit ses attendus avec `REF.an` :
+  suites E (avoirs), F (2e bloc), M (M6). **Vérification : `faketime '2027-01-05 10:00:00' bash tests/run-all.sh`** (paquet `faketime`) doit rester vert.
+  Les « 2026 » restants dans les suites sont classés dans `docs/P0-SUITE-COMPTE-RENDU.md` § 4 (commentaires datés, barèmes légaux 2026, calendrier, données de test sans lien avec le jour).
+- **Chromium récent (Playwright ≥ 1.63, Chromium ≥ 153) dans `unshare -n`** : il ignore `Network.emulateNetworkConditions{offline:false}` et se croit hors ligne, la suite I s'arrête alors à I5.
+  Contournement **hors dépôt** utilisé pour ces essais : dans l'espace réseau isolé, une paire `veth` avec adresses privées (10.9.9.1/24 et 10.9.9.2/24) et **sans route** (rien ne peut sortir).
+  Conséquence : le contrôle « seule la boucle locale existe » de l'autotest est rouge par construction, et la suite X (hors ligne) doit être rejouée sans veth (8/8). Non corrigé dans `env.mjs`.
+
+## Ajouts 31/10/2026 (P6+ — branche `correctif/p6-env-superpdp`)
+- **`tests/sql/test_p6_droits.py`** (15 tests, PostgreSQL local) : retrait des droits inutiles du visiteur non connecté (`anon`) —
+  cinq petites fonctions, tables ClimPilot et leurs séquences ; appli connectée et `service_role` inchangés ; rejouable, tables
+  absentes tolérées ; retour arrière ; scripts TEST / RÉEL (copie conforme de la migration, verrous éprouvés, lignes « OK », et
+  « À REVOIR » sur une base non migrée) ; script d'essai n° 1 (mêmes 36 contrôles, plus rien d'ouvert au visiteur).
+  **Garde** (`test_p6_14`) : la base de test applique **toutes** les migrations de `supabase/migrations` (ordre des noms) ; aucun
+  objet du schéma `public` ne doit rester accessible à `anon`. Une nouvelle migration qui oublie `revoke … from public, anon` le fait échouer.
+- `tests/supabase-test/6-droits-anon-TEST.sql` (verrou par marqueur, 27 « OK »), `6-REEL-droits-anon.sql` (refuse le projet TEST,
+  19 « OK »), `6-droits-anon-retour-arriere.sql` (2 « OK »).
+- `tests/functions/test-superpdp-envoi.mjs` : 30 contrôles (bac à sable seulement si `env === 'sandbox'`, valeur brute enregistrée à la
+  connexion) ; suite H, bloc H3 (environnement inattendu → compte réel).

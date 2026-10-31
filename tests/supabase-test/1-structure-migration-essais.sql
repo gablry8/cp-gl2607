@@ -168,12 +168,18 @@ create policy inbox_delete on public.climpilot_inbox for delete using ((select a
 -- PARTIE 3 — ESSAIS AUTOMATIQUES (projet de TEST uniquement)
 -- Deux utilisateurs fictifs, résultats dans public.zz_resultats.
 -- =====================================================================
+-- P6 (31/10/2026, S-8) : la table d'essais n'est ouverte à personne (aucun droit pour public, anon, authenticated,
+-- protection par compte activée) ; zz_ok écrit avec les droits de son propriétaire (security definer). Les essais
+-- appellent zz_ok sous les rôles authenticated et anon : ce droit leur est donné le temps des essais seulement,
+-- et retiré à la fin du script (tout le script est une seule transaction : en cas d'erreur, rien ne reste).
 create table if not exists public.zz_resultats (n serial primary key, phase text, test text, ok boolean, detail text, le timestamptz default now());
-grant select, insert on public.zz_resultats to authenticated, anon;
-grant usage on sequence public.zz_resultats_n_seq to authenticated, anon;
+alter table public.zz_resultats enable row level security;
+revoke all on public.zz_resultats from public, anon, authenticated;
+revoke all on sequence public.zz_resultats_n_seq from public, anon, authenticated;
 create or replace function public.zz_ok(p_phase text, p_test text, p_ok boolean, p_detail text default '') returns void
-language sql as $f$ insert into public.zz_resultats(phase,test,ok,detail) values (p_phase,p_test,coalesce(p_ok,false),left(coalesce(p_detail,''),400)) $f$;
-grant execute on function public.zz_ok(text,text,boolean,text) to authenticated, anon;
+language sql security definer set search_path = '' as $f$ insert into public.zz_resultats(phase,test,ok,detail) values (p_phase,p_test,coalesce(p_ok,false),left(coalesce(p_detail,''),400)) $f$;
+revoke all on function public.zz_ok(text,text,boolean,text) from public, anon, authenticated;
+grant execute on function public.zz_ok(text,text,boolean,text) to authenticated, anon;  -- retiré en fin de script
 
 -- utilisateurs fictifs
 insert into auth.users (id, instance_id, aud, role, email, encrypted_password, created_at, updated_at, raw_app_meta_data, raw_user_meta_data)
@@ -710,6 +716,9 @@ begin
   exception when others then perform public.zz_ok('B','signature', false, sqlerrm); end;
   execute 'reset role';
 end $$;
+
+-- P6 (S-8) : fin des essais → zz_ok n'est plus exécutable que par l'administrateur (scripts d'essai suivants)
+revoke all on function public.zz_ok(text,text,boolean,text) from public, anon, authenticated;
 
 -- résumé
 select phase, count(*) filter (where ok) as reussis, count(*) filter (where not ok) as echoues from public.zz_resultats group by phase order by phase;
