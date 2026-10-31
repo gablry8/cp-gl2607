@@ -12,8 +12,9 @@
 <meta name="apple-mobile-web-app-title" content="ClimPilot">
 <link rel="apple-touch-icon" href="icon-192.png">
 <script src="next-store.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.0/dist/chart.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- bibliothèques embarquées, version figée (vendor/LISEZMOI.md) : ouverture hors ligne, jamais de mise à jour surprise -->
+<script src="vendor/chart-4.5.0.umd.js" integrity="sha384-iU8HYtnGQ8Cy4zl7gbNMOhsDTTKX02BTXptVP/vqAWIaTfM7isw76iyZCsjL2eVi"></script>
+<script src="vendor/supabase-js-2.117.3.umd.js" integrity="sha384-BWcjm9OdFth9TbhCxZPdm+gAOUMAzQy9nmTs12ioXdCcbVnJaPMn+fMUoQCLt60R"></script>
 <style>
 :root{color-scheme:light;
   --bg:#f3f5f9;--panel:#ffffff;--ink:#1b2437;--muted:#69758a;--line:#e5e9f1;--line2:#d5dce8;
@@ -995,9 +996,16 @@ var SYNC_KEYS=['cp2_devis','cp2_clients','cp2_prix_custom','cp2_params_over','cp
 const NX_TXT_KEYS=['cp2_devis','cp2_clients','cp2_dep','cp2_loc','cp2_equip','cp2_contrats','cp2_fluides'];
 const NX_TAG=/<(?=[a-zA-Z\/!?])/g;
 function nxClean(v){if(typeof v==='string')return v.indexOf('<')<0?v:v.replace(NX_TAG,'‹');if(Array.isArray(v)){for(let i=0;i<v.length;i++)v[i]=nxClean(v[i]);return v;}if(v&&typeof v==='object'){for(const k in v)v[k]=nxClean(v[k]);return v;}return v;}
+/* 1.12 (recette du 14/10/2026) : une donnée réécrite à l'identique (catalogue de l'assistant, suivi… au démarrage) ne
+   déclenche plus de synchro : chaque ouverture de l'appli envoyait l'état, l'autre appareil tombait en conflit et se
+   rechargeait, et ainsi de suite. */
 const save=(k,v)=>{let s=JSON.stringify(v);if(NX_TXT_KEYS.indexOf(k)>=0&&/<[a-zA-Z\/!?]/.test(s)){nxClean(v);s=JSON.stringify(v);}
+  let avant=null;try{avant=localStorage.getItem(k);}catch(e){}
   try{localStorage.setItem(k,s);}catch(e){nxStorageFail(k,e);throw e;}
-  if(SYNC_KEYS.indexOf(k)>=0)markDirty();};
+  if(SYNC_KEYS.indexOf(k)>=0&&avant!==s){
+    /* même contenu, clés dans un autre ordre (le serveur, en jsonb, rend les objets triés autrement) : pas une modification */
+    let pareil=false;if(avant!=null&&avant.length===s.length){try{pareil=cpStable(JSON.parse(avant))===cpStable(v);}catch(e){}}
+    if(!pareil)markDirty();}};
 /* stockage de l'appareil plein : on ne laisse JAMAIS croire que c'est enregistré */
 function nxStorageFail(k,e){try{window._nxSaveFail={k,at:Date.now(),msg:String(e&&e.name||e)};
   let b=document.getElementById('nxStoreFail');if(!b){b=document.createElement('div');b.id='nxStoreFail';b.style.cssText='position:fixed;left:8px;right:8px;top:8px;z-index:200000;background:#b42318;color:#fff;border-radius:12px;padding:12px 14px;font-size:14px;box-shadow:0 10px 30px rgba(0,0,0,.35)';document.body.appendChild(b);}
@@ -1138,7 +1146,9 @@ function deriveParams(T){return {
     attFluides:'',attOrganisme:'',mediateur:'',mediateurSite:'',assurance:'',assuranceZone:'',
     mentionTVA:'',piedNote:'Prix matériel indicatifs à confirmer selon fournisseur. Diamètres de liaisons et sections de câble à valider avec la notice constructeur.',
     /* 1.10 : pied de facture distinct, dénomination EI, nature des chantiers et assurance décennale à confirmer */
-    piedFacture:'',nomEntrepreneur:'',natureChantier:'a_confirmer',decennale:'a_confirmer'}
+    piedFacture:'',nomEntrepreneur:'',natureChantier:'a_confirmer',decennale:'a_confirmer',
+    /* 1.12 : lien « laisser un avis » de la fiche Google de l'entreprise (next-avis.js) */
+    avisGoogle:''}
 };}
 
 /* ============ ASSEMBLAGE PRIX & PARAMS (Notion + local) ============ */
@@ -1201,14 +1211,18 @@ let CTR=loadArr('cp2_contrats');
 let FLU=loadArr('cp2_fluides');
 let MATOS=load('cp2_tarif_cache2',[]);
 // Catalogue pièces dépannage : articles locaux « à vérifier », prix marché 07/2026 (Spareka, Aircco, guides recharge R32/R410A). Fluides : marge relevée pour coller au marché (R32 vendu 60-80 €/kg).
-function seedPieces(){
-  const customs=load(LS.custom,[]);
-  if(customs.some(p=>p.cat==='Pièces dépannage'))return;
-  const S=[['Condensateur de démarrage',20,40,'unité'],['Contacteur de puissance',20,40,'unité'],['Sonde de température (CTN)',15,40,'unité'],
+/* 1.12 (recette du 14/10/2026) : articles de départ avec un identifiant FIXE. Tiré au hasard sur chaque appareil, il
+   faisait ajouter toute la liste en double à chaque nouvel appareil connecté (constaté sur la base de test : 3 copies). */
+function nxSlugPrix(t){return String(t).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');}
+const SEED_PIECES=[['Condensateur de démarrage',20,40,'unité'],['Contacteur de puissance',20,40,'unité'],['Sonde de température (CTN)',15,40,'unité'],
    ['Carte électronique (selon modèle)',150,40,'unité'],['Moteur ventilateur',120,40,'unité'],['Turbine ventilateur unité int.',40,40,'unité'],
    ['Télécommande (universelle)',25,40,'unité'],['Pressostat / klixon',35,40,'unité'],['Filtre déshydrateur',15,40,'unité'],
    ['Obus de valve + bouchons',5,40,'unité'],['Fluide R32 (au kg)',30,54,'kg'],['Fluide R410A (au kg)',35,53,'kg']];
-  S.forEach(s=>customs.push({id:uid(),nom:s[0],cat:'Pièces dépannage',unite:s[3],achat:s[1],marge:s[2],verif:true,src:'local'}));
+function seedPiecesEntree(s){return {id:'pd_'+nxSlugPrix(s[0]),nom:s[0],cat:'Pièces dépannage',unite:s[3],achat:s[1],marge:s[2],verif:true,src:'local'};}
+function seedPieces(){
+  const customs=load(LS.custom,[]);
+  if(customs.some(p=>p.cat==='Pièces dépannage'))return;
+  SEED_PIECES.forEach(s=>customs.push(seedPiecesEntree(s)));
   save(LS.custom,customs);
 }
 seedPieces();
@@ -1382,11 +1396,18 @@ function renderDash(){
 function priceVente(achat,marge){marge=Number(marge)||0;return marge>=100?achat:achat/(1-marge/100);}
 function findPrix(nom){return PRIX.find(p=>p.nom===nom);}
 function venteOf(nom,fb){const p=findPrix(nom);if(!p)return 0;if(p.pv!=null)return Number(p.pv);return priceVente(p.achat,p.marge??fb);}
+/* C3 (mission F, 29/10/2026) — article absent de la base de prix (renommé, supprimé, ancienne sauvegarde…) : la ligne reste à 0 €
+   (AUCUN calcul ne change), mais elle le dit (texte validé par Gabriel le 21/10/2026) et compute() expose la liste « absents »
+   (champ NOUVEAU, calculé à chaque fois, jamais enregistré dans le devis). Les articles complémentaires (extras) gardent leur
+   texte d'origine « absent du catalogue » : les natures clim murale, gainable et « kit » le reconnaissent pour leurs alertes. */
+const CP_ABSENT_TXT='⚠️ absent de la base de prix — compté 0 €, à corriger';
 
 function compute(d){
-  const lines=[], mat=[];
-  const add=(group,label,detail,ht,achat,meta)=>lines.push({group,label,detail,ht:ht||0,achat:achat||0,
-    qte:meta&&meta.qte!=null?meta.qte:1, unite:meta&&meta.unite?meta.unite:'forfait', pu:meta&&meta.pu!=null?meta.pu:(ht||0)});
+  const lines=[], mat=[], absents=[];
+  const add=(group,label,detail,ht,achat,meta)=>{const l={group,label,detail,ht:ht||0,achat:achat||0,
+    qte:meta&&meta.qte!=null?meta.qte:1, unite:meta&&meta.unite?meta.unite:'forfait', pu:meta&&meta.pu!=null?meta.pu:(ht||0)};
+    if(meta&&meta.absent){l.absent=meta.absent;if(absents.indexOf(meta.absent)<0)absents.push(meta.absent);}
+    lines.push(l);};
   const pushMat=(nom,qte,unite,achatU,venteU)=>{if(qte>0)mat.push({nom,qte,unite,achatU:achatU||0,venteU:venteU||0,ht:(venteU||0)*qte});};
 
   (d.machines||[]).forEach((m,i)=>{const pv=priceVente(m.achat,m.marge);
@@ -1395,28 +1416,28 @@ function compute(d){
 
   (d.splits||[]).forEach((s,i)=>{const L=Number(s.long)||0;
     if(s.liaison&&L>0){const u=venteOf(s.liaison,P.marges.Cuivre);const p=findPrix(s.liaison);
-      add('Matériel',`Liaison split ${i+1} (${s.liaison}, ${s.puiss} kW)`,`${L} m × ${eur(u)}/m`,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u});pushMat(s.liaison,L,'m',p?p.achat:0,u);}
+      add('Matériel',`Liaison split ${i+1} (${s.liaison}, ${s.puiss} kW)`,p?`${L} m × ${eur(u)}/m`:CP_ABSENT_TXT,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u,absent:p?null:s.liaison});pushMat(s.liaison,L,'m',p?p.achat:0,u);}
     if(s.cableInter&&L>0){const u=venteOf(s.cableInter,P.marges['Câble']);const p=findPrix(s.cableInter);
-      add('Matériel',`Câble interco. split ${i+1} (${s.cableInter})`,`${L} m × ${eur(u)}/m`,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u});pushMat(s.cableInter,L,'m',p?p.achat:0,u);}});
+      add('Matériel',`Câble interco. split ${i+1} (${s.cableInter})`,p?`${L} m × ${eur(u)}/m`:CP_ABSENT_TXT,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u,absent:p?null:s.cableInter});pushMat(s.cableInter,L,'m',p?p.achat:0,u);}});
 
   if(d.groupCable&&(Number(d.groupLong)||0)>0){const u=venteOf(d.groupCable,P.marges['Câble']);const p=findPrix(d.groupCable);const L=Number(d.groupLong);
-    add('Matériel',`Alimentation groupe ext. (${d.groupCable})`,`${L} m × ${eur(u)}/m`,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u});pushMat(d.groupCable,L,'m',p?p.achat:0,u);}
+    add('Matériel',`Alimentation groupe ext. (${d.groupCable})`,p?`${L} m × ${eur(u)}/m`:CP_ABSENT_TXT,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u,absent:p?null:d.groupCable});pushMat(d.groupCable,L,'m',p?p.achat:0,u);}
 
   let goulTot=0;
   (d.goulottes||[]).forEach(gx=>{const L=Number(gx.long)||0;if(gx.type&&gx.type!=='Aucune'&&L>0){const u=venteOf(gx.type,P.marges.Goulotte);const p=findPrix(gx.type);
-    add('Matériel',`Goulotte (${gx.type})`,`${L} m × ${eur(u)}/m`,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u});pushMat(gx.type,L,'m',p?p.achat:0,u);goulTot+=L;}});
+    add('Matériel',`Goulotte (${gx.type})`,p?`${L} m × ${eur(u)}/m`:CP_ABSENT_TXT,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u,absent:p?null:gx.type});pushMat(gx.type,L,'m',p?p.achat:0,u);goulTot+=L;}});
   if(goulTot>0&&(P.accGoulParM||0)>0){const accV=goulTot*P.accGoulParM;add('Matériel','Accessoires goulotte',`${goulTot} m × ${eur(P.accGoulParM)}/m (estimé)`,accV,accV*0.6,{qte:goulTot,unite:'m',pu:P.accGoulParM});}
 
   if((Number(d.condLong)||0)>0){const u=venteOf('Tuyau condensats',P.marges.Condensats);const p=findPrix('Tuyau condensats');const L=Number(d.condLong);
-    add('Matériel','Évacuation condensats',`${L} m × ${eur(u)}/m`,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u});pushMat('Tuyau condensats',L,'m',p?p.achat:0,u);}
+    add('Matériel','Évacuation condensats',p?`${L} m × ${eur(u)}/m`:CP_ABSENT_TXT,u*L,(p?p.achat:0)*L,{qte:L,unite:'m',pu:u,absent:p?null:'Tuyau condensats'});pushMat('Tuyau condensats',L,'m',p?p.achat:0,u);}
   if(d.support&&d.support!=='Aucun'){const u=venteOf(d.support,P.marges.Supports);const p=findPrix(d.support);
-    add('Matériel',`Support (${d.support})`,'',u,p?p.achat:0,{qte:1,unite:'u',pu:u});pushMat(d.support,1,'u',p?p.achat:0,u);}
+    add('Matériel',`Support (${d.support})`,p?'':CP_ABSENT_TXT,u,p?p.achat:0,{qte:1,unite:'u',pu:u,absent:p?null:d.support});pushMat(d.support,1,'u',p?p.achat:0,u);}
   if(d.pompeType&&d.pompeType!=='Aucune'){const q=Math.max(1,Number(d.pompeQte)||1);const u=venteOf(d.pompeType,P.marges.Pompe);const p=findPrix(d.pompeType);
-    add('Matériel',`Pompe de relevage (${d.pompeType})`,`${q} × ${eur(u)}`,u*q,(p?p.achat:0)*q,{qte:q,unite:'u',pu:u});pushMat(d.pompeType,q,'u',p?p.achat:0,u);}
+    add('Matériel',`Pompe de relevage (${d.pompeType})`,p?`${q} × ${eur(u)}`:CP_ABSENT_TXT,u*q,(p?p.achat:0)*q,{qte:q,unite:'u',pu:u,absent:p?null:d.pompeType});pushMat(d.pompeType,q,'u',p?p.achat:0,u);}
 
   (d.extras||[]).forEach(x=>{const q=Number(x.qte)||0;if(!x.nom||q<=0)return;
     const p=findPrix(x.nom);
-    if(!p){add('Matériel',x.nom,'⚠️ absent du catalogue — prix 0, à corriger',0,0,{qte:q,unite:'u',pu:0});return;}
+    if(!p){add('Matériel',x.nom,'⚠️ absent du catalogue — prix 0, à corriger',0,0,{qte:q,unite:'u',pu:0,absent:x.nom});return;}
     const u=venteOf(x.nom,p.marge);
     add('Matériel',x.nom,`${fmtQ(q)} ${p.unite} × ${eur(u)}`,u*q,(p.achat||0)*q,{qte:q,unite:p.unite,pu:u});
     pushMat(x.nom,q,p.unite,p.achat||0,u);});
@@ -1464,7 +1485,7 @@ function compute(d){
   const gainHNet=heures>0?benefNet/heures:0;
   const acomptePct=d.acompteOn?(Number(d.acomptePct)||0):0;
   const acompte=totalTTC*acomptePct/100, solde=totalTTC-acompte;
-  return {lines,mat,totalHT,tva,tvaRate,franchise,totalTTC,coutReel,matAchat,moAchat,benefice,margePct,gainH,cotis,benefNet,gainHNet,mo,heures,rate,acomptePct,acompte,solde};
+  return {lines,mat,totalHT,tva,tvaRate,franchise,totalTTC,coutReel,matAchat,moAchat,benefice,margePct,gainH,cotis,benefNet,gainHNet,mo,heures,rate,acomptePct,acompte,solde,absents};
 }
 
 /* ============ WIZARD ============ */
@@ -1498,12 +1519,18 @@ function migrate(d){
   return d;
 }
 function openDevis(id){cur=migrate(JSON.parse(JSON.stringify(DEVIS.find(d=>d.id===id))));go('wizard');loadDevisToForm();curStep=0;showStep();}
+/* C3 (29/10/2026) : une valeur enregistrée qui n'est plus dans la liste (article renommé ou supprimé, ancienne sauvegarde) reste
+   choisie et signalée. Avant, le formulaire la remplaçait SANS RIEN DIRE par le premier choix de la liste (liaison, câble) ou par
+   « Aucun(e) » (support, pompe, goulotte) dès l'ouverture du devis : le montant changeait à l'enregistrement. */
+function cpOptAbsente(v,liste,aussi){if(v==null||v===''||liste.includes(v)||(aussi||[]).includes(v))return '';
+  const a=String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  return `<option value="${a}" selected>${a}${findPrix(v)?'':' (absent de la base de prix)'}</option>`;}
 function fillSelects(){
   const su=PRIX.filter(p=>p.cat==='Supports').map(p=>p.nom);
-  document.getElementById('f_support').innerHTML='<option>Aucun</option>'+su.map(n=>`<option>${n}</option>`).join('');
+  document.getElementById('f_support').innerHTML='<option>Aucun</option>'+su.map(n=>`<option>${n}</option>`).join('')+cpOptAbsente(cur&&cur.support,su,['Aucun']);
   const po=PRIX.filter(p=>p.cat==='Pompe').map(p=>p.nom);
-  document.getElementById('f_pompeType').innerHTML='<option>Aucune</option>'+po.map(n=>`<option>${n}</option>`).join('');
-  document.getElementById('f_groupCable').innerHTML=GROUP_CABLES.map(n=>`<option>${n}</option>`).join('');
+  document.getElementById('f_pompeType').innerHTML='<option>Aucune</option>'+po.map(n=>`<option>${n}</option>`).join('')+cpOptAbsente(cur&&cur.pompeType,po,['Aucune']);
+  document.getElementById('f_groupCable').innerHTML=GROUP_CABLES.map(n=>`<option>${n}</option>`).join('')+cpOptAbsente(cur&&cur.groupCable,GROUP_CABLES);
   document.getElementById('f_zone').innerHTML=Object.keys(P.zone).map(n=>`<option>${n}</option>`).join('');
   document.getElementById('f_mes').innerHTML=Object.keys(P.mes).map(n=>`<option>${n}</option>`).join('');
   document.getElementById('f_brasure').innerHTML=Object.keys(P.bras).map(n=>`<option>${n}</option>`).join('');
@@ -1606,9 +1633,9 @@ function renderSplits(){if(!cur)return;
    <div class="subcard"><h3>Split ${i+1} ${cur.splits.length>1?`<button class="iconbtn d" style="float:right" onclick="delSplit(${i})">🗑</button>`:''}</h3>
    <div class="frm">
      <label>Puissance<select class="s-puiss" onchange="onPuissChange(${i})">${SPLIT_POWERS.map(p=>`<option value="${p}" ${p==s.puiss?'selected':''}>${p} kW</option>`).join('')}</select></label>
-     <label>Liaison cuivre (auto)<select class="s-liaison">${liais.map(n=>`<option ${n===s.liaison?'selected':''}>${n}</option>`).join('')}</select></label>
+     <label>Liaison cuivre (auto)<select class="s-liaison">${liais.map(n=>`<option ${n===s.liaison?'selected':''}>${n}</option>`).join('')}${cpOptAbsente(s.liaison,liais)}</select></label>
      <label>Longueur liaison (m)<input type="number" class="s-long" value="${s.long||0}"></label>
-     <label>Câble interconnexion<select class="s-cable">${SPLIT_CABLES.map(n=>`<option ${n===s.cableInter?'selected':''}>${n}</option>`).join('')}</select></label>
+     <label>Câble interconnexion<select class="s-cable">${SPLIT_CABLES.map(n=>`<option ${n===s.cableInter?'selected':''}>${n}</option>`).join('')}${cpOptAbsente(s.cableInter,SPLIT_CABLES)}</select></label>
    </div></div>`).join('');
 }
 function onPuissChange(i){const c=document.querySelectorAll('#splitList .subcard')[i];const kw=+c.querySelector('.s-puiss').value;c.querySelector('.s-liaison').value=liaisonForPower(kw);}
@@ -1617,7 +1644,7 @@ function renderGoulottes(){if(!cur)return;
   const types=PRIX.filter(p=>p.cat==='Goulotte'&&p.unite==='m').map(p=>p.nom);
   document.getElementById('goulList').innerHTML=(cur.goulottes||[]).map((gx,i)=>`
    <div class="grow frm" style="margin-bottom:8px;align-items:end">
-     <label>Type<select class="g-type">${['Aucune',...types].map(n=>`<option ${n===gx.type?'selected':''}>${n}</option>`).join('')}</select></label>
+     <label>Type<select class="g-type">${['Aucune',...types].map(n=>`<option ${n===gx.type?'selected':''}>${n}</option>`).join('')}${cpOptAbsente(gx.type,types,['Aucune'])}</select></label>
      <label>Longueur (m)<input type="number" class="g-long" value="${gx.long||0}" onchange="recalc()"></label>
      <div>${cur.goulottes.length>1?`<button class="iconbtn d" onclick="delGoulotte(${i})">🗑 retirer</button>`:''}</div>
    </div>`).join('');
@@ -1658,9 +1685,17 @@ function showStep(){
   buildTabs();
   document.getElementById('wizTitle').textContent=cur.cNom||'Sans nom';
   document.getElementById('wizStatus').innerHTML=statusTag(cur.statut);
-  if(curStep===6)recalc();
+  if(curStep===6)recalc(); else cpAbsentsWizard(compute(cur)); /* C3 : bandeau dès l'ouverture du devis */
 }
-function recalc(){formToDevis();const c=compute(cur);
+/* C3 (29/10/2026) : bandeau rouge « N article(s) absent(s) de la base de prix, compté(s) 0 € » en tête du formulaire (ancien format),
+   à l'ouverture et au récapitulatif. Contenu et style : next-fiabilite.js (nxAbsentsBandeau, même style que « Montant différent »). */
+function cpAbsentsWizard(c){try{const v=document.getElementById('v-wizard');if(!v)return;
+  const a=(cur&&c&&Array.isArray(c.absents))?c.absents:[];let b=document.getElementById('nxAbsWiz');
+  if(!b){if(!a.length)return;b=document.createElement('div');b.id='nxAbsWiz';const h=v.querySelector('.flexhead');
+    if(h&&h.parentNode===v)v.insertBefore(b,h.nextSibling);else v.insertBefore(b,v.firstChild);}
+  b.innerHTML=(a.length&&typeof window.nxAbsentsBandeau==='function')?window.nxAbsentsBandeau(a):'';
+}catch(e){console.warn('ClimPilot (C3) bandeau des articles absents :',e);}}
+function recalc(){formToDevis();const c=compute(cur);cpAbsentsWizard(c);
   document.getElementById('recapDetail').innerHTML=c.lines.map(l=>`<div class="recap-line"><div class="lbl">${l.label}${l.detail?` <span class="sub2">— ${l.detail}</span>`:''}</div><div>${eur(l.ht)}</div></div>`).join('')||'<div class="empty">Rien à chiffrer.</div>';
   document.getElementById('recapTotals').innerHTML=`<h2>💰 Totaux</h2>
     <div class="recap-line"><div class="lbl">Total HT</div><div><b>${eur(c.totalHT)}</b></div></div>
@@ -1816,18 +1851,64 @@ function editPrix(id){const p=id?PRIX.find(x=>x.id===id):{};
   document.getElementById('mp_id').value=(p&&p.src!=='notion'&&p.src!=='seed')?(p.id||''):'';
   document.getElementById('mp_nom').value=p.nom||'';document.getElementById('mp_cat').value=p.cat||'Consommables';document.getElementById('mp_unite').value=p.unite||'unité';document.getElementById('mp_achat').value=p.achat||0;document.getElementById('mp_marge').value=p.marge??35;document.getElementById('mp_verif').checked=!!p.verif;
   openModal('mPrix');}
+/* C3 (mission F, 29/10/2026) — renommer ou supprimer un article utilisé par des devis NON facturés : confirmation qui liste ces devis.
+   Renommer : « renommer aussi dans ces N devis » (propagation, décision de Gabriel du 21/10/2026 : même article, même prix, montants
+   inchangés) ou « renommer seulement l'article » (les devis gardent l'ancien nom : alerte, compté 0 €). Supprimer : « supprimer quand
+   même » (alerte sur les devis) ou annuler. Un devis facturé (facture émise ou annulée par avoir) n'est JAMAIS modifié. */
+function cpNomsApres(customs){const s=new Set(customs.map(c=>c.nom));NOTION_PRIX.forEach(p=>s.add(p.nom));buildPrixMatos(MATOS).forEach(p=>s.add(p.nom));return s;}
+function cpDevisFacture(d){return !!(d.facAcompte||d.facSolde||(Array.isArray(d.facAnnulees)&&d.facAnnulees.length));}
+/* compte (et remplace si « nouveau » est donné) les noms d'articles égaux à « ancien » : champs d'articles de l'ancien format,
+   données des lots au nouveau format (jamais le client, les notes, le numéro ni ce qui a été figé à l'envoi) */
+const CP_CHAMPS_ARTICLES=['splits','goulottes','groupCable','support','pompeType','extras'];
+function cpRemplacerNom(o,ancien,nouveau){let n=0;
+  const voir=(x,k)=>{const v=x[k];if(v===ancien){n++;if(nouveau!=null)x[k]=nouveau;}else if(v&&typeof v==='object')Object.keys(v).forEach(q=>voir(v,q));};
+  if(!o||typeof o!=='object')return 0;
+  if(o.v===2)(o.lots||[]).forEach(l=>{if(l&&l.data&&typeof l.data==='object')Object.keys(l.data).forEach(q=>voir(l.data,q));});
+  else CP_CHAMPS_ARTICLES.forEach(k=>voir(o,k));
+  return n;}
+/* devis non facturés (hors refusés) dont le montant dépend de cet article : il est dans leur matériel chiffré */
+function cpDevisConcernes(nom){return DEVIS.filter(d=>{if(!d||cpDevisFacture(d)||d.statut==='refuse')return false;
+  try{const c=compute(JSON.parse(JSON.stringify(d)));return (c.mat||[]).concat(...(c.options||[]).map(o=>o.mat||[])).some(m=>m&&m.nom===nom);}
+  catch(e){console.warn('ClimPilot (C3) devis '+(d.num||d.id)+' non calculé :',e);return false;}});}
+/* Relecture P10 (31/10/2026) : « À commander » (CMD) et le stock (STOCK) sont rangés par NOM d'article. Après « renommer aussi » :
+   « commandé » est recopié sous le nouveau nom (l'ancien reste pour les devis qui le gardent) : pas de double commande ; le stock passe
+   au nouveau nom seulement si plus aucun devis accepté n'utilise l'ancien nom, sinon il reste où il est (pour ne pas le compter deux
+   fois) et la fonction renvoie false pour que le message le dise. */
+function cpSuivreCommande(ancien,nouveau){let ok=true;
+  if(CMD[ancien]&&!CMD[nouveau]){CMD[nouveau]=CMD[ancien];save(LS.cmd,CMD);}
+  if(Object.prototype.hasOwnProperty.call(STOCK,ancien)&&Number(STOCK[ancien])>0){
+    const encore=DEVIS.some(d=>{if(!d||d.statut!=='accepte')return false;
+      try{return (compute(JSON.parse(JSON.stringify(d))).mat||[]).some(m=>m&&m.nom===ancien);}
+      catch(e){console.warn('ClimPilot (C3) devis '+(d.num||d.id)+' non calculé :',e);return true;}});
+    if(encore)ok=false;
+    else{STOCK[nouveau]=(Number(STOCK[nouveau])||0)+Number(STOCK[ancien]);delete STOCK[ancien];save('cp2_stock',STOCK);}}
+  return ok;}
+function cpListeDevis(L){return L.slice(0,15).map(d=>'• '+(d.num||d.id)+(d.cNom?' — '+d.cNom:'')).join('\n')+(L.length>15?'\n… et '+(L.length-15)+' autre(s)':'');}
 function savePrix(){const id=document.getElementById('mp_id').value;
   const o={id:id||uid(),nom:document.getElementById('mp_nom').value.trim(),cat:document.getElementById('mp_cat').value,unite:document.getElementById('mp_unite').value,achat:+document.getElementById('mp_achat').value,marge:+document.getElementById('mp_marge').value,verif:document.getElementById('mp_verif').checked,src:'local'};
   if(!o.nom){alert('Nom obligatoire.');return;}
   const customs=load(LS.custom,[]);
   const i=customs.findIndex(p=>p.id===o.id||p.nom===o.nom);
+  /* C3 : renommage d'un article local dont l'ancien nom disparaît de la base */
+  const avant=id?customs.find(p=>p.id===id):null, ancien=(avant&&avant.nom!==o.nom)?avant.nom:null;
+  let propager=[];
+  if(ancien){const apres=customs.slice();if(i>=0)apres[i]={...apres[i],...o,id:apres[i].id};else apres.push(o);
+    if(!cpNomsApres(apres).has(ancien)){const L=cpDevisConcernes(ancien);
+      if(L.length){const n=L.length;
+        if(confirm('L\'article « '+ancien+' » est utilisé par '+n+' devis non facturé'+(n>1?'s':'')+' :\n'+cpListeDevis(L)+'\n\nOK = renommer aussi dans '+(n>1?'ces '+n+' devis':'ce devis')+' (« '+o.nom+' » : montants inchangés)\nAnnuler = autre choix (renommer seulement l\'article, ou ne rien enregistrer)'))propager=L;
+        else if(!confirm('Renommer seulement l\'article « '+ancien+' » en « '+o.nom+' » ?\n'+(n>1?'Les '+n+' devis gardent':'Le devis garde')+' « '+ancien+' », qui n\'existera plus dans la base de prix : ils afficheront l\'alerte et cet article y sera compté 0 €.\n\nOK = renommer seulement l\'article\nAnnuler = ne rien enregistrer'))return;}}}
   if(i>=0)customs[i]={...customs[i],...o,id:customs[i].id};else customs.push(o);
-  save(LS.custom,customs);rebuildPrix();closeModal('mPrix');renderPrix();toast('Article local enregistré');}
+  let stockSuivi=true;
+  if(propager.length){propager.forEach(d=>cpRemplacerNom(d,ancien,o.nom));save(LS.devis,DEVIS);stockSuivi=cpSuivreCommande(ancien,o.nom);}
+  save(LS.custom,customs);rebuildPrix();closeModal('mPrix');renderPrix();toast(propager.length?'Article renommé, aussi dans '+propager.length+' devis'+(stockSuivi?'':' — stock laissé sous l\'ancien nom (un devis accepté l\'utilise encore) : vérifie « À commander »'):'Article local enregistré');}
 function delPrix(id){
   const customs=load(LS.custom,[]);const p=customs.find(x=>x.id===id);
   if(!p){toast('Les articles Notion se modifient dans Notion');return;}
   const overrides=NOTION_PRIX.some(n=>n.nom===p.nom);
-  if(!confirm(overrides?'Supprimer la version locale et revenir au prix Notion ?':'Supprimer cet article ?'))return;
+  /* C3 : l'article disparaît de la base (pas de prix Notion ou embarqué du même nom derrière) et des devis non facturés l'utilisent */
+  const L=cpNomsApres(customs.filter(x=>x.id!==id)).has(p.nom)?[]:cpDevisConcernes(p.nom);
+  if(L.length){if(!confirm('L\'article « '+p.nom+' » est utilisé par '+L.length+' devis non facturé'+(L.length>1?'s':'')+' :\n'+cpListeDevis(L)+'\n\nOK = supprimer quand même ('+(L.length>1?'ces devis afficheront':'ce devis affichera')+' l\'alerte : article absent de la base de prix, compté 0 €)\nAnnuler = ne rien supprimer'))return;}
+  else if(!confirm(overrides?'Supprimer la version locale et revenir au prix Notion ?':'Supprimer cet article ?'))return;
   save(LS.custom,customs.filter(x=>x.id!==id));rebuildPrix();renderPrix();toast(overrides?'↺ Prix Notion rétabli':'Article supprimé');}
 
 /* ============ PARAMS (Notion + surcharges locales) ============ */
@@ -1845,6 +1926,7 @@ function renderParams(){
     txtRow('SIRET','pe_siret',E.siret)+txtRow('N° TVA intracom.','pe_tvaintra',E.tvaIntra)+txtRow('RIB / IBAN','pe_rib',E.rib,true)+
     txtRow('N° attestation de capacité fluides','pe_attflu',E.attFluides)+txtRow('Organisme (attestation fluides)','pe_attorg',E.attOrganisme)+
     txtRow('Médiateur de la consommation (nom)','pe_medi',E.mediateur)+txtRow('Médiateur — site web','pe_medisite',E.mediateurSite)+
+    txtRow('Lien pour laisser un avis Google (copié depuis ta fiche Google)','pe_avis',E.avisGoogle,true)+
     txtRow('Assurance pro (assureur + n° contrat)','pe_assur',E.assurance)+txtRow('Assurance — couverture géographique','pe_assurzone',E.assuranceZone)+
     txtRow('Validité du devis','pe_validite',E.validiteDevis||'3 mois')+
     txtRow('Note bas de devis','pe_pied',E.piedNote,true)+txtRow('Note bas de facture et d\'avoir','pe_piedfac',E.piedFacture||'',true)+
@@ -1890,7 +1972,7 @@ function renderParams(){
 function saveParams(){const g=id=>+document.getElementById(id).value;const t=id=>document.getElementById(id)?document.getElementById(id).value:'';
   const cand=JSON.parse(JSON.stringify(P));
   cand.entreprise={...P.entreprise,nom:t('pe_nom'),activite:t('pe_act'),adresse:t('pe_adr'),cp:t('pe_cp'),ville:t('pe_ville'),tel:t('pe_tel'),email:t('pe_email'),statut:t('pe_statut'),capital:t('pe_capital'),naf:t('pe_naf'),siret:t('pe_siret'),tvaIntra:t('pe_tvaintra'),rib:t('pe_rib'),
-    attFluides:t('pe_attflu'),attOrganisme:t('pe_attorg'),mediateur:t('pe_medi'),mediateurSite:t('pe_medisite'),assurance:t('pe_assur'),assuranceZone:t('pe_assurzone'),nomEntrepreneur:t('pe_nomei'),piedFacture:t('pe_piedfac'),natureChantier:t('pe_nature')||'a_confirmer',decennale:t('pe_decennale')||'a_confirmer',validiteDevis:t('pe_validite')||'3 mois',piedNote:t('pe_pied')};
+    attFluides:t('pe_attflu'),attOrganisme:t('pe_attorg'),mediateur:t('pe_medi'),mediateurSite:t('pe_medisite'),assurance:t('pe_assur'),assuranceZone:t('pe_assurzone'),nomEntrepreneur:t('pe_nomei'),piedFacture:t('pe_piedfac'),natureChantier:t('pe_nature')||'a_confirmer',avisGoogle:t('pe_avis').trim(),decennale:t('pe_decennale')||'a_confirmer',validiteDevis:t('pe_validite')||'3 mois',piedNote:t('pe_pied')};
   cand.acomptePctDefaut=g('pg_acpt');cand.objectifCA=g('pg_obj');cand.regimeTVA=t('pg_regime')||'franchise';cand.achatTVA=g('pg_achattva');
   cand.defaultRate=g('pg_taux');cand.tauxHoraire=cand.defaultRate;cand.coutInterne=g('pg_cout');cand.cotisTaux=g('pg_cotis');cand.tva=g('pg_tva');cand.fraisAdmin=g('pg_fadm');cand.fraisCommande=g('pg_fcmd');
   cand.accGoulParM=g('pg_accg');cand.conso={petit:g('pg_cp'),moyen:g('pg_cm'),gros:g('pg_cg')};
@@ -2171,8 +2253,8 @@ function factureDep(){formToDep();
   saveDep();loadDepForm();toast('🧾 Facture '+curDep.facNum+' — série continue, ne pas supprimer une facture émise');
 }
 function payDep(id){const d=DEP.find(x=>x.id===id);if(!d)return;
-  if(d.statut==='payee'){d.statut='facturee';d.payeLe=null;d.modeReg='';}
-  else if(d.statut==='facturee'){d.statut='payee';d.payeLe=todayISO();d.modeReg=askMode();}
+  if(d.statut==='payee'){nxTraceEncaissement(d,d.payeLe,d.modeReg);d.statut='facturee';d.payeLe=null;d.modeReg='';}
+  else if(d.statut==='facturee'){const m=askMode();if(m==null){toast(NX_ENC_ANNULE);return;}d.statut='payee';d.payeLe=todayISO();d.modeReg=m;}
   save(LS.dep,DEP);renderDep();updateBadges();}
 function delDep(id){const d=DEP.find(x=>x.id===id);
   if(d&&d.facNum&&!confirm('⚠️ Cette intervention a une facture émise ('+d.facNum+'). En comptabilité une facture ne se supprime pas, elle s\'annule par avoir. Supprimer quand même ?'))return;
@@ -2370,7 +2452,8 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
   };
   let catHTML='';
   CATS.forEach(([key,titre])=>{
-    const ls=c.lines.filter(l=>catOf(l)===key && l.ht>0.005);
+    /* C3 : une ligne d'article absent de la base de prix (0 €) est imprimée AVEC sa mention, au lieu de disparaître du devis */
+    const ls=c.lines.filter(l=>catOf(l)===key && (l.ht>0.005||l.absent));
     if(!ls.length) return;
     const sub=ls.reduce((s,l)=>s+l.ht,0);
     let sublines;
@@ -2378,7 +2461,7 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
       sublines=`<tr><td style="padding:6px 12px;color:#444;font-size:10.5px">Consommables (visserie, colliers, mastic, ruban…)</td><td style="padding:6px 12px;text-align:right;color:#444;font-size:10.5px">${eur(sub)}</td></tr>`;
     } else {
       sublines=ls.map(l=>{const det=subDetail(l);
-        return `<tr><td style="padding:6px 12px;color:#333;font-size:10.5px">${clientLabel(l)}${det?` <span style="color:#8a93a0">— ${det}</span>`:''}</td><td style="padding:6px 12px;text-align:right;color:#333;font-size:10.5px">${eur(l.ht)}</td></tr>`;
+        return `<tr><td style="padding:6px 12px;color:#333;font-size:10.5px">${clientLabel(l)}${det?` <span style="color:#8a93a0">— ${det}</span>`:''}${l.absent?` <span data-absent="1" style="color:#b42318;font-weight:700">${CP_ABSENT_TXT}</span>`:''}</td><td style="padding:6px 12px;text-align:right;color:#333;font-size:10.5px">${eur(l.ht)}</td></tr>`;
       }).join('');
     }
     catHTML+=`<tr style="background:${TINT}"><td style="padding:9px 12px;font-weight:700;color:${NV};border-top:1px solid #dce3ec">${titre}</td><td style="padding:9px 12px;text-align:right;font-weight:700;color:${NV};border-top:1px solid #dce3ec">${eur(sub)}</td></tr>${sublines}`;
@@ -2474,19 +2557,25 @@ function exportCSV(){
    L'ancienne sauvegarde oubliait le parc, les contrats et les fiches fluides. Anciennes sauvegardes toujours lisibles. */
 const NX_BK_SKIP=/^(cp2_pin|cp2_lastbackup|cpnext_history|cpnext_avant_import|cpnext_nav_section|cpnext_notified)$|_corrompu_/;
 function nxBackupKeys(){const out=[];for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(/^(cp2_|cpnext_)/.test(k)&&!NX_BK_SKIP.test(k))out.push(k);}return out.sort();}
-function exportJSON(){
+/* contenu de la sauvegarde de l'appareil (aussi repris tel quel par l'« Export complet », next-assistant.js) */
+function nxExportObjet(){
   const all={};nxBackupKeys().forEach(k=>{try{all[k]=JSON.parse(localStorage.getItem(k));}catch(e){all[k]=localStorage.getItem(k);}});
-  const o={format:'climpilot-complet-1',exported:new Date().toISOString(),all,
+  return {format:'climpilot-complet-1',exported:new Date().toISOString(),all,
     /* champs de l'ancien format, pour relire la sauvegarde avec une ancienne version */
     devis:DEVIS,clients:CLIENTS,custom:load(LS.custom,[]),over:load(LS.over,{}),cmd:CMD,machlib:MACHLIB,dep:DEP,facseq:load(LS.facseq,null),loc:LOC,locseq:load(LS.locseq,null),adiacat:ADIACAT,
     equip:EQUIP,contrats:CTR,fluides:FLU,
     compte:{devis:DEVIS.length,clients:CLIENTS.length,interventions:DEP.length,locations:LOC.length,equipements:EQUIP.length,contrats:CTR.length,fiches_fluides:FLU.length}};
+}
+function exportJSON(){
+  const o=nxExportObjet();
   const blob=new Blob([JSON.stringify(o)],{type:'application/json'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ClimPilot_sauvegarde_'+todayISO()+'.json';a.click();
   save(LS.lastbk,Date.now());checkBackup();
   toast('Sauvegarde complète téléchargée : '+DEVIS.length+' devis, '+CLIENTS.length+' clients, '+CTR.length+' contrats, '+FLU.length+' fiches fluides');}
 function importJSON(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{let o;
   try{o=JSON.parse(r.result);}catch(e){alert('Fichier illisible : ce n\'est pas une sauvegarde ClimPilot.');input.value='';return;}
+  /* « Export complet » (19/10/2026) : la partie « etat » est la sauvegarde de l'appareil ; les tables du serveur restent dans le fichier */
+  if(o&&o.format==='climpilot-export-complet-1'&&o.etat&&typeof o.etat==='object')o=o.etat;
   if(!o||typeof o!=='object'||!(o.all||o.devis||o.clients||o.prix)){alert('Ce fichier ne contient pas de données ClimPilot.');input.value='';return;}
   const n=o.compte||{devis:(o.devis||[]).length,clients:(o.clients||[]).length};
   const when=o.exported?new Date(o.exported).toLocaleString('fr-FR'):'date inconnue';
@@ -2526,12 +2615,26 @@ function adiaMachine(){return ADIACAT.find(m=>m.id===adiaSel)||ADIACAT[0];}
 function saveAdiacat(){save(LS.adiacat,ADIACAT);save('cp2_adiasel',adiaSel);}
 const ADIA_ART='Fournitures pose rafraîchisseur fixe (raccord eau, fixations, purge)';
 const AART={vanne:"Vanne d'arrêt 1/4 tour DN15",ea:"Clapet anti-pollution type EA DN15 (EN 1717)",red:"Réducteur de pression eau",filtre:"Filtre à tamis lavable",tubeEau:"Tube multicouche Ø16 — arrivée d'eau",tubePvc:"Tube PVC Ø32 — évacuation / vidange",inter:"Interrupteur de proximité IP65",plenum:"Plénum de soufflage + grille grand débit",costiere:"Costière / châssis de pose toiture",solin:"Solin & étanchéité passage toiture",traversee:"Traversée de façade (percement + finition)",extracteur:"Extracteur d'air motorisé (évacuation)",nacelle:"Location nacelle (par jour)",hiver:"Kit hivernage (purge, bouchons, protection)",entr:"Contrat entretien adiabatique — 2 visites/an, par machine (1ʳᵉ année)"};
+function seedAdiaListe(){return [[ADIA_ART,150,40,'unité'],[AART.vanne,8,40,'unité'],[AART.ea,22,40,'unité'],[AART.red,42,40,'unité'],[AART.filtre,18,40,'unité'],[AART.tubeEau,2.2,40,'m'],[AART.tubePvc,2.8,40,'m'],[AART.inter,22,40,'unité'],[AART.plenum,180,35,'unité'],[AART.costiere,320,30,'unité'],[AART.solin,90,40,'forfait'],[AART.traversee,60,40,'unité'],[AART.extracteur,380,30,'unité'],[AART.nacelle,260,15,'unité'],[AART.hiver,25,40,'unité'],[AART.entr,90,50,'unité']];}
+function seedAdiaEntree(s){return {id:'adia_'+nxSlugPrix(s[0]),nom:s[0],cat:'Adiabatique',unite:s[3],achat:s[1],marge:s[2],verif:true,src:'local'};}
 function seedAdiaArticles(){
   const customs=load(LS.custom,[]);let ch=false;
-  const S=[[ADIA_ART,150,40,'unité'],[AART.vanne,8,40,'unité'],[AART.ea,22,40,'unité'],[AART.red,42,40,'unité'],[AART.filtre,18,40,'unité'],[AART.tubeEau,2.2,40,'m'],[AART.tubePvc,2.8,40,'m'],[AART.inter,22,40,'unité'],[AART.plenum,180,35,'unité'],[AART.costiere,320,30,'unité'],[AART.solin,90,40,'forfait'],[AART.traversee,60,40,'unité'],[AART.extracteur,380,30,'unité'],[AART.nacelle,260,15,'unité'],[AART.hiver,25,40,'unité'],[AART.entr,90,50,'unité']];
-  S.forEach(s=>{if(!customs.some(p=>p.nom===s[0])){customs.push({id:uid(),nom:s[0],cat:'Adiabatique',unite:s[3],achat:s[1],marge:s[2],verif:true,src:'local'});ch=true;}});
+  seedAdiaListe().forEach(s=>{if(!customs.some(p=>p.nom===s[0])){customs.push(seedAdiaEntree(s));ch=true;}});
   if(ch)save(LS.custom,customs);
 }
+/* base de prix : copies identiques retirées (même contenu, identifiants différents), et article de départ jamais modifié
+   retiré s'il existe déjà sous le même nom (ancien identifiant, ou version modifiée à la main) — même résultat sur chaque
+   appareil, donc la synchro converge ; un article réellement différent n'est jamais touché */
+function nxDedupPrix(L){if(!Array.isArray(L))return L;
+  const graines={};SEED_PIECES.forEach(s=>{const e=seedPiecesEntree(s);graines[e.id]=cpStable(e);});seedAdiaListe().forEach(s=>{const e=seedAdiaEntree(s);graines[e.id]=cpStable(e);});
+  const sig=x=>{const o=Object.assign({},x);delete o.id;return cpStable(o);};
+  const rang=x=>(graines[x.id]?'1':'0')+String(x.id==null?'':x.id);
+  const vierge=x=>!!graines[x.id]&&graines[x.id]===cpStable(x);
+  const garde={};L.forEach(x=>{if(!x||typeof x!=='object')return;const k=sig(x);if(!garde[k]||rang(x)<rang(garde[k]))garde[k]=x;});
+  let out=L.filter(x=>!x||typeof x!=='object'||garde[sig(x)]===x);
+  const noms={};out.forEach(x=>{if(x&&typeof x==='object'&&!vierge(x))noms[(x.cat||'')+'|'+(x.nom||'')]=1;});
+  return out.filter(x=>!(x&&typeof x==='object'&&vierge(x)&&noms[(x.cat||'')+'|'+(x.nom||'')]));}
+function dedupPrix(){try{const L=load(LS.custom,[]),M=nxDedupPrix(L);if(M.length!==L.length)save(LS.custom,M);}catch(e){}}
 /* psychrométrie — Stull 2011 (Twb), Magnus-Tetens (psat), évolution quasi iso-enthalpique */
 function adiaTwb(T,RH){return T*Math.atan(0.151977*Math.sqrt(RH+8.313659))+Math.atan(T+RH)-Math.atan(RH-1.676331)+0.00391838*Math.pow(RH,1.5)*Math.atan(0.023101*RH)-4.686035;}
 function adiaPsat(T){return 0.6108*Math.exp(17.27*T/(T+237.3));}
@@ -2778,6 +2881,7 @@ function renderLoc(){
     '<button class="iconbtn" title="Mail de confirmation" onclick="mailLoc(\''+l.id+'\')">✉️</button>'+
     (l.statut==='rendu'&&!l.fac?'<button class="iconbtn" title="Facturer" onclick="facturerLoc(\''+l.id+'\')">🧾</button>':'')+
     (l.fac&&!l.fac.payeLe?'<button class="iconbtn" title="Marquer payée" onclick="payerFacture(\'loc\',\''+l.id+'\',\'\')">💶</button>':'')+
+    (l.fac&&l.fac.payeLe?'<button class="iconbtn" title="Annuler l\'encaissement (enregistré par erreur)" onclick="annulerEncaissement(\'loc\',\''+l.id+'\',\'\')">↺</button>':'')+
     (l.fac?'<button class="iconbtn" title="PDF facture" onclick="printFactureLoc(LOC.find(x=>x.id===\''+l.id+'\'))">🖨️</button>':'')+
     (l.statut!=='rendu'?'<button class="iconbtn" title="Étape suivante" onclick="locNext(\''+l.id+'\')">⇢</button>':'')+
     '<button class="iconbtn" title="Supprimer" onclick="delLoc(\''+l.id+'\')">🗑</button></td></tr>').join('')+'</tbody></table></div>';
@@ -2862,7 +2966,11 @@ function checkBackup(){const b=document.getElementById('bkbanner');if(!b)return;
   b.innerHTML='💾 <b>Sauvegarde :</b> '+(last?('dernière il y a '+days+' jours'):'jamais faite')+' — tes devis, factures et contrats ne vivent que sur cet ordinateur. <button class="btn-dark btn-sm" style="margin-left:8px" onclick="exportJSON()">⤓ Sauvegarder maintenant (JSON)</button>';}
 
 /* ============ FINANCES — facturation chantiers, encaissements, impayés, URSSAF, livre des recettes ============ */
-function askMode(){return (prompt('Mode de règlement ?\nVirement / Chèque / Espèces / CB','Virement')||'').trim()||'Virement';}
+/* 19/10/2026 : « Annuler » sur le mode de règlement = null → rien n'est enregistré (avant : « Virement » enregistré quand même) */
+function askMode(){const r=prompt('Mode de règlement ?\nVirement / Chèque / Espèces / CB','Virement');if(r==null)return null;return String(r).trim()||'Virement';}
+const NX_ENC_ANNULE='Encaissement non enregistré (annulé)';
+/* trace d'un encaissement annulé : on garde la date, le mode et le moment de l'annulation (rien ne disparaît sans trace) */
+function nxTraceEncaissement(o,payeLe,mode){(o.encaissementsAnnules=o.encaissementsAnnules||[]).push({payeLe:payeLe||null,mode:mode||'',annuleLe:new Date().toISOString()});}
 function facturerDevis(id,which){
   const d=DEVIS.find(x=>x.id===id);if(!d)return;
   const c=compute(d);const today=todayISO();
@@ -2890,21 +2998,40 @@ function facturerDevis(id,which){
 function payerFacture(kind,id,which){
   if(kind==='devis'){const d=DEVIS.find(x=>x.id===id);if(!d)return;
     const f=which==='acompte'?d.facAcompte:d.facSolde;if(!f||f.payeLe)return;
-    f.payeLe=todayISO();f.mode=askMode();
+    const m=askMode();if(m==null){toast(NX_ENC_ANNULE);return;}
+    f.payeLe=todayISO();f.mode=m;
     save(LS.devis,DEVIS);renderFBloc();
   }else if(kind==='loc'){const l=LOC.find(x=>x.id===id);if(!l||!l.fac||l.fac.payeLe)return;
-    l.fac.payeLe=todayISO();l.fac.mode=askMode();
+    const m=askMode();if(m==null){toast(NX_ENC_ANNULE);return;}
+    l.fac.payeLe=todayISO();l.fac.mode=m;
     save(LS.loc,LOC);if(window._curView==='loc')renderLoc();
   }else if(kind==='dep'){const x=DEP.find(o=>o.id===id);if(!x||x.statut!=='facturee')return;
-    x.statut='payee';x.payeLe=todayISO();x.modeReg=askMode();
+    const m=askMode();if(m==null){toast(NX_ENC_ANNULE);return;}
+    x.statut='payee';x.payeLe=todayISO();x.modeReg=m;
     save(LS.dep,DEP);if(window._curView==='dep')renderDep();
   }else if(kind==='ctr'){const c=CTR.find(o=>o.id===id);if(!c)return;
     const f=(c.facs||[]).find(x=>String(x.annee)===String(which));if(!f||f.payeLe)return;
-    f.payeLe=todayISO();f.mode=askMode();
+    const m=askMode();if(m==null){toast(NX_ENC_ANNULE);return;}
+    f.payeLe=todayISO();f.mode=m;
     save('cp2_contrats',CTR);if(window._curView==='contrats')renderContrats();
   }
   updateBadges();if(window._curView==='dash')renderDash();
   toast('💶 Encaissement enregistré — il entre au livre des recettes');
+}
+/* 19/10/2026 : annuler un encaissement enregistré par erreur — la facture repasse « en attente », une trace est gardée */
+function annulerEncaissement(kind,id,which){
+  if(kind==='dep'){const x=DEP.find(o=>o.id===id);if(x&&x.statut==='payee')payDep(id);return;}
+  let f=null;
+  if(kind==='devis'){const d=DEVIS.find(x=>x.id===id);f=d&&(which==='acompte'?d.facAcompte:d.facSolde);}
+  else if(kind==='loc'){const l=LOC.find(x=>x.id===id);f=l&&l.fac;}
+  else if(kind==='ctr'){const c=CTR.find(o=>o.id===id);f=c&&(c.facs||[]).find(x=>String(x.annee)===String(which));}
+  if(!f||!f.payeLe)return;
+  nxTraceEncaissement(f,f.payeLe,f.mode);f.payeLe=null;f.mode='';
+  if(kind==='devis'){save(LS.devis,DEVIS);renderFBloc();}
+  else if(kind==='loc'){save(LS.loc,LOC);if(window._curView==='loc')renderLoc();}
+  else{save('cp2_contrats',CTR);if(window._curView==='contrats')renderContrats();}
+  updateBadges();if(window._curView==='dash')renderDash();if(window._curView==='recettes')renderRecettes();
+  toast('↺ Encaissement annulé : la facture repasse « en attente » (trace gardée). S\'il a déjà été déclaré, vois la correction avec ta comptable.');
 }
 function facturerLoc(id){const l=LOC.find(x=>x.id===id);if(!l)return;
   if(l.fac){toast('Déjà facturée ('+l.fac.num+')');return;}
@@ -2917,7 +3044,7 @@ function renderFBloc(){
   if(!cur||(cur.statut!=='accepte'&&!cur.facAcompte&&!cur.facSolde)){el.innerHTML='';return;}
   const c=compute(cur);
   const row=(f,lbl,which)=>'<div class="recap-line"><div><b>'+lbl+' — '+f.num+'</b><div class="sub2">émise le '+f.date+' · '+eur(f.montant)+(f.payeLe?' · ✔ payée le '+f.payeLe+' ('+(f.mode||'—')+')':' · ⌛ en attente de paiement')+'</div></div><div class="row-actions">'
-    +(f.payeLe?'':'<button class="btn-pri btn-sm" onclick="payerFacture(\'devis\',cur.id,\''+which+'\')">💶 Payée</button>')
+    +(f.payeLe?'<button class="iconbtn" title="Annuler l\'encaissement (enregistré par erreur)" onclick="annulerEncaissement(\'devis\',cur.id,\''+which+'\')">↺</button>':'<button class="btn-pri btn-sm" onclick="payerFacture(\'devis\',cur.id,\''+which+'\')">💶 Payée</button>')
     +'<button class="iconbtn" title="PDF" onclick="printFactureDevis(cur,\''+which+'\')">🖨️</button></div></div>';
   let h='<div class="card" style="border-top:3px solid var(--green);margin-top:14px"><h2>💰 Facturation du chantier</h2>'
    +'<div class="sub" style="margin-bottom:8px">Série unique F-'+new Date().getFullYear()+'-XXX (commune avec les interventions). Une facture émise ne se supprime pas — elle s\'annule par avoir.</div>';
@@ -3254,6 +3381,7 @@ function renderContrats(){
       +'<button class="iconbtn" title="Mail au client" onclick="mailEntretien(\''+c.id+'\')">✉️</button>'
       +(!f?'<button class="iconbtn" title="Facturer l\'année" onclick="facturerContrat(\''+c.id+'\')">🧾</button>':'')
       +(f&&!f.payeLe?'<button class="iconbtn" title="Marquer payée" onclick="payerFacture(\'ctr\',\''+c.id+'\',\''+pk+'\')">💶</button>':'')
+      +(f&&f.payeLe?'<button class="iconbtn" title="Annuler l\'encaissement (enregistré par erreur)" onclick="annulerEncaissement(\'ctr\',\''+c.id+'\',\''+pk+'\')">↺</button>':'')
       +(f?'<button class="iconbtn" title="PDF" onclick="printFactureCtr(CTR.find(x=>x.id===\''+c.id+'\'),CTR.find(x=>x.id===\''+c.id+'\').facs.find(x=>x.annee==='+pk+'))">🖨️</button>':'')
       +'<button class="iconbtn" onclick="openCtr(\''+c.id+'\')">✏️</button>'
       +'<button class="iconbtn d" onclick="delCtr(\''+c.id+'\')">🗑</button></td></tr>';}).join('')
@@ -3515,14 +3643,14 @@ function planEvents(off){
   for(let i=0;i<7;i++){
     const day=new Date(ws);day.setDate(ws.getDate()+i);const iso=dISO(day);
     const ad=(a,b)=>[a,b].filter(Boolean).join(', ');
-    DEVIS.forEach(d=>{if(d.statut==='accepte'&&d.datePlanif===iso)ev.push({i,ic:'🛠️',lbl:devisName(d),sub:fmtQ(d.heures||0)+' h · '+(d.cVille||''),h:Number(d.heures)||0,adr:ad(d.cAdr,d.cVille),click:"openDevis('"+d.id+"')"});});
-    DEP.forEach(x=>{if(x.date===iso)ev.push({i,ic:x.itype==='mes'?'🧊':'🔧',lbl:(x.itype==='mes'?'MES — ':'Dép. — ')+(x.cNom||'?'),sub:fmtQ(x.heures||0)+' h · '+(x.cVille||''),h:Number(x.heures)||0,adr:ad(x.cAdr,x.cVille),click:"openDep('"+x.id+"')"});});
+    DEVIS.forEach(d=>{if(d.statut==='accepte'&&d.datePlanif===iso)ev.push({i,k:'devis:'+d.id,ic:'🛠️',lbl:devisName(d),sub:fmtQ(d.heures||0)+' h · '+(d.cVille||''),h:Number(d.heures)||0,adr:ad(d.cAdr,d.cVille),click:"openDevis('"+d.id+"')"});});
+    DEP.forEach(x=>{if(x.date===iso)ev.push({i,k:'dep:'+x.id,ic:x.itype==='mes'?'🧊':'🔧',lbl:(x.itype==='mes'?'MES — ':'Dép. — ')+(x.cNom||'?'),sub:fmtQ(x.heures||0)+' h · '+(x.cVille||''),h:Number(x.heures)||0,adr:ad(x.cAdr,x.cVille),click:"openDep('"+x.id+"')"});});
     LOC.forEach(l=>{
-      if(l.dateDebut===iso&&l.statut!=='rendu')ev.push({i,ic:'🚚',lbl:'Livraison — '+(l.cNom||'?'),sub:(l.items||[]).map(x=>x.qte+'× '+x.ref).join(', '),h:1,adr:ad(l.cAdr,l.cVille),click:"openLoc('"+l.id+"')"});
-      if(l.dateFin===iso&&l.statut!=='rendu')ev.push({i,ic:'↩️',lbl:'Reprise — '+(l.cNom||'?'),sub:(l.items||[]).map(x=>x.qte+'× '+x.ref).join(', '),h:1,adr:ad(l.cAdr,l.cVille),click:"openLoc('"+l.id+"')"});
+      if(l.dateDebut===iso&&l.statut!=='rendu')ev.push({i,k:'locd:'+l.id,ic:'🚚',lbl:'Livraison — '+(l.cNom||'?'),sub:(l.items||[]).map(x=>x.qte+'× '+x.ref).join(', '),h:1,adr:ad(l.cAdr,l.cVille),click:"openLoc('"+l.id+"')"});
+      if(l.dateFin===iso&&l.statut!=='rendu')ev.push({i,k:'locf:'+l.id,ic:'↩️',lbl:'Reprise — '+(l.cNom||'?'),sub:(l.items||[]).map(x=>x.qte+'× '+x.ref).join(', '),h:1,adr:ad(l.cAdr,l.cVille),click:"openLoc('"+l.id+"')"});
     });
     CTR.forEach(ct=>{if(ct.actif!==false&&ct.prochaineVisite===iso){const cl=CLIENTS.find(x=>(x.nom||'').toLowerCase()===(ct.clientNom||'').toLowerCase())||{};
-      ev.push({i,ic:'🤝',lbl:'Entretien — '+(ct.clientNom||'?'),sub:(ct.type||'')+' · '+eur0(ct.prix||0)+'/an',h:1.5,adr:ad(cl.adr,cl.ville),click:"go('contrats')"});}});
+      ev.push({i,k:'ctr:'+ct.id,ic:'🤝',lbl:'Entretien — '+(ct.clientNom||'?'),sub:(ct.type||'')+' · '+eur0(ct.prix||0)+'/an',h:1.5,adr:ad(cl.adr,cl.ville),click:"go('contrats')"});}});
   }
   return {ws,ev};
 }
@@ -3543,7 +3671,7 @@ function renderPlanning(){
     const evs=ev.filter(e=>e.i===i);
     return '<div style="border:1px solid var(--line);border-radius:10px;padding:8px;background:'+(iso===today?'var(--blue-soft)':'var(--bg)')+';min-height:92px">'
       +'<div style="font-size:11px;font-weight:700;color:'+(iso===today?'var(--blue)':'var(--muted)')+'">'+nm+' '+day.getDate()+'</div>'
-      +(evs.length?evs.map(e=>'<div onclick="'+e.click+'" style="cursor:pointer;background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:6px 7px;margin-top:6px;font-size:11.5px;line-height:1.3"><b>'+e.ic+' '+e.lbl+'</b>'+(e.adr?' '+mapsBtn(e.adr,'float:right'):'')+'<div class="sub2" style="font-size:10px">'+e.sub+'</div></div>').join(''):'<div class="sub2" style="margin-top:8px;font-size:10.5px">—</div>')
+      +(evs.length?evs.map(e=>'<div data-k="'+(e.k||'')+'" onclick="'+e.click+'" style="cursor:pointer;background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:6px 7px;margin-top:6px;font-size:11.5px;line-height:1.3"><b>'+e.ic+' '+e.lbl+'</b>'+(e.adr?' '+mapsBtn(e.adr,'float:right'):'')+'<div class="sub2" style="font-size:10px">'+e.sub+'</div></div>').join(''):'<div class="sub2" style="margin-top:8px;font-size:10.5px">—</div>')
       +'</div>';}).join('')+'</div>';
   const todo=DEVIS.filter(d=>d.statut==='accepte'&&!d.datePlanif);
   document.getElementById('planTodo').innerHTML=todo.length?todo.map(d=>{const c=compute(d);
@@ -3563,7 +3691,11 @@ function buildMail(to,subject,body){
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   toast('✉️ Brouillon ouvert dans ta messagerie — texte aussi copié');
 }
-function mailDevis(){formToDevis();const c=compute(cur);const E=P.entreprise||{};
+function mailDevis(){formToDevis();const c=compute(cur);
+  /* C3 (décision de Gabriel du 21/10/2026) : un article absent de la base de prix (compté 0 €) → confirmation avant l'envoi, pas de
+     blocage. Refus : rien n'est envoyé et le statut ne bouge pas (false = « pas envoyé », lu par next-statut.js). */
+  if(typeof window.nxAbsentsOk==='function'&&!window.nxAbsentsOk(cur,c))return false;
+  const E=P.entreprise||{};
   buildMail(cur.cMail,'Devis '+cur.num+' — '+(E.nom||'GL Froid & Clim'),
 'Bonjour'+(cur.cNom?' '+cur.cNom:'')+',\n\nSuite à notre échange, voici notre devis '+cur.num+' ('+cur.type+') pour un montant de '+eur(c.totalHT)+' HT — TVA non applicable, art. 293 B du CGI.\n\nIl est valable '+devisValidite(P.entreprise)+'. Je reste disponible pour toute question ou ajustement.\n\nCordialement,\n'+(E.nom||'')+(E.tel?'\n'+E.tel:'')+'\n\n(Pense à joindre le PDF généré par « Aperçu / PDF »)');}
 function mailRelance(id){const d=DEVIS.find(x=>x.id===id);if(!d)return;const c=compute(d);const E=P.entreprise||{};
@@ -3609,14 +3741,48 @@ const WEB_MATOS=WM.map(r=>({"Nom":r[0],"Catégorie":r[1],"Unité":r[2],"Achat HT
 
 /* ============ CLOUD — connexion, synchro (Supabase) ============ */
 function cloudLbl(t,cls){const e=document.getElementById('cloudLbl');if(e){e.textContent=t;e.style.color=cls==='ok'?'#7de3a0':cls==='err'?'#ff9d9d':'#8fa3c8';}}
-function markDirty(){try{localStorage.setItem('cp2_dirty','1');}catch(e){}
-  if(!SESS)return;clearTimeout(_pushT);_pushT=setTimeout(()=>pushState(),4000);cloudLbl('☁ à synchroniser…');}
+var _cpEcritures=0; /* compteur d'enregistrements (voir « saisie en cours ») ; var : markDirty peut servir avant cette ligne */
+function markDirty(){if(window.__cpGel)return;_cpEcritures=(_cpEcritures||0)+1;try{localStorage.setItem('cp2_dirty','1');}catch(e){}
+  if(!SESS)return;clearTimeout(_pushT);_pushT=setTimeout(cpEnvoiSiBesoin,4000);cloudLbl('☁ à synchroniser…');}
+/* envoi automatique : seulement s'il reste une modification à envoyer (un envoi sans rien de neuf change la date du serveur
+   et recharge l'autre appareil pour rien). Le bouton « Synchroniser » appelle pushState directement. */
+function cpEnvoiSiBesoin(){try{if(localStorage.getItem('cp2_dirty'))pushState();}catch(e){}}
 /* --- Synchro sûre multi-appareils (v2, 28/09/2026) ---
    Écriture conditionnelle côté serveur (cp_state_push) : on n'écrase jamais une version plus récente
    d'un autre appareil. En cas de conflit : fusion « 3 voies » par identifiant (base = dernière version
    synchronisée, local, cloud) → rien n'est perdu ; ce qui a été supprimé d'un côté reste supprimé.
    Pendant un formulaire (devis, intervention), la fusion attend la sortie du formulaire. */
-function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();if(window.nxStoreReload)return nxStoreReload();location.reload();}
+/* 1.12 (14/10 au soir) — l'écran ouvert et sa position sont gardés pour l'onglet : après ce rechargement, l'appli y revient
+   (next-raccourcis.js) au lieu de repartir sur « Ma journée ». Jamais pour un formulaire (devis, intervention). */
+function cpReload(){if(typeof window.cpTestReload==='function')return window.cpTestReload();cpGeler();try{sessionStorage.setItem('__cpRechargeAuto',String(Date.now()));const v=window._curView;
+  if(typeof v==='string'&&/^[a-z0-9_]{1,40}$/.test(v)&&!/^(wizard|depform|nx_devis2|nx_scan)$/.test(v)){const o={v:v,y:Math.round(Math.max(window.scrollY||0,(document.body&&document.body.scrollTop)||0)),t:Date.now()};
+    if(v==='client360'&&/^[\w.\-]{1,80}$/.test(String(window._cliId||'')))o.c=String(window._cliId);sessionStorage.setItem('__cpVue',JSON.stringify(o));}}catch(e){}
+  if(window.nxStoreReload)return nxStoreReload();location.reload();}
+/* gel jusqu'au rechargement : les données synchronisées ne sont plus écrites (next-store, geler), plus rien n'est marqué
+   à envoyer, et un voile empêche de cliquer sur l'écran d'avant (ses données en mémoire sont périmées). */
+function cpGeler(){if(window.__cpGel)return;window.__cpGel=true;
+  try{if(window.nxStore&&nxStore.geler)nxStore.geler(k=>SYNC_KEYS.indexOf(k)>=0);}catch(e){}
+  try{const a=document.activeElement;if(a&&a!==document.body&&a.blur)a.blur();}catch(e){}
+  try{if(!document.getElementById('cpGel')){const d=document.createElement('div');d.id='cpGel';d.setAttribute('role','status');
+    d.style.cssText='position:fixed;inset:0;z-index:2147483646;background:rgba(15,27,45,.22);display:flex;align-items:flex-end;justify-content:center;padding:0 16px calc(28px + env(safe-area-inset-bottom,0px));cursor:progress';
+    d.innerHTML='<span style="background:#0f1b2d;color:#fff;font:600 14px/1.3 system-ui,-apple-system,sans-serif;padding:10px 16px;border-radius:10px">Mise à jour depuis ton autre appareil…</span>';
+    (document.body||document.documentElement).appendChild(d);}}catch(e){}}
+/* 1.12 (recette du 14/10/2026) — la synchro attend que TOUTE l'appli soit chargée : les modules (next-*.js) déclarent
+   leurs données synchronisées en se chargeant ; une synchro partie avant (connexion au démarrage) ne les recevait pas
+   et un envoi à ce moment-là les retirait du serveur. */
+let _cpAttente=null;
+function cpQuandPret(f){if(!window.nxStore||nxStore.ready)return false;
+  if(!_cpAttente){_cpAttente=[];document.addEventListener('nxstoreready',()=>{const L=_cpAttente||[];_cpAttente=null;L.forEach(g=>{try{g();}catch(e){}});},{once:true});}
+  _cpAttente.push(f);return true;}
+/* données du serveur absentes de cet appareil (clé inconnue d'une autre version de l'appli, ou jamais reçue) :
+   renvoyées telles quelles, jamais retirées du serveur (aucune donnée synchronisée n'est effacée de l'appareil) */
+function cpGarderAbsentes(L){try{const b=JSON.parse(localStorage.getItem('cp2_sync_base')||'null');if(b&&typeof b==='object')Object.keys(b).forEach(k=>{if(L[k]===undefined&&b[k]!==undefined&&!NX_BK_SKIP.test(k))L[k]=b[k];});}catch(e){}return L;}
+/* données reçues avant que l'appareil sache les ranger (mise à jour de l'appli) : rangées maintenant */
+function cpManquantes(d){try{return d&&typeof d==='object'?SYNC_KEYS.filter(k=>d[k]!==undefined&&localStorage.getItem(k)==null):[];}catch(e){return [];}}
+function cpCompleterLocal(d){const L=cpManquantes(d);L.forEach(k=>{try{localStorage.setItem(k,JSON.stringify(d[k]));}catch(e){}});
+  /* une seule fois par minute et par onglet : si le stockage refuse (plein, onglet en lecture seule), pas de rechargement sans fin */
+  let deja=false;try{deja=Date.now()-(+sessionStorage.getItem('__cpComplete')||0)<60000;sessionStorage.setItem('__cpComplete',String(Date.now()));}catch(e){}
+  return L.length&&!deja?L.length:0;}
 function cpStable(v){if(Array.isArray(v))return '['+v.map(cpStable).join(',')+']';
   if(v&&typeof v==='object')return '{'+Object.keys(v).sort().map(k=>JSON.stringify(k)+':'+cpStable(v[k])).join(',')+'}';
   return JSON.stringify(v===undefined?null:v);}
@@ -3642,12 +3808,43 @@ function cpMerge(B,L,R){ /* B peut être null (premier passage) */
     if(B&&cpSame(l,b)){out[k]=r;return;} out[k]=l;});
   return out;}
 function cpLocalData(){const d={};SYNC_KEYS.forEach(k=>{const v=localStorage.getItem(k);if(v!=null){try{d[k]=JSON.parse(v);}catch(e){}}});return d;}
-function cpWriteLocal(d){SYNC_KEYS.forEach(k=>{if(d&&d[k]!==undefined)localStorage.setItem(k,JSON.stringify(d[k]));});}
+function cpWriteLocal(d){const g=!!(window.__cpGel&&window.nxStore&&nxStore.geler);if(g)nxStore.geler(null);
+  try{SYNC_KEYS.forEach(k=>{if(d&&d[k]!==undefined)localStorage.setItem(k,JSON.stringify(d[k]));});}finally{if(g)nxStore.geler(k=>SYNC_KEYS.indexOf(k)>=0);}}
 function cpSetBase(d,ts){try{localStorage.setItem('cp2_sync_base',JSON.stringify(d));}catch(e){}localStorage.setItem('cp2_sync',JSON.stringify({lastRemote:ts}));}
-function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform';}
-let _cpPushing=false,_cpAgain=false,_cpPendingReload=false;
+/* 1.12 (14/10 au soir) — saisie en cours : une mise à jour reçue (ou une fusion) recharge l'appli, ce qui effacerait ce qui
+   est tapé mais pas encore enregistré (Paramètres, fiche client, texte copié depuis une autre appli…). Les champs où
+   l'utilisateur tape sont suivis (hors recherche) ; tant que l'un d'eux, encore à l'écran, diffère de sa valeur d'affichage,
+   la mise à jour attend le prochain changement d'écran (go). Un enregistrement fait par un geste de l'utilisateur (bouton,
+   case, champ quitté) clôt la saisie : rien n'attend alors sans raison, et les envois partent normalement. */
+const _cpChamps=new Set();
+/* pas une saisie : recherches et filtres d'affichage (ils ne font que réafficher une liste, rien à enregistrer) */
+function cpChampFiltre(t){try{if(t.closest('.next-command,#loginScreen,[data-cp-filtre]')||t.type==='search')return true;
+  return /^(render[A-Za-z0-9]*|climSirenSearch)\(/.test(String(t.getAttribute('oninput')||t.getAttribute('onchange')||'').trim());}catch(e){return false;}}
+document.addEventListener('input',e=>{try{if(!e.isTrusted)return;const t=e.target;if(!t||!t.closest||!/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)||cpChampFiltre(t))return;_cpChamps.add(t);}catch(x){}},true);
+/* un enregistrement fait par un geste (bouton, case, champ quitté) clôt la saisie du bloc où il a eu lieu (carte, fenêtre,
+   formulaire) ; un bouton hors de tout bloc (« Enregistrer les paramètres ») clôt celle de l'écran. L'enregistrement doit
+   avoir lieu PENDANT le traitement du geste (vu en fin de propagation, sur window) : un champ quitté au moment où l'on
+   clique ailleurs n'est pas crédité de l'enregistrement fait par ce clic. */
+let _cpGeste=null;
+['click','change','submit'].forEach(ev=>{
+  document.addEventListener(ev,e=>{if(e.isTrusted&&_cpChamps.size)_cpGeste={e:e,n:_cpEcritures};},true);
+  window.addEventListener(ev,e=>{const g=_cpGeste;if(!g||g.e!==e)return;_cpGeste=null;if(_cpEcritures===g.n)return;const t=e.target;let bloc=null;
+    try{bloc=t&&t.closest?(t.closest('.card,.modal,form,dialog,details,.next-card')||t.closest('.view')):null;}catch(x){}
+    Array.from(_cpChamps).forEach(c=>{if(c===t||(bloc&&bloc.contains(c)))_cpChamps.delete(c);});});});
+function cpSaisieEnCours(){for(const t of Array.from(_cpChamps)){if(!t.isConnected){_cpChamps.delete(t);continue;}
+  if(!t.getClientRects().length)continue; /* champ caché : fenêtre fermée, bloc replié */
+  if(t.tagName==='SELECT'){if(Array.from(t.options).some(o=>o.selected!==o.defaultSelected))return true;continue;}
+  if(t.type==='checkbox'||t.type==='radio'){if(t.checked!==t.defaultChecked)return true;continue;}
+  if(t.value!==t.defaultValue)return true;}
+  return false;}
+function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform'||cpSaisieEnCours();}
+function cpMsgAttente(){const v=window._curView;return v==='wizard'||v==='depform'?'☁ mise à jour reçue — appliquée en sortant du formulaire':'☁ mise à jour reçue — appliquée au prochain changement d\'écran';}
+let _cpPushing=false,_cpAgain=false,_cpPendingReload=false,_cpPulling=false;
 async function pullState(){
-  if(!sb||!SESS)return;
+  if(!sb||!SESS||window.__cpLectureSeule||window.__cpGel)return;
+  if(cpQuandPret(()=>pullState()))return;
+  if(_cpPulling)return; /* retour sur l'appli + fenêtre au premier plan arrivent ensemble : une seule lecture */
+  _cpPulling=true;
   try{
     const {data:row,error}=await sb.from('climpilot_state').select('data,updated_at').eq('user_id',SESS.user.id).maybeSingle();
     if(error)throw error;
@@ -3657,44 +3854,54 @@ async function pullState(){
       else cloudLbl('☁ connecté — cloud vide pour l\'instant','ok');
       return;
     }
-    if(row.updated_at===meta.lastRemote){cloudLbl('✓ synchronisé','ok');if(localStorage.getItem('cp2_dirty'))pushState();return;}
+    if(row.updated_at===meta.lastRemote){
+      if(cpManquantes(row.data).length){if(cpBusyForm()){_cpPendingReload=true;cloudLbl(cpMsgAttente());return;}
+        if(cpCompleterLocal(row.data)){cloudLbl('✓ synchronisé','ok');cpReload();return;}}
+      cloudLbl('✓ synchronisé','ok');if(localStorage.getItem('cp2_dirty'))pushState();return;}
     const dirty=!!localStorage.getItem('cp2_dirty');
     if(dirty||!meta.lastRemote&&(DEVIS.length||CLIENTS.length||DEP.length)){await pushState();return;} /* modifs locales → écriture conditionnelle + fusion */
-    if(cpBusyForm()){_cpPendingReload=true;cloudLbl('☁ mise à jour reçue — appliquée en sortant du formulaire');return;}
+    if(cpBusyForm()){_cpPendingReload=true;cloudLbl(cpMsgAttente());return;}
     cpWriteLocal(row.data);localStorage.removeItem('cp2_dirty');cpSetBase(row.data,row.updated_at);
     cpReload();
   }catch(e){cloudLbl('⚠ cloud injoignable — mode local','err');}
+  finally{_cpPulling=false;}
 }
 async function pushState(manual,force){
   if(!sb||!SESS){if(manual)toast('Pas connecté au cloud');return;}
+  if(window.__cpLectureSeule||window.__cpGel)return;
   if(!navigator.onLine){cloudLbl('⌛ hors ligne — synchro à la reconnexion');return;}
+  if(cpQuandPret(()=>pushState(manual,force)))return;
   if(_cpPushing){_cpAgain=true;return;}
   _cpPushing=true;
   try{
-    let meta=load('cp2_sync',{}),L=cpLocalData(),merged=false;
-    for(let tour=0;tour<4;tour++){
-      const {data:res,error}=await (window.cpStatePushRpc?window.cpStatePushRpc(L,meta.lastRemote||null,!!force):sb.rpc('cp_state_push',{p_data:L,p_expected:meta.lastRemote||null,p_force:!!force}));
-      if(error)throw error;
-      if(res&&res.ok){
-        localStorage.removeItem('cp2_dirty');cpSetBase(L,res.updated_at);
-        cloudLbl('✓ synchronisé '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),'ok');
-        if(manual)toast('☁️ Synchronisé');
-        if(merged){toast('☁️ Changements d\'un autre appareil fusionnés');cpReload();}
-        return;
-      }
-      /* conflit : un autre appareil a écrit entre-temps */
-      if(cpBusyForm()){_cpPendingReload=true;cloudLbl('☁ fusion en attente — termine ton formulaire');return;}
-      const base=(()=>{try{return JSON.parse(localStorage.getItem('cp2_sync_base')||'null');}catch(e){return null;}})();
-      L=cpMerge(base,L,(res&&res.data)||{});
-      cpWriteLocal(L);merged=true;meta={lastRemote:res.updated_at};
+    const meta=load('cp2_sync',{}),L=cpGarderAbsentes(cpLocalData()),n0=_cpEcritures;
+    const {data:res,error}=await (window.cpStatePushRpc?window.cpStatePushRpc(L,meta.lastRemote||null,!!force):sb.rpc('cp_state_push',{p_data:L,p_expected:meta.lastRemote||null,p_force:!!force}));
+    if(error)throw error;
+    if(res&&res.ok){
+      /* enregistrement fait PENDANT l'envoi : il n'est pas dans ce qui vient de partir → reste à envoyer */
+      const ecritPendant=_cpEcritures!==n0;
+      if(!ecritPendant)localStorage.removeItem('cp2_dirty');cpSetBase(L,res.updated_at);
+      cloudLbl('✓ synchronisé '+new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}),'ok');
+      if(manual)toast('☁️ Synchronisé');
+      if(ecritPendant)_cpAgain=true;
+      return;
     }
-    throw new Error('conflits répétés');
+    /* conflit : un autre appareil a écrit entre-temps */
+    if(cpBusyForm()){_cpPendingReload=true;cloudLbl(window._curView==='wizard'||window._curView==='depform'?'☁ fusion en attente — termine ton formulaire':'☁ fusion en attente — appliquée au prochain changement d\'écran');return;}
+    const base=(()=>{try{return JSON.parse(localStorage.getItem('cp2_sync_base')||'null');}catch(e){return null;}})();
+    /* appareil relu au moment de fusionner : ce qui a été enregistré pendant l'envoi est gardé */
+    const R=(res&&res.data)||{};let M=cpMerge(base,cpGarderAbsentes(cpLocalData()),R);
+    try{if(Array.isArray(M[LS.custom]))M[LS.custom]=nxDedupPrix(M[LS.custom]);}catch(e){}
+    /* 1.12 (relecture du 14/10 au soir) — fusion rangée sur l'appareil, base = version du serveur, « à envoyer » : l'envoi
+       repart après le rechargement, sans conflit. Plus de nouvel envoi sous le voile (réseau lent : appli bloquée). */
+    cpWriteLocal(M);cpSetBase(R,res.updated_at);try{localStorage.setItem('cp2_dirty','1');}catch(e){}
+    toast('☁️ Changements d\'un autre appareil fusionnés');cpReload();
   }catch(e){cloudLbl('⚠ échec synchro — nouvel essai auto','err');if(manual)toast('⚠ Échec synchro : '+(e.message||'réseau'));
-    clearTimeout(_pushT);_pushT=setTimeout(()=>pushState(),30000);}
-  finally{_cpPushing=false;if(_cpAgain){_cpAgain=false;setTimeout(()=>pushState(),50);}}
+    clearTimeout(_pushT);_pushT=setTimeout(cpEnvoiSiBesoin,30000);}
+  finally{_cpPushing=false;if(_cpAgain){_cpAgain=false;setTimeout(cpEnvoiSiBesoin,50);}}
 }
 /* en sortant d'un formulaire : appliquer la mise à jour / fusion en attente */
-(function(){const _g=window.go;if(typeof _g!=='function')return;window.go=function(v){const r=_g.apply(this,arguments);
+(function(){const _g=window.go;if(typeof _g!=='function')return;window.go=function(v){_cpChamps.clear();const r=_g.apply(this,arguments);
   try{if(_cpPendingReload&&v!=='wizard'&&v!=='depform'){_cpPendingReload=false;setTimeout(()=>{if(localStorage.getItem('cp2_dirty'))pushState();else pullState();},30);}}catch(e){}return r;};})();
 function showLogin(){const L=document.getElementById('loginScreen');L.style.display='flex';setTimeout(()=>{try{document.getElementById('logEmail').focus();}catch(e){}},80);}
 async function doLogin(){
@@ -3713,10 +3920,26 @@ async function doLogin(){
     afterLogin();
   }catch(e){msg.textContent='Serveur cloud injoignable — projet Supabase en pause ? (supabase.com/dashboard → Restore)';}
 }
+/* 1.12 (14/10 au soir) — appareil resté ouvert (PC sur le bureau) : sans sortie de l'appli, il ne voyait pas les changements
+   faits sur l'autre appareil. Vérification légère (date de la dernière version seulement, pas les données) quand la fenêtre
+   revient au premier plan et toutes les minutes ; les données ne sont lues que si elles ont changé. */
+let _cpVerifT=0;
+async function cpVerifierDistant(){
+  if(!sb||!SESS||window.__cpLectureSeule||window.__cpGel||!navigator.onLine||document.visibilityState!=='visible'||_cpPushing||_cpPulling)return;
+  if(window.nxStore&&!nxStore.ready)return;
+  if(Date.now()-_cpVerifT<20000)return;_cpVerifT=Date.now();
+  try{const {data:row,error}=await sb.from('climpilot_state').select('updated_at').eq('user_id',SESS.user.id).maybeSingle();
+    if(error||!row||row.updated_at===load('cp2_sync',{}).lastRemote)return;
+    if(cpBusyForm()){_cpPendingReload=true;cloudLbl(cpMsgAttente());return;}
+    pullState();
+  }catch(e){}
+}
 function afterLogin(){
   const ue=document.getElementById('cloudUser');if(ue&&SESS&&SESS.user)ue.textContent=SESS.user.email;
   cloudLbl('☁ connexion…');
   pullState();
+  if(!window.__cpVerif){window.__cpVerif=1;setInterval(()=>{if(!window.__cpSansVerifMinute)cpVerifierDistant();},60000); /* __cpSansVerifMinute : banc d'essai seulement */
+    window.addEventListener('focus',()=>cpVerifierDistant());}
   window.addEventListener('online',()=>{if(localStorage.getItem('cp2_dirty'))pushState();});
   document.addEventListener('visibilitychange',()=>{if(!SESS)return;
     if(document.visibilityState==='hidden'&&localStorage.getItem('cp2_dirty'))pushState();
@@ -3735,7 +3958,7 @@ async function initCloud(){
 
 /* ============ INIT ============ */
 window._curView='dash';
-seedAdiaArticles();rebuildPrix();
+seedAdiaArticles();dedupPrix();rebuildPrix();
 renderDash();updateBadges();
 syncNotion();
 if(pinActive())lockApp();
@@ -3780,5 +4003,14 @@ if('serviceWorker' in navigator){try{navigator.serviceWorker.register('sw.js');}
 <script type="text/x-climpilot" data-src="next-particuliers.js"></script>
 <script type="text/x-climpilot" data-src="next-taux.js"></script>
 <script type="text/x-climpilot" data-src="next-documents.js"></script>
+<script type="text/x-climpilot" data-src="next-objectifs.js"></script>
+<script type="text/x-climpilot" data-src="next-rentab.js"></script>
+<script type="text/x-climpilot" data-src="next-avis.js"></script>
+<script type="text/x-climpilot" data-src="next-banque.js"></script>
+<script type="text/x-climpilot" data-src="next-flubilan.js"></script>
+<script type="text/x-climpilot" data-src="next-raccourcis.js"></script>
+<script type="text/x-climpilot" data-src="next-planning.js"></script>
+<script type="text/x-climpilot" data-src="next-messages.js"></script>
+<script type="text/x-climpilot" data-src="next-terrain.js"></script>
 </body>
 </html>

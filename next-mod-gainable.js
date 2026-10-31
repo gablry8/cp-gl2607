@@ -148,7 +148,8 @@
     function add(nom,q,cat,label){
       q=Math.max(0,num(q)); if(!nom||nom==='Aucun'||q<=0) return;
       var p=pr(nom);
-      if(!p){ out.push(tag(A.mkLine('Matériel',label||nom,'⚠️ absent de la base de prix — prix 0, à corriger',0,0,{qte:q,unite:'u',pu:0}),cat)); warn.push('Article « '+nom+' » absent de la base de prix'); return; }
+      /* C3 (29/10/2026) : ligne marquée (absent = nom de l'article) → liste « absents » du devis, bandeau, mention au PDF ; texte harmonisé (validé le 21/10) */
+      if(!p){ var la=tag(A.mkLine('Matériel',label||nom,'⚠️ absent de la base de prix — compté 0 €, à corriger',0,0,{qte:q,unite:'u',pu:0}),cat); la.absent=nom; out.push(la); warn.push('Article « '+nom+' » absent de la base de prix'); return; }
       var u=0; try{ u=venteOf(nom,p.marge); }catch(e){}
       if(!num(p.achat)&&p.pv==null) warn.push('« '+nom+' » : prix d\'achat à saisir dans la base de prix');
       if(p.verif) used[nom]=1;

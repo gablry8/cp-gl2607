@@ -78,7 +78,92 @@ Copie d'essai de la 1.10 (bandeau rouge « VERSION D'ESSAI », hébergée à par
 - Message « Serveur injoignable » trompeur quand la fonction `superpdp` n'est pas installée. **Corrigé** : messages distincts (service pas installé, pas de réseau, erreur HTTP), avec une mention spéciale pour un document de démonstration.
 - Décision de facturation réelle définitive même sans aucune facture. **Corrigé** : elle s'annule avant la date de début, ou après si aucune facture réelle n'existe (vérifié sur l'appareil et sur le serveur). Les anciennes factures renommées ESSAI-… reprennent leur numéro.
 
+## Lecture de la base de test le 14/10/2026 (lecture seule)
+- Base de prix synchronisée : **84 lignes pour 28 articles** (3 copies), créées par les appareils et navigateurs successifs.
+  Cause : identifiant tiré au hasard pour les articles de départ. Corrigé en 1.12 (recette du 14/10) : la base est remise en
+  ordre automatiquement à la prochaine ouverture de la copie d'essai. La base réelle n'a pas de doublon (56 lignes, 0 doublon).
+
+## Recette « deux appareils » simulée (14/10/2026, sans le PC de Gabriel)
+Un PC et un iPhone simulés sur un serveur commun qui suit les règles du vrai (suite Q, `tests/banc-appareils.mjs`). Le
+réseau de la session ne joint pas Supabase : la synchro réelle avec la base de test reste à refaire par Gabriel. 20 défauts
+trouvés et corrigés (liste dans `docs/REPRISE.md`, « Recette deux appareils »), dont, le soir : retour au même écran après
+une mise à jour reçue, texte tapé jamais effacé par une mise à jour, PC resté ouvert mis à jour sans y toucher, et une
+perte de données qui existait déjà (modification faite pendant un envoi).
+
+## Audit de fiabilité du 18/10/2026 — constats et corrections (branche `claude/fiabilite-19-10`, non déployée)
+Audit en lecture seule du code de `main` et du projet réel (métadonnées seulement, aucune donnée client lue).
+Chaque correction a d'abord un test qui échoue sur l'ancien code (suite R), puis la batterie complète.
+
+**1. Boîte de réception (`next-assistant.js`)**
+- Constat : une seule requête prenait les 200 lignes les **plus anciennes** (à valider et traitées de la semaine mêlées).
+  Avec 500 lignes (300 traitées, 200 à valider), l'ancien code n'affichait **aucune** des nouvelles demandes, badge à 0.
+  Une ligne du site (`source='site'`) n'affichait pas `payload.champs` et n'avait pas de bouton « Traité ». Une ligne
+  dont `a_verifier` n'est pas une liste faisait planter toute la liste.
+- Correction : trois lectures (à valider : 100 plus récentes + nombre exact pour le badge ; « auto » à importer ;
+  traités : 25 derniers), carte dédiée aux demandes du site (champs avec libellés, « À rappeler avant le … » en
+  rouge si dépassé, « ACTIVITÉ BLOQUÉE », liens `tel:` et `mailto:` à schéma fixe et valeur encodée, « Traité »,
+  « Écarter », « Copier »), garde `Array.isArray`. Tout le texte du visiteur est échappé.
+- Tests : suite R (R1, 17 contrôles), dont un texte piégé (`" onmouseover=…`, `<img onerror>`, `javascript:`) : affiché
+  tel quel, rien d'exécuté. Échouait sur l'ancien code (15 échecs sur 17).
+- Batterie complète : 501 réussis, 0 échec, 0 SKIP (le message du commit indique 484 : le rapport ne comptait pas
+  encore la suite R, corrigé dans `tests/isolation/rapport.mjs`).
+
+**2. Encaissement annulé (`index.html`, `next-emission.js`, `next-particuliers.js`, `next-avoir.js`)**
+- Constat : « Annuler » sur la question du mode de règlement enregistrait quand même l'encaissement (« Virement »),
+  sans moyen de l'annuler pour un devis, une location ou un contrat. En mode réel, un « paiement » partait aussi au
+  journal du serveur, même sans encaissement (et un second clic en envoyait un deuxième).
+- Correction : `askMode()` renvoie `null` sur « Annuler » et rien n'est enregistré (factures, interventions,
+  remboursement d'avoir) ; bouton ↺ « Annuler l'encaissement » (devis, location, contrat) qui remet la facture
+  « en attente » et garde une trace (`encaissementsAnnules` : date payée, mode, date d'annulation) ; pour une
+  intervention, la bascule existante garde la même trace. Le journal du serveur ne reçoit `paiement` /
+  `paiement_annule` que si l'encaissement a vraiment changé. Un paiement « irrégulier » n'est plus marqué si rien
+  n'a été encaissé.
+- Tests : suite R (R2 + R2b, 10 contrôles), échouaient sur l'ancien code (8 échecs). Batterie complète : 511 réussis,
+  0 échec, 0 SKIP.
+
+**3. Sauvegarde hors Supabase (`next-assistant.js`, `next-fiabilite.js`, `index.html`)**
+- Constat : l'appli annonçait « une copie de secours part aussi chaque semaine sur ton Google Drive ». Sur le Drive,
+  un seul fichier (28/09, 44 Ko) alors que l'état pèse 215 Ko : la copie par la tâche planifiée ne marche pas (le JSON
+  devrait être recopié mot pour mot). Le rappel « sauvegarde jamais faite » était masqué dès que le cloud est connecté.
+  `climpilot_backups` ne copie que l'état, dans le même projet Supabase, sans le registre des factures ni les signatures ;
+  l'offre gratuite ne permet pas de télécharger les sauvegardes de la base.
+- Correction : texte honnête (copies du serveur « dans Supabase ») ; bouton **Export complet** : un fichier JSON daté
+  `ClimPilot_export_complet_AAAA-MM-JJ.json` = état de l'appareil + `climpilot_documents` + `climpilot_doc_events` +
+  `climpilot_signatures`, lus page par page (100 ou 1 000 lignes par page, tri sur la clé primaire). Si une table
+  échoue, le fichier est quand même donné, marqué `complet:false`, et l'export n'est pas compté. Le fichier se relit
+  avec « Importer » (partie `etat`). Ligne « Dernière copie hors Supabase : … » et rappel discret dans le bandeau du
+  tableau de bord au-delà de 7 jours.
+- Clé **synchronisée** `cpnext_dernier_export` (dans `climpilot_state.data`, lisible par une tâche planifiée) :
+  `{ "at": "<ISO du dernier export COMPLET>", "octets": <taille du fichier>, "comptes": {"documents":n,"evenements":n,"signatures":n},
+  "incomplet": {"at":"<ISO>","erreurs":n} }` (`incomplet` seulement après un essai raté ; il ne change pas `at`).
+  Lecture SQL : `select data->'cpnext_dernier_export'->>'at' from public.climpilot_state;`
+- Tests : suite R (R3, 10 contrôles, dont 1 205 événements sur 2 pages et une table en erreur). Batterie complète :
+  521 réussis, 0 échec, 0 SKIP. La tâche planifiée Drive n'a pas été modifiée.
+
+**4. Émission : réponse perdue et autre appareil (`next-emission.js`, partie appli seulement, aucun changement SQL)**
+- Constat : après 25 s sans réponse (ou une coupure pendant l'envoi), l'appli affichait « Facture NON émise… Rien n'a
+  été facturé », alors que le serveur avait peut-être enregistré la facture. La demande en attente ne vit que sur
+  l'appareil : refacturer depuis un autre appareil donnait un second numéro pour le même devis (reproduit par le test :
+  F-2026-003 émise alors que F-2026-002 existait déjà pour ce devis).
+- Correction : message « Résultat INCONNU… réessaie depuis CET appareil (même demande, sans doublon), pas depuis un autre
+  appareil » ; avant toute émission en mode réel, lecture de `climpilot_documents` (filtre `payload->src`) : une facture
+  déjà émise pour la même source (devis + acompte/solde, intervention, location, année de contrat) est reprise et remise
+  en place, sans nouveau numéro. Exceptions : la demande en attente de CET appareil (même request_id) et une facture
+  annulée par un avoir total (`facAnnulees`). Registre illisible : rien n'est émis (« NON émise »).
+- Limite : la vérification se fait côté appli ; deux appareils qui émettent à la même seconde pour le même devis ne
+  sont pas arrêtés par le serveur (il faudrait une règle SQL, non faite ici).
+- Tests : suite R (R4, 5 contrôles), 3 échecs sur l'ancien code. Batterie complète : 526 réussis, 0 échec, 0 SKIP.
+
 ## Pas encore essayé
+- **C1 — une seule facture vivante par source (21/10/2026, branche `correctif/c1-registre-illisible`)** : migration
+  `supabase/migrations/20261021180000_une_facture_par_source.sql` (script `tests/supabase-test/4-une-facture-par-source-TEST.sql` à
+  coller, verrou par marqueur, 5 « OK » ; retour arrière `4-une-facture-par-source-retour-arriere.sql`). Vérifiée hors ligne seulement :
+  PostgreSQL 16 local (16 tests, dont 8 soldes simultanés) et banc deux appareils (16 contrôles). Lève la limite notée plus haut
+  (« deux appareils qui émettent à la même seconde pour le même devis ne sont pas arrêtés par le serveur ») : le serveur refuse
+  désormais une 2e facture vivante pour la même source, un solde qui ignore l'acompte, un acompte après le solde.
+- **Agenda (20/10/2026)** : migration `20261020120000_agenda.sql` (script `essai-agenda-TEST.sql` à coller), fonction
+  `agenda`, script Google Agenda. Vérifié hors ligne seulement : PGlite (droits, remplacement, garde-fous), fonction et
+  script avec base et Google simulés. Le 20/10, la base de test ne contient aucune table `climpilot_busy`.
 - **Fonctions `superpdp` et `assistant`** sur le projet de test. Il faut que Gabriel pose la configuration `ALLOWED_USER_IDS` et `ANTHROPIC_API_KEY` dans le tableau de bord, car la session ne peut pas le faire. En attendant, leur comportement est couvert par les tests locaux (`fn-liste-blanche`, `fn-superpdp-envoi`).
 - Avec la copie d'essai : iPhone (écran d'accueil, mise à jour, impression des PDF).
 - **SUPER PDP** en bac à sable avec la 1.10.

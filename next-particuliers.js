@@ -183,7 +183,8 @@
       if(!confirm('Le client a-t-il DÉJÀ payé '+quoi+' ?\n\nOK = oui : le paiement est enregistré tel quel, marqué « à vérifier », avec une alerte.\nAnnuler = non : rien n\'est enregistré.')) return;
     } else if(!confirm('⚠ '+msg+'\n\nUn paiement ne doit pas être demandé ni reçu avant cette date (sanction : art. L242-7).\n\nLe client a-t-il DÉJÀ payé malgré tout ?\nOK = oui : le paiement est enregistré tel quel, marqué IRRÉGULIER, avec une alerte de régularisation.\nAnnuler = non : rien n\'est enregistré.')) return;
     var res=orig.apply(self,args);
-    try{ marquerIrregulier(kind,id,args,r); }catch(e){}
+    /* 19/10/2026 : « Annuler » sur le mode de règlement → rien d'encaissé, donc rien à marquer ni à régulariser */
+    try{ if(!aEncaisser(kind,objet(kind,id),kind==='dep'?'':args[2])) marquerIrregulier(kind,id,args,r); }catch(e){}
     return res;
   }
   function marquerIrregulier(kind,id,args,r){

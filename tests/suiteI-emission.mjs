@@ -2,7 +2,7 @@ import { ecrireResultats } from './env.mjs';
 // Suite I — émission sécurisée (1.10) : modes, serveur simulé, reprise, fusion, rapprochement, onglets.
 // Le serveur simulé reprend la logique de la migration SQL (testée, elle, sur un vrai PostgreSQL :
 // tests/sql/test_migration.py). Cette suite vérifie le comportement de l'APPLI face à ce serveur.
-import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
+import {page,rec,RES,closeBrowser,seed,REF} from './lib.mjs';
 import { SERVEUR } from './serveur-simule.mjs';
 import fs from 'fs';
 
@@ -54,10 +54,17 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   await seed(p); await p.evaluate(SERVEUR); await p.evaluate(REEL);
   const r=await p.evaluate(async c=>{ const d=DEVIS.find(x=>x.statut==='accepte'&&compute(x).totalHT>0);
     __srv.fail.migration=true; await facturerDevis(d.id,'solde'); eval(c); const a=!!d.facSolde;
-    __srv.fail.migration=false; __srv.fail.horsService=true; await facturerDevis(d.id,'solde'); eval(c); const b=!!d.facSolde;
-    return {a,b,docs:__srv.docs.length,mode:nxEmisMode()}; },close);
+    __srv.fail.migration=false; __srv.fail.horsService=true;
+    /* P0-suite (24/10/2026) : le faux serveur « hors service » doit rendre la forme de la VRAIE bibliothèque (supabase-js 2.117.3, fetch en échec,
+       sans throwOnError) : promesse RÉSOLUE {error:{message:'TypeError: Failed to fetch'}, data:null, status:0}, jamais une promesse rejetée */
+    const forme=await window.sb.rpc('cp_serveur_info',{}).then(x=>({resolue:true,x}),e=>({resolue:false,rejet:String(e&&e.message||e)}));
+    await facturerDevis(d.id,'solde'); eval(c); const b=!!d.facSolde; const modeB=nxEmisMode();
+    return {a,b,docs:__srv.docs.length,mode:nxEmisMode(),forme,modeB}; },close);
   rec('Émission','Migration absente : facture NON émise (le chantier reste à facturer)',!r.a&&r.docs===0&&dlg.some(m=>/NON émise/.test(m)&&/migration/.test(m)),JSON.stringify(r)+' '+dlg.join(' / ').slice(0,200));
   rec('Émission','Serveur injoignable : facture NON émise, aucun numéro local',!r.b&&r.docs===0,JSON.stringify(r));
+  rec('Émission','Serveur injoignable : le message dit « serveur injoignable » et le mode reste bloqué pour cette raison (même constat qu\'avant le changement de forme)',dlg.some(m=>/NON émise/.test(m)&&/serveur injoignable/.test(m))&&r.modeB.mode==='bloque'&&r.modeB.raison==='serveur',JSON.stringify(r.modeB)+' '+dlg.join(' / ').slice(0,300));
+  rec('Émission','Faux serveur hors service : forme de supabase-js — réponse RÉSOLUE {error:{message:\'TypeError: Failed to fetch\'}, data:null, status:0}, pas une promesse rejetée',
+    r.forme.resolue===true&&!!r.forme.x&&r.forme.x.status===0&&r.forme.x.data===null&&!!r.forme.x.error&&r.forme.x.error.message==='TypeError: Failed to fetch',JSON.stringify(r.forme));
   await ctx.close();
 }
 
@@ -125,6 +132,35 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   await ctx.close();
 }
 
+/* I4b (C1, 24/10/2026) réponse perdue telle que la VRAIE bibliothèque la rend : supabase-js 2.117.3 ne rejette pas la promesse
+   quand le réseau coupe, elle résout {error:{message:'TypeError: Failed to fetch'}, status:0}. La demande a PEUT-ÊTRE été servie :
+   l'appli doit dire « Résultat INCONNU » (jamais « NON émise … Rien n'a été facturé »), garder la demande en attente (même request_id),
+   et la nouvelle tentative doit retrouver la MÊME facture. Même message quand la coupure survient AVANT l'arrivée (indistinguable). */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  p.removeAllListeners('dialog'); const dlg=[]; p.on('dialog',d=>{ dlg.push(d.message()); d.accept().catch(()=>{}); });
+  await seed(p); await p.evaluate(SERVEUR); await p.evaluate(REEL);
+  const r=await p.evaluate(async c=>{ const acc=DEVIS.filter(x=>x.statut==='accepte'&&compute(x).totalHT>0); const d=acc[0];
+    /* a) coupure APRÈS l'enregistrement : le serveur a la facture, l'appli reçoit {error, status:0} */
+    __srv.fail.perdreReponseBib=true; await facturerDevis(d.id,'solde'); eval(c);
+    const apresPerte=!!d.facSolde, att=nxEmisAttentes(), rid1=Object.values(att)[0]&&Object.values(att)[0].rid, docs1=__srv.docs.length;
+    await facturerDevis(d.id,'solde'); eval(c);
+    /* b) coupure AVANT l'arrivée : rien côté serveur, même réponse de la bibliothèque */
+    const d2=acc[1]; __srv.fail.reseauCoupeBib=true; await facturerDevis(d2.id,'solde'); eval(c);
+    const apresCoupe=!!d2.facSolde, att2=nxEmisAttentes(), rid2=Object.values(att2)[0]&&Object.values(att2)[0].rid, docs2=__srv.docs.length;
+    await facturerDevis(d2.id,'solde'); eval(c);
+    return {apresPerte,att:Object.keys(att).length,rid1,docs1,num:d.facSolde&&d.facSolde.num,srvRid:__srv.docs[0]&&__srv.docs[0].request_id,
+      apresCoupe,att2:Object.keys(att2).length,rid2,docs2,num2:d2.facSolde&&d2.facSolde.num,srvRid2:__srv.docs[1]&&__srv.docs[1].request_id,
+      docs:__srv.docs.map(x=>x.num),attFin:Object.keys(nxEmisAttentes()).length}; },close);
+  const inconnus=dlg.filter(m=>/Résultat INCONNU/.test(m)), nonEmises=dlg.filter(m=>/NON émise/.test(m));
+  rec('Émission','Réponse perdue (forme supabase-js : {error, status:0}) : message « Résultat INCONNU », jamais « NON émise »',inconnus.length>=1&&nonEmises.length===0&&/TypeError/.test(inconnus[0]||''),dlg.join(' / ').slice(0,300));
+  rec('Émission','Réponse perdue (forme supabase-js) : rien d\'appliqué, demande gardée en attente avec le request_id servi',!r.apresPerte&&r.att===1&&r.docs1===1&&r.rid1===r.srvRid,JSON.stringify(r));
+  rec('Émission','Nouvelle tentative : MÊME facture retrouvée (F-AAAA-001), un seul document au registre',/^F-\d{4}-001$/.test(r.num||'')&&r.num===r.docs[0]&&r.docs.filter(n=>n===r.num).length===1,JSON.stringify(r));
+  rec('Émission','Réseau coupé AVANT l\'arrivée (même forme) : INCONNU aussi, rien d\'émis ; nouvelle tentative = une seule facture, même request_id',inconnus.length===2&&!r.apresCoupe&&r.docs2===1&&r.att2===1&&/^F-\d{4}-002$/.test(r.num2||'')&&r.rid2===r.srvRid2&&r.docs.length===2&&r.attFin===0,JSON.stringify(r));
+  rec('Émission','Aucune erreur JavaScript (réponse perdue, forme supabase-js)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
 /* I5 avoir en mode réel ; rapprochement : facture disparue localement remise en place ; doublons signalés */
 {
   const {p,ctx}=await page({mobile:false});
@@ -151,16 +187,16 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
 {
   const {p,ctx}=await page({mobile:false});
   const r=await p.evaluate(()=>{ const t=todayISO();
-    const base={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:''}],cp2_facseq:{year:2026,seq:5},cp2_avoirs:[],cp2_docs:[]};
-    const cloud={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:'',facSolde:{num:'F-2026-006',date:t,montant:1000}}],cp2_facseq:{year:2026,seq:6},cp2_avoirs:[{id:'av1',num:'AV-2026-001'}],cp2_docs:[{id:'F-2026-006|devis|D|solde',num:'F-2026-006'}]};
-    const tel={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:'rappeler le client'}],cp2_facseq:{year:2026,seq:5},cp2_avoirs:[],cp2_docs:[]};
+    const base={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:''}],cp2_facseq:{year:+__REF.an,seq:5},cp2_avoirs:[],cp2_docs:[]};
+    const cloud={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:'',facSolde:{num:('F-'+__REF.an+'-006'),date:t,montant:1000}}],cp2_facseq:{year:+__REF.an,seq:6},cp2_avoirs:[{id:'av1',num:('AV-'+__REF.an+'-001')}],cp2_docs:[{id:('F-'+__REF.an+'-006|devis|D|solde'),num:('F-'+__REF.an+'-006')}]};
+    const tel={cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:'rappeler le client'}],cp2_facseq:{year:+__REF.an,seq:5},cp2_avoirs:[],cp2_docs:[]};
     const m=cpMerge(base,tel,cloud);
     /* vieille sauvegarde restaurée (sans la facture), base = dernier état synchronisé qui l'avait */
     const m2=cpMerge(cloud,{cp2_devis:[{id:'D',num:'DV1',statut:'accepte',notes:'ancienne'}]},cloud);
     return {fac:m.cp2_devis[0].facSolde&&m.cp2_devis[0].facSolde.num,notes:m.cp2_devis[0].notes,seq:m.cp2_facseq.seq,reg:m.cp2_docs.length,fac2:m2.cp2_devis[0].facSolde&&m2.cp2_devis[0].facSolde.num}; });
-  rec('Synchro','Conflit PC / téléphone : la facture émise sur le PC est conservée (et la note du téléphone aussi)',r.fac==='F-2026-006'&&r.notes==='rappeler le client',JSON.stringify(r));
+  rec('Synchro','Conflit PC / téléphone : la facture émise sur le PC est conservée (et la note du téléphone aussi)',r.fac===('F-'+REF.an+'-006')&&r.notes==='rappeler le client',JSON.stringify(r));
   rec('Synchro','Compteurs : le plus grand l\'emporte ; registre fusionné sans perte',r.seq===6&&r.reg===1,JSON.stringify(r));
-  rec('Synchro','Restauration d\'une ancienne sauvegarde puis synchro : la facture n\'est pas perdue',r.fac2==='F-2026-006',JSON.stringify(r));
+  rec('Synchro','Restauration d\'une ancienne sauvegarde puis synchro : la facture n\'est pas perdue',r.fac2===('F-'+REF.an+'-006'),JSON.stringify(r));
   await ctx.close();
 }
 
@@ -169,15 +205,16 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   const {p,ctx}=await page({mobile:false});
   await p.evaluate(SERVEUR);
   const r=await p.evaluate(async()=>{ const a=await cpStatePushRpc({x:1},null,false); const v=__srv.dernierPush&&__srv.dernierPush.p_client_version;
-    __srv.fail.ancienServeur=true; __srv.dernierPush=null; const b=await cpStatePushRpc({x:2},null,false); return {a:a.data&&a.data.ok,v,b:b.data&&b.data.ok,sansVersion:__srv.dernierPush&&!('p_client_version' in __srv.dernierPush)}; });
-  rec('Synchro','Envoi de la version (1.10) ; serveur pas encore migré : repli sur l\'ancien appel',r.a&&r.v==='1.10.0'&&r.b&&r.sansVersion,JSON.stringify(r));
+    __srv.fail.ancienServeur=true; __srv.dernierPush=null; const b=await cpStatePushRpc({x:2},null,false); return {a:a.data&&a.data.ok,v,attendu:window.CP_VERSION,b:b.data&&b.data.ok,sansVersion:__srv.dernierPush&&!('p_client_version' in __srv.dernierPush)}; });
+  /* 25/10/2026 (1.13.0) : la version attendue est celle de l'appli (window.CP_VERSION), plus une valeur en dur — le test vérifie que c'est bien ELLE qui part au serveur */
+  rec('Synchro','Envoi de la version de l\'appli (CP_VERSION, forme N.N.N) ; serveur pas encore migré : repli sur l\'ancien appel',r.a&&r.v===r.attendu&&/^\d+\.\d+\.\d+$/.test(r.v||'')&&r.b&&r.sansVersion,JSON.stringify(r));
   await ctx.close();
 }
 
 /* I8 deux onglets ; ancienne version qui écrit en même temps */
 {
   const {p,ctx}=await page({mobile:false});
-  const p2=await ctx.newPage(); await p2.route(/supabase|cdnjs|tesseract|unpkg|cdn\.jsdelivr/,r=>r.abort());
+  const p2=await ctx.newPage(); await p2.route(/supabase|cdnjs|tesseract|unpkg|cdn\.jsdelivr|vendor\/chart-/,r=>r.abort());
   await p2.goto('http://localhost:8765/index.html'); await p2.waitForTimeout(2200);
   const a=await p.evaluate(()=>({ro:nxStore.info().lectureSeule,voile:!!document.getElementById('nxRoVoile')}));
   const b=await p2.evaluate(()=>{ const avant=__native.get.call(localStorage,'cp2_clients'); try{ CLIENTS.push({id:'zz',nom:'Écrit dans le 2e onglet'}); save(LS.clients,CLIENTS); }catch(e){} return {ro:nxStore.info().lectureSeule,voile:!!document.getElementById('nxRoVoile'),persiste:__native.get.call(localStorage,'cp2_clients')!==avant}; });

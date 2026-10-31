@@ -9,10 +9,12 @@ const ROOT=RACINE;
   const list=[...sw.matchAll(/'\.\/([^']+)'/g)].map(m=>m[1]).filter(Boolean);
   const missing=list.filter(f=>!fs.existsSync(ROOT+f));
   rec('Hors ligne','Fichiers du cache présents',missing.length===0,missing.join(', ')||list.length+' fichiers');
-  const scripts=[...idx.matchAll(/<script src="([^"h][^"]*)"/g)].map(m=>m[1].split('?')[0]);
+  /* M3 C8 (21/10/2026) : les 44 couches next-*.js sont en data-src (exécutées par next-store.js), pas en src — sans elles, un fichier
+     oublié dans sw.js passait ce contrôle (mutation : ./next-terrain.js retiré de sw.js, A 14/14). On les compte désormais. */
+  const scripts=[...idx.matchAll(/<script[^>]*\s(?:src|data-src)="([^"h][^"]*)"/g)].map(m=>m[1].split('?')[0]);
   const css=[...idx.matchAll(/<link rel="stylesheet" href="([^"h][^"]*)"/g)].map(m=>m[1]);
   const notCached=scripts.concat(css).filter(f=>!list.includes(f));
-  rec('Hors ligne','Scripts/CSS tous en cache hors ligne',notCached.length===0,notCached.join(', '));
+  rec('Hors ligne','Scripts (src et data-src : '+scripts.length+') et CSS ('+css.length+') tous listés dans sw.js',notCached.length===0&&scripts.length>=45,notCached.join(', ')||(scripts.length+' scripts'));
 }
 
 for(const mobile of [true,false]){

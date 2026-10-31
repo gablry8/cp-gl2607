@@ -8,7 +8,8 @@
       plus de « undefined » ni de « NaN kg » dans les listes et PDF.
    3. Le bandeau « Sauvegarde jamais faite — tes données ne vivent que
       sur cet ordinateur » ne s'affiche plus quand le cloud est connecté
-      (synchro + sauvegardes automatiques serveur et Drive).
+      (synchro + copies automatiques du serveur, DANS Supabase) ; à la place,
+      rappel discret si l'export complet hors Supabase date de plus de 7 jours.
    ============================================================ */
 (function(){
   'use strict';
@@ -44,12 +45,14 @@
   }
   normalize();
 
-  /* 3. rappel de sauvegarde : inutile (et faux) quand le cloud est connecté */
+  /* 3. rappel de sauvegarde. Cloud connecté : plus de « tes données ne vivent que sur cet ordinateur » (faux), mais un
+        rappel DISCRET si l'export complet hors Supabase date de plus de 7 jours (19/10/2026 : les copies du serveur
+        restent dans Supabase ; la copie Drive hebdomadaire annoncée avant n'existait pas). */
   function cloudOn(){ try{ return typeof SESS!=='undefined'&&!!SESS; }catch(e){ return false; } }
   if(typeof window.checkBackup==='function'){
     var _cb=window.checkBackup;
     window.checkBackup=function(){
-      if(cloudOn()){ var b=document.getElementById('bkbanner'); if(b){ b.className='syncbanner'; b.innerHTML=''; } return; }
+      if(cloudOn()){ var b=document.getElementById('bkbanner'); if(b){ var t=''; try{ t=typeof window.nxaRappelExport==='function'?window.nxaRappelExport():''; }catch(e){ t=''; } b.className='syncbanner'; b.innerHTML=t; } return; }
       return _cb.apply(this,arguments);
     };
   }
@@ -77,7 +80,7 @@
     }; w._nxf=true; window[fn]=w;
   }
   /* 5. dupliquer un devis ne recopie ni ses factures, ni sa signature, ni son suivi */
-  var RESET=['facAcompte','facSolde','facAnnulees','signature','signLink','sentAt','relances','datePlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv','rnd'];
+  var RESET=['facAcompte','facSolde','facAnnulees','signature','signLink','sentAt','relances','datePlanif','momentPlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv','rnd'];
   function guardDup(){
     var o=window.dupDevis; if(typeof o!=='function'||o._nxf) return;
     var w=function(id){
@@ -208,10 +211,52 @@
     var n=window.nxd2; if(n){ ['save','statut','sign'].forEach(function(k){ var o=n[k]; if(typeof o!=='function'||o._nxfig) return; var w=function(){ var r=o.apply(this,arguments); try{ setTimeout(stampAll,0); }catch(e){} return r; }; Object.keys(o).forEach(function(q){ w[q]=o[q]; }); w._nxfig=true; n[k]=w; }); }
     else if(tries<30) setTimeout(function(){ guardFig(tries+1); },300);
   }
+  /* 9. C3 (mission F, 29/10/2026) — article absent de la base de prix, compté 0 € : il doit se voir.
+        - bandeau rouge (même style que l'alerte « Montant différent » du récapitulatif v2 : .nxd2-warn.red) en tête du devis ouvert,
+          ancien format (index.html, cpAbsentsWizard) et nouveau format (next-devis2.js, #nxd2Abs) ;
+        - confirmation avant l'envoi (décision de Gabriel du 21/10/2026 : confirmation, PAS de blocage) : mail (mailDevis), bouton
+          « Envoyer » de la liste (next-statut.js), signature en ligne (nxd2.sign, et ci-dessous l'ancien formulaire).
+        La liste vient de compute(d).absents : recalculée à chaque fois, jamais enregistrée dans le devis. Textes validés le 21/10/2026. */
+  function escH(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(ch){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]; }); }
+  function absentsOf(d,c){
+    try{ if(!c){ if(!d||typeof window.compute!=='function') return []; c=window.compute(cl(d)); } return (c&&Array.isArray(c.absents))?c.absents.slice():[]; }
+    catch(e){ console.warn('ClimPilot (C3) articles absents non calculés :',e); return []; }
+  }
+  function absentsTexte(a){ return a.length>1?a.length+' articles absents de la base de prix, comptés 0 € : '+a.join(' ; '):'1 article absent de la base de prix, compté 0 € : '+a[0]; }
+  window.nxAbsentsOf=absentsOf;
+  window.nxAbsentsTexte=absentsTexte;
+  window.nxAbsentsBandeau=function(a){
+    if(!Array.isArray(a)||!a.length) return '';
+    return '<div class="nxd2-warn red nx-absents" role="alert" data-absents="'+a.length+'" style="border-left:4px solid var(--red,#c0392b);background:#fdecea;padding:8px 12px;border-radius:8px;margin:6px 0 10px;font-size:13.5px;overflow-wrap:anywhere">⚠️ <b>'+escH(absentsTexte(a))+'</b></div>';
+  };
+  /* true = on peut envoyer (aucun article absent, ou envoi confirmé) ; false = ne rien envoyer */
+  window.nxAbsentsOk=function(d,c){
+    var a=absentsOf(d,c); if(!a.length) return true;
+    return confirm('Ce devis contient '+(a.length>1?a.length+' articles comptés 0 €':'1 article compté 0 €')+' ('+a.join(', ')+'). L\'envoyer quand même ?');
+  };
+  /* signature en ligne depuis l'ANCIEN formulaire (boutons de next-signature.js, hors du périmètre C3) : même confirmation, avant
+     tout envoi ; le nouveau format la pose dans nxd2.sign (next-devis2.js), d'où « cur.v!==2 » ici (pas de double question) */
+  function guardEnvoiSignature(tries){
+    var o=window.nxsSendDevis;
+    if(typeof o!=='function'){ if((tries||0)<40) setTimeout(function(){ guardEnvoiSignature((tries||0)+1); },250); return; }
+    if(o._nxabs) return;
+    var w=function(){
+      try{
+        if(typeof cur!=='undefined'&&cur&&cur.v!==2){
+          try{ if(typeof formToDevis==='function') formToDevis(); }catch(e){ console.warn('ClimPilot (C3) lecture du formulaire :',e); }
+          if(!window.nxAbsentsOk(cur)) return;
+        }
+      }catch(e){ console.warn('ClimPilot (C3) contrôle avant signature :',e); }
+      return o.apply(this,arguments);
+    };
+    Object.keys(o).forEach(function(k){ w[k]=o[k]; }); w._nxabs=true; window.nxsSendDevis=w;
+  }
+
   function boot(){ try{ normalize(); window.checkBackup&&window.checkBackup();
     guardDel('delDevis','devis','Devis'); guardDel('delDep','dep','Intervention'); guardDel('delLoc','loc','Location'); guardDel('delCtr','ctr','Contrat'); guardDup(); guardFacNum(); }catch(e){}
     try{ guardDepFreeze(); }catch(e){}
-    try{ guardFig(0); setTimeout(stampAll,3000); }catch(e){} }
+    try{ guardFig(0); setTimeout(stampAll,3000); }catch(e){}
+    try{ guardEnvoiSignature(0); }catch(e){ console.warn('ClimPilot (C3) garde de l\'envoi pour signature :',e); } }
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',function(){ setTimeout(boot,0); }); else setTimeout(boot,0);
   /* la session cloud arrive un peu après le démarrage */
   var tries=0, iv=setInterval(function(){ tries++; if(cloudOn()||tries>30){ clearInterval(iv); try{ window.checkBackup&&window.checkBackup(); }catch(e){} } },1000);
