@@ -197,3 +197,15 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
 - **Chromium récent (Playwright ≥ 1.63, Chromium ≥ 153) dans `unshare -n`** : il ignore `Network.emulateNetworkConditions{offline:false}` et se croit hors ligne, la suite I s'arrête alors à I5.
   Contournement **hors dépôt** utilisé pour ces essais : dans l'espace réseau isolé, une paire `veth` avec adresses privées (10.9.9.1/24 et 10.9.9.2/24) et **sans route** (rien ne peut sortir).
   Conséquence : le contrôle « seule la boucle locale existe » de l'autotest est rouge par construction, et la suite X (hors ligne) doit être rejouée sans veth (8/8). Non corrigé dans `env.mjs`.
+
+## Ajouts 31/10/2026 (P6+ — branche `correctif/p6-env-superpdp`)
+- **`tests/sql/test_p6_droits.py`** (15 tests, PostgreSQL local) : retrait des droits inutiles du visiteur non connecté (`anon`) —
+  cinq petites fonctions, tables ClimPilot et leurs séquences ; appli connectée et `service_role` inchangés ; rejouable, tables
+  absentes tolérées ; retour arrière ; scripts TEST / RÉEL (copie conforme de la migration, verrous éprouvés, lignes « OK », et
+  « À REVOIR » sur une base non migrée) ; script d'essai n° 1 (mêmes 36 contrôles, plus rien d'ouvert au visiteur).
+  **Garde** (`test_p6_14`) : la base de test applique **toutes** les migrations de `supabase/migrations` (ordre des noms) ; aucun
+  objet du schéma `public` ne doit rester accessible à `anon`. Une nouvelle migration qui oublie `revoke … from public, anon` le fait échouer.
+- `tests/supabase-test/6-droits-anon-TEST.sql` (verrou par marqueur, 27 « OK »), `6-REEL-droits-anon.sql` (refuse le projet TEST,
+  19 « OK »), `6-droits-anon-retour-arriere.sql` (2 « OK »).
+- `tests/functions/test-superpdp-envoi.mjs` : 30 contrôles (bac à sable seulement si `env === 'sandbox'`, valeur brute enregistrée à la
+  connexion) ; suite H, bloc H3 (environnement inattendu → compte réel).
