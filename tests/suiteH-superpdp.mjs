@@ -22,9 +22,9 @@ const MOCK=`(function(env){
         case 'connect': if(body.client_secret!=='bonsecret') return {data:{erreur:'identifiants',message:'SUPER PDP refuse ces identifiants : invalid_client'}}; S.connecte=true; return {data:{connecte:true,env:S.env,company:co}};
         case 'disconnect': S.connecte=false; return {data:{connecte:false}};
         case 'validate': S.lastXml=body.xml; return {data:{rapport:S.valid?{is_valid:true,profil:'EN16931',erreurs:[],avertissements:[]}:{is_valid:false,erreurs:[{message:'BR-FR-12 : adresse électronique du vendeur manquante',location:'/rsm:CrossIndustryInvoice'}],avertissements:[]}}};
-        case 'send': S.sent++; S.lastSend=body; return {data:{id:1000+S.sent,direction:'out',events:[{status_code:'api:uploaded',status_text:'uploaded',created_at:'2026-10-01T10:00:00Z'}],env:S.env}};
-        case 'invoice': return {data:{id:body.id,events:[{status_code:'api:uploaded',created_at:'2026-10-01T10:00:00Z'},{status_code:S.codeInvoice||'fr:205',status_text:S.codeInvoice==='fr:213'?'Rejetée':'Approuvée',created_at:'2026-10-01T11:00:00Z'}]}};
-        case 'list': return {data:{items:[{id:55,direction:'in',numero:'FA-889',date:'2026-09-28',vendeur:'Clim Distribution',total:1250.4,events:[{code:'fr:203',texte:'Mise à disposition',at:'2026-09-28T09:00:00Z'}]}],has_after:false}};
+        case 'send': S.sent++; S.lastSend=body; return {data:{id:1000+S.sent,direction:'out',events:[{status_code:'api:uploaded',status_text:'uploaded',created_at:(__REF.an+'-10-01T10:00:00Z')}],env:S.env}};
+        case 'invoice': return {data:{id:body.id,events:[{status_code:'api:uploaded',created_at:(__REF.an+'-10-01T10:00:00Z')},{status_code:S.codeInvoice||'fr:205',status_text:S.codeInvoice==='fr:213'?'Rejetée':'Approuvée',created_at:(__REF.an+'-10-01T11:00:00Z')}]}};
+        case 'list': return {data:{items:[{id:55,direction:'in',numero:'FA-889',date:(__REF.an+'-09-28'),vendeur:'Clim Distribution',total:1250.4,events:[{code:'fr:203',texte:'Mise à disposition',at:(__REF.an+'-09-28T09:00:00Z')}]}],has_after:false}};
         case 'event': S.lastEvent=body; return {data:{ok:true}};
         case 'directory': return {data:{entreprises:[{formal_name:'BOULANGERIE DUPRE'}],entrees:body.number==='552100554'?[{id:1}]:[],erreur_annuaire:null}};
         case 'download': return {data:{type:'application/xml',base64:btoa('<x/>')}};

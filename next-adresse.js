@@ -96,7 +96,7 @@
   /* distance d'une adresse complète depuis le domicile → {km,min,est,label} */
   function distance(adr){ return geocode(adr).then(function(g){ return route(g).then(function(r){ return {km:r.km,min:r.min,est:r.est,label:g.label}; }); }); }
   function cachedDist(adr){ var g=GEO[key(adr)], h=homeSync(); if(h&&g&&g.route&&g.route.from===key(h.adr)) return {km:g.route.km,min:g.route.min,est:false,label:g.label}; return null; }
-  window.nxadDistance=distance; window.nxadCached=cachedDist;
+  window.nxadDistance=distance; window.nxadCached=cachedDist; window.nxadGeo=function(adr){ var g=GEO[key(adr)]; return (g&&g.lat)?{lon:g.lon,lat:g.lat,label:g.label}:null; }; window.nxadHav=hav;
   function fmtDur(m){ m=Math.round(m||0); return m<60?m+' min':Math.floor(m/60)+' h '+('0'+(m%60)).slice(-2); }
   function distTxt(r){ return (r.est?'≈ ':'')+fq(r.km)+' km · '+fmtDur(r.min)+(r.est?' (estimé)':''); }
   window.nxadDistTxt=distTxt;
@@ -261,7 +261,7 @@
         /* visites techniques datées (devis non refusés) */
         for(var i=0;i<7;i++){ var day=new Date(ws); day.setDate(ws.getDate()+i); var iso=dISO_(day);
           (DEVIS||[]).forEach(function(d){ var vd=d.visite&&d.visite.date; if(!vd||d.statut==='refuse') return; var vi=window.nxToISO?nxToISO(vd):vd; if(vi!==iso) return;
-            r.ev.push({i:i,ic:'📋',lbl:'Visite technique — '+(d.cNom||'?'),sub:(d.num||'')+(d.visite.contact?' · sur place : '+d.visite.contact:''),h:1,adr:[d.cAdr,d.cVille].filter(Boolean).join(', '),click:"openDevis('"+d.id+"')",_visite:true}); }); }
+            r.ev.push({i:i,k:'visite:'+d.id,ic:'📋',lbl:'Visite technique — '+(d.cNom||'?'),sub:(d.num||'')+(d.visite.contact?' · sur place : '+d.visite.contact:''),h:1,adr:[d.cAdr,d.cVille].filter(Boolean).join(', '),click:"openDevis('"+d.id+"')",_visite:true}); }); }
         r.ev.forEach(function(ev){
           var s=srcOf(ev), ob=s&&s.o, cname=ob?ob.cNom:(ev.lbl||'').replace(/^.*— /,'');
           var cl=clientOf(cname);
@@ -280,7 +280,7 @@
   function card(e){
     var note=[e.noteChantier?'<div class="nxad-note">📝 '+esc(e.noteChantier)+'</div>':'',e.noteClient?'<div class="nxad-note cl">👤 '+esc(e.noteClient)+'</div>':''].join('');
     if(e.adr&&!e.dist) wantDist(e.adr);
-    return '<div class="nxad-ev" onclick="'+esc(e.click)+'">'+
+    return '<div class="nxad-ev"'+(e.k?' data-k="'+esc(e.k)+'"':'')+' onclick="'+esc(e.click)+'">'+
       '<div class="t"><b>'+e.ic+' '+esc(e.lbl)+'</b></div>'+
       (e.sub?'<div class="s">'+esc(e.sub)+'</div>':'')+
       (e.adr?'<div class="a">📍 '+esc(e.adr)+(e.dist?' — <b>'+esc(distTxt(e.dist))+'</b>':'')+'</div>':'<div class="a muted">Adresse non renseignée</div>')+note+
@@ -310,13 +310,13 @@
         if(mobile){
           g.innerHTML='<div class="nxad-list">'+days.map(function(D){
             if(!D.evs.length&&D.iso!==today&&D.i>4) return '';
-            if(!D.evs.length) return '<div class="nxad-day nxad-free'+(D.iso===today?' today':'')+'"><div class="h">'+D.nm+' '+D.day.getDate()+(D.iso===today?' · aujourd\'hui':'')+' — <span>rien de prévu</span></div></div>';
-            return '<div class="nxad-day'+(D.iso===today?' today':'')+'"><div class="h">'+D.nm+' '+D.day.getDate()+' '+D.day.toLocaleDateString('fr-FR',{month:'short'})+(D.iso===today?' · aujourd\'hui':'')+'</div>'+
+            if(!D.evs.length) return '<div class="nxad-day nxad-free'+(D.iso===today?' today':'')+'" data-iso="'+D.iso+'"><div class="h">'+D.nm+' '+D.day.getDate()+(D.iso===today?' · aujourd\'hui':'')+' — <span>rien de prévu</span></div></div>';
+            return '<div class="nxad-day'+(D.iso===today?' today':'')+'" data-iso="'+D.iso+'"><div class="h">'+D.nm+' '+D.day.getDate()+' '+D.day.toLocaleDateString('fr-FR',{month:'short'})+(D.iso===today?' · aujourd\'hui':'')+'</div>'+
               (D.evs.length?D.evs.map(card).join(''):'<div class="nxad-empty">Rien de prévu</div>')+'</div>';
           }).join('')+'</div>';
         } else {
           g.innerHTML='<div class="nxad-grid">'+days.map(function(D){
-            return '<div class="nxad-day'+(D.iso===today?' today':'')+'"><div class="h">'+D.nm+' '+D.day.getDate()+'</div>'+(D.evs.length?D.evs.map(card).join(''):'')+'</div>';
+            return '<div class="nxad-day'+(D.iso===today?' today':'')+'" data-iso="'+D.iso+'"><div class="h">'+D.nm+' '+D.day.getDate()+'</div>'+(D.evs.length?D.evs.map(card).join(''):'')+'</div>';
           }).join('')+'</div>';
         }
       }catch(e){ try{ console.error('nxad plan',e); }catch(_){} }

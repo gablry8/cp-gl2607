@@ -1,7 +1,7 @@
 // Suite M — point de départ des trajets (hors du code), copie dans le presse-papiers, registre des documents
 // (recherche et filtres sur tous les documents, affichage par 200).
 import fs from 'fs';
-import {page,rec,RES,closeBrowser} from './lib.mjs';
+import {page,rec,RES,closeBrowser,REF} from './lib.mjs';
 import { ecrireResultats, RACINE } from './env.mjs';
 const G='Point de départ', C='Presse-papiers', R='Registre';
 
@@ -76,7 +76,10 @@ const POINT=()=>JSON.parse(localStorage.getItem('cpnext_home')||'null');
   await ctx.close(); }
 
 /* M6. Registre : 1 500 devis + 500 interventions ; recherche et filtres sur tout, affichage par 200 */
-{ const {p,ctx,errs}=await page({mobile:false});
+/* P0-suite (R12, 24/10/2026) : horloge figée à la date de référence — les devis semés remontent jusqu'à 62 jours en arrière (created: Date.now()-i*3600e3) ; le registre
+   n'affiche qu'UNE année à la fois (la plus récente, next-addons.js, nxRenderDocs) : avec la vraie date au 05/01/2027 les devis couvraient 2026 et 2027, la liste
+   de l'année affichée tenait en moins de 200 lignes, le bouton « Afficher plus » n'existait plus et la suite plantait (mesuré sous faketime, avant correction). */
+{ const {p,ctx,errs}=await page({mobile:false,horloge:REF.horloge});
   await p.evaluate(()=>{ const mods=NXD2.natures.map(n=>n.id);
     for(let i=0;i<1500;i++){ const m=mods[i%mods.length]; const d=NXD2.newDevis(m,{}); d.lots=[NXD2.newLot(m)]; Object.assign(d,{cNom:'Client '+(i%300),statut:'brouillon',created:Date.now()-i*3600e3}); d.num=NXD2.numFor(d)+'-'+i; DEVIS.push(d); }
     DEVIS.push(Object.assign(NXD2.newDevis(mods[0],{}),{cNom:'Garage Rarissime',statut:'brouillon',created:Date.now()-5*86400e3,num:'DV-ZZZ-UNIQUE'}));

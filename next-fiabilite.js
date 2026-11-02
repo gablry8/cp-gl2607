@@ -8,7 +8,8 @@
       plus de « undefined » ni de « NaN kg » dans les listes et PDF.
    3. Le bandeau « Sauvegarde jamais faite — tes données ne vivent que
       sur cet ordinateur » ne s'affiche plus quand le cloud est connecté
-      (synchro + sauvegardes automatiques serveur et Drive).
+      (synchro + copies automatiques du serveur, DANS Supabase) ; à la place,
+      rappel discret si l'export complet hors Supabase date de plus de 7 jours.
    ============================================================ */
 (function(){
   'use strict';
@@ -44,12 +45,14 @@
   }
   normalize();
 
-  /* 3. rappel de sauvegarde : inutile (et faux) quand le cloud est connecté */
+  /* 3. rappel de sauvegarde. Cloud connecté : plus de « tes données ne vivent que sur cet ordinateur » (faux), mais un
+        rappel DISCRET si l'export complet hors Supabase date de plus de 7 jours (19/10/2026 : les copies du serveur
+        restent dans Supabase ; la copie Drive hebdomadaire annoncée avant n'existait pas). */
   function cloudOn(){ try{ return typeof SESS!=='undefined'&&!!SESS; }catch(e){ return false; } }
   if(typeof window.checkBackup==='function'){
     var _cb=window.checkBackup;
     window.checkBackup=function(){
-      if(cloudOn()){ var b=document.getElementById('bkbanner'); if(b){ b.className='syncbanner'; b.innerHTML=''; } return; }
+      if(cloudOn()){ var b=document.getElementById('bkbanner'); if(b){ var t=''; try{ t=typeof window.nxaRappelExport==='function'?window.nxaRappelExport():''; }catch(e){ t=''; } b.className='syncbanner'; b.innerHTML=t; } return; }
       return _cb.apply(this,arguments);
     };
   }
@@ -77,7 +80,7 @@
     }; w._nxf=true; window[fn]=w;
   }
   /* 5. dupliquer un devis ne recopie ni ses factures, ni sa signature, ni son suivi */
-  var RESET=['facAcompte','facSolde','facAnnulees','signature','signLink','sentAt','relances','datePlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv','rnd'];
+  var RESET=['facAcompte','facSolde','facAnnulees','signature','signLink','sentAt','relances','datePlanif','momentPlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv','rnd'];
   function guardDup(){
     var o=window.dupDevis; if(typeof o!=='function'||o._nxf) return;
     var w=function(id){

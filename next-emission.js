@@ -36,7 +36,7 @@
    ============================================================ */
 (function(){
   'use strict';
-  var VERSION='1.10.0'; window.CP_VERSION=VERSION;
+  var VERSION='1.13.0'; window.CP_VERSION=VERSION;
   var REG='cp2_docs', FIL='cpnext_docs_fichiers', ATT='cpnext_emission_attente', EVQ='cpnext_events_attente', TSEQ='cp2_testseq', FR='cp2_facturation';
   try{ [REG,TSEQ,FR].forEach(function(k){ if(Array.isArray(window.SYNC_KEYS)&&SYNC_KEYS.indexOf(k)<0) SYNC_KEYS.push(k); }); }catch(e){}
 
@@ -64,6 +64,13 @@
     return Promise.race([window.sb.rpc(name,params),new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('délai dépassé (25 s)')); },25000); })]);
   }
   function absente(err){ var m=String((err&&(err.message||''))+' '+(err&&err.code||'')); return /PGRST202|Could not find the function|does not exist/i.test(m); }
+  /* réponse de supabase-js quand la requête n'a pas abouti au niveau réseau (fetch en échec, abandon) : status 0, message
+     « TypeError: Failed to fetch » / « TypeError: Load failed » (Safari) / « FetchError: … » / « AbortError: … ». Le serveur n'a
+     pas répondu, mais il a peut-être reçu la demande : à distinguer d'une vraie erreur du serveur (status 4xx/5xx, message PostgREST). */
+  function erreurReseau(r){
+    if(!r||!r.error) return false; if(r.status===0) return true;
+    return /^(TypeError|FetchError|AbortError)\b|Failed to fetch|Load failed|NetworkError/i.test(String(r.error.message||''));
+  }
   function sonde(force){
     if(!cloud()) return Promise.resolve(INFO={t:Date.now(),ok:false,raison:'cloud'});
     if(!force&&INFO.ok!==null&&Date.now()-INFO.t<120000) return Promise.resolve(INFO);
@@ -106,9 +113,14 @@
     return window.sb.from('climpilot_documents').select('html,xml').eq('id',e.sid).maybeSingle().then(function(r){
       var d=r&&r.data; if(d&&(d.xml||d.html)){ fichiersPut(num,{html:d.html||'',xml:d.xml||null,at:Date.now(),mode:e.mode}); return true; } return false; },function(){ return false; });
   };
+  /* 1.12 (recette du 14/10/2026) : une entrée déjà connue garde sa date d'ajout et n'est réécrite que si elle change.
+     Le rapprochement fait à chaque ouverture réécrivait tout le registre (nouvelle date) : chaque appareil renvoyait
+     alors l'état, l'autre tombait en conflit et se rechargeait. */
   function ajouterRegistre(e){
     var a=reg(); e.id=(e.mode==='demo'?'demo|':'')+e.num+'|'+srcCle(e.src);
-    var i=a.findIndex(function(x){ return x.id===e.id; }); if(i>=0) a[i]=Object.assign(a[i],e); else a.push(e);
+    var i=a.findIndex(function(x){ return x.id===e.id; });
+    if(i>=0){ var avant=JSON.stringify(a[i]), n=Object.assign({},a[i],e); if(a[i].at!=null) n.at=a[i].at; if(JSON.stringify(n)===avant) return; a[i]=n; }
+    else a.push(e);
     regPut(a);
   }
   /* doublons : un même numéro porté par deux documents différents */
@@ -272,14 +284,153 @@
       if(d.model){ if(!d.model.echeance||String(d.model.echeance)<av.echeance){ d.model.echeance=av.echeance; d.model.echeanceTexte=av.echeanceTexte||''; } }
     }
     var mo=mode();
-    if(mo==='demo'){ return Promise.resolve(finir(S,d,numTest(d.type==='avoir'?'AV':'F',d.date),'demo',null)); }
+    if(mo==='demo'){
+      /* C1 (M3, 21/10/2026) — même règle en démonstration (décision de Gabriel) : en démo il n'y a pas de registre serveur
+         (les numéros TEST- sont locaux), la seule trace « déjà facturé ailleurs » est l'état synchronisé. Appareil jamais
+         relié au cloud : comme avant. Sinon : hors ligne → rien ; cloud muet → rien ; état plus récent sur le serveur pas
+         encore reçu → rien (il faut d'abord synchroniser). */
+      if(!cloud()) return Promise.resolve(finir(S,d,numTest(d.type==='avoir'?'AV':'F',d.date),'demo',null));
+      BUSY=true; var fin0=attenteVisible();
+      return aJour().then(function(v){ fin0(); BUSY=false;
+        if(v.horsligne){ bloque({raison:'horsligne'}); relire(sorte); return null; }
+        if(v.illisible){ illisible(); relire(sorte); return null; }
+        if(v.retard){ pasAJour(d); relire(sorte); return null; }
+        return finir(S,d,numTest(d.type==='avoir'?'AV':'F',d.date),'demo',null);
+      },function(e){ fin0(); BUSY=false; illisible(String(e&&e.message||e)); relire(sorte); return null; });
+    }
     BUSY=true; say('🔐 Émission de la facture… (numéro attribué par le serveur)');
+    var fin=attenteVisible();
     return sonde(true).then(function(info){
-      if(!info.ok){ BUSY=false; bloque(info); relire(sorte); return null; }
-      return demanderServeur(d,'F',d.type).then(function(r){ BUSY=false; if(!r){ relire(sorte); return null; }
-        if(r.differe) return reprendreServeur(sorte,d,r.doc);
-        return finir(S,d,r.doc.num,'reel',r.doc); });
-    }).catch(function(e){ BUSY=false; bloque({raison:'serveur',detail:String(e&&e.message||e)}); relire(sorte); return null; });
+      if(!info.ok){ fin(); BUSY=false; bloque(info); relire(sorte); return null; }
+      /* 1.12 (recette du 14/10/2026) : déjà facturé depuis un autre appareil pas encore synchronisé ici ? On reprend la
+         facture du registre du serveur au lieu d'en émettre une 2e pour le même chantier (une facture ne se supprime pas). */
+      return dejaEmis(d).then(function(ex){
+        /* C1 : registre illisible ou trop lent → RIEN n'est émis (avant : « le serveur décide », et il ne décidait rien) */
+        if(ex&&ex.illisible){ fin(); BUSY=false; illisible(); relire(sorte); return null; }
+        if(ex) return reprendreAilleurs(sorte,d,ex).then(function(x){ fin(); return x; });
+        return demanderServeur(d,'F',d.type).then(function(r){ fin(); if(!r||r.inconnu){ BUSY=false; relire(sorte); return null; }
+          /* C1 : le serveur a refusé (facture vivante déjà au registre pour cette source, solde qui ignore l'acompte,
+             acompte après le solde) : la facture existante est reprise, comme si le registre nous l'avait montrée */
+          if(r.refus){ attentePut(srcCle(d.src),null); return reprendreAilleurs(sorte,d,r.refus); }
+          BUSY=false;
+          if(r.differe) return reprendreServeur(sorte,d,r.doc);
+          return finir(S,d,r.doc.num,'reel',r.doc); });
+      });
+    }).catch(function(e){ fin(); BUSY=false; bloque({raison:'serveur',detail:String(e&&e.message||e)}); relire(sorte); return null; });
+  }
+  /* indicateur pendant une vérification longue (registre lent) : un mot au bout de 4 s, un autre à 12 s ; rendu par la fonction retournée */
+  function attenteVisible(){
+    var t1=setTimeout(function(){ say('⏳ Vérification du registre des factures en cours…'); },4000);
+    var t2=setTimeout(function(){ say('⏳ Le registre tarde à répondre (réseau faible ?). Rien ne sera émis sans réponse.'); },12000);
+    return function(){ clearTimeout(t1); clearTimeout(t2); };
+  }
+  function illisible(detail){
+    var t='Impossible de vérifier le registre des factures (pas de réponse du cloud'+(detail?' : '+detail:'')+').\n\nRien n\'a été émis. Réessaie dans un instant, ou depuis un appareil qui a du réseau.';
+    try{ alert(t); }catch(e){ say(t); }
+  }
+  function pasAJour(d){
+    var t='Cet appareil n\'est pas à jour : une modification faite depuis un autre appareil n\'a pas encore été reçue ici.\n\nRien n\'a été émis. Quitte cet écran pour synchroniser, vérifie '+(d&&d.src&&d.src.k==='dep'?'l\'intervention':'le chantier')+', puis réessaie.';
+    try{ alert(t); }catch(e){ say(t); }
+  }
+  /* démo : l'appareil est-il à jour de l'état synchronisé ? (lecture légère : la date de la dernière écriture serveur) */
+  function aJour(){
+    if(navigator.onLine===false) return Promise.resolve({horsligne:true});
+    var q;
+    try{ q=window.sb.from('climpilot_state').select('updated_at').eq('user_id',window.SESS.user.id).maybeSingle(); }catch(e){ return Promise.resolve({illisible:true}); }
+    var delai=new Promise(function(ok){ setTimeout(function(){ ok({illisible:true}); },25000); });
+    return Promise.race([Promise.resolve(q).then(function(r){
+      if(!r||r.error) return {illisible:true};
+      if(!r.data) return {ok:true}; /* cloud vide : rien à recevoir */
+      var meta={}; try{ meta=load('cp2_sync',{})||{}; }catch(e){}
+      return r.data.updated_at&&meta.lastRemote&&r.data.updated_at!==meta.lastRemote?{retard:true}:{ok:true};
+    },function(){ return {illisible:true}; }),delai]);
+  }
+  /* facture trouvée ailleurs (registre du serveur, ou refus du serveur à l'émission) : reprise ici, message, rien d'émis */
+  function reprendreAilleurs(sorte,d,ex){
+    var lent=new Promise(function(ok){ setTimeout(function(){ ok({fait:false}); },25000); });
+    return Promise.race([rapprocher(),lent]).then(function(){ BUSY=false; recopierEcrans(d.src); relire(sorte); try{ updateBadges(); }catch(e){}
+      /* la facture du registre est-elle bien sur le chantier maintenant ? sinon (appareil pas à jour, formulaire ouvert…) on le dit */
+      if(!porte(ex)){ var t0='Une facture existe déjà sur le serveur pour '+(d.src.k==='dep'?'cette intervention':'ce chantier')+' : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nCet appareil n\'est pas encore à jour : quitte cet écran pour synchroniser, puis vérifie. Rien n\'a été émis.';
+        try{ alert(t0); }catch(e){ say(t0); } return null; }
+      var t=ex.autre
+        ?'Une facture '+(ex.src&&ex.src.w==='acompte'?'d\'acompte':'de solde')+' a été émise pour ce devis depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nElle est maintenant reprise ici. Rien n\'a été émis : vérifie le devis, puis relance « Facturer » si besoin.'
+        :'Déjà facturé depuis un autre appareil : '+ex.num+' (le '+fr(ex.date_doc)+').\n\nCette facture est reprise ici. Aucune nouvelle facture n\'a été émise.';
+      try{ alert(t); }catch(e){ say(t); } return ex.autre?null:ex.num; });
+  }
+  /* facture émise ailleurs pour le même chantier / la même intervention (même source), ni annulée ici ni par un avoir du
+     registre ; une demande de CET appareil restée sans réponse suit son propre chemin (même request_id, voir demanderServeur) */
+  function annuleIci(src,num){
+    try{
+      if(src.k==='devis') return numsAnnules((DEVIS||[]).find(function(x){ return x.id===src.id; }),'facAnnulees').indexOf(num)>=0;
+      if(src.k==='dep') return numsAnnules((DEP||[]).find(function(x){ return x.id===src.id; }),'facAnnulees').indexOf(num)>=0;
+      if(src.k==='loc') return numsAnnules((LOC||[]).find(function(x){ return x.id===src.id; }),'facAnnulees').indexOf(num)>=0;
+      if(src.k==='ctr') return numsAnnules((CTR||[]).find(function(x){ return x.id===src.id; }),'facsAnnulees').indexOf(num)>=0;
+    }catch(e){}
+    return false;
+  }
+  /* C1 (M3, 21/10/2026) : si le registre ne se lit pas (erreur, ou plus de 25 s), on ne devine pas et on ne laisse PAS le
+     serveur décider — on renvoie {illisible:true} et emettre() n'émet rien. Avant, un null laissait partir l'émission : un
+     téléphone pas à jour pouvait émettre un 2e solde, ou un solde qui ignorait l'acompte (reproduit par Opus, M3 C1). */
+  var ILLISIBLE={illisible:true};
+  function dejaEmis(d){
+    if(!d||!d.src||!d.src.k||d.type==='avoir') return Promise.resolve(null);
+    var cle=srcCle(d.src), a=attentes()[cle], rid0=a&&a.rid;
+    var delai=new Promise(function(ok){ setTimeout(function(){ ok(null); },25000); });
+    return Promise.race([sourcesRegistre().catch(function(){ return null; }),delai]).then(function(docs){
+      if(!docs) return ILLISIBLE; /* registre illisible ou trop lent : rien ne sera émis */
+      /* seul un avoir TOTAL annule la facture ; après un avoir partiel, elle reste due (pas de 2e facture) */
+      var annulees={};
+      docs.forEach(function(x){ if(x&&x.type==='avoir'&&x.avt===true){ var w=String((x.src||{}).w||''); if(w) annulees[w.split('|')[0]]=1; } });
+      var vivantes=docs.filter(function(x){ return x&&x.origine==='emis'&&x.serie==='F'&&x.request_id!==rid0&&!annulees[x.num]&&!annuleIci(x.src||{},x.num); });
+      var L=vivantes.filter(function(x){ return srcCle(x.src)===cle; });
+      if(L.length) return L[L.length-1];
+      /* devis : l'autre facture (acompte ou solde) émise ailleurs et inconnue ici — un solde calculé sans l'acompte, ou un
+         acompte après le solde, facturerait deux fois la même somme */
+      if(d.src.k==='devis'){
+        var dv=(DEVIS||[]).find(function(x){ return x.id===d.src.id; }), connus={};
+        if(dv) [dv.facAcompte,dv.facSolde].forEach(function(f){ if(f&&f.num) connus[f.num]=1; });
+        var A=vivantes.filter(function(x){ var s=x.src||{}; return s.k==='devis'&&s.id===d.src.id&&String(s.w||'')!==String(d.src.w||'')&&!connus[x.num]; });
+        if(A.length){ var o=A[A.length-1]; o.autre=true; return o; }
+      }
+      return null;
+    },function(){ return ILLISIBLE; });
+  }
+  /* copies ouvertes à l'écran (devis ouvert, fiche d'intervention) remises à jour après une reprise du registre :
+     sinon « Enregistrer » réécrirait l'ancienne version, sans la facture */
+  function porte(ex){
+    try{ var s=ex.src||{};
+      if(s.k==='devis'){ var dv=(DEVIS||[]).find(function(x){ return x.id===s.id; }), f=dv&&(s.w==='acompte'?dv.facAcompte:dv.facSolde); return !!(f&&f.num===ex.num); }
+      if(s.k==='dep'){ var x=(DEP||[]).find(function(o){ return o.id===s.id; }); return !!(x&&x.facNum===ex.num); }
+      if(s.k==='loc'){ var l=(LOC||[]).find(function(o){ return o.id===s.id; }); return !!(l&&l.fac&&l.fac.num===ex.num); }
+      if(s.k==='ctr'){ var c=(CTR||[]).find(function(o){ return o.id===s.id; }); return !!(c&&(c.facs||[]).some(function(f){ return f.num===ex.num; })); }
+    }catch(e){}
+    return true;
+  }
+  function recopierEcrans(src){
+    try{
+      if(src.k==='devis'){ var dv=(DEVIS||[]).find(function(x){ return x.id===src.id; }), cu=window.NXD2&&NXD2.api.cur&&NXD2.api.cur();
+        [cu,(typeof cur!=='undefined'?cur:null)].forEach(function(o){ if(dv&&o&&o.id===dv.id&&o!==dv) ['facAcompte','facSolde'].forEach(function(k){ if(dv[k]) o[k]=cl(dv[k]); }); }); }
+      if(src.k==='dep'&&typeof curDep!=='undefined'&&curDep&&curDep.id===src.id){ var x=(DEP||[]).find(function(o){ return o.id===src.id; });
+        if(x&&x!==curDep){ curDep.facNum=x.facNum; curDep.facDate=x.facDate; curDep.statut=x.statut; } }
+    }catch(e){}
+  }
+  /* registre du serveur, sans le contenu des factures : seulement leur source (léger sur le téléphone) ; si la sélection
+     d'un champ JSON était refusée, lecture complète comme le rapprochement */
+  function sourcesRegistre(){
+    var q=function(sel){ return window.sb.from('climpilot_documents').select(sel).order('cree_le',{ascending:false}); };
+    var trier=function(L){ return L.slice().reverse(); }; /* les plus récents d'abord côté serveur (plafond de lignes), puis dans l'ordre */
+    return q('id,request_id,num,serie,type,origine,date_doc,src:payload->src,avt:payload->fac->total').then(function(r){
+      if(r&&!r.error&&Array.isArray(r.data)) return trier(r.data.map(function(x){ x.src=x.src||{}; x.avt=x.avt===true; return x; }));
+      return q('id,request_id,num,serie,type,origine,date_doc,payload').then(function(r2){
+        if(!r2||r2.error) return null; return trier((r2.data||[]).map(function(x){ var p=x.payload||{}; x.src=p.src||{}; x.avt=!!(p.fac&&p.fac.total===true); return x; })); });
+    });
+  }
+  window.nxEmisDejaEmis=dejaEmis;
+  /* 19/10/2026 — réponse jamais arrivée (délai dépassé, réseau coupé PENDANT l'envoi) : le serveur a peut-être enregistré la facture */
+  function inconnu(e){
+    var t='Résultat INCONNU ('+String(e&&e.message||e)+').\n\nLa demande est partie mais la réponse n\'est pas arrivée : la facture a PEUT-ÊTRE été enregistrée par le serveur.\n\n'+
+      'Réessaie depuis CET appareil, sur ce même document : le même clic reprend la même demande, sans doublon.\nNe la refais pas depuis un autre appareil.';
+    try{ alert(t); }catch(_){ say(t); }
   }
   function relire(sorte){ try{ if(sorte==='dep') loadDepForm(); if(sorte==='devis') renderFBloc(); }catch(e){} }
   function bloque(info){
@@ -295,13 +446,21 @@
     attentePut(cle,{rid:r0,at:Date.now(),serie:serie});
     var pl=payloadDe(d), mini=maxLocal(serie,d.date);
     return rpc('cp_emettre_document',{p_request_id:r0,p_serie:serie,p_type:type,p_date:d.date,p_payload:pl,p_min_numero:mini,p_client_version:VERSION}).then(function(r){
+      /* C1 (24/10/2026) : réseau coupé PENDANT l'appel — supabase-js (2.117.3) ne rejette pas la promesse, il renvoie
+         {error:{message:'TypeError: Failed to fetch'}, status:0}. La demande a PEUT-ÊTRE atteint le serveur : résultat INCONNU,
+         pas « NON émise » ; la demande reste en attente (même request_id au prochain clic). Idem délai dépassé (reprise ci-dessous). */
+      if(erreurReseau(r)){ inconnu(r.error); return {inconnu:true}; }
       if(r&&r.error){ bloque({raison:absente(r.error)?'migration':'serveur',detail:String(r.error.message||'')}); return null; }
-      var out=r&&r.data; if(!out||!out.ok||!out.doc){ bloque({raison:'serveur',detail:'réponse vide'}); return null; }
+      var out=r&&r.data;
+      /* C1 (M3, 21/10/2026) : refus du serveur « une seule facture vivante par source » — ok:false, raison, et la facture
+         existante (deja_facture : même source ; acompte_ignore : l'acompte à déduire ; solde_deja_emis : acompte après solde) */
+      if(out&&out.ok===false&&out.raison&&out.doc){ var ex=out.doc, p=ex.payload||{}; ex.src=p.src||{}; ex.autre=out.raison!=='deja_facture'; return {refus:ex,raison:out.raison}; }
+      if(!out||!out.ok||!out.doc){ bloque({raison:'serveur',detail:'réponse vide'}); return null; }
       /* la demande avait déjà été servie avec un autre contenu (réponse perdue, puis document modifié) :
          le document du serveur fait foi — rien n'est recalculé sur l'appareil (voir reprendreServeur) */
       if(out.deja&&out.doc.payload&&JSON.stringify(out.doc.payload.fac||{})!==JSON.stringify(pl.fac||{})) out.differe=true;
       return out;
-    });
+    },function(e){ inconnu(e); return {inconnu:true}; });   /* la demande reste en attente : même request_id au prochain clic */
   }
   /* numéro minimal envoyé au serveur (p_min_numero) : seulement les VRAIS numéros de l'année du document —
      registre du serveur (émis ou reconstitués) et anciennes factures choisies pour l'import ; jamais les essais */
@@ -372,7 +531,8 @@
       if(!info.ok){ BUSY=false; return {err:'Avoir NON émis : '+(RAISON[info.raison]||'serveur indisponible')+'. Rien n\'a été créé.'}; }
       /* la clé de demande d'un avoir : facture + montant + motif (le même formulaire rejoué = même demande) */
       d.src={k:'avoir',id:'',w:b.av.facNum+'|'+b.av.montant+'|'+b.av.motif};
-      return demanderServeur(d,'AV','avoir').then(function(r){ BUSY=false; if(!r) return {err:'Avoir non émis (serveur)'}; return fin(r.doc.num,'reel',r.doc); });
+      return demanderServeur(d,'AV','avoir').then(function(r){ BUSY=false; if(r&&r.inconnu) return {err:'Résultat inconnu pour cet avoir : réessaie depuis CET appareil avec le même formulaire (même demande, sans doublon).'};
+        if(!r) return {err:'Avoir non émis (serveur)'}; return fin(r.doc.num,'reel',r.doc); });
     }).catch(function(e){ BUSY=false; return {err:'Avoir non émis : '+String(e&&e.message||e)}; });
   };
 
@@ -460,14 +620,20 @@
   /* ---------- rapprochement avec le registre du serveur ---------- */
   function rapprocher(){
     if(mode()!=='reel'||!cloud()) return Promise.resolve({fait:false});
-    return window.sb.from('climpilot_documents').select('id,request_id,num,serie,type,origine,date_doc,payload,payload_hash,fichiers_hash').order('cree_le',{ascending:true}).then(function(r){
+    /* C1 (M3, 21/10/2026) : les plus récents d'abord côté serveur (plafond de lignes de PostgREST), puis remis dans l'ordre ici —
+       comme sourcesRegistre() ; avant, au-delà de 1 000 documents, les factures récentes n'auraient plus été vues */
+    return window.sb.from('climpilot_documents').select('id,request_id,num,serie,type,origine,date_doc,payload,payload_hash,fichiers_hash').order('cree_le',{ascending:false}).then(function(r){
       if(r.error) return {fait:false,erreur:r.error.message};
-      var docs=r.data||[], restaures=[], conflits=[];
+      var docs=(r.data||[]).slice().reverse(), restaures=[], conflits=[];
+      /* 1.12 (recette du 14/10/2026) : une facture annulée par un avoir TOTAL du registre n'est jamais remise dans son
+         chantier (l'annulation peut venir d'un autre appareil pas encore synchronisé ici) */
+      var annulees={};
+      docs.forEach(function(x){ var p=x&&x.payload||{}; if(x&&x.type==='avoir'&&p.fac&&p.fac.total===true){ var w=String((p.src||{}).w||''); if(w) annulees[w.split('|')[0]]=1; } });
       docs.forEach(function(doc){
         var p=doc.payload||{}, src=p.src||{};
         if(doc.origine==='emis'){
           ajouterRegistre({num:doc.num,mode:'reel',origine:'emis',type:doc.type,serie:doc.serie,date:doc.date_doc,src:src,fac:p.fac?remplaceVide(p.fac,doc.num):null,model:p.model?Object.assign(remplaceVide(p.model,doc.num),{id:doc.num}):null,sid:doc.id,ph:doc.payload_hash,at:Date.now()});
-          var res=restaurer(src,doc.num,p.fac?remplaceVide(p.fac,doc.num):null);
+          var res=annulees[doc.num]?'ok':restaurer(src,doc.num,p.fac?remplaceVide(p.fac,doc.num):null);
           if(res==='restaure') restaures.push(doc.num); else if(res==='conflit') conflits.push(doc.num);
           var a=attentes(); Object.keys(a).forEach(function(k){ if(a[k]&&a[k].rid===doc.request_id) attentePut(k,null); });
         } else {
@@ -632,7 +798,11 @@
         fichiersPut(num,{html:filigrane(html),xml:xml,at:Date.now(),mode:'demo'});
         return r; }; wc._nxem=true; window.nxCreateAvoir=wc; }
     /* paiements → événements */
-    var pf=window.payerFacture; if(typeof pf==='function'&&!pf._nxem){ var wp=function(kind,id,which){ var r=pf.apply(this,arguments); try{ var n=numDe(kind,id,which); if(n) evenement(n,'paiement',{date:today(),source:'payerFacture'}); }catch(e){} return r; }; wp._nxem=true; window.payerFacture=wp; }
+    /* 19/10/2026 : un évènement n'est envoyé que si l'encaissement a VRAIMENT changé (avant : « Annuler » sur le mode de
+       règlement, ou un second clic, envoyait quand même un « paiement » au journal du serveur) */
+    var pf=window.payerFacture; if(typeof pf==='function'&&!pf._nxem){ var wp=function(kind,id,which){ var avant=payeDe(kind,id,which); var r=pf.apply(this,arguments); try{ var n=numDe(kind,id,which); if(n&&!avant&&payeDe(kind,id,which)) evenement(n,'paiement',{date:today(),source:'payerFacture'}); }catch(e){} return r; }; wp._nxem=true; window.payerFacture=wp; }
+    var ae=window.annulerEncaissement; if(typeof ae==='function'&&!ae._nxem){ var wa=function(kind,id,which){ if(kind==='dep') return ae.apply(this,arguments); /* intervention : payDep trace déjà */
+        var avant=payeDe(kind,id,which); var r=ae.apply(this,arguments); try{ var n=numDe(kind,id,which); if(n&&avant&&!payeDe(kind,id,which)) evenement(n,'paiement_annule',{date:today(),source:'annulerEncaissement',payeLe:avant}); }catch(e){} return r; }; wa._nxem=true; window.annulerEncaissement=wa; }
     var pd=window.payDep; if(typeof pd==='function'&&!pd._nxem){ var wd=function(id){ var x=(DEP||[]).find(function(o){ return o.id===id; }), avant=x&&x.statut; var r=pd.apply(this,arguments); try{ if(x&&x.facNum&&avant!==x.statut) evenement(x.facNum,x.statut==='payee'?'paiement':'paiement_annule',{date:today(),mode:x.modeReg||''}); }catch(e){} return r; }; wd._nxem=true; window.payDep=wd; }
     /* une facture enregistrée sur le serveur ne se « corrige » plus : avoir */
     var un=window.nxfUnlockDep; if(typeof un==='function'&&!un._nxem){ var wu=function(){ try{ var e=curDep&&entree(curDep.facNum); if(e&&e.mode==='reel'&&e.origine==='emis'){ alert('La facture '+curDep.facNum+' est émise et enregistrée sur le serveur : elle ne se modifie plus. Pour la corriger, fais un avoir (écran Avoirs).'); return; } }catch(_){} return un.apply(this,arguments); }; wu._nxem=true; window.nxfUnlockDep=wu; }
@@ -650,6 +820,16 @@
     if(kind==='loc'){ var l=(LOC||[]).find(function(x){ return x.id===id; }); return l&&l.fac&&l.fac.num; }
     if(kind==='ctr'){ var c=(CTR||[]).find(function(x){ return x.id===id; }); var f2=c&&(c.facs||[]).find(function(x){ return String(x.annee)===String(which); }); return f2&&f2.num; }
     if(kind==='dep'){ var x=(DEP||[]).find(function(o){ return o.id===id; }); return x&&x.facNum; }
+    return null;
+  }
+  /* date d'encaissement de la facture (null = pas encaissée) */
+  function payeDe(kind,id,which){
+    try{
+      if(kind==='devis'){ var d=(DEVIS||[]).find(function(x){ return x.id===id; }); var f=d&&(which==='acompte'?d.facAcompte:d.facSolde); return (f&&f.payeLe)||null; }
+      if(kind==='loc'){ var l=(LOC||[]).find(function(x){ return x.id===id; }); return (l&&l.fac&&l.fac.payeLe)||null; }
+      if(kind==='ctr'){ var c=(CTR||[]).find(function(x){ return x.id===id; }); var f2=c&&(c.facs||[]).find(function(x){ return String(x.annee)===String(which); }); return (f2&&f2.payeLe)||null; }
+      if(kind==='dep'){ var x=(DEP||[]).find(function(o){ return o.id===id; }); return x&&x.statut==='payee'?(x.payeLe||'oui'):null; }
+    }catch(e){}
     return null;
   }
 

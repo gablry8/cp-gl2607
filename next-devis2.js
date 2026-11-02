@@ -228,7 +228,7 @@
   }
 
   /* ---------------- champs posés par d'autres écrans : jamais écrasés à l'enregistrement ---------------- */
-  var OWNED=['facAcompte','facSolde','facAnnulees','signature','signLink','relances','datePlanif','matReserve','hReel','achatReel','figEnv'];
+  var OWNED=['facAcompte','facSolde','facAnnulees','signature','signLink','relances','datePlanif','momentPlanif','matReserve','hReel','achatReel','figEnv'];
   function protect(c){
     try{
       var e=(DEVIS||[]).find(function(x){ return x.id===c.id; }); if(!e) return c;
@@ -610,6 +610,7 @@
       '</div>'+
       '<div class="card"><h2>📅 Planning</h2><div class="frm">'+
         fIn('Date prévue du chantier','$.datePlanif',d.datePlanif,{date:true,note:'visible au planning une fois accepté'})+
+        fSel('Moment','$.momentPlanif',d.momentPlanif||'',[['','Journée (par défaut)'],['matin','Matin'],['apresmidi','Après-midi'],['journee','Journée']],{note:'sert à éviter deux clients en même temps'})+
         fArea('Note chantier / accès (affichée au planning)','$.notePlanning',d.notePlanning,{rows:2})+
       '</div>'+
       (d.zone==='Aucun'&&(d.cAdr||d.cVille)?'<div class="nxd2-warn">Déplacement non facturé alors qu\'une adresse de chantier est renseignée.</div>':'')+

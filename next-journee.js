@@ -79,7 +79,7 @@
     if(mode==='matin'){
       var resume=[r.evToday.length?r.evToday.length+' rendez-vous / chantier'+(r.evToday.length>1?'s':''):'', nTodo?nTodo+' chose'+(nTodo>1?'s':'')+' à faire':'', r.aValider?r.aValider+' à valider':''].filter(Boolean).join(' · ');
       html+='<div class="nxj-sum">'+(resume?esc(resume):'Rien de prévu aujourd\'hui — journée libre pour avancer ou prospecter.')+'</div>';
-      html+=block('📅 Aujourd\'hui', r.evToday.map(evLine).join(''));
+      if(!window.nxtrTournee) html+=block('📅 Aujourd\'hui', r.evToday.map(evLine).join('')); /* remplacé par la tournée du jour (next-terrain.js) */
       html+=block('✅ À faire aujourd\'hui', todo.concat(r.urgentNoDate).map(function(t){ return taskLine(t,false); }).join(''));
       var att=chip(r.aValider,'proposition'+(r.aValider>1?'s':'')+' de l\'assistant à valider',"go('nx_assist')",'hot')+
         chip(r.relances.length,'devis à relancer (sans réponse depuis 7 j)',"go('relances')")+
@@ -108,8 +108,10 @@
       html+='<div class="nxj-bye">👋 Tout est noté. Tu peux décrocher.</div>';
     }
     host.innerHTML=html;
+    /* 20/10/2026 : cartes ajoutées par d'autres modules (messages, terrain) : window.nxjAjouts = [{id, carte(r, mode) → html}] */
+    try{ (window.nxjAjouts||[]).slice().sort(function(a,b){ return (a.pos||50)-(b.pos||50); }).forEach(function(a){ try{ var h2=a&&a.carte?a.carte(r,mode):''; if(h2){ var div=document.createElement('div'); div.innerHTML=h2; var bye=host.querySelector('.nxj-bye'); while(div.firstChild){ if(bye) host.insertBefore(div.firstChild,bye); else host.appendChild(div.firstChild); } } }catch(e){} }); }catch(e){}
   }
-  window.nxjRender=render;
+  window.nxjRender=render; window.nxjCollect=collect;
   window.nxjMode=function(m){ MODE=m; render(); };
   window.nxjDone=function(id){ try{ window.nxToggleTask(id); }catch(e){} toastX('✔ Fait','ok'); setTimeout(render,60); };
   window.nxjTomorrow=function(id){ if(window.nxUpdateTask && window.nxUpdateTask(id,{due:iso(addDays(new Date(),1))})){ toastX('↪ Reporté à demain','ok'); render(); } };
@@ -158,8 +160,10 @@
       window.go=function(v){ var r=_go.apply(this,arguments); try{ if(v==='nx_journee'){ render();
         document.querySelectorAll('.nx-nav-section').forEach(function(s){ var open=s.dataset.section==='home'; s.classList.toggle('open',open); }); } }catch(e){} return r; };
       /* écran d'accueil : on ouvre « Ma journée » au lancement si l'utilisateur n'a encore rien touché */
+      /* après une mise à jour reçue d'un autre appareil, l'appli rouvre l'écran d'avant (next-raccourcis.js) : pas de bascule */
+      function vueARouvrir(){ try{ var o=JSON.parse(sessionStorage.getItem('__cpVue')||'null'); return !!(o&&Date.now()-(+o.t||0)<15000); }catch(e){ return false; } }
       var touched=false; document.addEventListener('click',function(){ touched=true; },{once:true,capture:true});
-      setTimeout(function(){ try{ var v=window._curView; if(!touched && (v==='dash'||v==='nx_cockpit'||!v)) window.go('nx_journee'); }catch(e){} },1400);
+      setTimeout(function(){ try{ var v=window._curView; if(!touched && !window.__nxVueGardee && !vueARouvrir() && (v==='dash'||v==='nx_cockpit'||!v)) window.go('nx_journee'); }catch(e){} },1400);
       document.addEventListener('visibilitychange',function(){ if(document.visibilityState==='visible' && window._curView==='nx_journee') render(); });
     }catch(e){ try{ console.error('ClimPilot next-journee',e); }catch(_){} }
   }

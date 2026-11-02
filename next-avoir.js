@@ -246,6 +246,7 @@
     var d=prompt('Date du remboursement (jj/mm/aaaa)',fr(today())); if(d==null) return;
     var iso=(window.nxToISO?nxToISO(d):'')||today();
     var mode='Virement'; try{ mode=askMode(); }catch(e){}
+    if(mode==null){ say('Remboursement non enregistré (annulé)'); return; } /* 19/10/2026 : « Annuler » = rien n'est noté */
     av.rembourse={date:iso,mode:mode||''}; put(AK,AV); refreshAll(); say('Remboursement noté — il apparaît au livre des recettes');
   };
   function refreshAll(){ ['renderAvoirs','renderRecettes','renderDash','renderDep','renderLoc','renderContrats','renderFBloc','nxRenderDocs'].forEach(function(f){ try{ if(f==='renderAvoirs'){ if(window._curView==='nx_avoirs') renderAvoirs(); return; } if(typeof window[f]==='function'&&(f==='renderFBloc'||viewOf(f)===window._curView)) window[f](); }catch(e){} }); try{ updateBadges(); }catch(e){} }

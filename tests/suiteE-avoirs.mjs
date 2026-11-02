@@ -1,12 +1,12 @@
 import { ecrireResultats } from './env.mjs';
 // Suite E — avoirs
-import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
+import {page,rec,RES,closeBrowser,seed,REF} from './lib.mjs';
 import fs from 'fs';
 const clean=e=>[...new Set(e)].slice(0,6).join(' | ');
 const closePdf=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.click(); })()`;
 
 {
-  const {p,ctx,errs}=await page({mobile:true});
+  const {p,ctx,errs}=await page({mobile:true,horloge:REF.horloge});
   p.removeAllListeners('dialog'); p.on('dialog',d=>d.accept().catch(()=>{}));
   await seed(p);
   await p.evaluate(()=>{ window.askMode=()=>'Virement'; });
@@ -18,12 +18,12 @@ const closePdf=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.
     const imp1=allImpayes().some(i=>i.num===f1);
     facturerDevis(d.id,'solde'); document.getElementById('nx-pdf-close')&&document.getElementById('nx-pdf-close').click();
     return {f1,f2:d.facSolde&&d.facSolde.num,av:r.av&&r.av.num,lib:r.av&&r.av.libere,imp0,imp1,ann:(d.facAnnulees||[]).map(f=>f.num),id:d.id}; });
-  rec('Avoirs','Avoir total sur facture chantier non payée',e1.av==='TEST-AV-2026-001'&&e1.imp0&&!e1.imp1,JSON.stringify(e1));
+  rec('Avoirs','Avoir total sur facture chantier non payée',e1.av==='TEST-AV-'+REF.an+'-001'&&e1.imp0&&!e1.imp1,JSON.stringify(e1));
   rec('Avoirs','Facture corrigée refaite avec un NOUVEAU numéro',e1.f2&&e1.f2!==e1.f1&&e1.ann.includes(e1.f1),e1.f1+' → '+e1.f2);
-  const reg=await p.evaluate(()=>{ go('nx_docs'); const t=document.getElementById('nxDocs').innerText; return {annul:/Annulée \(TEST-AV-2026-001\)/.test(t),avoir:/TEST-AV-2026-001/.test(t),gap:/Trous dans la série/.test(t),propre:/Séries de numéros propres/.test(t)}; });
+  const reg=await p.evaluate(()=>{ go('nx_docs'); const t=document.getElementById('nxDocs').innerText; return {annul:new RegExp('Annulée \\(TEST-AV-'+__REF.an+'-001\\)').test(t),avoir:new RegExp('TEST-AV-'+__REF.an+'-001').test(t),gap:/Trous dans la série/.test(t),propre:/Séries de numéros propres/.test(t)}; });
   rec('Avoirs','Registre : facture annulée + avoir listés, série sans trou',reg.annul&&reg.avoir&&!reg.gap,JSON.stringify(reg));
-  const pdf=await p.evaluate(async()=>{ nxPrintAvoir('TEST-AV-2026-001'); await new Promise(r=>setTimeout(r,150)); const t=(document.getElementById('nx-pdf-page')||{}).textContent||''; document.getElementById('nx-pdf-close')&&document.getElementById('nx-pdf-close').click();
-    return {num:/AVOIR N° TEST-AV-2026-001/.test(t),ref:/relative? à la facture (TEST-)?F-2026-\d+ du/.test(t)||/relatif à la facture/.test(t),tva:/293 B/.test(t),motif:/Motif : Erreur sur le montant/.test(t),bad:(t.match(/undefined|NaN/g)||[]).length}; });
+  const pdf=await p.evaluate(async()=>{ nxPrintAvoir('TEST-AV-'+__REF.an+'-001'); await new Promise(r=>setTimeout(r,150)); const t=(document.getElementById('nx-pdf-page')||{}).textContent||''; document.getElementById('nx-pdf-close')&&document.getElementById('nx-pdf-close').click();
+    return {num:new RegExp('AVOIR N° TEST-AV-'+__REF.an+'-001').test(t),ref:new RegExp('relative? à la facture (TEST-)?F-'+__REF.an+'-\\d+ du').test(t)||/relatif à la facture/.test(t),tva:/293 B/.test(t),motif:/Motif : Erreur sur le montant/.test(t),bad:(t.match(/undefined|NaN/g)||[]).length}; });
   rec('Avoirs','PDF de l\'avoir : numéro, facture d\'origine, motif, mention TVA',pdf.num&&pdf.ref&&pdf.tva&&pdf.motif&&!pdf.bad,JSON.stringify(pdf));
   const stale=await p.evaluate(()=>{ const d=DEVIS.find(x=>x.facAnnulees&&x.facAnnulees.length); /* éditeur ouvert avant l'avoir : enregistrer ne doit pas ressusciter l'ancienne facture */
     NXD2.open(JSON.parse(JSON.stringify(d)),{tab:'recap'}); const c=NXD2.api.cur(); c.facSolde=JSON.parse(JSON.stringify(d.facAnnulees[0])); nxd2.save(); const s=DEVIS.find(x=>x.id===d.id);
@@ -44,13 +44,13 @@ const closePdf=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.
   rec('Avoirs','Avoir supérieur au reste refusé',/supérieur/.test(over),over);
 
   /* E3 location payée → avoir → à rembourser → remboursé */
-  const e3=await p.evaluate(()=>{ const l={id:'locA',num:'L-2026-099',cNom:"L'Atelier du Froid",statut:'rendu',dateDebut:dISO(new Date()),dateFin:dISO(new Date()),items:[{ref:'Mobile 18 000 m³/h',qte:1,tarif:130}],fac:{num:nextFacNum(),date:dISO(new Date()),montant:300,payeLe:dISO(new Date()),mode:'Virement'}};
+  const e3=await p.evaluate(()=>{ const l={id:'locA',num:'L-'+__REF.an+'-099',cNom:"L'Atelier du Froid",statut:'rendu',dateDebut:dISO(new Date()),dateFin:dISO(new Date()),items:[{ref:'Mobile 18 000 m³/h',qte:1,tarif:130}],fac:{num:nextFacNum(),date:dISO(new Date()),montant:300,payeLe:dISO(new Date()),mode:'Virement'}};
     LOC.push(l); save(LS.loc,LOC); const r=nxCreateAvoir({facNum:l.fac.num,montant:300,motif:'Prestation annulée'}); updateBadges();
     const badge=(document.getElementById('nxavBadge')||{}).textContent; const before=allRecettes().filter(x=>x.num===l.fac.num||x.num===r.av.num).map(x=>x.montant);
-    window.prompt=()=> '05/10/2026'; nxavRembourse(r.av.id); const after=allRecettes().filter(x=>x.num===l.fac.num||x.num===r.av.num).map(x=>x.montant+'@'+x.date);
+    window.prompt=()=> '05/10/'+__REF.an; nxavRembourse(r.av.id); const after=allRecettes().filter(x=>x.num===l.fac.num||x.num===r.av.num).map(x=>x.montant+'@'+x.date);
     return {av:r.av.num,badge,before,after}; });
   rec('Avoirs','Facture déjà payée : avoir « à rembourser » (badge)',e3.badge==='1'&&e3.before.join()==='300',JSON.stringify(e3));
-  rec('Avoirs','Remboursement : ligne négative datée, encaissement d\'origine gardé',e3.after.includes('300@'+new Date().toISOString().slice(0,10))||e3.after.length===2&&e3.after.some(x=>x.startsWith('-300@2026-10-05')),JSON.stringify(e3.after));
+  rec('Avoirs','Remboursement : ligne négative datée, encaissement d\'origine gardé',e3.after.includes('300@'+REF.jour)||e3.after.length===2&&e3.after.some(x=>x.startsWith('-300@'+REF.an+'-10-05')),JSON.stringify(e3.after));
 
   /* E4 contrat : avoir total + refacturer la même année */
   const e4=await p.evaluate(()=>{ const c={id:'ctrA',clientNom:'Boulangerie Dupré',type:'Climatisation',prix:180,visites:1,prochaineVisite:dISO(new Date()),actif:true,facs:[]}; CTR.push(c); save('cp2_contrats',CTR);
@@ -61,8 +61,8 @@ const closePdf=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.
   rec('Avoirs','Contrat : avoir total puis refacturation de la même année',e4.f2&&e4.f2!==e4.f1&&e4.m===150&&e4.ann===1,JSON.stringify(e4));
 
   /* E5 série d'avoirs + compteur de factures intact */
-  const e5=await p.evaluate(()=>{ const n=nxAvoirs().map(a=>a.num); const f=nxFacNumsAll(); const seq=f.filter(x=>/^(TEST-)?F-2026-/.test(x)).map(x=>+String(x).match(/(\d+)$/)[1]).sort((a,b)=>a-b); const cont=seq.every((v,i)=>v===i+1); return {n,cont,seq}; });
-  rec('Avoirs','Série AV continue',JSON.stringify(e5.n)==='["TEST-AV-2026-001","TEST-AV-2026-002","TEST-AV-2026-003","TEST-AV-2026-004"]',JSON.stringify(e5.n));
+  const e5=await p.evaluate(()=>{ const n=nxAvoirs().map(a=>a.num); const f=nxFacNumsAll(); const seq=f.filter(x=>new RegExp('^(TEST-)?F-'+__REF.an+'-').test(x)).map(x=>+String(x).match(/(\d+)$/)[1]).sort((a,b)=>a-b); const cont=seq.every((v,i)=>v===i+1); return {n,cont,seq}; });
+  rec('Avoirs','Série AV continue',JSON.stringify(e5.n)===JSON.stringify([1,2,3,4].map(k=>'TEST-AV-'+REF.an+'-00'+k)),JSON.stringify(e5.n));
   rec('Avoirs','Série de factures continue (annulées comprises)',e5.cont,JSON.stringify(e5.seq));
 
   /* E6 fenêtre sur téléphone */
@@ -76,7 +76,7 @@ const closePdf=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.
   const e6=await p.evaluate(()=>{ const a=nxAvoirs()[nxAvoirs().length-1]; return {m:a.montant,t:a.total}; });
   rec('Avoirs','Téléphone : avoir partiel 25,50 € saisi à la virgule',e6.m===25.5&&e6.t===false&&vis,JSON.stringify(e6)+' bouton visible '+vis);
   const view=await p.evaluate(()=>{ go('nx_avoirs'); return document.getElementById('nxav').innerText; });
-  rec('Avoirs','Écran Avoirs : liste + à rembourser',/Avoirs émis/.test(view)&&/AV-2026-005/.test(view),'');
+  rec('Avoirs','Écran Avoirs : liste + à rembourser',/Avoirs émis/.test(view)&&new RegExp('AV-'+REF.an+'-005').test(view),'');
 
   /* E7 dupliquer un devis ne copie pas les factures annulées */
   const e7=await p.evaluate(()=>{ const d=DEVIS.find(x=>x.facAnnulees&&x.facAnnulees.length); const n0=DEVIS.length; dupDevis(d.id); const c=DEVIS[DEVIS.length-1]; return {added:DEVIS.length-n0,ann:!!c.facAnnulees}; });

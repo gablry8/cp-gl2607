@@ -9,5 +9,11 @@
   "icons": [
     {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
     {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}
+  ],
+  "shortcuts": [
+    {"name": "Nouveau devis", "short_name": "Devis", "url": "./index.html?ouvrir=devis", "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"}]},
+    {"name": "Nouveau dépannage", "short_name": "Dépannage", "url": "./index.html?ouvrir=depannage", "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"}]},
+    {"name": "Retour SAV non facturé", "short_name": "Retour SAV", "url": "./index.html?ouvrir=sav", "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"}]},
+    {"name": "Objectifs & feux", "short_name": "Objectifs", "url": "./index.html?ouvrir=objectifs", "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"}]}
   ]
 }

@@ -1,6 +1,20 @@
 // Batterie de tests ClimPilot — Playwright (Chromium), serveur local :8765
 import { devices, lancerNavigateur, URL_LOCALE } from './env.mjs';
+import { HORLOGE } from './golden/cas-calculs.mjs';
 export const RES=[];
+/* P0-suite (R12, 24/10/2026) — DATE DE RÉFÉRENCE FIGÉE de la batterie : la même que celle des suites golden (mardi 20/10/2026 10:00, Paris).
+   Une suite dont le résultat dépend du jour (numéros de série de l'année en cours, année d'un affichage, dates relatives) fige l'horloge de sa page
+   sur REF.horloge (option page({horloge:REF.horloge})) et écrit ses attendus avec REF.an / REF.jour — jamais avec une année tapée à la main. Dans la page,
+   la même référence est disponible sous window.__REF (mêmes champs). Vérification : faketime '2027-01-05 10:00:00' bash tests/run-all.sh doit rester vert. */
+export const REF={horloge:HORLOGE,jour:HORLOGE.slice(0,10),an:HORLOGE.slice(0,4),annee:+HORLOGE.slice(0,4)};
+/* 20/10/2026 : supabase-js et Chart.js sont embarqués (vendor/) et mis en cache par le service worker.
+   Les routes de page ne voient pas ce que le service worker sert : on remplace donc ces fichiers au niveau du
+   CONTEXTE (avec PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1, posé par run-all.sh), pour que les tests restent
+   « sans cloud » comme avant, même au 2e chargement. */
+export async function sansBibliothequesCloud(ctx){
+  await ctx.route(/\/vendor\/supabase-js-/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'/* supabase-js désactivé pendant les tests */'}));
+  await ctx.route(/\/vendor\/chart-/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.Chart=function(){return{destroy(){},update(){}}};'}));
+}
 export function rec(group,name,ok,detail){ RES.push({group,name,ok:ok===true?'PASS':ok===false?'FAIL':ok,detail:detail==null?'':String(detail).slice(0,400)}); }
 let browser=null;
 export async function getBrowser(){ if(!browser) browser=await lancerNavigateur(); return browser; }
@@ -9,21 +23,27 @@ export async function closeBrowser(){ if(browser) await browser.close(); browser
 export async function page(opts={}){
   const b=await getBrowser();
   const ctxOpts=opts.mobile===false?{viewport:{width:1300,height:900},locale:'fr-FR',timezoneId:opts.tz||'Europe/Paris'}:{...devices['iPhone 13'],locale:'fr-FR',timezoneId:opts.tz||'Europe/Paris'};
-  const ctx=await b.newContext(ctxOpts);
+  const ctx=await b.newContext(ctxOpts); await sansBibliothequesCloud(ctx);
   const p=await ctx.newPage();
   const errs=[];
   p.on('pageerror',e=>errs.push('PAGEERR '+e.message));
   p.on('console',m=>{ if(m.type()==='error' && !/Failed to load resource|ERR_|net::|Not allowed to launch|integrity/.test(m.text())) errs.push('CONSOLE '+m.text().slice(0,200)); });
   p.on('dialog',d=>d.dismiss().catch(()=>{}));
   await p.route(/supabase/, r=>r.abort());
-  await p.route(/cdn\.jsdelivr\.net\/npm\/chart/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.Chart=function(){return{destroy(){},update(){}}};'}));
+  await p.route(/cdn\.jsdelivr\.net\/npm\/chart|\/vendor\/chart-/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.Chart=function(){return{destroy(){},update(){}}};'}));
   await p.route(/cdnjs|tesseract|unpkg/, r=>r.abort());
   if(opts.offline){ await p.route(/data\.geopf\.fr/, r=>r.abort()); }
   else if(opts.routeFail){ await p.route(/data\.geopf\.fr\/navigation/, r=>r.fulfill({status:503,body:'down'})); geoMock(p,true); }
   else geoMock(p,false);
   /* point de départ des trajets FICTIF (le code n'en contient plus : sans lui, pas de calcul de distance) */
   if(opts.depart!==false) await p.addInitScript(()=>{ try{ if(!localStorage.getItem('cpnext_home')) localStorage.setItem('cpnext_home',JSON.stringify({adr:"1 Rue de l'Exemple 60000 Beauvais",lon:2.0807,lat:49.4295,source:'manuel'})); }catch(e){} });
+  await p.addInitScript(r=>{ window.__REF=r; },REF);
   if(opts.init) await p.addInitScript(opts.init);
+  /* P0 (T9, 21/10/2026) : horloge figée OPTIONNELLE pour toute la batterie — CP_HORLOGE=2026-10-20T10:00:00+02:00 par exemple.
+     Pas activée par défaut : le côté Node des suites utilise encore la vraie date (R12). Les suites golden (Y, Z) figent la leur.
+     24/10/2026 : une suite peut figer la sienne par opts.horloge (prioritaire sur CP_HORLOGE), pour un résultat identique quel que soit le jour réel. */
+  const horloge=opts.horloge||process.env.CP_HORLOGE;
+  if(horloge) await p.clock.setFixedTime(new Date(horloge));
   await p.goto(URL_LOCALE+'index.html');
   await p.waitForTimeout(opts.wait||2200);
   return {p,ctx,errs};

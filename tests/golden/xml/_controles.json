@@ -1,0 +1,44 @@
+{
+ "acompte-386": {
+  "num": "TEST-F-2026-001",
+  "chk": [],
+  "erreur": null
+ },
+ "solde-380-apres-acompte": {
+  "num": "TEST-F-2026-002",
+  "chk": [],
+  "erreur": null
+ },
+ "solde-380-pro": {
+  "num": "TEST-F-2026-003",
+  "chk": [],
+  "erreur": null
+ },
+ "depannage-380-particulier": {
+  "num": "TEST-F-2026-004",
+  "chk": [],
+  "erreur": null
+ },
+ "avoir-381-total": {
+  "num": "TEST-AV-2026-001",
+  "chk": [],
+  "erreur": null
+ },
+ "avoir-381-partiel": {
+  "num": "TEST-AV-2026-002",
+  "chk": [],
+  "erreur": null
+ },
+ "solde-380-assujetti": {
+  "num": "TEST-F-2026-005",
+  "chk": [
+   "SIREN du client professionnel (obligatoire en B2B à partir du 01/09/2027)"
+  ],
+  "erreur": null
+ },
+ "avoir-381-assujetti": {
+  "num": "TEST-AV-2026-003",
+  "chk": [],
+  "erreur": null
+ }
+}
