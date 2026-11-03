@@ -11,7 +11,7 @@
 3. **Lis le § 7** (ce qui change à l'écran) : ce sont des comportements nouveaux que tu verras tous les jours (bandeau 🔒, bouton 🗑 absent sur les fiches fluides numérotées, question en quittant Paramètres).
 4. **Fais l'essai du § 8** sur la copie d'essai (≈ 15 min, 6 parcours numérotés, résultats attendus écrits).
 5. Après fusion : **F5 sur chaque appareil** (cache `climpilot-next-1133-production`). Version affichée inchangée.
-6. Batterie complète et CI : voir § 6 (mis à jour dans le commit suivant, une fois la batterie finale et la CI terminées).
+6. Batterie complète ici (`1f677d4`) : **COMPLET, RÉUSSI — 1 343 réussis, 0 échoué, 0 SKIP**, 5 « À TRANCHER » inchangés ; CI GitHub du même commit : **verte** (push et demande de fusion). Détail § 6.
 7. Golden Y (documents) et Z (calculs) **identiques**, les 5 « À TRANCHER » **inchangés** ; aucun montant, aucune règle fiscale, aucune mention légale, aucun arrondi ne change.
 8. Données : seulement des **champs ajoutés** (`avenantDe` sur un avenant ; `detAdr`, `detVille`, `detSiret`, `annulee` sur une fiche fluide ; clé locale `cpnext_journal`), rien de retiré ; export CSV du registre fluides : 2 colonnes ajoutées **à la fin**.
 9. Ce qui n'est **pas** fait, volontairement (§ 10 et `docs/APRES-PRO-V1.md`, datés 03/11) : un écran pour lire le journal des refus ; « annuler » un devis signé que le client a finalement abandonné (il ne se supprime plus, il reste « accepté ») ; la rétractation d'une fiche fluide signée.
@@ -127,7 +127,19 @@ Deux ajustements de la suite AD après la correction, tous deux dus à mes propr
 
 ## 6. Batterie complète et CI
 
-*(en cours au moment de ce commit : premier passage complet lancé sur la branche — suites A à P vertes, suite I corrigée (§ 5) ; second passage sur le code final et CI à venir ; ce paragraphe est complété dans le commit suivant)*
+**Batterie complète locale** (`bash ~/climpilot-pg.sh && source ~/.climpilot-env.sh`, puis `bash tests/run-all.sh`, isolation du noyau `unshare -n`, PostgreSQL 16 local, validateurs CEN et FNFE, Chromium 141 / Playwright 1.56.1) :
+
+| Passage | Commit | Verdict |
+|---|---|---|
+| 1er, code corrigé | `a789cbd` (arbre identique) | **ÉCHEC** — 1 283 réussis, 3 échoués : suite I (I3b : devis accepté modifié puis facturé) et suite Q (2 : parcours « devis ouvert pendant une mise à jour » interrompu sur un devis accepté, puis « client ajouté puis supprimé » par ricochet). Causes et corrections au § 5. Suite AD 57/57 mais absente du rapport (liste des étapes de `rapport.mjs`). |
+| suite I seule | après correction | 40/40 |
+| suite Q seule | 1er ajustement (devis de Dupré) | 63/64 — note du téléphone perdue (constat 2.10) |
+| suite Q seule | 2e ajustement (autre client) | 64/64 |
+| **final, complet** | **`1f677d4`** (arbre propre) | **COMPLET, RÉUSSI — 1 343 réussis, 0 échoué, 0 SKIP, 5 non bloquants « À TRANCHER » (suite Y, références « assujetti » en attente de la comptable : identiques à avant, jamais comptés comme réussis)**. Suite AD 57/57, suite I 40/40, suite Q 64/64, suite W (enveloppes) 64/64 (aucune enveloppe nouvelle), suite Y 21 + 5 À TRANCHER, suite Z 55/55 (golden calculs identiques), SQL 66/66, aperçu 11/11. Isolation : 0 connexion externe établie. |
+
+**CI GitHub** (`.github/workflows/tests.yml`, « batterie complète ») :
+- `1f677d4` (dernier commit de code et de tests) : **verte** sur le push ([run 56](https://github.com/gablry8/cp-gl2607/actions/runs/41673860449)) et sur la demande de fusion ([run 57](https://github.com/gablry8/cp-gl2607/actions/runs/41673875613)).
+- Les CI des commits précédents de la branche (`ba1da71` tests seuls, `a789cbd`, `0da97c9`) ont été **annulées** par les pushs suivants (`concurrency: cancel-in-progress` du dépôt) : la preuve « rouge d'abord » est donc **locale** (§ 5 : 46 contrôles rouges sur `main` dans Chromium, résultats bruts gardés dans le dossier de la session), pas une CI rouge archivée. Pour la rejouer : `git checkout ba1da71 -- tests/suiteAD-af1-pertes.mjs` sur `main`, puis `node tests/suiteAD-af1-pertes.mjs`.
 
 ## 7. Ce que Gabriel verra changer à l'écran
 
