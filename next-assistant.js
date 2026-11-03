@@ -293,6 +293,17 @@
 
   /* --- devis proposé → formulaire pré-rempli (validation = enregistrement) --- */
   function findRow(id){ return ROWS.filter(function(x){return x.id===id;})[0]; }
+  /* C3 : nom d'article de repli → vérifié dans la base ; sinon premier article de la même catégorie (préférés d'abord), signalé */
+  function repliBase(nom,catBase,preferes,warn){
+    var trouve=null; try{ trouve=findPrix(nom); }catch(e){ console.warn('ClimPilot (C3) base de prix illisible :',e); return nom; }
+    if(trouve) return nom;
+    var base=[]; try{ base=(PRIX||[]).filter(function(a){ return a&&a.cat===catBase; }).map(function(a){ return a.nom; }); }catch(e){ console.warn('ClimPilot (C3) base de prix illisible :',e); }
+    var choix=(preferes||[]).filter(function(n){ return base.indexOf(n)>=0; })[0]||base[0]||null;
+    if(choix){ warn.push('J\'ai pris « '+choix+' » parce que « '+nom+' » n\'existe plus dans ta base'); return choix; }
+    warn.push('« '+nom+' » n\'existe plus dans ta base de prix et aucun article « '+catBase+' » ne le remplace : compté 0 €, à corriger');
+    return nom;
+  }
+  window.nxaRepliBase=repliBase;
   function inList(v,list){ return list.indexOf(v)>=0; }
   window.nxaOpenDevis = function(id){
     var x=findRow(id); if(!x) return;
@@ -316,6 +327,15 @@
         });
         cur.nbSplit=cur.splits.length;
       } else if(cur.splits){ while(cur.splits.length<cur.nbSplit) cur.splits.push({puiss:3.5,liaison:'Liaison 1/4 - 3/8',long:5,cableInter:'Câble 5G1,5'}); cur.splits=cur.splits.slice(0,cur.nbSplit); }
+      /* C3 (29/10/2026) : les noms de repli écrits en dur (ci-dessus, et ceux du nouveau devis) sont vérifiés dans la base de prix au
+         moment de l'emploi. Absent → premier article de la même catégorie (pour le câble : d'abord les câbles d'interconnexion du
+         formulaire), signalé dans le bandeau de l'assistant. Aucun article n'est recréé ; s'il n'y a rien dans la catégorie, le nom
+         reste (il sera signalé « absent de la base de prix, compté 0 € » par le devis). */
+      (cur.splits||[]).forEach(function(s){
+        if(!s) return;
+        if(s.liaison) s.liaison=repliBase(s.liaison,'Cuivre',null,warn);
+        if(s.cableInter) s.cableInter=repliBase(s.cableInter,'Câble',SPLIT_CABLES,warn);
+      });
       if(Array.isArray(p.machines)&&p.machines.length){
         cur.machines=p.machines.map(function(m){
           var lib=(MACHLIB||[]).filter(function(l){return l.marque&&m.marque&&l.marque.toLowerCase()===String(m.marque).toLowerCase()&&(!m.ref||l.ref===m.ref);})[0];

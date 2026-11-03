@@ -59,6 +59,9 @@
 
   window.nxEnvoyer = function(id){
     var d = findDevis(id); if(!d) return;
+    /* C3 (29/10/2026) : article absent de la base de prix (compté 0 €) → confirmation ; refus = rien envoyé, statut inchangé */
+    try{ if(typeof window.nxAbsentsOk==='function' && !window.nxAbsentsOk(d)) return; }
+    catch(e){ console.warn('ClimPilot (C3) contrôle avant envoi :', e); }
     d.statut = 'envoye';
     if(!d.sentAt) d.sentAt = Date.now();
     persist(); refreshViews();
@@ -253,6 +256,7 @@
     var _mailDevis = window.mailDevis;
     window.mailDevis = function(){
       var r = _mailDevis.apply(this, arguments);
+      if(r === false) return r;   /* C3 : envoi refusé (article compté 0 €) → le devis ne passe pas en « Envoyé » */
       try{
         if(typeof cur!=='undefined' && cur && norm(cur.statut)==='brouillon'){
           cur.statut = 'envoye';
