@@ -197,3 +197,18 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
 - **Chromium récent (Playwright ≥ 1.63, Chromium ≥ 153) dans `unshare -n`** : il ignore `Network.emulateNetworkConditions{offline:false}` et se croit hors ligne, la suite I s'arrête alors à I5.
   Contournement **hors dépôt** utilisé pour ces essais : dans l'espace réseau isolé, une paire `veth` avec adresses privées (10.9.9.1/24 et 10.9.9.2/24) et **sans route** (rien ne peut sortir).
   Conséquence : le contrôle « seule la boucle locale existe » de l'autotest est rouge par construction, et la suite X (hors ligne) doit être rejouée sans veth (8/8). Non corrigé dans `env.mjs`.
+
+## Ajouts 30/10/2026 (mission F, C3 — branche `correctif/c3-article-absent`, compte rendu `docs/C3-COMPTE-RENDU.md`)
+- suiteAC-articles-absents.mjs (≈ 130 contrôles ; le préfixe AB est réservé à la mission S) : un article absent de la base de prix (renommé,
+  supprimé, ancienne sauvegarde, nom de repli de l'assistant) reste compté 0 € — **aucun calcul ne change** — mais il est **signalé** :
+  - C3-T1 à C3-T3 (page figée des golden) : ancien format, clim murale v2, gainable v2 ; mêmes totaux et mêmes lignes au millième que le
+    même devis avec ces noms présents dans la base à 0 € ; `absents` = la liste attendue ; avertissement sur chaque ligne ;
+  - C3-T4 : PDF (HTML de l'aperçu, comme la suite Y) : mention sur chaque ligne concernée, montants = ceux du calcul ;
+  - C3-T5 : bandeau rouge (style « Montant différent ») à l'ouverture et au récapitulatif, téléphone et PC, ancien et nouveau format ;
+  - C3-T6 : confirmation avant l'envoi (liste « Envoyer », mail, signature en ligne ; refus = rien envoyé, statut inchangé) ;
+  - C3-T7, C3-T8 : Base de prix — renommer (propagation aux devis non facturés, ou « seulement l'article »), supprimer ; devis facturés intacts ;
+  - C3-T9 : assistant — noms de repli vérifiés dans la base ; C3-T10 : les 52 cas golden, montants identiques au millième, `absents` vide
+    sauf 3 cas qui contenaient déjà un article absent (« Support mural », « Article inexistant XYZ ») ; C3-T11 : sauvegarde restaurée.
+  Les scénarios de page sont des chaînes autonomes (`AIDE`, `SC_…`) qui rendent leurs verdicts : la suite n'ajoute **aucun cas** à
+  `tests/golden/cas-calculs.mjs` (les 3 cas golden C3 sont à ajouter sur une machine avec Chromium, voir le compte rendu § 7).
+- `tests/isolation/rapport.mjs` : étape `suiteAC-articles-absents` → `resAC.json` (sans elle, la suite serait ignorée par le rapport).
