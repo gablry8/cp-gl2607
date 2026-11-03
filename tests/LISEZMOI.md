@@ -224,3 +224,11 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   19 « OK »), `6-droits-anon-retour-arriere.sql` (2 « OK »).
 - `tests/functions/test-superpdp-envoi.mjs` : 30 contrôles (bac à sable seulement si `env === 'sandbox'`, valeur brute enregistrée à la
   connexion) ; suite H, bloc H3 (environnement inattendu → compte réel).
+
+## Ajouts 03/11/2026 (mission AF1 — zéro perte de données)
+- suiteAD-af1-pertes.mjs : AF1-T1 à T13 du dossier `docs/MISSION-AF-CORRECTIONS.md` (§ 2) + C-N1 + A-N5 : devis signé, accepté ou
+  facturé en lecture seule (enregistrement refusé, « Faire un avenant », suppression refusée) ; fiche fluide numérotée jamais à la
+  corbeille avant 5 ans, « annulée » avec motif ; garde « Enregistrer / Abandonner » des Paramètres ; coordonnées du détenteur gardées
+  sur la fiche fluide et envoi du lien refusé sans adresse ; fiche fluide rouverte puis enregistrée sans perte (signature, refus, lien) ;
+  « Lieu / urgence » du contrat d'intervention gardé au clic suivant ; fiche client existante jamais écrasée par l'adresse d'un document.
+  Horloge figée sur REF. Rouge sur le code d'avant (46 contrôles), verte après la correction.
