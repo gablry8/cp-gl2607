@@ -238,7 +238,7 @@
   }
 
   /* ---------------- champs posés par d'autres écrans : jamais écrasés à l'enregistrement ---------------- */
-  var OWNED=['facAcompte','facSolde','facAnnulees','signature','signLink','relances','datePlanif','momentPlanif','matReserve','hReel','achatReel','figEnv'];
+  var OWNED=['facAcompte','facSolde','facAnnulees','signature','signLink','relances','datePlanif','momentPlanif','matReserve','hReel','achatReel','figEnv','signatureEnAttente','remplacePar','annulation'];   /* AF1-bis : états posés ailleurs, jamais oubliés par l'éditeur */
   function protect(c){
     try{
       var e=(DEVIS||[]).find(function(x){ return x.id===c.id; }); if(!e) return c;
@@ -401,6 +401,9 @@
       var cl=(CLIENTS||[]).find(function(x){ return (x.nom||'').toLowerCase()===String(cur.cNom||'').toLowerCase(); });
       if(cl&&cl.lastZone&&!(P.zone&&P.zone[cl.lastZone]!=null)){ cl.lastZone='+50 km'; persist(LS.clients,CLIENTS); }
     }catch(e){}
+    /* AF1-bis (1c) : un avenant ne passe pas « Accepté » si son original a été facturé entre-temps (règle dans index.html) */
+    if(cur.statut==='accepte'&&cur.avenantDe&&typeof window.cpAvenantAcceptable==='function'&&!window.cpAvenantAcceptable(cur)){
+      var e0=(DEVIS||[]).find(function(x){ return x.id===cur.id; }); cur.statut=e0?e0.statut:'brouillon'; cur._statutSet=true; updHead(); renderBody(); refreshLive(); return false; }
     var inbox=cur._inboxId; delete cur._inboxId;
     var copy=clone(cur), i=DEVIS.findIndex(function(x){ return x.id===cur.id; });
     delete copy._baseStatut; delete copy._statutSet; cur._baseStatut=cur.statut;
@@ -409,6 +412,8 @@
     if(!persist(LS.devis,DEVIS)){ if(prevI) DEVIS[i]=prevI; else DEVIS.pop(); say('⛔ Devis NON enregistré : stockage de l\'appareil plein (fais une sauvegarde)'); return false; }
     rememberDefaults(cur);
     dirty=false; dropDraft(cur.id);
+    /* AF1-bis (1b) : avenant accepté → l'original passe « remplacé par l'avenant » ; une signature en ligne mise en attente est posée */
+    try{ if(copy.avenantDe&&copy.statut==='accepte'&&typeof window.cpAvenantAccepte==='function'){ var k=DEVIS.findIndex(function(x){ return x.id===copy.id; }); if(k>=0){ window.cpAvenantAccepte(DEVIS[k]); if(DEVIS[k].signature&&!cur.signature){ cur.signature=clone(DEVIS[k].signature); delete cur.signatureEnAttente; if(DEVIS[k].acceptedAt) cur.acceptedAt=DEVIS[k].acceptedAt; } } } }catch(e){ console.warn('ClimPilot (AF1-bis) avenant accepté :',e); }
     try{ updateBadges(); }catch(e){}
     if(inbox && typeof window.nxaInboxValidated==='function'){ try{ window.nxaInboxValidated(inbox); }catch(e){} }
     say(sepN?'💾 Devis '+cur.num+' enregistré — contrat d\'entretien mis dans le devis '+sepN.num:'💾 Devis '+cur.num+' enregistré');
@@ -565,12 +570,12 @@
       '<button class="btn-ghost btn-sm" onclick="nxd2.close()">Fermer</button>'+
       '<button class="btn-ghost btn-sm" onclick="printDevis()">📄 PDF</button>'+
       (typeof window.nxSaveCurrentTemplate==='function'?'<button class="btn-ghost btn-sm" onclick="nxSaveCurrentTemplate()" title="Enregistrer ce devis comme modèle réutilisable">⚡ Modèle</button>':'')+
-      (vr?'<button class="btn-pri btn-sm" onclick="cpDevisAvenant(\''+esc(cur.id)+'\')">Faire un avenant</button><button class="btn-ghost btn-sm" onclick="cpDevisDupliquer(\''+esc(cur.id)+'\')">Dupliquer</button>'
+      (vr?(typeof window.cpVerrouBoutons==='function'?window.cpVerrouBoutons(cur.id,vr,'head'):'<button class="btn-ghost btn-sm" onclick="cpDevisDupliquer(\''+esc(cur.id)+'\')">Dupliquer</button>')
          :'<button class="btn-ghost btn-sm" onclick="nxd2.sign()">✍️ Signature</button>'+
           '<button class="btn-dark btn-sm" onclick="nxd2.save()">💾 Enregistrer</button>')+'</div></div>';
     /* AF1 D0 : bandeau permanent tant que le devis est verrouillé */
-    if(vr) showBanner('🔒 <b>Devis '+esc(cur.num)+' '+esc(vr.texte)+' : il ne se modifie plus.</b> Pour changer quelque chose : '+
-      '<button class="nx-sbtn mar" onclick="cpDevisAvenant(\''+esc(cur.id)+'\')">Faire un avenant</button> <button class="nx-sbtn" onclick="cpDevisDupliquer(\''+esc(cur.id)+'\')">Dupliquer</button>');
+    if(vr) showBanner('🔒 <b>Devis '+esc(cur.num)+' '+esc(vr.texte)+' : il ne se modifie plus.</b> '+(vr.motif==='remplace'||vr.motif==='annule'?'':'Pour changer quelque chose : ')+
+      (typeof window.cpVerrouBoutons==='function'?window.cpVerrouBoutons(cur.id,vr,'bandeau'):'<button class="nx-sbtn" onclick="cpDevisDupliquer(\''+esc(cur.id)+'\')">Dupliquer</button>'));
   }
   /* AF1 D0 : champs et actions de l'éditeur verrouillés (le bloc facturation du récapitulatif reste utilisable : acompte, solde, payée) */
   function verrouBody(){
@@ -892,6 +897,8 @@
   function objetOf(d){
     return (d.lots||[]).filter(function(l){ return !l.option; }).map(function(l){ var m=MODS[l.module]; var s=''; try{ s=m&&m.summary?m.summary(l):natureOf(l.module).label; }catch(e){ s=natureOf(l.module).label; } return (l.titre?l.titre+' : ':'')+s; }).join(' ; ');
   }
+  /* AF1-bis (2) : bandeau rouge « DEVIS ANNULÉ » du PDF (règle et texte dans index.html) ; vide pour tout autre état */
+  function bandeauAnnule(d){ try{ return typeof window.cpDevisBandeauPdf==='function'?window.cpDevisBandeauPdf(d):''; }catch(e){ console.warn('ClimPilot (AF1-bis) bandeau PDF :',e); return ''; } }
   function printV2(d){
     derive(d);
     if((d.lots||[]).some(function(l){ return !MODS[l.module]; })){ say('⚠ Un lot n\'est pas géré sur cet appareil : recharge ClimPilot avant d\'imprimer'); return; }
@@ -903,7 +910,7 @@
     if(d.estim){
       var rows=c.lots.map(function(x){ return [(c.lots.length>1?'Lot '+(x.i+1)+' — ':'')+x.label+(x.titre?' ('+x.titre+')':''),x.ht]; });
       var com=sum(c.common,function(l){return l.ht;}); if(com>0.005) rows.push(['Déplacement, préparation et frais',com]);
-      doc.innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">'+top+
+      doc.innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">'+top+bandeauAnnule(d)+
         '<div style="display:flex;justify-content:space-between;gap:14px;margin:8px 0 12px;flex-wrap:wrap"><div><div style="font-size:20px;font-weight:800;color:'+NV+'">Estimation indicative</div><div style="font-size:11px;color:#555"><b>Objet :</b> '+esc(objetOf(d))+'</div></div>'+clientBox+'</div>'+
         '<div style="background:#fff7e6;border:1px solid #f0dcae;border-radius:8px;padding:10px 13px;font-size:11px;color:#7a5a12;margin-bottom:12px"><b>Document non contractuel.</b> Montant indicatif — il ne vaut pas devis. Un devis détaillé sera établi après visite technique.</div>'+
         '<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #dce3ec"><thead><tr style="background:'+NV+';color:#fff"><th style="text-align:left;padding:9px 12px">Poste</th><th style="text-align:right;padding:9px 12px">Montant estimé HT</th></tr></thead><tbody>'+rows.map(function(r){ return '<tr><td style="padding:10px 12px;border-top:1px solid #e6ebf2">'+esc(r[0])+'</td><td style="padding:10px 12px;border-top:1px solid #e6ebf2;text-align:right;font-weight:600">'+money(r[1])+'</td></tr>'; }).join('')+'</tbody></table>'+
@@ -941,7 +948,7 @@
     var reduit=!fr&&c.tvaBreak.some(function(t){ return t.rate>0&&t.rate<20; });
     var ctrRegl='contrat d\'entretien facturé chaque année, en début de période';
     var regl=c.ctrAll?ctrRegl:((c.acomptePct>0&&c.acompte>0.005?('acompte de '+money(c.acompte)+' ('+fq(c.acomptePct)+' %) à la commande, solde de '+money(c.solde)+' à la fin des travaux'):'à la fin des travaux')+(c.ctrTTC>0.005?' ; '+ctrRegl:''));
-    doc.innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">'+top+
+    doc.innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">'+top+bandeauAnnule(d)+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin:8px 0 14px;flex-wrap:wrap"><div style="font-size:11px;color:#555;line-height:1.5;max-width:360px">'+
       '<div style="font-size:20px;font-weight:800;color:'+NV+'">Devis N° '+esc(d.num)+'</div><div style="margin-top:2px"><b>Objet :</b> '+esc(objetOf(d))+'</div></div>'+clientBox+'</div>'+
       '<table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #dce3ec"><thead><tr style="background:'+NV+';color:#fff"><th style="text-align:left;padding:9px 12px">Prestations et fournitures</th><th style="padding:9px 12px;text-align:right">Montant HT</th></tr></thead><tbody>'+body+'</tbody></table>'+
@@ -1022,7 +1029,9 @@
     moveLot:function(i,dir){ var j=i+dir; if(j<0||j>=cur.lots.length) return; var t=cur.lots[i]; cur.lots[i]=cur.lots[j]; cur.lots[j]=t; markDirty(); render(); },
     act:function(name,i){ var lot=cur.lots[i], m=lot&&MODS[lot.module]; if(!m||!m.actions||!m.actions[name]) return; var args=[].slice.call(arguments,2); var r=m.actions[name].apply(null,[lot,i,api].concat(args)); markDirty(); if(r!==false) rerender('lot',i); refreshLive(); },
     applyVisite:function(i){ var lot=cur.lots[i], m=lot&&MODS[lot.module]; if(!m||!m.applyVisite) return; var msgs=m.applyVisite(lot,api)||[]; markDirty(); say(msgs.length?('Reporté au devis : '+msgs.join(' · ')):'Rien à reporter automatiquement'); renderBody(); refreshLive(); },
-    statut:function(s){ if(verrou()){ say('🔒 Devis '+(cur.num||'')+' '+verrou().texte+' : son statut ne change plus (avenant ou duplication)'); return; } cur.statut=s; cur._statutSet=true; if(s==='envoye'&&!cur.sentAt) cur.sentAt=Date.now(); markDirty(); updHead(); renderBody(); refreshLive(); },
+    statut:function(s){ if(verrou()){ say('🔒 Devis '+(cur.num||'')+' '+verrou().texte+' : son statut ne change plus (avenant ou duplication)'); return; }
+      if(s==='accepte'&&cur.avenantDe&&typeof window.cpAvenantAcceptable==='function'&&!window.cpAvenantAcceptable(cur)) return;   /* AF1-bis 1c */
+      cur.statut=s; cur._statutSet=true; if(s==='envoye'&&!cur.sentAt) cur.sentAt=Date.now(); markDirty(); updHead(); renderBody(); refreshLive(); },
     sign:function(){
       if(typeof window.nxsSendDevis!=='function'){ say('Signature en ligne indisponible'); return; }
       if(!String(cur.cNom||'').trim()){ say('Renseigne le client avant d\'envoyer le devis'); return; }

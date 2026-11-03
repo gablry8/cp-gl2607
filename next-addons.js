@@ -125,7 +125,7 @@
 
   /* ===== REGISTRE DES DOCUMENTS (Claude) — tous les numéros classés + contrôle d'intégrité des séries ===== */
   function nxAllDocs(){
-    const docs=[];const st={brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'Accepté',refuse:'Refusé'};
+    const docs=[];const st={brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'Accepté',refuse:'Refusé',remplace:'Remplacé',annule:'Annulé'};
     (DEVIS||[]).forEach(d=>{let m=0;try{m=Math.round(compute(d).totalHT*100)/100;}catch(e){}
       docs.push({num:d.num||'',type:'Devis',date:d.created?isoLocal(new Date(d.created)):'',client:d.cNom||'—',montant:m,statut:st[d.statut]||d.statut,open:"openDevis('"+d.id+"')"});
       [['facAcompte','Facture (acompte)'],['facSolde','Facture']].forEach(p=>{const f=d[p[0]];

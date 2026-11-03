@@ -416,7 +416,7 @@ const GB = { AV: 'AF1-bis avenant / original', AN: 'AF1-bis annuler le devis', S
     renderCommander(); renderPlanning(); renderDash();
     const cmd = /Chantiers signés[^0-9]*(\d+)/.exec((document.getElementById('cmdKpis') || {}).textContent || '');
     const plan = (document.getElementById('planTodo') || {}).textContent || '';
-    const carnet = nxobjCarnet(), accApres = DEVIS.filter(x => x.statut === 'accepte').length;
+    const carnet = nxobjCarnet(), accApres = DEVIS.filter(x => x.statut === 'accepte').length, carnetAttendu = DEVIS.filter(x => x.statut === 'accepte' && !x.facSolde).length;   /* carnet = acceptés pas encore facturés au solde */
     const journal = JSON.parse(localStorage.getItem('cpnext_journal') || '[]').filter(x => x.id === o.id && /remplac/.test(x.type || ''));
     /* facturer l'original : refusé ; à l'ouverture : bandeau, pas de bloc facturation, « Dupliquer » seulement */
     AD.reset(); await facturerDevis(o.id, 'solde'); await new Promise(r => setTimeout(r, 300));
@@ -427,11 +427,11 @@ const GB = { AV: 'AF1-bis avenant / original', AN: 'AF1-bis annuler le devis', S
     const boutons = [...document.querySelectorAll('#v-nx_devis2 button')].map(b => b.textContent.trim());
     AD.reset(); __oui = true; delDevis(o.id); await new Promise(r => setTimeout(r, 100));
     return { ok, oStatut: O.statut, stStatut: st.statut, oDate: O.acceptedAt === o.acceptedAt, lien: !!(O.remplacePar && O.remplacePar.id === a.id && O.remplacePar.num === a.num), aStatut: A.statut, accAvant, accApres,
-      cmd: cmd ? +cmd[1] : null, planO: plan.indexOf(o.num) >= 0, planA: plan.indexOf(a.num) >= 0, carnet: carnet.devis, journal: journal.length,
+      cmd: cmd ? +cmd[1] : null, planO: plan.indexOf(o.num) >= 0, planA: plan.indexOf(a.num) >= 0, carnet: carnet.devis, carnetAttendu, journal: journal.length,
       facMsgs, fac: !!(O2.facSolde || O2.facAcompte), fbloc: fbloc === '', ban: ban.slice(0, 200), avenantBtn: boutons.some(b => /Faire un avenant/.test(b)), dupBtn: boutons.some(b => /Dupliquer/.test(b)), reste: DEVIS.some(x => x.id === o.id), corbeille: AD.trash().some(x => x.item && x.item.id === o.id) };
   });
   rec(GB.AV, 'T14b avenant accepté (éditeur) : l\'original passe « remplacé par l\'avenant n° … » (mémoire et stockage), date d\'acceptation gardée, lien vers l\'avenant', !rb.absent && rb.ok === true && rb.aStatut === 'accepte' && rb.oStatut === 'remplace' && rb.stStatut === 'remplace' && rb.oDate && rb.lien, j(rb));
-  rec(GB.AV, 'T14b l\'original sort d\'« À commander », de « Planifier » et du carnet de commandes (un seul chantier signé : l\'avenant)', !rb.absent && rb.accApres === rb.accAvant && rb.cmd === rb.accApres && !rb.planO && rb.planA && rb.carnet === rb.accApres, j({ accAvant: rb.accAvant, accApres: rb.accApres, cmd: rb.cmd, planO: rb.planO, planA: rb.planA, carnet: rb.carnet }));
+  rec(GB.AV, 'T14b l\'original sort d\'« À commander », de « Planifier » et du carnet de commandes (un seul chantier signé : l\'avenant)', !rb.absent && rb.accApres === rb.accAvant && rb.cmd === rb.accApres && !rb.planO && rb.planA && rb.carnet === rb.carnetAttendu, j({ accAvant: rb.accAvant, accApres: rb.accApres, cmd: rb.cmd, planO: rb.planO, planA: rb.planA, carnet: rb.carnet, carnetAttendu: rb.carnetAttendu }));
   rec(GB.AV, 'T14b l\'original sort de la facturation : « Facturer » refusé, aucune facture, bloc facturation vide ; ligne au journal', !rb.absent && !rb.fac && rb.facMsgs.some(m => /ne se facture plus/i.test(m)) && rb.fbloc && rb.journal >= 1, j({ fac: rb.fac, facMsgs: rb.facMsgs, fbloc: rb.fbloc, journal: rb.journal }));
   rec(GB.AV, 'T14b l\'original reste visible (bandeau « remplacé par l\'avenant »), « Dupliquer » seulement, non supprimable', !rb.absent && /remplacé par l'avenant/i.test(rb.ban) && !rb.avenantBtn && rb.dupBtn && rb.reste && !rb.corbeille, j({ ban: rb.ban, avenantBtn: rb.avenantBtn, dupBtn: rb.dupBtn, reste: rb.reste, corbeille: rb.corbeille }));
   /* c. l'original a été facturé ENTRE-TEMPS : l'acceptation de l'avenant est refusée (liste, puis éditeur) */
@@ -492,7 +492,7 @@ const GB = { AV: 'AF1-bis avenant / original', AN: 'AF1-bis annuler le devis', S
     renderDash(); renderCommander(); renderPlanning();
     const plan = (document.getElementById('planTodo') || {}).textContent || '';
     const cmd = /Chantiers signés[^0-9]*(\d+)/.exec((document.getElementById('cmdKpis') || {}).textContent || '');
-    const accApres = DEVIS.filter(x => x.statut === 'accepte').length, carnet = nxobjCarnet().devis;
+    const accApres = DEVIS.filter(x => x.statut === 'accepte').length, carnet = nxobjCarnet().devis, carnetAttendu = DEVIS.filter(x => x.statut === 'accepte' && !x.facSolde).length;
     const ca = DEVIS.filter(x => x.statut === 'accepte').reduce((t, d) => t + compute(d).totalHT, 0);
     const kpi = /Acceptés[^0-9]*(\d+)/.exec((document.getElementById('dashKpis') || {}).textContent || '');
     const journal = JSON.parse(localStorage.getItem('cpnext_journal') || '[]').filter(x => x.id === s.id && /annul/.test(x.type || ''));
@@ -503,7 +503,7 @@ const GB = { AV: 'AF1-bis avenant / original', AN: 'AF1-bis annuler le devis', S
     const boutons = [...document.querySelectorAll('#v-nx_devis2 button')].map(b => b.textContent.trim());
     nxd2.close();
     AD.reset(); __oui = true; delDevis(s.id); await new Promise(r => setTimeout(r, 100));
-    const b = { btnV2, ouvertB, sansMotif, msgSansMotif, statut: S.statut, stStatut: st.statut, annulation: S.annulation, date: S.acceptedAt === s.acceptedAt, sig: !!S.signature, accAvant, accApres, cmd: cmd ? +cmd[1] : null, kpi: kpi ? +kpi[1] : null, planS: plan.indexOf(s.num) >= 0, carnet, ca,
+    const b = { btnV2, ouvertB, sansMotif, msgSansMotif, statut: S.statut, stStatut: st.statut, annulation: S.annulation, date: S.acceptedAt === s.acceptedAt, sig: !!S.signature, accAvant, accApres, cmd: cmd ? +cmd[1] : null, kpi: kpi ? +kpi[1] : null, planS: plan.indexOf(s.num) >= 0, carnet, carnetAttendu, ca,
       journal: journal.length, ban: ban.slice(0, 200), pdf: /ANNULÉ/.test(html) && /Abandon du client/i.test(html), avenantBtn: boutons.some(x => /Faire un avenant|Annuler le devis/.test(x)), reste: DEVIS.some(x => x.id === s.id), corbeille: AD.trash().some(x => x.item && x.item.id === s.id), msgs: __msgs.slice() };
     /* c. après un avoir TOTAL (plus de facture vivante) : annulation possible ; ancien formulaire : bouton présent */
     AD.reset();
@@ -521,7 +521,7 @@ const GB = { AV: 'AF1-bis avenant / original', AN: 'AF1-bis annuler le devis', S
   if (r.absent) r.a = r.b = r.c = {};
   rec(GB.AN, 'T15a devis avec une facture vivante : « Annuler le devis » refusé (« fais d\'abord un avoir »), rien ne change', !r.absent && r.a.statut === 'accepte' && !r.a.modal && r.a.msgs.some(m => /avoir/i.test(m)), j(r.a));
   rec(GB.AN, 'T15b devis signé : bouton « Annuler le devis » dans l\'éditeur ; motif obligatoire (sans motif : rien) ; puis statut « annulé » avec motif et date, signature et date d\'acceptation gardées (mémoire et stockage)', !r.absent && r.b.btnV2 && r.b.ouvertB && r.b.sansMotif === 'accepte' && r.b.statut === 'annule' && r.b.stStatut === 'annule' && !!(r.b.annulation && r.b.annulation.motif === 'abandon' && r.b.annulation.at) && r.b.date && r.b.sig, j({ btnV2: r.b.btnV2, ouvertB: r.b.ouvertB, sansMotif: r.b.sansMotif, statut: r.b.statut, stStatut: r.b.stStatut, annulation: r.b.annulation, date: r.b.date, sig: r.b.sig }));
-  rec(GB.AN, 'T15b devis annulé : sort d\'« À commander », de « Planifier », du carnet de commandes et du CA signé (compteur « Acceptés »)', !r.absent && r.b.accApres === r.b.accAvant - 1 && r.b.cmd === r.b.accApres && r.b.kpi === r.b.accApres && !r.b.planS && r.b.carnet === r.b.accApres, j({ accAvant: r.b.accAvant, accApres: r.b.accApres, cmd: r.b.cmd, kpi: r.b.kpi, planS: r.b.planS, carnet: r.b.carnet }));
+  rec(GB.AN, 'T15b devis annulé : sort d\'« À commander », de « Planifier », du carnet de commandes et du CA signé (compteur « Acceptés »)', !r.absent && r.b.accApres === r.b.accAvant - 1 && r.b.cmd === r.b.accApres && r.b.kpi === r.b.accApres && !r.b.planS && r.b.carnet === r.b.carnetAttendu, j({ accAvant: r.b.accAvant, accApres: r.b.accApres, cmd: r.b.cmd, kpi: r.b.kpi, planS: r.b.planS, carnet: r.b.carnet, carnetAttendu: r.b.carnetAttendu }));
   rec(GB.AN, 'T15b devis annulé : reste visible (bandeau « annulé »), PDF avec le bandeau ANNULÉ et le motif, non supprimable, ligne au journal, plus d\'avenant ni de nouvelle annulation', !r.absent && /annulé/i.test(r.b.ban) && r.b.pdf && r.b.reste && !r.b.corbeille && r.b.journal >= 1 && !r.b.avenantBtn, j({ ban: r.b.ban, pdf: r.b.pdf, reste: r.b.reste, corbeille: r.b.corbeille, journal: r.b.journal, avenantBtn: r.b.avenantBtn }));
   rec(GB.AN, 'T15c après un avoir total : annulation possible ; ancien formulaire : bouton dans le bandeau, bandeau « annulé » après', !r.absent && r.c.btnWiz && r.c.statut === 'annule' && r.c.motif === 'erreur' && /annulé/i.test(r.c.banWiz), j(r.c));
 }

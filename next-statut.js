@@ -17,7 +17,7 @@
 
   /* anciens statuts -> nouveau modèle */
   var MAP = { verifier:'brouillon', pret:'brouillon' };
-  var LABELS = { brouillon:'Brouillon', envoye:'Envoyé', accepte:'Accepté', refuse:'Refusé' };
+  var LABELS = { brouillon:'Brouillon', envoye:'Envoyé', accepte:'Accepté', refuse:'Refusé', remplace:'Remplacé', annule:'Annulé' };
   function norm(s){ return MAP[s] || s || 'brouillon'; }
 
   function persist(){
@@ -51,9 +51,14 @@
   /* ---------- 3. actions de statut ---------- */
   window.nxSetStatut = function(id, s){
     var d = findDevis(id); if(!d) return;
+    /* AF1-bis (03/11/2026) : un devis remplacé par un avenant ou annulé ne change plus de statut ; un avenant ne passe pas « Accepté » si son original a été facturé entre-temps (1c) */
+    if(d.statut==='remplace'||d.statut==='annule'){ try{ toast('🔒 Devis '+(d.num||'')+' '+(d.statut==='annule'?'annulé':'remplacé par un avenant')+' : son statut ne change plus.'); }catch(e){} return; }
+    if(s==='accepte' && d.avenantDe && typeof window.cpAvenantAcceptable==='function' && !window.cpAvenantAcceptable(d)) return;
     d.statut = s;
     if(s==='envoye' && !d.sentAt) d.sentAt = Date.now();
-    persist(); refreshViews();
+    persist();
+    if(s==='accepte' && d.avenantDe && typeof window.cpAvenantAccepte==='function'){ try{ window.cpAvenantAccepte(d); }catch(e){ console.warn('ClimPilot (AF1-bis) avenant accepté :', e); } }   /* 1b : l'original passe « remplacé » */
+    refreshViews();
     try{ if(typeof toast==='function') toast('Statut : ' + (LABELS[s]||s)); }catch(e){}
   };
 

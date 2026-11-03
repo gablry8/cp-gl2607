@@ -95,6 +95,10 @@
   window.nxsSendDevis = function(){
     try{
       if(typeof cur==='undefined' || !cur){ toastX('Ouvre d\'abord un devis','warn'); return; }
+      /* AF1-bis (3) : devis signé, accepté, facturé, remplacé ou annulé → pas de nouvel envoi en signature, rien n'est réécrit (la règle se lit sur la copie enregistrée) */
+      var vr=null; try{ vr=(typeof window.cpDevisVerrouille==='function')?window.cpDevisVerrouille(cur.id):null; }catch(e){ console.warn('ClimPilot (AF1-bis) verrou :',e); }
+      if(vr){ try{ window.cpJournal({type:'devis_verrouille',action:'signature',id:cur.id,num:cur.num||'',motif:vr.motif}); }catch(e){ console.warn('ClimPilot (AF1-bis) journal :',e); }
+        toastX('🔒 Devis '+(cur.num||'')+' '+vr.texte+' : il ne se renvoie pas en signature (fais un avenant).','warn'); return; }
       formToDevis();
       if(!String(cur.cNom||'').trim()){ toastX('Renseigne le client avant d\'envoyer le devis','warn'); return; }
       var c=compute(cur);
@@ -143,12 +147,21 @@
     var sig={at:s.signed_at,nom:s.signer_nom,hash:s.doc_hash,png:s.signature_png||null,token:s.token,ip:s.signer_ip||null};
     if(s.doc_type==='devis'){
       var d=(DEVIS||[]).find(function(x){ return x.id===s.doc_id; }); if(!d) return false;
+      /* AF1-bis (1c) : avenant signé en ligne alors que son original a été facturé entre-temps → la preuve est GARDÉE (signatureEnAttente), le statut n'avance pas ;
+         après l'avoir, passer l'avenant en « Accepté » pose la signature (cpAvenantAccepte, index.html) */
+      var orig=null; try{ orig=(typeof window.cpAvenantOriginal==='function')?window.cpAvenantOriginal(d):null; }catch(e){ console.warn('ClimPilot (AF1-bis) original :',e); }
+      if(s.statut==='signe' && orig && typeof window.cpFactureVivante==='function' && window.cpFactureVivante(orig)){
+        d.signatureEnAttente=sig; save(LS.devis,DEVIS);
+        try{ window.cpJournal({type:'avenant_refuse',action:'signature_en_ligne',id:d.id,num:d.num||'',motif:'facture_original',original:orig.id}); }catch(e){ console.warn('ClimPilot (AF1-bis) journal :',e); }
+        toastX('⛔ Devis '+(d.num||'')+' signé en ligne par '+(s.signer_nom||'')+', mais le devis d\'origine '+(orig.num||'')+' a été facturé entre-temps : fais d\'abord un avoir, puis passe l\'avenant en « Accepté » (la signature est conservée).','warn');
+        try{ updateBadges(); }catch(e){} return true; }
       if(s.statut==='signe'){ d.statut='accepte'; d.signature=sig; d.acceptedAt=Date.parse(s.signed_at)||Date.now();
         /* 1.10 : date réelle de conclusion = horodatage du serveur (jour à Paris) + preuve ; le MODE n'est jamais deviné */
         try{ var c0=d.conclusion||{}, dt=new Date(s.signed_at), jour=dt.toLocaleDateString('sv-SE',{timeZone:'Europe/Paris'});
           if(!c0.date&&/^\d{4}-\d{2}-\d{2}$/.test(jour)) d.conclusion=Object.assign({mode:'a_preciser'},c0,{date:jour,preuve:{type:'signature_en_ligne',ref:'signature en ligne du '+dt.toLocaleString('fr-FR',{timeZone:'Europe/Paris'})+' (empreinte '+String(s.doc_hash||'').slice(0,12)+'…)',token:s.token}}); }catch(e){} }
       else if(s.statut==='refuse'){ d.statut='refuse'; d.refus={at:s.signed_at,nom:s.signer_nom,motif:s.motif_refus||''}; }
       save(LS.devis,DEVIS);
+      if(s.statut==='signe' && d.avenantDe && typeof window.cpAvenantAccepte==='function'){ try{ window.cpAvenantAccepte(d); }catch(e){ console.warn('ClimPilot (AF1-bis) avenant accepté :',e); } }   /* 1b */
       try{ if(typeof cur!=='undefined'&&cur&&cur.id===d.id){ cur.statut=d.statut; cur.signature=d.signature; cur.refus=d.refus; if(d.conclusion) cur.conclusion=JSON.parse(JSON.stringify(d.conclusion)); } }catch(e){}
       try{ updateBadges(); }catch(e){}
       return true;

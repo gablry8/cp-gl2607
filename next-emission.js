@@ -263,6 +263,8 @@
     /* devis pas encore accepté (brouillon, envoyé, refusé…) : on demande confirmation avant de le facturer */
     if(sorte==='devis'){ try{ var dv=(DEVIS||[]).find(function(x){ return x.id===args[0]; });
       var stv=dv&&(typeof cur!=='undefined'&&cur&&cur.id===dv.id&&cur.statut?cur.statut:dv.statut);
+      /* AF1-bis (03/11/2026) : devis remplacé par un avenant ou annulé → il ne se facture plus (pas de question) */
+      if(dv&&(dv.statut==='remplace'||dv.statut==='annule')){ say('⛔ Devis '+(dv.num||'')+' '+(dv.statut==='annule'?'annulé':'remplacé par l\'avenant n° '+(dv.remplacePar&&dv.remplacePar.num||''))+' : il ne se facture plus.'); return Promise.resolve(null); }
       if(dv&&!(args[1]==='solde'?dv.facSolde:dv.facAcompte)&&stv&&stv!=='accepte'){
         var lib={brouillon:'brouillon (jamais envoyé)',verifier:'à vérifier',pret:'prêt, pas encore envoyé',envoye:'envoyé, pas encore accepté',refuse:'REFUSÉ par le client'}[stv]||stv;
         if(!confirm('Ce devis n\'est pas accepté (statut : '+lib+').\n\nUne facture émise ne se supprime pas : seul un avoir l\'annule.\n\nFacturer quand même ?')) return Promise.resolve(null);
