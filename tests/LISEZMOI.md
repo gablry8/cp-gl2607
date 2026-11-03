@@ -212,3 +212,15 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   Les scénarios de page sont des chaînes autonomes (`AIDE`, `SC_…`) qui rendent leurs verdicts : la suite n'ajoute **aucun cas** à
   `tests/golden/cas-calculs.mjs` (les 3 cas golden C3 sont à ajouter sur une machine avec Chromium, voir le compte rendu § 7).
 - `tests/isolation/rapport.mjs` : étape `suiteAC-articles-absents` → `resAC.json` (sans elle, la suite serait ignorée par le rapport).
+
+## Ajouts 31/10/2026 (P6+ — branche `correctif/p6-env-superpdp`)
+- **`tests/sql/test_p6_droits.py`** (15 tests, PostgreSQL local) : retrait des droits inutiles du visiteur non connecté (`anon`) —
+  cinq petites fonctions, tables ClimPilot et leurs séquences ; appli connectée et `service_role` inchangés ; rejouable, tables
+  absentes tolérées ; retour arrière ; scripts TEST / RÉEL (copie conforme de la migration, verrous éprouvés, lignes « OK », et
+  « À REVOIR » sur une base non migrée) ; script d'essai n° 1 (mêmes 36 contrôles, plus rien d'ouvert au visiteur).
+  **Garde** (`test_p6_14`) : la base de test applique **toutes** les migrations de `supabase/migrations` (ordre des noms) ; aucun
+  objet du schéma `public` ne doit rester accessible à `anon`. Une nouvelle migration qui oublie `revoke … from public, anon` le fait échouer.
+- `tests/supabase-test/6-droits-anon-TEST.sql` (verrou par marqueur, 27 « OK »), `6-REEL-droits-anon.sql` (refuse le projet TEST,
+  19 « OK »), `6-droits-anon-retour-arriere.sql` (2 « OK »).
+- `tests/functions/test-superpdp-envoi.mjs` : 30 contrôles (bac à sable seulement si `env === 'sandbox'`, valeur brute enregistrée à la
+  connexion) ; suite H, bloc H3 (environnement inattendu → compte réel).

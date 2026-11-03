@@ -15,6 +15,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function listeBlanche(brut: string | null | undefined): string[] {
   return String(brut ?? '').split(',').map((x) => x.trim().toLowerCase()).filter((x) => UUID.test(x));
 }
+// P6 (31/10/2026, M4 C7) : bac à sable SEULEMENT si la plateforme a annoncé exactement « sandbox ». Toute autre valeur
+// (« production », majuscules, espaces, vide, absente, inconnue) = compte de PRODUCTION, avec tous les contrôles du registre.
+export function bacASable(env: unknown): boolean { return env === 'sandbox'; }
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -113,7 +116,10 @@ export async function handle(req: Request, service: any, env: (k: string) => str
       const me = await call(user.id, c, 'GET', 'companies/me');
       if (me.status >= 300) return json(errOf(me));
       const co = me.data || {};
-      const company = { id: co.id, nom: co.formal_name || co.trade_name || '', siren: co.number || '', schema: co.number_scheme || '', env: co.env || '', adresse: co.address || '', cp: co.postcode || '', ville: co.city || '', regime_tva: co.vat_regime || '', tva_debits: !!co.has_vat_on_debits };
+      /* P6 (M4 C7) : valeur brute de env enregistrée telle que la plateforme l'a renvoyée (env_brut, null si absente) ;
+         la colonne env garde le texte reçu, sans correction ni valeur devinée. */
+      const envBrut = co.env === undefined ? null : co.env;
+      const company = { id: co.id, nom: co.formal_name || co.trade_name || '', siren: co.number || '', schema: co.number_scheme || '', env: envBrut === null ? '' : String(envBrut), env_brut: envBrut, adresse: co.address || '', cp: co.postcode || '', ville: co.city || '', regime_tva: co.vat_regime || '', tva_debits: !!co.has_vat_on_debits };
       const { error } = await service.rpc('pdp_cred_set', { p_user: user.id, p_client_id: c.client_id, p_secret: c.client_secret, p_env: company.env, p_company: company });
       if (error) return json({ erreur: 'stockage', message: 'Enregistrement des identifiants impossible : ' + error.message });
       return json({ connecte: true, env: company.env, company });
@@ -141,8 +147,9 @@ export async function handle(req: Request, service: any, env: (k: string) => str
       let xml = String(body.xml || ''), ext = String(body.external_id || '').slice(0, 64);
       /* 1.10 (relecture R2) — compte de PRODUCTION : la facture déposée est exactement celle du registre figé
          (climpilot_documents, écrite une seule fois) ; on reçoit son identifiant, jamais le XML de l'appareil.
-         Bac à sable : XML de test fabriqué par l'appli (identités de test), comme avant. */
-      if (cred.env === 'production') {
+         Bac à sable : XML de test fabriqué par l'appli (identités de test), comme avant.
+         P6 (M4 C7) : production = tout ce qui n'est pas exactement « sandbox » (avant : égalité exacte avec « production »). */
+      if (!bacASable(cred.env)) {
         const id = String(body.document_id || '');
         if (!UUID.test(id)) return json({ erreur: 'registre', message: 'En production, la facture part du registre du serveur : identifiant du document manquant.' }, 400);
         const { data: doc, error: de } = await service.from('climpilot_documents').select('id, num, origine, xml').eq('id', id).eq('user_id', user.id).maybeSingle();

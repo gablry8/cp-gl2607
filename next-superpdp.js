@@ -112,7 +112,8 @@
     status(true).then(function(st){
       if(st.erreur){ modal('Plateforme agréée','<div class="nxd2-warn red">'+esc(st.message||st.erreur)+'</div>'+(/^(TEST|ESSAI)-/.test(num)?'<div class="sub2" style="margin-top:6px">'+esc(num)+' est un document de <b>démonstration</b> : il ne peut partir que vers le bac à sable de la plateforme, jamais vers un vrai client.</div>':'')); return; }
       if(!st.connecte){ modal('Plateforme agréée','<p>La plateforme n\'est pas encore connectée.</p>','<button class="btn-ghost" onclick="closeModal(\'mPdp\')">Annuler</button><button class="btn-pri" onclick="closeModal(\'mPdp\');go(\'nx_pdp\')">Connecter SUPER PDP</button>'); return; }
-      var sandbox=st.env!=='production', co=st.company||{};
+      /* P6 (M4 C7) : bac à sable SEULEMENT si la plateforme annonce exactement « sandbox » ; sinon compte réel, tous les contrôles */
+      var sandbox=st.env==='sandbox', co=st.company||{};
       var pro=String(d.cli.type||'')==='Professionnel', siren=sirenOf(d.cli);
       if(!sandbox&&(!pro||!siren)){
         modal('Envoi par la plateforme','<div class="nxd2-warn">'+(pro?'Ce client professionnel n\'a pas de <b>SIREN</b> dans ClimPilot : ajoute-le sur sa fiche (ou dans le devis), il sert à trouver sa plateforme.':'Client <b>particulier</b> : une facture à un particulier ne passe pas par la plateforme. Envoie-lui le PDF comme d\'habitude.<br><span class="sub2">À partir du 01/09/2027, ses montants seront déclarés automatiquement (« e-reporting »).</span>')+'</div>');
@@ -144,7 +145,7 @@
             if(s.erreur){ modal('Envoi refusé','<div class="nxd2-warn red">'+esc(s.message||s.erreur)+(s.status?' <span class="sub2">(HTTP '+s.status+')</span>':'')+'</div>'); return; }
             var m=M(), le=lastEv(s.events);
             m.docs[num]=m.docs[num]||{envois:[]};
-            m.docs[num].envois=(m.docs[num].envois||[]).concat([{id:s.id,env:sandbox?'sandbox':'production',at:new Date().toISOString(),ref:num+(ov&&ov.suffix||''),cadre:cadre,code:le?le.status_code:'api:uploaded',texte:le?le.status_text:''}]);
+            m.docs[num].envois=(m.docs[num].envois||[]).concat([{id:s.id,env:sandbox?'sandbox':'production',env_brut:(st.env===undefined?null:st.env),at:new Date().toISOString(),ref:num+(ov&&ov.suffix||''),cadre:cadre,code:le?le.status_code:'api:uploaded',texte:le?le.status_text:''}]);
             saveM(m);
             modal('Envoyé','<div class="nxd2-ok">✅ '+esc(num)+' déposé sur la plateforme'+(sandbox?' (test)':'')+'. Statut : <b>'+esc(lab(le?le.status_code:'api:uploaded'))+'</b>.</div><div class="sub2">Le statut se met à jour dans « Facture électronique ».</div>');
             refreshView();
@@ -164,7 +165,7 @@
       if(/^(TEST|ESSAI)-/.test(num)||(e&&e.mode==='demo')) return Promise.resolve('Document de <b>démonstration</b> ou <b>d\'essai</b> (série TEST ou ESSAI) : il ne part jamais sur la plateforme réelle.');
       if(!e||e.origine!=='emis'||e.mode!=='reel') return Promise.resolve('Facture émise avant ClimPilot 1.10 (version <b>non figée</b>, reconstituée) : envoi réel bloqué. À voir avec ton comptable avant tout envoi (<i>à confirmer</i>).');
     }
-    var prev=((M().docs[num]||{}).envois||[]).filter(function(x){ return sandbox?x.env==='sandbox':x.env==='production'; });
+    var prev=((M().docs[num]||{}).envois||[]).filter(function(x){ return sandbox?x.env==='sandbox':x.env!=='sandbox'; });
     if(sandbox||!prev.length) return assurer(num);
     /* déjà déposée en production : on relit le dernier statut avant d'autoriser quoi que ce soit */
     var last=prev[prev.length-1];
@@ -282,9 +283,10 @@
           '<div class="sub2" style="margin-top:8px">Commence avec le compte de <b>test</b> (bac à sable) : gratuit, sans SIREN. Quand ton entreprise existera, tu remplaceras par les identifiants réels.</div></div>';
         box.innerHTML=h; return;
       }
-      var co=st.company||{}, sandbox=st.env!=='production', rows=sentRows();
+      var co=st.company||{}, sandbox=st.env==='sandbox', rows=sentRows();   /* P6 (M4 C7) : voir nxPdpSend */
       h+='<div class="card"><div class="nxpdp-head"><div><h2 style="margin:0">'+(sandbox?'🧪 Connecté — compte de TEST':'✅ Connecté — compte réel')+'</h2><div class="sub2">'+esc(co.nom||'')+(co.siren?' · SIREN '+esc(co.siren):'')+' · identifiant '+esc(st.client_id||'')+'</div></div><button class="btn-ghost btn-sm" onclick="nxPdpDisconnect()">Déconnecter</button></div>'+
-        (sandbox?'<div class="nxd2-hint" style="margin-top:6px">Bac à sable : tes envois partent entre sociétés fictives (« '+esc(co.nom||'')+' » → l\'autre société de test). Idéal pour t\'entraîner.</div>':'')+'</div>';
+        (sandbox?'<div class="nxd2-hint" style="margin-top:6px">Bac à sable : tes envois partent entre sociétés fictives (« '+esc(co.nom||'')+' » → l\'autre société de test). Idéal pour t\'entraîner.</div>':'')+
+        (!sandbox&&st.env!=='production'?'<div class="nxd2-warn" style="margin-top:6px">Type de compte annoncé par la plateforme : « '+esc(st.env==null?'(absent)':String(st.env))+' » (ni « production » ni « sandbox ») : traité comme compte <b>réel</b>, avec tous les contrôles.</div>':'')+'</div>';
       h+='<div class="card"><div class="nxpdp-head"><h2 style="margin:0">📤 Envoyés</h2><button class="btn-ghost btn-sm" id="nxpdpRefBtn" onclick="nxPdpRefresh()">Actualiser les statuts</button></div>'+
         (rows.length?'<div class="scroll"><table><thead><tr><th class="l">Document</th><th class="l">Envoyé</th><th class="l">Statut</th><th></th></tr></thead><tbody>'+rows.map(function(r){ return '<tr><td class="l"><b>'+esc(r.num)+'</b>'+(r.e.env==='sandbox'?' <span class="sub2">test</span>':'')+'</td><td class="l">'+fr(r.e.at)+'</td><td class="l"><span class="nxpdp-st '+cls(r.e.code)+'">'+esc(lab(r.e.code,r.e.texte))+'</span></td><td><button class="btn-ghost btn-sm" onclick="nxPdpHistory(\''+esc(r.num)+'\')">Détail</button></td></tr>'; }).join('')+'</tbody></table></div>'
           :'<div class="empty">Rien d\'envoyé pour l\'instant. Bouton « Envoyer » sur une facture (écran Avoirs, ou bloc facturation du devis).</div>')+'</div>';

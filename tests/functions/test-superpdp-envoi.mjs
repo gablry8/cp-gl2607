@@ -2,6 +2,8 @@
 // en PRODUCTION, la facture déposée vient du registre figé (climpilot_documents), jamais du XML de l'appareil.
 // Aucun réseau : base, authentification et plateforme simulées (fetch remplacé et compté).
 // Lancement : node tests/functions/test-superpdp-envoi.mjs   (Node ≥ 22.6)
+// P6 (31/10/2026, M4 C7) : bac à sable SEULEMENT si env === 'sandbox' ; toute autre valeur (casse, espaces, vide, absente,
+// inconnue) = PRODUCTION avec les contrôles du registre ; valeur brute de env enregistrée à la connexion.
 import fs from 'fs'; import os from 'os'; import path from 'path'; import { execFileSync } from 'child_process'; import { fileURLToPath } from 'url';
 if (!process.env.__PDP_CHILD) {
   try { execFileSync(process.execPath, ['--experimental-strip-types', '--no-warnings', fileURLToPath(import.meta.url)], { stdio: 'inherit', env: { ...process.env, __PDP_CHILD: '1' } }); }
@@ -12,9 +14,11 @@ const FN = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../supaba
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'fn-superpdp-'));
 fs.writeFileSync(path.join(tmp, 'index.ts'), fs.readFileSync(path.join(FN, 'index.ts'), 'utf8').replace(/^import .*npm:@supabase.*$/m, ''));
 globalThis.__NO_SERVE = true; globalThis.Deno = { env: { get: () => undefined } };
-const postes = [];
+const postes = [], RPC = [];
+let ME = {}; /* réponse simulée de companies/me (connexion) */
 globalThis.fetch = async (url, init = {}) => { const u = String(url);
   if (/\/oauth2\/token$/.test(u)) return new Response(JSON.stringify({ access_token: 'jeton', expires_in: 3600 }), { status: 200 });
+  if (/\/v1\.beta\/companies\/me$/.test(u)) return new Response(JSON.stringify(ME), { status: 200, headers: { 'content-type': 'application/json' } });
   if (/\/v1\.beta\/invoices/.test(u) && init.method === 'POST') { postes.push({ url: u, body: String(init.body) }); return new Response(JSON.stringify({ id: 77, direction: 'out', events: [] }), { status: 201 }); }
   throw new Error('appel réseau inattendu : ' + u); };
 const { handle } = await import(path.join(tmp, 'index.ts'));
@@ -31,7 +35,7 @@ const DOCS = [
 ];
 function service(env) {
   return { auth: { getUser: async () => ({ data: { user: { id: A } }, error: null }) },
-    rpc: async (n) => (n === 'pdp_cred_get' ? { data: [{ client_id: 'c', client_secret: 's', env }], error: null } : { data: null, error: null }),
+    rpc: async (n, p) => { RPC.push([n, p]); return n === 'pdp_cred_get' ? { data: [{ client_id: 'c', client_secret: 's', env }], error: null } : { data: null, error: null }; },
     from: (t) => { const f = []; const q = { select() { return q; }, eq(c, v) { f.push([c, v]); return q; },
       maybeSingle() { const d = t === 'climpilot_documents' ? DOCS.find((x) => f.every(([c, v]) => x[c] === v)) : null; return Promise.resolve({ data: d || null, error: null }); } }; return q; } };
 }
@@ -53,6 +57,25 @@ const R = []; const rec = (n, ok, d) => R.push([ok ? 'PASS' : 'FAIL', n, ok ? ''
   rec('Production : XML pas encore enregistré → refus clair, rien déposé', r.st === 409 && r.j.erreur === 'fichiers' && !r.poste.length, r); }
 { const r = await envoyer('sandbox', { xml: XML_APP, external_id: 'F-2026-001-TEST1' });
   rec('Bac à sable : XML de test de l\'appareil accepté (comme avant)', r.st === 200 && r.poste.length === 1 && /XML DE L APPAREIL/.test(r.poste[0].body) && /external_id=F-2026-001-TEST1/.test(r.poste[0].url), r); }
+
+/* P6 (M4 C7) — toute valeur d'env autre que exactement 'sandbox' = PRODUCTION : la facture part du registre, jamais du XML de l'appareil */
+const lib = (e) => (e === undefined ? 'absent' : JSON.stringify(e));
+for (const e of ['Production', 'PRODUCTION', ' production', '', undefined, null, 'prod', 'live', 'Sandbox', 'sandbox ']) {
+  const r = await envoyer(e, { xml: XML_APP, external_id: 'F-2026-001-TEST9' });
+  rec('P6 : env ' + lib(e) + ' sans identifiant de document → traité en production : refus, rien déposé', r.st === 400 && r.j.erreur === 'registre' && !r.poste.length, r);
+  const r2 = await envoyer(e, { document_id: D1, xml: XML_APP, external_id: 'AUTRE-NUM' });
+  rec('P6 : env ' + lib(e) + ' → facture du registre déposée (numéro du registre), pas le XML de l\'appareil', r2.st === 200 && r2.poste.length === 1 && /FACTURE DU REGISTRE/.test(r2.poste[0].body) && !/XML DE L APPAREIL/.test(r2.poste[0].body) && /external_id=F-2026-001/.test(r2.poste[0].url) && !/AUTRE-NUM/.test(r2.poste[0].url), r2);
+}
+/* P6 (M4 C7) — connexion : la valeur brute de env renvoyée par la plateforme est enregistrée telle quelle */
+const connecter = async (me) => { ME = me; const n0 = RPC.length;
+  const rep = await handle(new Request('http://x/', { method: 'POST', headers: { authorization: 'Bearer jeton-valide', 'content-type': 'application/json' }, body: JSON.stringify({ action: 'connect', client_id: 'client-essai', client_secret: 'secret-essai-123' }) }), service('sandbox'), env);
+  const set = RPC.slice(n0).find(([n]) => n === 'pdp_cred_set'); return { st: rep.status, j: await rep.json(), p: set ? set[1] : null }; };
+{ const r = await connecter({ id: 7, formal_name: 'Société fictive', number: '000000001', env: 'Production' });
+  rec('P6 : connexion : env « Production » enregistré tel quel (colonne env + valeur brute dans company)', r.st === 200 && r.p && r.p.p_env === 'Production' && r.p.p_company.env_brut === 'Production' && r.j.env === 'Production', r); }
+{ const r = await connecter({ id: 7, formal_name: 'Société fictive', number: '000000001' });
+  rec('P6 : connexion : env absent → colonne vide, valeur brute null (rien n\'est deviné)', r.st === 200 && r.p && r.p.p_env === '' && 'env_brut' in r.p.p_company && r.p.p_company.env_brut === null, r); }
+{ const r = await connecter({ id: 7, formal_name: 'Société fictive', number: '000000001', env: 'sandbox' });
+  rec('P6 : connexion : env « sandbox » enregistré tel quel', r.st === 200 && r.p && r.p.p_env === 'sandbox' && r.p.p_company.env_brut === 'sandbox', r); }
 
 R.forEach((x) => console.log(x[0].padEnd(5), '[SUPER PDP envoi]', x[1], x[2] ? '— ' + x[2] : ''));
 if (process.env.CP_TEST_OUT) { fs.mkdirSync(process.env.CP_TEST_OUT, { recursive: true }); fs.writeFileSync(path.join(process.env.CP_TEST_OUT, 'resFn-superpdp-envoi.json'), JSON.stringify(R.map(([ok, name, detail]) => ({ group: 'SUPER PDP envoi', name, ok, detail })), null, 1)); }
