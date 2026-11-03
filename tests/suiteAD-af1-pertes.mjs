@@ -7,6 +7,9 @@ import { ecrireResultats } from './env.mjs';
 //  D6  : rouvrir et enregistrer une fiche fluide ne perd ni la signature du détenteur ni les autres champs (T12, T13).
 //  C-N1 : « Lieu / urgence » du contrat d'intervention gardé au clic suivant (trouvé le 27/10).
 //  A-N5 : enregistrer un devis ou une intervention ne recopie pas l'adresse du document sur une fiche client existante (27/10).
+//  AF1-bis (relecture indépendante du 03/11) : T14 avenant / original (jamais deux devis facturables, original « remplacé par l'avenant »), T15 « Annuler le devis »
+//  (motif obligatoire, hors d'« À commander », « Planifier », carnet et CA signé, PDF ANNULÉ), T16 verrou de la signature sur l'ancien formulaire, T17 apostrophe ’ du détenteur,
+//  T9 : texte de la question des Paramètres (« OK = enregistrer · Annuler = PERDRE les modifications »).
 // Horloge figée sur REF (tests/lib.mjs) : aucun test ne lit la vraie date. Serveur et cloud coupés (lib.mjs). Aucun montant n'est recalculé ici.
 import { page, rec, RES, closeBrowser, seed, REF } from './lib.mjs';
 const j = (o) => JSON.stringify(o);
@@ -230,7 +233,7 @@ async function t9(mobile) {
   await Q.p.reload(); await Q.p.waitForTimeout(2200);
   const recharge = await Q.p.evaluate(() => P.defaultRate);
   rec(G.D3, `T9 (${lbl}) rien modifié : changer d'écran ne pose aucune question`, aucune, j(dlg));
-  rec(G.D3, `T9 (${lbl}) taux horaire modifié puis tableau de bord : question « Enregistrer / Abandonner »`, q1.length === 1 && /enregistrer/i.test(q1[0]) && /abandonner/i.test(q1[0]), j(q1));
+  rec(G.D3, `T9 (${lbl}) taux horaire modifié puis tableau de bord : question « OK = enregistrer · Annuler = PERDRE les modifications »`, q1.length === 1 && /OK\s*=\s*enregistrer/i.test(q1[0]) && /Annuler\s*=\s*PERDRE/.test(q1[0]), j(q1));
   rec(G.D3, `T9 (${lbl}) « Enregistrer » : valeur gardée, encore là après rechargement`, apres === nouveau && recharge === nouveau, j({ avant, apres, recharge }));
   /* c. « Abandonner » : ancienne valeur */
   dlg.length = 0; await Q.p.evaluate(() => { go('params'); }); await Q.p.waitForTimeout(200);
@@ -385,6 +388,178 @@ await d6(true, 'T13 (mode guidé)');
   rec(G.AN5, 'A-N5 ancien formulaire : même règle', r.b.adr === r.ref1.adr && r.b.ville === r.ref1.ville && r.lg.adr === '3 Impasse du Chantier', j({ client: { adr: r.b.adr, ville: r.b.ville }, devis: r.lg }));
   rec(G.AN5, 'A-N5 intervention enregistrée : adresse du client gardée, champ vide (mail) complété, intervention intacte', r.c.adr === r.ref2.adr && r.c.ville === r.ref2.ville && !r.ref2.mail && r.c.mail === 'atelier@exemple.fr' && r.dep.adr === '8 Zone Industrielle', j({ client: { adr: r.c.adr, ville: r.c.ville, mail: r.c.mail }, dep: r.dep }));
   rec(G.AN5, 'Témoin : un client nouveau est créé avec les coordonnées du document', !!r.e && r.e.adr === '12 Rue Neuve' && r.e.ville === '60600 Clermont', j(r.e));
+}
+
+/* ================= AF1-bis (relecture indépendante du 03/11/2026, exception au gel décidée par Gabriel) ================= */
+const GB = { AV: 'AF1-bis avenant / original', AN: 'AF1-bis annuler le devis', SG: 'AF1-bis verrou signature (ancien formulaire)' };
+
+/* ---------------- T14 : un avenant et son original ne sont jamais facturables tous les deux ---------------- */
+{
+  /* a. l'original porte une facture vivante (acompte) : « Faire un avenant » est refusé */
+  const ra = await p.evaluate(async () => {
+    AD.reset();
+    const d = AD.v2({ statut: 'accepte', facAcompte: { num: 'TEST-F-' + __REF.an + '-0801', date: __REF.jour, montant: 100, baseTTC: 300, payeLe: null, mode: '' } });
+    const n0 = DEVIS.length; cpDevisAvenant(d.id); await new Promise(r => setTimeout(r, 200));
+    return { n0, n1: DEVIS.length, msgs: __msgs.slice(), statut: DEVIS.find(x => x.id === d.id).statut };
+  });
+  rec(GB.AV, 'T14a original avec une facture vivante : « Faire un avenant » refusé, message « fais d\'abord un avoir … nouveau devis », aucun devis créé', ra.n1 === ra.n0 && ra.msgs.some(m => /avoir/i.test(m) && /nouveau devis/i.test(m)), j(ra));
+  /* b. avenant (éditeur v2) passé « Accepté » et enregistré : l'original devient « remplacé par l'avenant », sort de tout, reste visible et non supprimable */
+  const rb = await p.evaluate(async () => {
+    AD.reset();
+    const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 });
+    go('tous'); await new Promise(r => setTimeout(r, 150));
+    const accAvant = DEVIS.filter(x => x.statut === 'accepte').length;
+    cpDevisAvenant(o.id); await new Promise(r => setTimeout(r, 250));
+    const a = DEVIS.find(x => x.avenantDe && x.avenantDe.id === o.id); if (!a) return { absent: true };
+    nxd2.statut('accepte'); const ok = nxd2.save(); await new Promise(r => setTimeout(r, 150));
+    const O = DEVIS.find(x => x.id === o.id), A = DEVIS.find(x => x.id === a.id), st = JSON.parse(localStorage.getItem(LS.devis) || '[]').find(x => x.id === o.id) || {};
+    renderCommander(); renderPlanning(); renderDash();
+    const cmd = /Chantiers signés[^0-9]*(\d+)/.exec((document.getElementById('cmdKpis') || {}).textContent || '');
+    const plan = (document.getElementById('planTodo') || {}).textContent || '';
+    const carnet = nxobjCarnet(), accApres = DEVIS.filter(x => x.statut === 'accepte').length;
+    const journal = JSON.parse(localStorage.getItem('cpnext_journal') || '[]').filter(x => x.id === o.id && /remplac/.test(x.type || ''));
+    /* facturer l'original : refusé ; à l'ouverture : bandeau, pas de bloc facturation, « Dupliquer » seulement */
+    AD.reset(); await facturerDevis(o.id, 'solde'); await new Promise(r => setTimeout(r, 300));
+    const facMsgs = __msgs.slice(), O2 = DEVIS.find(x => x.id === o.id);
+    openDevis(o.id); await new Promise(r => setTimeout(r, 250));
+    const fbloc = (document.getElementById('fBloc') || {}).innerHTML || '';
+    const ban = (document.getElementById('nxd2Banner') || {}).textContent || '';
+    const boutons = [...document.querySelectorAll('#v-nx_devis2 button')].map(b => b.textContent.trim());
+    AD.reset(); __oui = true; delDevis(o.id); await new Promise(r => setTimeout(r, 100));
+    return { ok, oStatut: O.statut, stStatut: st.statut, oDate: O.acceptedAt === o.acceptedAt, lien: !!(O.remplacePar && O.remplacePar.id === a.id && O.remplacePar.num === a.num), aStatut: A.statut, accAvant, accApres,
+      cmd: cmd ? +cmd[1] : null, planO: plan.indexOf(o.num) >= 0, planA: plan.indexOf(a.num) >= 0, carnet: carnet.devis, journal: journal.length,
+      facMsgs, fac: !!(O2.facSolde || O2.facAcompte), fbloc: fbloc === '', ban: ban.slice(0, 200), avenantBtn: boutons.some(b => /Faire un avenant/.test(b)), dupBtn: boutons.some(b => /Dupliquer/.test(b)), reste: DEVIS.some(x => x.id === o.id), corbeille: AD.trash().some(x => x.item && x.item.id === o.id) };
+  });
+  rec(GB.AV, 'T14b avenant accepté (éditeur) : l\'original passe « remplacé par l\'avenant n° … » (mémoire et stockage), date d\'acceptation gardée, lien vers l\'avenant', !rb.absent && rb.ok === true && rb.aStatut === 'accepte' && rb.oStatut === 'remplace' && rb.stStatut === 'remplace' && rb.oDate && rb.lien, j(rb));
+  rec(GB.AV, 'T14b l\'original sort d\'« À commander », de « Planifier » et du carnet de commandes (un seul chantier signé : l\'avenant)', !rb.absent && rb.accApres === rb.accAvant && rb.cmd === rb.accApres && !rb.planO && rb.planA && rb.carnet === rb.accApres, j({ accAvant: rb.accAvant, accApres: rb.accApres, cmd: rb.cmd, planO: rb.planO, planA: rb.planA, carnet: rb.carnet }));
+  rec(GB.AV, 'T14b l\'original sort de la facturation : « Facturer » refusé, aucune facture, bloc facturation vide ; ligne au journal', !rb.absent && !rb.fac && rb.facMsgs.some(m => /ne se facture plus/i.test(m)) && rb.fbloc && rb.journal >= 1, j({ fac: rb.fac, facMsgs: rb.facMsgs, fbloc: rb.fbloc, journal: rb.journal }));
+  rec(GB.AV, 'T14b l\'original reste visible (bandeau « remplacé par l\'avenant »), « Dupliquer » seulement, non supprimable', !rb.absent && /remplacé par l'avenant/i.test(rb.ban) && !rb.avenantBtn && rb.dupBtn && rb.reste && !rb.corbeille, j({ ban: rb.ban, avenantBtn: rb.avenantBtn, dupBtn: rb.dupBtn, reste: rb.reste, corbeille: rb.corbeille }));
+  /* c. l'original a été facturé ENTRE-TEMPS : l'acceptation de l'avenant est refusée (liste, puis éditeur) */
+  const rc = await p.evaluate(async () => {
+    AD.reset();
+    const o = AD.v2({ statut: 'accepte' }); go('tous'); await new Promise(r => setTimeout(r, 150));
+    cpDevisAvenant(o.id); await new Promise(r => setTimeout(r, 250));
+    const a = DEVIS.find(x => x.avenantDe && x.avenantDe.id === o.id); if (!a) return { absent: true };
+    nxd2.close(); go('tous'); await new Promise(r => setTimeout(r, 150));
+    const O = DEVIS.find(x => x.id === o.id); O.facAcompte = { num: 'TEST-F-' + __REF.an + '-0802', date: __REF.jour, montant: 50, baseTTC: 300, payeLe: null, mode: '' }; save(LS.devis, DEVIS);
+    AD.reset(); nxSetStatut(a.id, 'accepte'); await new Promise(r => setTimeout(r, 100));
+    const s1 = DEVIS.find(x => x.id === a.id).statut, m1 = __msgs.slice();
+    AD.reset(); openDevis(a.id); await new Promise(r => setTimeout(r, 250)); nxd2.statut('accepte'); nxd2.save(); await new Promise(r => setTimeout(r, 150));
+    const s2 = DEVIS.find(x => x.id === a.id).statut, m2 = __msgs.slice();
+    nxd2.close();
+    return { s1, m1, s2, m2, oStatut: DEVIS.find(x => x.id === o.id).statut };
+  });
+  rec(GB.AV, 'T14c original facturé entre-temps : « Accepté » depuis la liste refusé (message clair), l\'original reste accepté', !rc.absent && rc.s1 !== 'accepte' && rc.m1.some(m => /facturé entre-temps/i.test(m) && /avoir/i.test(m)) && rc.oStatut === 'accepte', j({ s1: rc.s1, m1: rc.m1, oStatut: rc.oStatut }));
+  rec(GB.AV, 'T14c original facturé entre-temps : « Accepté » puis « Enregistrer » dans l\'éditeur refusé aussi', !rc.absent && rc.s2 !== 'accepte' && rc.m2.some(m => /facturé entre-temps/i.test(m)), j({ s2: rc.s2, m2: rc.m2 }));
+  /* d. ancien formulaire : avenant passé « Accepté » et enregistré → original remplacé */
+  const rd = await p.evaluate(async () => {
+    AD.reset(); const o = AD.legacy({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) });
+    cpDevisAvenant(o.id); await new Promise(r => setTimeout(r, 250));
+    const a = DEVIS.find(x => x.avenantDe && x.avenantDe.id === o.id); if (!a || !cur || cur.id !== a.id) return { absent: true };
+    document.getElementById('f_statut').value = 'accepte'; saveDevis(); await new Promise(r => setTimeout(r, 150));
+    const O = DEVIS.find(x => x.id === o.id); openDevis(o.id); await new Promise(r => setTimeout(r, 250));
+    const ban = (document.getElementById('cpVerrouWiz') || {}).textContent || '';
+    const fb = (document.getElementById('fBloc') || {}).innerHTML || '';
+    return { oStatut: O.statut, lien: !!(O.remplacePar && O.remplacePar.num === a.num), aStatut: DEVIS.find(x => x.id === a.id).statut, ban: ban.slice(0, 200), fb: fb === '' };
+  });
+  rec(GB.AV, 'T14d ancien formulaire : avenant « Accepté » enregistré → original « remplacé par l\'avenant n° … » (bandeau), bloc facturation vide', !rd.absent && rd.oStatut === 'remplace' && rd.lien && rd.aStatut === 'accepte' && /remplacé par l'avenant/i.test(rd.ban) && rd.fb, j(rd));
+}
+
+/* ---------------- T15 : « Annuler le devis » (accepté ou signé), motif obligatoire ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); if (typeof window.cpDevisAnnuler !== 'function') return { absent: true };
+    const modal = () => document.getElementById('mAnnulDevis');
+    const ouvert = () => !!(modal() && modal().classList.contains('on'));
+    /* a. facture vivante : refus « fais d'abord un avoir » */
+    const f = AD.v2({ statut: 'accepte', facSolde: { num: 'TEST-F-' + __REF.an + '-0803', date: __REF.jour, montant: 200, total: 200, payeLe: null, mode: '' } });
+    cpDevisAnnuler(f.id); await new Promise(r => setTimeout(r, 100));
+    const a = { statut: DEVIS.find(x => x.id === f.id).statut, msgs: __msgs.slice(), modal: ouvert() };
+    /* b. devis signé : bouton présent ; motif obligatoire ; annulé avec motif */
+    AD.reset();
+    const s = AD.v2({ statut: 'accepte', signature: { at: __REF.horloge, nom: 'Client Signataire', hash: 'ann1' }, acceptedAt: Date.parse(__REF.horloge) });
+    openDevis(s.id); await new Promise(r => setTimeout(r, 250));
+    const btnV2 = [...document.querySelectorAll('#v-nx_devis2 button')].some(b => /Annuler le devis/.test(b.textContent));
+    nxd2.close(); go('tous'); await new Promise(r => setTimeout(r, 150));
+    const accAvant = DEVIS.filter(x => x.statut === 'accepte').length;
+    cpDevisAnnuler(s.id); await new Promise(r => setTimeout(r, 100));
+    const ouvertB = ouvert();
+    cpDevisAnnulerOk(); await new Promise(r => setTimeout(r, 100));
+    const sansMotif = DEVIS.find(x => x.id === s.id).statut, msgSansMotif = __msgs.slice();
+    const radio = modal() && modal().querySelector('input[name="cpAnnulMotif"][value="abandon"]'); if (radio) radio.checked = true;
+    cpDevisAnnulerOk(); await new Promise(r => setTimeout(r, 200));
+    const S = DEVIS.find(x => x.id === s.id), st = JSON.parse(localStorage.getItem(LS.devis) || '[]').find(x => x.id === s.id) || {};
+    renderDash(); renderCommander(); renderPlanning();
+    const plan = (document.getElementById('planTodo') || {}).textContent || '';
+    const cmd = /Chantiers signés[^0-9]*(\d+)/.exec((document.getElementById('cmdKpis') || {}).textContent || '');
+    const accApres = DEVIS.filter(x => x.statut === 'accepte').length, carnet = nxobjCarnet().devis;
+    const ca = DEVIS.filter(x => x.statut === 'accepte').reduce((t, d) => t + compute(d).totalHT, 0);
+    const kpi = /Acceptés[^0-9]*(\d+)/.exec((document.getElementById('dashKpis') || {}).textContent || '');
+    const journal = JSON.parse(localStorage.getItem('cpnext_journal') || '[]').filter(x => x.id === s.id && /annul/.test(x.type || ''));
+    /* réouverture : bandeau ; PDF avec le bandeau ANNULÉ ; suppression refusée */
+    openDevis(s.id); await new Promise(r => setTimeout(r, 250));
+    const ban = (document.getElementById('nxd2Banner') || {}).textContent || '';
+    const real = window.print; window.print = () => {}; printDevis(); window.print = real; const html = document.getElementById('devisDoc').innerHTML;
+    const boutons = [...document.querySelectorAll('#v-nx_devis2 button')].map(b => b.textContent.trim());
+    nxd2.close();
+    AD.reset(); __oui = true; delDevis(s.id); await new Promise(r => setTimeout(r, 100));
+    const b = { btnV2, ouvertB, sansMotif, msgSansMotif, statut: S.statut, stStatut: st.statut, annulation: S.annulation, date: S.acceptedAt === s.acceptedAt, sig: !!S.signature, accAvant, accApres, cmd: cmd ? +cmd[1] : null, kpi: kpi ? +kpi[1] : null, planS: plan.indexOf(s.num) >= 0, carnet, ca,
+      journal: journal.length, ban: ban.slice(0, 200), pdf: /ANNULÉ/.test(html) && /Abandon du client/i.test(html), avenantBtn: boutons.some(x => /Faire un avenant|Annuler le devis/.test(x)), reste: DEVIS.some(x => x.id === s.id), corbeille: AD.trash().some(x => x.item && x.item.id === s.id), msgs: __msgs.slice() };
+    /* c. après un avoir TOTAL (plus de facture vivante) : annulation possible ; ancien formulaire : bouton présent */
+    AD.reset();
+    const av = AD.legacy({ statut: 'accepte', facAnnulees: [{ num: 'TEST-F-' + __REF.an + '-0804', date: __REF.jour, montant: 200, avoir: 'TEST-AV-' + __REF.an + '-0001', annuleeLe: __REF.jour, which: 'solde' }] });
+    openDevis(av.id); await new Promise(r => setTimeout(r, 250));
+    const btnWiz = /Annuler le devis/.test((document.getElementById('cpVerrouWiz') || {}).textContent || '');
+    cpDevisAnnuler(av.id); await new Promise(r => setTimeout(r, 100));
+    const r2 = modal() && modal().querySelector('input[name="cpAnnulMotif"][value="erreur"]'); if (r2) r2.checked = true;
+    cpDevisAnnulerOk(); await new Promise(r => setTimeout(r, 200));
+    const AV = DEVIS.find(x => x.id === av.id);
+    const banWiz = (document.getElementById('cpVerrouWiz') || {}).textContent || '';
+    const c = { btnWiz, statut: AV.statut, motif: AV.annulation && AV.annulation.motif, banWiz: banWiz.slice(0, 200), vue: window._curView };
+    return { a, b, c };
+  });
+  if (r.absent) r.a = r.b = r.c = {};
+  rec(GB.AN, 'T15a devis avec une facture vivante : « Annuler le devis » refusé (« fais d\'abord un avoir »), rien ne change', !r.absent && r.a.statut === 'accepte' && !r.a.modal && r.a.msgs.some(m => /avoir/i.test(m)), j(r.a));
+  rec(GB.AN, 'T15b devis signé : bouton « Annuler le devis » dans l\'éditeur ; motif obligatoire (sans motif : rien) ; puis statut « annulé » avec motif et date, signature et date d\'acceptation gardées (mémoire et stockage)', !r.absent && r.b.btnV2 && r.b.ouvertB && r.b.sansMotif === 'accepte' && r.b.statut === 'annule' && r.b.stStatut === 'annule' && !!(r.b.annulation && r.b.annulation.motif === 'abandon' && r.b.annulation.at) && r.b.date && r.b.sig, j({ btnV2: r.b.btnV2, ouvertB: r.b.ouvertB, sansMotif: r.b.sansMotif, statut: r.b.statut, stStatut: r.b.stStatut, annulation: r.b.annulation, date: r.b.date, sig: r.b.sig }));
+  rec(GB.AN, 'T15b devis annulé : sort d\'« À commander », de « Planifier », du carnet de commandes et du CA signé (compteur « Acceptés »)', !r.absent && r.b.accApres === r.b.accAvant - 1 && r.b.cmd === r.b.accApres && r.b.kpi === r.b.accApres && !r.b.planS && r.b.carnet === r.b.accApres, j({ accAvant: r.b.accAvant, accApres: r.b.accApres, cmd: r.b.cmd, kpi: r.b.kpi, planS: r.b.planS, carnet: r.b.carnet }));
+  rec(GB.AN, 'T15b devis annulé : reste visible (bandeau « annulé »), PDF avec le bandeau ANNULÉ et le motif, non supprimable, ligne au journal, plus d\'avenant ni de nouvelle annulation', !r.absent && /annulé/i.test(r.b.ban) && r.b.pdf && r.b.reste && !r.b.corbeille && r.b.journal >= 1 && !r.b.avenantBtn, j({ ban: r.b.ban, pdf: r.b.pdf, reste: r.b.reste, corbeille: r.b.corbeille, journal: r.b.journal, avenantBtn: r.b.avenantBtn }));
+  rec(GB.AN, 'T15c après un avoir total : annulation possible ; ancien formulaire : bouton dans le bandeau, bandeau « annulé » après', !r.absent && r.c.btnWiz && r.c.statut === 'annule' && r.c.motif === 'erreur' && /annulé/i.test(r.c.banWiz), j(r.c));
+}
+
+/* ---------------- T16 : ancien formulaire, devis accepté : « ✍️ Signature », « Faire signer en ligne » et « Enregistrer le devis » du récapitulatif cachés ; nxsSendDevis refuse ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const d = AD.legacy({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) });
+    openDevis(d.id); await new Promise(r => setTimeout(r, 250));
+    const cache = id => { const b = document.getElementById(id); return b ? getComputedStyle(b).display === 'none' : null; };
+    const recap = document.querySelector('#v-wizard .navbtns button[onclick="saveDevis()"]');
+    const avant = AD.stored(d.id);
+    window.SESS = { user: { id: 'u1' } };
+    const n = document.getElementById('f_notes'); n.disabled = false; n.value = 'MODIFIÉ PAR LA SIGNATURE';
+    nxsSendDevis(); await new Promise(r => setTimeout(r, 300));
+    const apres = AD.stored(d.id);
+    const journal = JSON.parse(localStorage.getItem('cpnext_journal') || '[]').filter(x => x.id === d.id && x.action === 'signature');
+    const verrouille = { sigTop: cache('nxsBtnTop'), sigRecap: cache('nxsBtn'), recapSave: recap ? getComputedStyle(recap).display === 'none' : null, identique: JSON.stringify(avant) === JSON.stringify(apres), notes: apres.notes, msgs: __msgs.slice(), journal: journal.length };
+    /* témoin : sur un brouillon, les trois boutons reviennent */
+    AD.reset(); const b = AD.legacy({ statut: 'brouillon' }); openDevis(b.id); await new Promise(r => setTimeout(r, 250));
+    const libre = { sigTop: cache('nxsBtnTop'), sigRecap: cache('nxsBtn'), recapSave: recap ? getComputedStyle(recap).display === 'none' : null };
+    return { verrouille, libre };
+  });
+  rec(GB.SG, 'T16 devis accepté (ancien formulaire) : « ✍️ Signature », « Faire signer en ligne » et « 💾 Enregistrer le devis » du récapitulatif cachés', r.verrouille.sigTop === true && r.verrouille.sigRecap === true && r.verrouille.recapSave === true, j(r.verrouille));
+  rec(GB.SG, 'T16 nxsSendDevis sur un devis accepté : refusé en tête (devis identique, message 🔒, ligne au journal, aucun lien préparé)', r.verrouille.identique && r.verrouille.notes !== 'MODIFIÉ PAR LA SIGNATURE' && r.verrouille.msgs.some(m => /🔒|ne se renvoie pas/i.test(m)) && !r.verrouille.msgs.some(m => /Préparation du lien/.test(m)) && r.verrouille.journal >= 1, j(r.verrouille));
+  rec(GB.SG, 'Témoin : sur un brouillon, les trois boutons sont de nouveau visibles', r.libre.sigTop === false && r.libre.sigRecap === false && r.libre.recapSave === false, j(r.libre));
+}
+
+/* ---------------- T17 : apostrophe typographique (’, clavier iPhone) dans le nom du détenteur ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    const a = cpDetenteurCoord('L’Atelier du Froid'), b = cpDetenteurCoord("L'Atelier du Froid");
+    closeModal('mFlu'); go('fluides'); openFlu(); await new Promise(r => setTimeout(r, 200));
+    const c = document.getElementById('fl_client'); c.value = 'L’Atelier du Froid'; c.dispatchEvent(new Event('change', { bubbles: true })); await new Promise(r => setTimeout(r, 100));
+    const champ = (document.getElementById('fl_detAdr') || {}).value; closeModal('mFlu');
+    return { a, b, champ };
+  });
+  rec(G.D5, 'T17 « L’Atelier du Froid » (apostrophe ’) trouve la fiche client comme « L\'Atelier du Froid » : adresse et ville reprises, champ de la fiche pré-rempli', r.a.adr === "2 rue de l'Église" && r.a.ville === '60100 Creil' && r.a.adr === r.b.adr && r.champ === "2 rue de l'Église", j(r));
 }
 
 rec('AF1', 'Aucune erreur JavaScript pendant la suite', errs.length === 0, errs.join(' | '));

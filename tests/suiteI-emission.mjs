@@ -99,6 +99,26 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   await ctx.close();
 }
 
+/* I3d (AF1-bis, 03/11/2026) devis « envoyé » dans le stockage, passé en « Accepté » à l'écran SANS enregistrer, puis modifié : « Facturer » enregistre
+   d'abord (statut ET modification, le devis enregistré n'étant pas verrouillé), puis émet — remplace le cas « devis accepté modifié puis facturé »
+   d'avant AF1 (I3b), inversé par la décision D0 (un devis accepté ne se modifie plus). */
+{
+  const {p,ctx,errs}=await page({mobile:false});
+  p.removeAllListeners('dialog'); const dlg=[]; p.on('dialog',d=>{ dlg.push(d.message()); d.accept().catch(()=>{}); });
+  await seed(p); await p.evaluate(SERVEUR); await p.evaluate(REEL);
+  const r=await p.evaluate(async c=>{ const d=DEVIS.find(x=>x.statut==='envoye'&&!x.facSolde&&!x.facAcompte&&!x.signature&&compute(x).totalHT>0);
+    NXD2.open(JSON.parse(JSON.stringify(d)),{tab:'recap'}); await new Promise(r=>setTimeout(r,80));
+    nxd2.statut('accepte'); const cu=NXD2.api.cur(); cu.cNom=(cu.cNom||'')+' MODIF'; NXD2.api.markDirty();
+    const avant=JSON.parse(localStorage.getItem('cp2_devis')||'[]').find(x=>x.id===d.id)||{};
+    await facturerDevis(d.id,'solde'); eval(c);
+    const s=DEVIS.find(x=>x.id===d.id)||{}, st=JSON.parse(localStorage.getItem('cp2_devis')||'[]').find(x=>x.id===d.id)||{};
+    return {avantStatut:avant.statut,avantNom:avant.cNom,statut:st.statut,modif:/ MODIF$/.test(st.cNom||''),fac:s.facSolde&&s.facSolde.num,stFac:st.facSolde&&st.facSolde.num,docs:__srv.docs.map(x=>x.num)}; },close);
+  rec('Émission','Devis « envoyé » passé « Accepté » à l\'écran sans enregistrer, puis modifié : « Facturer » enregistre statut et modification AVANT d\'émettre',r.avantStatut==='envoye'&&!/ MODIF$/.test(r.avantNom||'')&&r.statut==='accepte'&&r.modif&&/^F-\d{4}-001$/.test(r.fac||'')&&r.stFac===r.fac&&r.docs[0]===r.fac,JSON.stringify(r));
+  rec('Émission','I3d : aucune question « pas accepté » (le statut à l\'écran fait foi)',!dlg.some(m=>/pas accepté/.test(m)),JSON.stringify(dlg));
+  rec('Émission','Aucune erreur JavaScript (I3d)',errs.length===0,errs.join(' | '));
+  await ctx.close();
+}
+
 /* I3c devis non accepté : confirmation demandée ; refus = rien d'émis ; accord = facture émise */
 {
   const {p,ctx,errs}=await page({mobile:false});
