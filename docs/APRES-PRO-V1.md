@@ -48,7 +48,10 @@
 
 | Date | Idée | D'où elle vient |
 |---|---|---|
-| 03/11 | **Devis signé ou accepté que le client abandonne** : il ne se supprime plus et son statut ne change plus (AF1 D0) ; il faudrait un état « annulé » (motif, date, qui), tracé, hors du chiffre « Signé », avec la rétractation du particulier comme cas particulier | AF1 D0, décision 1 |
+| 03/11 | ~~**Devis signé ou accepté que le client abandonne**~~ — **fait le 03/11 en AF1-bis** (bouton « Annuler le devis », motif obligatoire dont « rétractation dans les 14 jours », état « annulé » tracé au journal, hors du chiffre signé ; refusé tant qu'une facture vivante existe) | AF1 D0, décision 1 → AF1-bis point 2 |
+| 03/11 | **Rappel « refais la fiche »** après l'annulation d'une fiche fluide (une fiche annulée est une erreur de saisie : l'intervention reste sans fiche valable tant qu'une nouvelle n'est pas faite) | relecture AF1 (Opus, 03/11), hors périmètre d'AF1-bis |
+| 03/11 | **Message quand le téléphone (ou le mail) d'un devis diffère de la fiche client** : depuis A-N5, un téléphone corrigé sur un devis ne corrige plus la fiche client ; proposer « mettre la fiche client à jour ? » au lieu de rester muet | relecture AF1 (Opus, 03/11), hors périmètre d'AF1-bis |
+| 03/11 | **Défaut de synchro D1 (famille P3)** : une version modifiée sur un appareil pas à jour peut gagner à la fusion (vu une fois en suite Q : note de la fiche client du téléphone perdue par l'enregistrement d'un devis sur le PC) ; le verrou d'un devis n'existe que sur l'appareil qui a la copie à jour | AF1 constat 2.10, AF1-bis § 10 → P3 |
 | 03/11 | **Écran du journal** : les refus (enregistrement ou suppression d'un devis verrouillé) sont notés dans `cpnext_journal` (200 lignes) mais aucun écran ne les montre ; une carte « Journal » dans Gestion suffirait | AF1 D0 |
 | 03/11 | **Fiche fluide signée à corriger** : aujourd'hui « Annuler la fiche » (motif) + nouvelle fiche ; une vraie « fiche rectificative » liée à l'ancienne (numéro, renvoi croisé) serait plus lisible pour le détenteur et l'organisme | AF1 D2 / D6, décision 2 |
 

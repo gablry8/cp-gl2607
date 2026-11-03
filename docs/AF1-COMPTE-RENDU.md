@@ -1,21 +1,22 @@
-# AF1 — « Zéro perte de données » — compte rendu (03/11/2026)
+# AF1 — « Zéro perte de données » — compte rendu (03/11/2026, complété par AF1-bis le 03/11/2026 au soir)
 
 > Rédigé le 03/11/2026 par Claude (Fable 5.1), exécutant de la mission AF1 (`docs/MISSION-AF-CORRECTIONS.md`, § 2 : D0, D2, D3, D5, D6, suppression d'un devis signé) + deux pertes trouvées le 27/10 (C-N1, A-N5), pour Gabriel Leroy.
-> Branche **`correctif/af1-pertes-donnees`**, créée depuis `main` (`1e33a67`, P6+ fusionnée le 03/11). Deux commits : **tests seuls** (CI attendue rouge : suite AD) puis **code + docs** (CI attendue verte). **Rien n'est fusionné ni déployé ; aucune base Supabase touchée.** Demande de fusion en brouillon : c'est Gabriel qui fusionne.
+> Branche **`correctif/af1-pertes-donnees`**, créée depuis `main` (`1e33a67`, P6+ fusionnée le 03/11). Deux commits : **tests seuls** (CI attendue rouge : suite AD) puis **code + docs** (CI attendue verte). **Rien n'est fusionné ni déployé ; aucune base Supabase touchée.** Demande de fusion en brouillon ([#9](https://github.com/gablry8/cp-gl2607/pull/9)) : c'est Gabriel qui fusionne.
+> **AF1-bis (03/11, soir)** : corrections après la relecture indépendante (Opus, 03/11), exception au gel limitée aux 8 points de Gabriel — § 11. Deux commits de plus sur la même branche : **tests d'abord** (`f6ed6a7`, 18 contrôles rouges sur `9fcf2cf`) puis **code** (`22ca108`), puis les documents.
 > Certitude : **certain** (lu dans le code et reproduit par un test ici, dans Chromium), **probable** (déduit), **hypothèse** (interprétation à valider).
 
 ## Ce que Gabriel décide / fait (10 lignes)
 
-1. **Décisions appliquées (tes avis par défaut, à confirmer avant la fusion)** : un devis **signé, accepté ou facturé ne se modifie plus** (deux boutons « Faire un avenant » et « Dupliquer » ; un accord papier = statut « accepté » = verrouillé aussi) ; une **fiche fluide numérotée ne se supprime pas avant 5 ans** (« Annuler la fiche » avec motif à la place) et une **fiche signée est en lecture seule** ; **Paramètres** : question « Enregistrer / Abandonner » en quittant l'écran avec des modifications.
-2. **Valide les interprétations du § 4** (hypothèses) : ce qu'emporte un avenant, ce qui reste utilisable sur un devis verrouillé, les fiches fluides annulées exclues des quantités du registre et du bilan, la règle « champs vides seulement » appliquée à **toutes** les coordonnées de la fiche client (pas seulement l'adresse).
-3. **Lis le § 7** (ce qui change à l'écran) : ce sont des comportements nouveaux que tu verras tous les jours (bandeau 🔒, bouton 🗑 absent sur les fiches fluides numérotées, question en quittant Paramètres).
-4. **Fais l'essai du § 8** sur la copie d'essai (≈ 15 min, 6 parcours numérotés, résultats attendus écrits).
-5. Après fusion : **F5 sur chaque appareil** (cache `climpilot-next-1133-production`). Version affichée inchangée.
-6. Batterie complète ici (`1f677d4`) : **COMPLET, RÉUSSI — 1 343 réussis, 0 échoué, 0 SKIP**, 5 « À TRANCHER » inchangés ; CI GitHub du même commit : **verte** (push et demande de fusion). Détail § 6.
-7. Golden Y (documents) et Z (calculs) **identiques**, les 5 « À TRANCHER » **inchangés** ; aucun montant, aucune règle fiscale, aucune mention légale, aucun arrondi ne change.
-8. Données : seulement des **champs ajoutés** (`avenantDe` sur un avenant ; `detAdr`, `detVille`, `detSiret`, `annulee` sur une fiche fluide ; clé locale `cpnext_journal`), rien de retiré ; export CSV du registre fluides : 2 colonnes ajoutées **à la fin**.
-9. Ce qui n'est **pas** fait, volontairement (§ 10 et `docs/APRES-PRO-V1.md`, datés 03/11) : un écran pour lire le journal des refus ; « annuler » un devis signé que le client a finalement abandonné (il ne se supprime plus, il reste « accepté ») ; la rétractation d'une fiche fluide signée.
-10. Retour arrière à tout moment : revert du commit « code » (les tests restent et redeviennent rouges).
+1. **Décisions appliquées (tes avis par défaut d'AF1 + tes 8 décisions d'AF1-bis, à confirmer avant la fusion)** : un devis **signé, accepté ou facturé ne se modifie plus** (« Faire un avenant » / « Dupliquer » ; accord papier = statut « accepté » = verrouillé) ; **AF1-bis** : « Faire un avenant » **refusé** si une facture vivante existe ; quand l'avenant passe en « Accepté », l'original passe **« remplacé par l'avenant n° … »** (sort de la facturation, d'« À commander », de « Planifier » et du carnet ; visible, non supprimable) ; acceptation **refusée** si l'original a été facturé entre-temps ; bouton **« Annuler le devis »** (motif obligatoire : abandon, rétractation 14 jours, erreur de saisie, autre) sur un devis accepté ou signé, refusé tant qu'une facture vivante existe ; une **fiche fluide numérotée ne se supprime pas avant 5 ans** (« Annuler la fiche ») et une **fiche signée est en lecture seule** ; **Paramètres** : question « OK = enregistrer · Annuler = PERDRE les modifications ».
+2. **Valide les interprétations du § 4** (AF1) et du **§ 11.4** (AF1-bis : avenant signé en ligne alors que l'original est facturé → signature **gardée en attente**, statut inchangé ; motifs d'annulation ; un devis annulé ne se facture plus, même après coup).
+3. **Lis le § 7** (ce qui change à l'écran, corrigé par AF1-bis : bandeau avec trois boutons, états « Remplacé » / « Annulé » dans la liste, PDF ANNULÉ).
+4. **Fais l'essai du § 8** (parcours 1 à 6, ≈ 15 min) **et du § 11.6** (parcours 7 et 8, ≈ 6 min) sur la copie d'essai.
+5. Après fusion : **F5 sur chaque appareil, le même jour** (cache `climpilot-next-1133-production`, inchangé par AF1-bis). Version affichée inchangée. Ne modifie pas un devis sur un appareil hors ligne ou pas encore rechargé (§ 10).
+6. Batterie complète ici : AF1 sur `1f677d4` **COMPLET, RÉUSSI — 1 343 / 0 / 0** ; **AF1-bis sur `22ca108` : «BATTERIE»** ; CI GitHub : «CI». Détail § 6 et § 11.5.
+7. Golden Y (documents) et Z (calculs) **identiques**, les 5 « À TRANCHER » **inchangés** ; aucun montant, aucune règle fiscale, aucune mention légale, aucun arrondi ne change (AF1-bis compris : le bandeau ANNULÉ n'apparaît que sur un devis annulé, aucun golden n'en a).
+8. Données : seulement des **champs ajoutés** — AF1 : `avenantDe`, `detAdr`, `detVille`, `detSiret`, `annulee`, clé locale `cpnext_journal` ; **AF1-bis** : deux valeurs de statut nouvelles (`remplace`, `annule`) et les champs `remplacePar`, `annulation`, `signatureEnAttente` ; rien de retiré ; export CSV du registre fluides : 2 colonnes ajoutées à la fin.
+9. Ce qui n'est **pas** fait, volontairement (§ 10, § 11.7, `docs/APRES-PRO-V1.md`) : écran du journal ; rappel « refais la fiche » après l'annulation d'une fiche fluide ; message quand le téléphone d'un devis diffère de la fiche client ; défaut de synchro D1 (P3). **`docs/FILE-DES-MISSIONS.md` n'existe ni sur `main` ni sur cette branche** (il est sur `outillage/claude-code`, PR #8 **encore ouverte** au moment d'AF1-bis, contrairement à l'énoncé) : les lignes à y porter sont prêtes au § 11.8, à coller après la fusion de #8.
+10. Retour arrière à tout moment : revert des commits « code » (`a789cbd` pour AF1, `22ca108` pour AF1-bis) ; les tests restent et redeviennent rouges.
 
 ## 1. Synthèse
 
@@ -28,8 +29,13 @@
 | **D6** fiche fluide rouverte | `saveFlu` **remplaçait** la fiche par le formulaire : signature du détenteur, refus, lien de signature, repère… perdus (reproduit) | la fiche est **complétée**, jamais remplacée ; une fiche signée (ou annulée) est en lecture seule, enregistrement refusé | AF1-T12, T13 (6, contrôle bloquant et mode guidé) |
 | **C-N1** « Lieu / urgence » | la fenêtre écrivait sur l'objet de la liste, pas sur la **copie ouverte** (`curDep`) : « Enregistrer » remettait la copie et effaçait tout | la copie ouverte est mise à jour (fenêtre « Lieu / urgence » et « Exemplaire remis ») ; le contrat imprimé porte l'urgence ; « Facturer » ne redemande rien | C-N1 (3) |
 | **A-N5** fiche client | enregistrer un devis ou une intervention **recopiait** toutes les coordonnées du document sur la fiche client (adresse du chantier → adresse du client) | une fiche client existante **garde** ses coordonnées : seuls ses champs **vides** sont complétés ; un client nouveau est créé comme avant ; le document garde l'adresse du chantier | A-N5 (4) |
+| **AF1-bis 1** avenant | l'original restait « accepté » et se facturait encore : deux factures possibles (original + avenant), solde de l'avenant sans déduction de l'acompte, « À commander » et « Planifier » comptaient les deux (BLOQUANT, reproduit par la relecture) | pas d'avenant sur un devis qui porte une facture vivante ; avenant accepté → original **« remplacé par l'avenant n° … »** (date gardée, hors facturation / À commander / Planifier / carnet, visible, non supprimable) ; acceptation **refusée** si l'original a été facturé entre-temps (liste, éditeur, ancien formulaire, signature en ligne) | T14 (8) |
+| **AF1-bis 2** devis accepté sans issue | un devis accepté ou signé abandonné par le client restait « accepté » pour toujours (CA signé, À commander, Planifier) | **« Annuler le devis »** : motif obligatoire, état « annulé » (motif, date), hors de tout, visible, PDF avec bandeau ANNULÉ, non supprimable, ligne au journal ; refusé tant qu'une facture vivante existe (« fais d'abord un avoir »), possible après un avoir total | T15 (5) |
+| **AF1-bis 3** trou dans le verrou | ancien formulaire : « ✍️ Signature », « Faire signer en ligne » et « 💾 Enregistrer le devis » du récapitulatif restaient actifs ; `nxsSendDevis` réécrivait le devis accepté (reproduit : notes modifiées enregistrées) | contrôle du verrou en tête de `nxsSendDevis` (refus, journal) ; `cpVerrouWizard` cache les trois boutons | T16 (3) |
+| **AF1-bis 5** question des Paramètres | « OK = Enregistrer / Annuler = Abandonner les modifications » | « **OK = enregistrer · Annuler = PERDRE les modifications** » | T9 (2, PC et téléphone) |
+| **AF1-bis 6** apostrophe | `cpDetenteurCoord` trouvait « L'Atelier du Froid » mais pas « L’Atelier du Froid » (’ du clavier iPhone) | ’ et ' normalisées dans cette recherche (`cpNomCle`) | T17 (1) |
 
-Suite `tests/suiteAD-af1-pertes.mjs` : **57 contrôles** (dont 4 témoins), **46 rouges sur `main`** (`1e33a67`), **57 verts** sur la branche, dans Chromium, horloge figée (REF). Journal des rouges gardé (§ 5).
+Suite `tests/suiteAD-af1-pertes.mjs` : **57 contrôles** (dont 4 témoins ; **56 au commit « tests d'abord » `ba1da71`**, le contrôle « T1 l'ouverture ne change rien au devis enregistré » ayant été ajouté avec la correction, constat 2.9), **46 rouges sur `main`** (`1e33a67`), **57 verts** sur la branche, dans Chromium, horloge figée (REF). Journal des rouges gardé (§ 5). **AF1-bis** : **74 contrôles** (18 ajoutés : 17 rouges + 1 témoin vert sur `9fcf2cf`), 74 verts après (§ 11.3).
 
 ## 2. Constats sur le code de `main` (`1e33a67`) — numéros de ligne vérifiés
 
@@ -117,7 +123,7 @@ Lancement : `node tests/suiteAD-af1-pertes.mjs` (serveur local :8765, Chromium),
 | A-N5 : devis v2, ancien formulaire, intervention ; témoin client nouveau | 4 | 3 rouges + témoin vert | verts |
 | Aucune erreur JavaScript | 1 | vert | vert |
 
-Total : **57 contrôles, 46 rouges sur `main`, 57 verts après** (résultats bruts gardés dans le dossier de la session : `resAD-rouge-main.json`, `resAD-vert.json` ; en CI, dans l'artefact du commit « tests d'abord », suite AD en échec).
+Total : **57 contrôles, 46 rouges sur `main`, 57 verts après** (**56 contrôles au commit « tests d'abord » `ba1da71`** ; le 57e, « T1 l'ouverture ne change rien au devis enregistré », a été ajouté avec la correction — résultats bruts gardés dans le dossier de la session : `resAD-rouge-main.json`, `resAD-vert.json` ; en CI, dans l'artefact du commit « tests d'abord », suite AD en échec).
 
 **Un test existant change d'attendu, à cause de la décision 1** : `suiteI-emission.mjs`, I3b « devis modifié à l'écran puis facturé » attendait « modification enregistrée ET facture émise » sur un devis **accepté**. Avec D0, la modification d'un devis accepté n'est plus enregistrée ; la facture doit être émise quand même. Le contrôle devient « modification NON enregistrée (AF1 D0, lecture seule) ET facture émise ». La première batterie l'a trouvé **rouge** (la facture n'était même plus émise : `avantFacture` s'arrêtait sur le refus d'enregistrement) → correction dans `next-devis2.js` (un devis verrouillé se facture d'après sa copie enregistrée) → suite I 40/40.
 
@@ -143,11 +149,12 @@ Deux ajustements de la suite AD après la correction, tous deux dus à mes propr
 
 ## 7. Ce que Gabriel verra changer à l'écran
 
-- **Devis** : un devis accepté, signé ou facturé s'ouvre avec un bandeau jaune 🔒 « Devis … accepté le … : il ne se modifie plus » et deux boutons **Faire un avenant** / **Dupliquer** ; les champs sont gris ; « Enregistrer » et « Signature » disparaissent ; la facturation reste là (récapitulatif). Le statut ne se change plus sur ces devis dans l'éditeur (la liste, elle, ne proposait déjà que « Facturer » pour un devis accepté : rien n'y change). Supprimer un tel devis : message « ⛔ … il ne se supprime pas ».
-- **Avenant** : un nouveau devis brouillon, même contenu, numéro suivant, notes commençant par « Avenant au devis n° … », bandeau « ↪ Avenant du devis n° … » ; le mode de conclusion du contrat est à préciser à nouveau.
+- **Devis** : un devis accepté, signé ou facturé s'ouvre avec un bandeau jaune 🔒 « Devis … accepté le … : il ne se modifie plus » et trois boutons **Faire un avenant** / **Dupliquer** / **Annuler le devis** (AF1-bis) ; les champs sont gris ; « Enregistrer » et « Signature » disparaissent **en haut et dans le récapitulatif** (« 💾 Enregistrer le devis », « ✍️ Faire signer en ligne » : AF1-bis) ; la facturation reste là (récapitulatif). Le statut ne se change plus sur ces devis dans l'éditeur (la liste, elle, ne proposait déjà que « Facturer » pour un devis accepté : rien n'y change). Il ne passe plus « Refusé » et ne se supprime pas (message « ⛔ … il ne se supprime pas ») : la seule issue est **« Annuler le devis »** (AF1-bis) — motif obligatoire (abandon du client, rétractation dans les 14 jours, erreur de saisie, autre), refusé tant qu'une facture vivante existe (« fais d'abord un avoir »). Un devis annulé reste dans « Tous les devis » avec l'étiquette grise **Annulé**, s'ouvre en lecture seule (bandeau « annulé le … (motif) », bouton **Dupliquer** seulement), son PDF porte un bandeau rouge **DEVIS ANNULÉ le … — Motif : …**, il ne compte plus dans « Acceptés », le CA signé, « À commander », « Planifier » ni le carnet de commandes, et ne se facture plus.
+- **Avenant** : « Faire un avenant » est **refusé** si une facture (acompte ou solde) est émise sur le devis : « Une facture est déjà émise sur ce devis : fais d'abord un avoir, ou facture le supplément sur un nouveau devis » (AF1-bis). Sinon : un nouveau devis brouillon, même contenu, **numéro de duplication** (`DV-AAAAMMJJ-xxxx`, celui que donne « Dupliquer » — pas un « numéro suivant »), notes commençant par « Avenant au devis n° … », bandeau « ↪ Avenant du devis n° … » ; le mode de conclusion du contrat est à préciser à nouveau. **Quand l'avenant passe en « Accepté »** (éditeur, ancien formulaire, bouton « Accepté » de la liste, signature en ligne), l'original passe automatiquement **« Remplacé »** (étiquette grise ; bandeau « remplacé par l'avenant n° … » ; date d'acceptation gardée) : il sort de la facturation, d'« À commander », de « Planifier » et du carnet de commandes, reste visible et non supprimable (« Dupliquer » seulement). Si l'original a été **facturé entre-temps** (autre appareil, ou depuis la liste), l'acceptation de l'avenant est **refusée** : « Le devis d'origine … a été facturé entre-temps : l'avenant … ne peut pas être accepté. Fais d'abord un avoir … ». Il n'existe donc jamais une facture vivante à la fois sur l'original et sur son avenant.
+- **Dupliquer** ouvre la copie dans l'éditeur (avant AF1, elle restait dans la liste sans s'ouvrir) ; la copie n'est jamais un avenant, ni remplacée, ni annulée (champs retirés à la duplication).
 - **Fluides & Cerfa** : plus de 🗑 sur les fiches numérotées de moins de 5 ans ; un bouton ⛔ « Annuler la fiche » (motif demandé) ; une fiche annulée reste dans la liste, grisée, étiquette rouge ANNULÉE ; son PDF porte le bandeau ; les quantités chargées / récupérées ne la comptent plus (« dont N annulée(s) »). Une fiche signée s'ouvre avec 🔒 : tout est gris, pas de bouton Enregistrer, bandeau « signée par … le … ».
 - **Fiche fluide** : trois champs de plus (adresse, code postal et ville, SIRET du détenteur), remplis tout seuls depuis l'intervention ou le devis ouvert, ou la fiche client ; sans adresse, « Faire signer le détenteur » répond « Adresse du détenteur manquante ».
-- **Paramètres** : si tu changes une valeur puis cliques ailleurs dans le menu, une question : OK = enregistrer, Annuler = abandonner. Sur téléphone, la barre « Enregistrer » reste collée en bas.
+- **Paramètres** : si tu changes une valeur puis cliques ailleurs dans le menu, une question : « **OK = enregistrer · Annuler = PERDRE les modifications** » (texte corrigé par AF1-bis). Sur téléphone, la barre « Enregistrer » reste collée en bas.
 - **Intervention chez un particulier** : après « Lieu / urgence », le panneau affiche tout de suite « urgence demandée par le client » ; « Enregistrer » ne l'efface plus.
 - **Clients** : enregistrer un devis ou une intervention ne change plus l'adresse (ni le téléphone, mail, type, SIREN) d'un client existant ; seuls ses champs vides se remplissent.
 
@@ -185,13 +192,107 @@ Avant : copie d'essai à jour sur la branche (F5), données fictives.
 
 ## 9. Fichiers modifiés
 
-`index.html` (D0, D2, D3, D5, D6, A-N5), `next-devis2.js` (D0, éditeur v2, facturation d'un devis verrouillé), `tests/suiteI-emission.mjs` (attendu I3b aligné sur la décision 1), `tests/suiteQ-recette.mjs` (parcours « devis ouvert pendant une mise à jour » sur un devis modifiable), `tests/isolation/rapport.mjs` (suite AD dans le rapport), `next-fiabilite.js` (D0, suppression), `next-addons.js` (D2, corbeille), `next-cerfa.js` (D5, D6, PDF), `next-flu-guide.js` (D6), `next-flubilan.js` (D2, bilan), `next-signature.js` (D5, envoi), `next-particuliers.js` (C-N1), `sw.js` (cache 1133), `tests/suiteAD-af1-pertes.mjs` (nouvelle), `tests/run-all.sh`, `tests/LISEZMOI.md`, `docs/AF1-COMPTE-RENDU.md`, `docs/APRES-PRO-V1.md` (3 idées datées 03/11).
+AF1 : `index.html` (D0, D2, D3, D5, D6, A-N5), `next-devis2.js` (D0, éditeur v2, facturation d'un devis verrouillé), `tests/suiteI-emission.mjs` (attendu I3b aligné sur la décision 1), `tests/suiteQ-recette.mjs` (parcours « devis ouvert pendant une mise à jour » sur un devis modifiable), `tests/isolation/rapport.mjs` (suite AD dans le rapport), `next-fiabilite.js` (D0, suppression), `next-addons.js` (D2, corbeille), `next-cerfa.js` (D5, D6, PDF), `next-flu-guide.js` (D6), `next-flubilan.js` (D2, bilan), `next-signature.js` (D5, envoi), `next-particuliers.js` (C-N1), `sw.js` (cache 1133), `tests/suiteAD-af1-pertes.mjs` (nouvelle), `tests/run-all.sh`, `tests/LISEZMOI.md`, `docs/AF1-COMPTE-RENDU.md`, `docs/APRES-PRO-V1.md` (3 idées datées 03/11).
+
+AF1-bis (`git diff --stat 9fcf2cf 22ca108`, code et tests : 8 fichiers, +135 / −28 ; puis les documents) : `index.html` (verrou : états « remplacé » / « annulé » ; `cpFactureVivante`, `cpAvenantOriginal`, `cpAvenantAcceptable`, `cpAvenantAccepte`, `cpVerrouBoutons`, `cpDevisAnnuler`, `cpDevisAnnulerOk`, `cpDevisBandeauPdf` ; `cpDevisAvenant` refusé si facture ; `cpVerrouWizard` cache les boutons de signature et d'enregistrement du récapitulatif ; `saveDevis` ; `facturerDevis` ; PDF ; `cpNomCle` / `cpDetenteurCoord` ; texte de `cpParamsGarde` ; `statusTag` ; CSS des étiquettes), `next-devis2.js` (`saveV2`, `nxd2.statut`, en-tête et bandeau, PDF v2, `OWNED`), `next-statut.js` (`nxSetStatut`, libellés), `next-signature.js` (`nxsSendDevis`, `applySig`), `next-emission.js` (refus de facturer un devis remplacé ou annulé), `next-fiabilite.js` (`RESET` de la duplication), `next-addons.js` (libellés du registre des documents), `tests/suiteAD-af1-pertes.mjs` (T14 à T17, T9), `tests/suiteI-emission.mjs` (I3d), `tests/LISEZMOI.md`, `docs/AF1-COMPTE-RENDU.md`, `docs/APRES-PRO-V1.md`. `sw.js` inchangé (1133, déjà incrémenté sur cette branche).
 
 ## 10. Ce qui n'a pas pu être vérifié
 
 - **iPhone / Safari réels** : rien ici (Chromium émulant un iPhone 13 pour les tests « téléphone »). La barre fixée en bas et la question en quittant Paramètres sont à regarder sur ton téléphone (parcours 4.3).
 - **Fermeture réelle de l'onglet** avec des Paramètres modifiés : le test vérifie que le navigateur est prié de retenir la fermeture (`beforeunload` empêché) ; l'affichage de la boîte du navigateur dépend de l'appareil (Safari iOS ne la montre pas toujours).
-- **Synchronisation entre appareils** d'un devis verrouillé ou d'une fiche annulée : non testée ici au-delà de la suite Q existante (qui a tourné dans la batterie) ; la règle se lit sur la copie enregistrée, donc une fiche signée sur le téléphone est verrouillée sur le PC dès la synchro (probable).
+- **Synchronisation entre appareils** d'un devis verrouillé, remplacé ou annulé, ou d'une fiche annulée : non testée ici au-delà de la suite Q existante (qui a tourné dans la batterie) ; la règle se lit sur la copie enregistrée, donc une fiche signée sur le téléphone est verrouillée sur le PC dès la synchro (probable). **Le verrou n'existe que sur l'appareil** qui a la copie à jour : après la fusion, **F5 sur tous les appareils le même jour**, et **ne pas modifier un devis sur un appareil hors ligne** ou pas encore rechargé ; **une version modifiée sur un appareil pas à jour peut gagner à la fusion** (défaut de synchro connu, constat 2.10, famille D1 → P3 ; noté dans `docs/APRES-PRO-V1.md`).
 - **Impression PDF réelle** (rendu du bandeau ANNULÉE et du cadre Détenteur dans la boîte d'impression) : HTML vérifié, pas le PDF.
 - **Signature en ligne réelle** d'une fiche fluide (serveur) : le refus sans adresse est testé ; l'envoi réel avec adresse ne change pas (même `createLink`).
 - Le **journal** (`cpnext_journal`) n'a pas d'écran : vérifié seulement dans le stockage.
+
+## 11. AF1-bis — corrections après relecture (03/11/2026, soir)
+
+Relecture indépendante (Opus, 03/11) de la branche à `9fcf2cf`. Gabriel a décidé une **exception au gel limitée à 8 points** ; le point 4 est un test, les points 7 et 8 des documents. Règles d'AF1 inchangées : tests d'abord (rouges sur `9fcf2cf`, puis verts), golden Y et Z identiques, 5 « À TRANCHER » inchangés, aucun montant ne change, `sw.js` reste à 1133, aucun secret, rien sur Supabase, `git merge origin/main` d'abord (déjà à jour : `main` = `1e33a67`).
+
+### 11.1 Constats de la relecture (vérifiés ici)
+
+| # | Constat | Certitude |
+|---|---|---|
+| R1 **BLOQUANT** | Après « Faire un avenant », l'original restait « accepté » : une facture sur l'original **et** une sur l'avenant, même montant ; solde de l'avenant sans déduction de l'acompte de l'original ; « À commander » (`next-commande.js`, `renderCommander`) et « Planifier » (`nxAutoTasks`, `renderPlanning`) comptaient les deux. | certain (T14b rouge : `accApres = accAvant + 1`, `fac:true`) |
+| R2 | Un devis accepté n'avait plus aucune issue : ni « Refusé », ni suppression (AF1), ni annulation. | certain (noté en AF1 § 4.4, idée dans APRES-PRO-V1) |
+| R3 | Ancien formulaire, devis accepté : `cpVerrouWizard` ne cachait que le « Enregistrer » de l'en-tête ; « ✍️ Signature » (`#nxsBtnTop`), « ✍️ Faire signer en ligne » (`#nxsBtn`) et « 💾 Enregistrer le devis » du récapitulatif restaient actifs ; `nxsSendDevis` (`next-signature.js`) faisait `formToDevis()` puis `DEVIS[i]=cur` sans refus ni journal. | certain (T16 rouge : `identique:false`, notes modifiées enregistrées) |
+| R4 | I3b (suite I) avait été inversé sans remplacer le cas qui existe encore : devis **envoyé** dans le stockage, passé « Accepté » à l'écran sans enregistrer, puis modifié → « Facturer » doit enregistrer avant d'émettre. | certain (I3d écrit : **vert d'emblée**, `avantFacture` enregistrait déjà ce cas) |
+| R5 | Question des Paramètres : « Abandonner » ne disait pas clairement que les modifications sont perdues. | certain |
+| R6 | `cpDetenteurCoord` comparait les noms en minuscules sans normaliser l'apostrophe : « L’Atelier du Froid » (’ du clavier iPhone) ne trouvait pas la fiche « L'Atelier du Froid ». | certain (T17 rouge : `adr:""`) |
+| R7, R8 | Compte rendu (§ 7 : bouton du récapitulatif, issue d'un devis accepté, effets de l'avenant, « Dupliquer » ouvre la copie, numéro de l'avenant = numéro de duplication) et § 10 (verrou local, F5 le même jour, défaut de synchro) ; `docs/FILE-DES-MISSIONS.md`. | — |
+
+### 11.2 Règles décidées par Gabriel et code
+
+- **Avenant (R1)** — `index.html` : `cpFactureVivante(d)` (= `facAcompte` ou `facSolde` présents ; une facture annulée par avoir n'est pas vivante). a) `cpDevisAvenant` refuse si l'original porte une facture vivante : « ⛔ Une facture est déjà émise sur ce devis (…) : fais d'abord un avoir, ou facture le supplément sur un nouveau devis. » (journal `avenant_refuse`). b) `cpAvenantAccepte(avenant)` : l'original passe `statut:'remplace'`, `remplacePar:{id,num,at}`, `acceptedAt` **gardé** ; journal `devis_remplace` ; appelé après chaque enregistrement d'un avenant « accepté » (`saveDevis`, `saveV2`), après le bouton « Accepté » de la liste (`nxSetStatut`) et après une signature en ligne (`applySig`). Tout ce qui compte les chantiers signés lit `statut==='accepte'` (facturation `renderFBloc`, `renderCommander`, `nxBonCommande`, `renderPlanning`, `nxAutoTasks`, `nxobjCarnet`, tableau de bord, activité, journée, planning) : l'original en sort de lui-même ; `cpDevisVerrou` le verrouille (texte « remplacé par l'avenant n° … ») donc il ne se modifie pas et ne se supprime pas ; `facturerDevis` et `next-emission.js` refusent de le facturer (« il ne se facture plus »), `nxSetStatut` refuse de changer son statut. c) `cpAvenantAcceptable(avenant)` : si l'original a une facture vivante, l'acceptation est refusée **avant** tout enregistrement — `nxd2.statut('accepte')`, `saveV2`, `saveDevis`, `nxSetStatut` : « ⛔ Le devis d'origine … a été facturé entre-temps : l'avenant … ne peut pas être accepté. Fais d'abord un avoir sur cette facture (ou facture le supplément sur un nouveau devis). » ; signature en ligne : la preuve est **gardée** dans `signatureEnAttente`, le statut n'avance pas, message clair ; dès que l'avenant est accepté (après l'avoir), `cpAvenantAccepte` pose la signature.
+- **« Annuler le devis » (R2)** — `cpDevisAnnuler(id)` : refus si facture vivante (« ⛔ Une facture est émise sur ce devis (…) : fais d'abord un avoir, puis annule le devis. », journal), sinon fenêtre `#mAnnulDevis` (4 motifs à cocher, précision libre obligatoire pour « Autre ») ; `cpDevisAnnulerOk()` : sans motif → « Motif obligatoire : devis non annulé », rien ne change ; sinon `statut:'annule'`, `annulation:{at,motif,libelle,texte,statutAvant}`, journal `devis_annule`, message. Même mécanique que l'original remplacé pour sortir de tout ; `cpDevisBandeauPdf` ajoute le bandeau rouge « DEVIS ANNULÉ le … — Motif : … » dans les PDF des deux formulaires (vide pour tout autre état : golden Y identiques). Le bouton apparaît dans le bandeau 🔒 d'un devis accepté, signé ou facturé (facturé : le clic répond « fais d'abord un avoir »).
+- **Verrou de l'ancien formulaire (R3)** — `nxsSendDevis` : contrôle `cpDevisVerrouille(cur.id)` en tête, refus « 🔒 Devis … : il ne se renvoie pas en signature (fais un avenant). », journal `devis_verrouille / signature` ; `cpVerrouWizard` cache `#nxsBtnTop`, `#nxsBtn` et le « 💾 Enregistrer le devis » du récapitulatif (`.navbtns`), et les remet sur un devis modifiable.
+- **Suite I (R4)** — I3d ajouté ; **vert d'emblée** (la couche `avantFacture` de `next-devis2.js` enregistre déjà un devis non verrouillé avant la facture ; le statut à l'écran fait foi, pas de question « pas accepté »).
+- **Paramètres (R5)** — texte : « Paramètres modifiés et non enregistrés. OK = enregistrer · Annuler = PERDRE les modifications » ; T9 attend ce texte (PC et téléphone).
+- **Apostrophe (R6)** — `cpNomCle(s)` : minuscules, espaces retirés aux bouts, `’ ‘ ʼ \` ´` → `'` ; utilisée pour le nom cherché, l'intervention ouverte, le devis ouvert et la fiche client. Seule cette recherche change (les autres comparaisons de noms sont hors périmètre).
+- **Duplication** — `next-fiabilite.js` (`RESET`) retire aussi `avenantDe`, `remplacePar`, `annulation`, `signatureEnAttente` : une copie n'est jamais l'avenant d'un autre devis (sinon l'accepter aurait « remplacé » l'original), ni remplacée, ni annulée. `cpDevisAvenant` pose `avenantDe` après la duplication, comme avant.
+- Libellés « Remplacé » / « Annulé » : `statusTag` (index.html), `next-statut.js`, registre des documents (`next-addons.js`) ; étiquette grise (CSS `.tag.remplace, .tag.annule`).
+
+### 11.3 Tests : rouges sur `9fcf2cf`, verts sur `22ca108` (suite AD : 56 → 74 contrôles ; suite I : 40 → 43)
+
+| Test | Contrôles | Sur `9fcf2cf` | Après |
+|---|---|---|---|
+| T14a original avec facture vivante → « Faire un avenant » refusé | 1 | rouge (avenant créé) | vert |
+| T14b avenant accepté dans l'éditeur → original « remplacé » (mémoire, stockage, date gardée, lien) ; hors À commander / Planifier / carnet ; facturation refusée, bloc vide, journal ; visible, « Dupliquer » seulement, non supprimable | 4 | 4 rouges | verts |
+| T14c original facturé entre-temps → « Accepté » refusé depuis la liste, puis depuis l'éditeur | 2 | 2 rouges | verts |
+| T14d ancien formulaire : avenant accepté → original remplacé, bandeau, bloc facturation vide | 1 | rouge | vert |
+| T15a facture vivante → « Annuler le devis » refusé ; T15b devis signé : bouton présent, motif obligatoire, annulé (motif, date, signature gardée) ; hors de tout ; visible, PDF ANNULÉ, journal, non supprimable ; T15c après avoir total : possible, ancien formulaire | 5 | 5 rouges (`cpDevisAnnuler` absent) | verts |
+| T16 boutons cachés ; `nxsSendDevis` refusé ; témoin brouillon | 3 | 2 rouges + témoin vert | verts |
+| T17 apostrophe ’ | 1 | rouge | vert |
+| T9 texte de la question (PC, téléphone) | 2 | 2 rouges (ancien texte) | verts |
+| I3d (suite I) | 3 | **verts d'emblée** | verts |
+
+Journal des rouges : `resAD-bis-rouge-9fcf2cf.log` dans le dossier de la session (18 FAIL, 56 PASS). Un ajustement de test après la correction, dû au test : T14b et T15b comparaient le carnet de commandes au nombre de devis acceptés, alors que le carnet ne compte que les acceptés **pas encore facturés au solde** (règle existante de `next-objectifs.js`) ; l'attendu est maintenant calculé avec cette règle.
+
+### 11.4 Interprétations à valider (hypothèses AF1-bis)
+
+1. **Signature en ligne d'un avenant dont l'original a été facturé entre-temps** : la preuve de signature est gardée (`signatureEnAttente`), le statut n'avance pas, message « fais d'abord un avoir, puis passe l'avenant en « Accepté » (la signature est conservée) » ; l'acceptation manuelle après l'avoir pose la signature et la date. Alternative possible : accepter quand même et bloquer seulement la facturation — non retenue, parce que la règle c) dit « l'acceptation est refusée ».
+2. **Motifs d'annulation** : 4 choix (abandon du client, rétractation dans les 14 jours, erreur de saisie, autre + précision obligatoire) ; le motif et la date sont imprimés sur le PDF (bandeau) et notés au journal. La rétractation ne déclenche rien de plus (pas de calcul de délai).
+3. **Un devis annulé ou remplacé ne se facture plus**, même si l'on force (« Facturer » depuis une couche) ; ses factures **annulées par avoir** restent au registre des factures (inchangé) mais le bloc facturation du devis est vide.
+4. **Avenant d'un devis remplacé ou annulé** : refusé (« fais l'avenant depuis l'avenant » / « duplique-le »).
+5. **Original déjà annulé** quand l'avenant est accepté : il reste « annulé » (pas « remplacé »).
+6. **Statut d'un devis remplacé ou annulé** : ne change plus jamais (ni « Rouvrir » ni « Refusé »). Pour reprendre un devis annulé par erreur : « Dupliquer ».
+
+### 11.5 Batterie complète et CI (AF1-bis)
+
+Même environnement qu'AF1 (§ 6 : `unshare -n`, PostgreSQL 16 local, validateurs CEN et FNFE, Chromium 141 / Playwright 1.56.1).
+
+| Passage | Commit | Verdict |
+|---|---|---|
+| 1er, complet | `22ca108` (arbre : documents en cours d'écriture) | **ÉCHEC** — 1 355 réussis, 0 échoué, 0 SKIP, 5 « À TRANCHER » inchangés ; **suite X (mise à jour) plantée sans résultat** : `page.reload` hors ligne > 30 s (`suiteX-mise-a-jour.mjs` l. 84, service worker « réseau d'abord, 2,5 s » sous charge, juste après la suite W de 124 s). Toutes les autres étapes vertes : suite AD 74/74, suite I 43/43, suite Q 64/64, suite W 64/64 (aucune enveloppe nouvelle), suite Y 21 + 5 À TRANCHER, suite Z 55/55, SQL 66/66, aperçu 11/11. |
+| suite X seule | `22ca108` | **8/8** en 15 s (cache 1133, 58 fichiers, hors ligne OK) : le plantage n'est pas lié au code (`sw.js` et la liste des fichiers n'ont pas changé ; les fichiers modifiés sont servis depuis le cache). |
+| **2e, complet** | «BATTERIE2» |
+
+**CI GitHub** (`.github/workflows/tests.yml`, « batterie complète ») : «CI2»
+
+### 11.6 Deux parcours de plus pour l'essai de Gabriel (≈ 6 min, copie d'essai)
+
+**Parcours 7 — avenant (≈ 4 min)**
+1. Ouvre un devis « Accepté » sans facture, clique **Faire un avenant**. **Attendu** : l'avenant s'ouvre (brouillon). Dans « Tous les devis », l'original est toujours « Accepté ».
+2. Dans l'avenant, passe le statut à « Accepté » puis **Enregistrer**. **Attendu** : message « Devis … remplacé par l'avenant … », l'original porte l'étiquette grise **Remplacé** ; « À commander » et « Planifier » ne comptent plus que l'avenant ; ouvre l'original : bandeau « remplacé par l'avenant n° … », pas de bloc facturation, bouton **Dupliquer** seul.
+3. Sur un devis « Accepté » **facturé** (acompte d'essai) : **Faire un avenant**. **Attendu** : « ⛔ Une facture est déjà émise sur ce devis : fais d'abord un avoir, ou facture le supplément sur un nouveau devis. »
+
+**Parcours 8 — annuler un devis (≈ 2 min)**
+1. Ouvre un devis « Accepté » sans facture : **Annuler le devis**, laisse le motif vide, valide. **Attendu** : « Motif obligatoire : devis non annulé », rien ne change.
+2. Coche « Abandon du client », valide. **Attendu** : étiquette **Annulé** dans la liste, compteur « Acceptés » du tableau de bord diminué de 1, bandeau « annulé le … (Abandon du client) », PDF avec le bandeau rouge **DEVIS ANNULÉ**. 🗑 → « il ne se supprime pas ».
+3. Sur un devis facturé : **Annuler le devis**. **Attendu** : « fais d'abord un avoir, puis annule le devis ».
+
+### 11.7 Hors périmètre, noté dans `docs/APRES-PRO-V1.md` (03/11)
+
+Écran du journal ; rappel « refais la fiche » après l'annulation d'une fiche fluide ; message quand le téléphone d'un devis diffère de la fiche client ; défaut de synchro D1 (P3).
+
+### 11.8 `docs/FILE-DES-MISSIONS.md` — à coller par Gabriel après la fusion de PR #8
+
+Le fichier n'existe **que** sur `outillage/claude-code` (PR #8, **ouverte, brouillon** au moment d'AF1-bis — `main` est à `1e33a67`, PR #7). Le créer ici produirait un conflit d'ajout à la fusion de #8. Lignes prêtes :
+
+| # | Mission | Branche | État | Prochain geste | Qui |
+|---|---|---|---|---|---|
+| 3 | P6+ : environnement Super PDP, droits du visiteur non connecté | `correctif/p6-env-superpdp` | **fusionnée le 03/11** (PR #7, `1e33a67`) ; branche contenue dans `main` | script `6-REEL-*` ; déploiement de `superpdp` ; supprimer la branche | Gab |
+| 4 | OUTILLAGE : CLAUDE.md, règles bloquantes, cette file | `outillage/claude-code` | PR #8 (fusion à confirmer par Gab : encore ouverte le 03/11 au soir) ; `main` protégée | relecture P10, fusion | Gab |
+| 5 | AF1 + AF1-bis : zéro perte de données (+ C-N1, A-N5 ; avenant / original, « Annuler le devis ») | `correctif/af1-pertes-donnees` | **fait le 03/11**, PR #9 en brouillon, batterie et CI vertes (`docs/AF1-COMPTE-RENDU.md`) | décisions 1 à 2 du compte rendu, essai § 8 et § 11.6, relecture, fusion | Gab |
+
+Demandes de fusion : 7 fusionnée le 03/11 (`1e33a67`) ; 8 ouverte (brouillon) ; 9 ouverte (brouillon, AF1 + AF1-bis). Branches : `correctif/p6-env-superpdp` et `correctif/c3-article-absent` contenues dans `main`.
