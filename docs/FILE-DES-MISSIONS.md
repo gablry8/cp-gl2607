@@ -9,7 +9,7 @@
 | 1 | Mise en production 1.13.0 (PR #5) | `release/1.13.0` | **faite le 02/11** (`477a151`) ; migration C1 sur le réel faite (5 « OK ») | — | Gab |
 | 2 | C3 (P3) : article absent compté 0 € | `correctif/c3-article-absent` | **fusionnée le 03/11** (PR #6, `b9155b6`) | 3 cas golden C3 + 2 cas « Support mural » à corriger plus tard (accord de Gab) | Gab |
 | 3 | P6+ : environnement Super PDP, droits du visiteur non connecté | `correctif/p6-env-superpdp` | fait, relu, conditions traitées le 31/10 (`f63fbae`) ; script TEST passé le 03/11 | INTÉGRATION-P6+ (`const C=` 1132), puis fusion ; script `6-REEL-*` ; déploiement de `superpdp` | CC puis Gab |
-| 4 | OUTILLAGE : CLAUDE.md, règles bloquantes, cette file | `outillage/claude-code` | ce dossier | relecture P10 (Fable 5.1), fusion | CC puis Gab |
+| 4 | OUTILLAGE : CLAUDE.md, règles bloquantes, cette file | `outillage/claude-code` | **fait le 03/11** : PR #8 en brouillon, CI verte (1238 / 0, comme `main`) ; `main` pas encore protégée sur GitHub | protéger `main` (geste 2), relecture P10 (Fable 5.1), fusion ; voir `docs/OUTILLAGE-COMPTE-RENDU.md` | Gab puis Fable 5.1 puis Gab |
 | 5 | AF1+ : zéro perte de données (+ C-N1, A-N5) | `correctif/af1-pertes-donnees` | à lancer après 3 et 4 | réponses de Gab aux décisions 3 à 5 (fiche du 26/10), sinon avis par défaut du dossier | CC |
 
 ## Ensuite, jusqu'à « prêt pour le terrain » (contrôle du 01/06/2027)
