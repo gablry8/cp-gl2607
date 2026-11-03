@@ -49,8 +49,10 @@ await seed(p); await p.evaluate(PREP);
   const r = await p.evaluate(async () => {
     AD.reset();
     const d = AD.v2({ statut: 'accepte', signature: { at: __REF.horloge, nom: 'Client Signataire', hash: 'abc123' }, acceptedAt: Date.parse(__REF.horloge) });
-    const avant = AD.stored(d.id), totAvant = compute(d).totalTTC;
+    const creation = AD.stored(d.id), totAvant = compute(d).totalTTC;
     openDevis(d.id); await new Promise(r => setTimeout(r, 200));
+    /* l'ouverture ne change rien au devis enregistré, sauf figEnv (montant envoyé gardé par next-fiabilite au changement d'écran : existant) */
+    const avant = AD.stored(d.id), diffOuverture = Object.keys(Object.assign({}, creation, avant)).filter(k => JSON.stringify(creation[k]) !== JSON.stringify(avant[k]));
     const vue = window._curView, c = NXD2.api.cur();
     const ban = (document.getElementById('nxd2Banner') || {}).textContent || '';
     const libres = document.querySelectorAll('#nxd2Body [data-k]:not(:disabled)').length;
@@ -60,9 +62,12 @@ await seed(p); await p.evaluate(PREP);
     const ok = nxd2.save(); await new Promise(r => setTimeout(r, 100));
     const apres = AD.stored(d.id);
     const journal = JSON.parse(localStorage.getItem('cpnext_journal') || '[]');
-    return { vue, ban, libres, boutons, ok, identique: JSON.stringify(avant) === JSON.stringify(apres), tot: compute(DEVIS.find(x => x.id === d.id)).totalTTC === totAvant,
+    return { vue, ban, libres, boutons, ok, diffOuverture, identique: JSON.stringify(avant) === JSON.stringify(apres), tot: compute(DEVIS.find(x => x.id === d.id)).totalTTC === totAvant,
       notes: apres.notes, msgs: __msgs.slice(), journal: journal.filter(x => x.id === d.id).length };
   });
+  /* champs ajoutés par des couches existantes à l'ouverture (valeurs par défaut, aucun montant) : figEnv (next-fiabilite) et les défauts électriques (next-addons, nxEnsureQuote) */
+  const AJOUTS_CONNUS = ['figEnv', 'elecMode', 'breakerManual', 'breakerQte', 'differential', 'diffQte', 'proximity'];
+  rec(G.D0, 'T1 devis signé : l\'ouverture ne change rien au devis enregistré (hors champs par défaut ajoutés par des couches existantes)', r.diffOuverture.every(k => AJOUTS_CONNUS.includes(k)), j(r.diffOuverture));
   rec(G.D0, 'T1 devis signé : enregistrer après modification → contenu enregistré identique au centime', r.identique && r.tot && r.notes !== 'MODIFIÉ APRÈS SIGNATURE', j({ identique: r.identique, tot: r.tot, notes: r.notes }));
   rec(G.D0, 'T1 devis signé : message « ne se modifie plus » affiché, enregistrement refusé', r.ok === false && r.msgs.some(m => /ne se modifie plus/i.test(m)), j(r.msgs));
   rec(G.D0, 'T1 devis signé : bandeau « Devis signé le … » avec « Faire un avenant » et « Dupliquer »', /signé le/i.test(r.ban) && r.boutons.some(b => /avenant/i.test(b)) && r.boutons.some(b => /dupliquer/i.test(b)), j({ ban: r.ban.slice(0, 160), boutons: r.boutons.filter(b => /avenant|dupliquer/i.test(b)) }));
@@ -75,8 +80,8 @@ await seed(p); await p.evaluate(PREP);
   const r = await p.evaluate(async () => {
     AD.reset();
     const d = AD.v2({ statut: 'envoye', facAcompte: { num: 'TEST-F-' + __REF.an + '-0901', date: __REF.jour, ttc: 100 } });
-    const avant = AD.stored(d.id);
     openDevis(d.id); await new Promise(r => setTimeout(r, 200));
+    const avant = AD.stored(d.id);
     const c = NXD2.api.cur(); c.lots[0].titre = 'Titre changé après facture'; c.common.prepH = (Number(c.common.prepH) || 0) + 3;
     const ok = nxd2.save(); await new Promise(r => setTimeout(r, 100));
     const apres = AD.stored(d.id), libres = document.querySelectorAll('#nxd2Body [data-k]:not(:disabled)').length;
@@ -91,6 +96,7 @@ await seed(p); await p.evaluate(PREP);
   const r = await p.evaluate(async () => {
     AD.reset();
     const d = AD.v2({ statut: 'accepte', signature: { at: __REF.horloge, nom: 'Client Signataire', hash: 'def456' } });
+    go('tous'); await new Promise(r => setTimeout(r, 150));   /* figEnv posé (existant) avant la copie de référence */
     const avant = AD.stored(d.id), n0 = DEVIS.length, tot = compute(d).totalTTC;
     if (typeof window.cpDevisAvenant !== 'function') return { absent: true };
     cpDevisAvenant(d.id); await new Promise(r => setTimeout(r, 250));
@@ -242,7 +248,7 @@ async function t9(mobile) {
   rec(G.D3, `T9 (${lbl}) modifications non enregistrées : la fermeture de l'onglet est retenue ; après « Enregistrer », partir ne demande rien`, retenu && dlg.length === 0, j({ retenu, dlg }));
   if (mobile) {
     const sticky = await Q.p.evaluate(() => { go('params'); const b = document.querySelector('#v-params button[onclick="saveParams()"]'); if (!b) return null; const r = b.getBoundingClientRect(); return { pos: getComputedStyle(b.closest('.row-actions')).position, visible: r.top >= 0 && r.bottom <= window.innerHeight }; });
-    rec(G.D3, 'T9 (téléphone) bouton « Enregistrer » collant, visible sans faire défiler', !!sticky && sticky.pos === 'sticky' && sticky.visible, j(sticky));
+    rec(G.D3, 'T9 (téléphone) bouton « Enregistrer » collant (fixé en bas), visible sans faire défiler', !!sticky && /sticky|fixed/.test(sticky.pos) && sticky.visible, j(sticky));
   }
   rec(G.D3, `T9 (${lbl}) aucune erreur de page`, Q.errs.length === 0, Q.errs.join(' | '));
   await Q.ctx.close();
@@ -256,7 +262,7 @@ await t9(false); await t9(true);
     Object.assign(curDep, { cNom: 'Client Nouveau Fiche', cType: 'Professionnel', cAdr: '12 Rue Neuve', cVille: '60600 Clermont', cSiren: '123456789', desc: 'Appoint de fluide' }); loadDepForm();
     const dejaClient = CLIENTS.some(c => c.nom === 'Client Nouveau Fiche');
     /* le bouton « 🧪 Fiche fluide » du formulaire d'intervention */
-    document.querySelector('#v-depform button[onclick^="openFlu("]').click(); await new Promise(r => setTimeout(r, 250));
+    document.querySelector('#v-depform button[onclick*="openFlu(null"]').click(); await new Promise(r => setTimeout(r, 250));
     const champs = { adr: document.getElementById('fl_detAdr'), ville: document.getElementById('fl_detVille'), siret: document.getElementById('fl_detSiret') };
     const pre = { adr: champs.adr && champs.adr.value, ville: champs.ville && champs.ville.value, siret: champs.siret && champs.siret.value, modifiable: !!(champs.adr && !champs.adr.disabled && !champs.adr.readOnly) };
     document.getElementById('fl_desc').value = 'Monosplit Daikin FTXM25'; document.getElementById('fl_charge').value = '0.9'; document.getElementById('fl_qv').value = '0.2';

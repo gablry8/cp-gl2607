@@ -106,7 +106,7 @@
           if(pre && pre.warn) setWarn(pre.warn); else setWarn([]);
           nxcCalc();
           var sb2=document.getElementById('nxcSignBar');
-          if(sb2) sb2.innerHTML=f?(f.sigDetenteur?'<span class="nxc-ok">✔ Signée par le détenteur ('+esc(f.sigDetenteur.nom)+') le '+esc(new Date(f.sigDetenteur.at).toLocaleDateString('fr-FR'))+'</span>':'<button type="button" class="nx-sbtn mar" onclick="closeModal(\'mFlu\');nxsSendFlu(\''+f.id+'\')">✍️ Faire signer le détenteur en ligne</button>'):'<span class="nxc-hint">Enregistre la fiche pour pouvoir la faire signer en ligne par le détenteur.</span>';
+          if(sb2) sb2.innerHTML=f?(f.sigDetenteur?'<span class="nxc-ok">✔ Signée par le détenteur ('+esc(f.sigDetenteur.nom)+') le '+esc(new Date(f.sigDetenteur.at).toLocaleDateString('fr-FR'))+'</span>':f.annulee?'<span class="nxc-hint">Fiche annulée : pas de signature à demander.</span>':'<button type="button" class="nx-sbtn mar" onclick="closeModal(\'mFlu\');nxsSendFlu(\''+f.id+'\')">✍️ Faire signer le détenteur en ligne</button>'):'<span class="nxc-hint">Enregistre la fiche pour pouvoir la faire signer en ligne par le détenteur.</span>';
         }catch(e){ try{ console.error('nxc open',e); }catch(_){} }
         return r;
       };
@@ -123,6 +123,7 @@
         var m=M(); if(ext.detIdx!=null && m.detecteurs[ext.detIdx]){ ext.detId=m.detecteurs[ext.detIdx].id; ext.detRef=m.detecteurs[ext.detIdx].ref; }
         var fl=g('fl_fluide'); if(ext.un && fl && m.unCodes[fl]!==ext.un){ m.unCodes[fl]=ext.un; saveM(m); }
         var r=oSave.call(this,false);
+        if(r===false) return r;   /* AF1 D6 : enregistrement refusé (fiche signée ou annulée) → rien d'autre n'est écrit */
         try{
           var f=id0?(FLU||[]).find(function(x){ return x.id===id0; }):(FLU||[]).find(function(x){ return !before[x.id]; });
           if(f){ Object.assign(f,ext); save('cp2_fluides',FLU); if(printAfter) window.printFicheFlu(f.id); }
@@ -135,7 +136,7 @@
     if(typeof window.saveDep==='function' && !window.saveDep._nxc){
       var oDep=window.saveDep;
       window.saveDep=function(){
-        var d=(typeof curDep!=='undefined')?curDep:null, fx=d&&d._fluide?d._fluide:null, meta=d?{client:d.cNom,date:d.date,itype:d.itype}:null;
+        var d=(typeof curDep!=='undefined')?curDep:null, fx=d&&d._fluide?d._fluide:null, meta=d?{client:d.cNom,date:d.date,itype:d.itype,detAdr:d.cAdr||'',detVille:d.cVille||'',detSiret:d.cSiren||''}:null;
         var r=oDep.apply(this,arguments);
         try{
           if(fx && meta){
@@ -150,7 +151,7 @@
   }
   function openFluFromIntervention(meta,fx){
     var warn=['Vérifie le type de fluide chargé (vierge / recyclé / régénéré)'];
-    window.openFlu(null,{client:meta.client,date:meta.date,nature:meta.itype==='mes'?'mes':'depannage',warn:warn});
+    window.openFlu(null,{client:meta.client,date:meta.date,nature:meta.itype==='mes'?'mes':'depannage',warn:warn,detAdr:meta.detAdr||'',detVille:meta.detVille||'',detSiret:meta.detSiret||''});
     var fl=String(fx.nom||'').toUpperCase().replace(/\s/g,'');
     var sel=document.getElementById('fl_fluide');
     if(sel && fl){ var opt=[].find.call(sel.options,function(o){ return o.value.toUpperCase()===fl; }); if(opt) sel.value=opt.value; else { sel.value='Autre'; warn.push('Fluide « '+fx.nom+' » à préciser en observations'); } }
@@ -179,9 +180,10 @@
     var detSig=f.sigDetenteur?('<b>'+esc(f.sigDetenteur.nom)+'</b> — signé électroniquement le '+esc(new Date(f.sigDetenteur.at).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}))+(f.sigDetenteur.png?'<br><img src="'+esc(f.sigDetenteur.png)+'" style="height:48px">':'')):'<b>'+esc(f.client)+'</b>';
     var html='<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:780px">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid '+B+';padding-bottom:4px;margin-bottom:6px"><div><b style="font-size:14px">FICHE D\'INTERVENTION</b><br><span style="font-size:9.5px">Opérations nécessitant une manipulation de fluides frigorigènes — équivalent électronique du formulaire <b>Cerfa n° 15497*04</b> (art. R.543-82 du code de l\'environnement)</span></div><div style="text-align:right;font-size:10px">N° <b style="font-family:monospace;font-size:12px">'+esc(f.num)+'</b><br>Date : <b>'+esc(frDate(f.date))+'</b></div></div>'+
+      (f.annulee?'<div style="border:2px solid #b03a2e;color:#b03a2e;font-weight:700;padding:6px 10px;margin:6px 0">FICHE ANNULÉE le '+esc(new Date(f.annulee.at).toLocaleDateString('fr-FR'))+' — motif : '+esc(f.annulee.motif||'')+' (conservée au registre, art. R.543-82)</div>':'')+
       '<table style="width:100%;border-collapse:collapse">'+
       cad(1,'Opérateur')+row([['Nom / raison sociale : <b>'+esc(E.nom||'—')+'</b><br>'+esc([E.adresse,E.cp,E.ville].filter(Boolean).join(' ')),2],['SIRET : <b>'+esc(E.siret||'⚠ à renseigner')+'</b>',1],['N° d\'attestation de capacité : <b>'+esc(E.attFluides||'⚠ à renseigner')+'</b>',1]])+
-      cad(2,'Détenteur')+row([['Nom : <b>'+esc(f.client)+'</b><br>Adresse : '+esc([cl.adr,cl.cp,cl.ville].filter(Boolean).join(' ')||'—'),3],['SIRET (ou équivalent) : '+esc(cl.siren||cl.siret||(cl.type==='Particulier'?'particulier':'—')),1]])+
+      cad(2,'Détenteur')+row([['Nom : <b>'+esc(f.client)+'</b><br>Adresse : '+esc((f.detAdr||f.detVille)?[f.detAdr,f.detVille].filter(Boolean).join(' '):([cl.adr,cl.cp,cl.ville].filter(Boolean).join(' ')||'—')),3],['SIRET (ou équivalent) : '+esc(f.detSiret||cl.siren||cl.siret||(cl.type==='Particulier'?'particulier':'—')),1]])+
       cad(3,'Équipement concerné')+row([['Marque, référence : '+esc(f.desc||'—'),2],['Identification : '+esc(f.ident||(eq&&eq.serie?'SN '+eq.serie:'—')),2]])+
       row([['Dénomination du fluide : <b>'+esc(f.fluide||'—')+'</b>',1],['Charge totale : <b>'+q(ch)+' kg</b>',1],['PRP : '+(f.prg?esc(f.prg):'—'),1],['Tonnage éq. CO₂ : <b>'+(teq!=null?String(teq).replace('.',',')+' t':'—')+'</b>',1]])+
       cad(4,'Nature de l\'intervention')+row([[box(nat==='assemblage','Assemblage')+box(nat==='mes','Mise en service')+box(nat==='modification','Modification')+box(nat==='entretien'||nat==='depannage','Maintenance')+'<br>'+box(nat==='etancheite','Contrôle d\'étanchéité périodique')+box(nat==='etancheite_np','Contrôle d\'étanchéité non périodique')+box(nat==='demantelement','Démantèlement')+box(nat==='autre','Autre'+(f.natAutre?' : '+esc(f.natAutre):'')),4]])+

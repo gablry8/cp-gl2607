@@ -44,6 +44,14 @@
 | 15 | Signature tactile sur place sans réseau | J1 |
 | 16 | Date de début des travaux reprise sur le devis quand elle est connue | C9 |
 
+### Ajouts du 03/11/2026 (mission AF1, hors de sa liste — rien n'est codé)
+
+| Date | Idée | D'où elle vient |
+|---|---|---|
+| 03/11 | **Devis signé ou accepté que le client abandonne** : il ne se supprime plus et son statut ne change plus (AF1 D0) ; il faudrait un état « annulé » (motif, date, qui), tracé, hors du chiffre « Signé », avec la rétractation du particulier comme cas particulier | AF1 D0, décision 1 |
+| 03/11 | **Écran du journal** : les refus (enregistrement ou suppression d'un devis verrouillé) sont notés dans `cpnext_journal` (200 lignes) mais aucun écran ne les montre ; une carte « Journal » dans Gestion suffirait | AF1 D0 |
+| 03/11 | **Fiche fluide signée à corriger** : aujourd'hui « Annuler la fiche » (motif) + nouvelle fiche ; une vraie « fiche rectificative » liée à l'ancienne (numéro, renvoi croisé) serait plus lisible pour le détenteur et l'organisme | AF1 D2 / D6, décision 2 |
+
 ## 3. Module « Aides » (étude P9 du 25/10, § 6 — rien à coder avant PRO v1)
 
 1. Référentiel daté des aides (une ligne par version de fiche CEE, date d'effet, date de fin, source et date de consultation ; test par date de bascule).

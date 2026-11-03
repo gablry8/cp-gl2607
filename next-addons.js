@@ -458,6 +458,8 @@
   };
   function nxSoftDelete(type,id){
     const cfg=nxEntityMap[type],arr=cfg&&cfg.array();if(!cfg||!arr)return;const i=arr.findIndex(x=>x.id===id),item=arr[i];if(i<0)return;
+    /* AF1 D2 (03/11/2026) : une fiche fluide numérotée ne va pas à la corbeille avant 5 ans (R.543-82) — « Annuler la fiche » à la place */
+    if(type==='flu'&&typeof window.cpFluSupprimable==='function'&&!window.cpFluSupprimable(item)){toast(window.cpFluRefusSuppression(item));return;}
     if(!confirm('Mettre « '+(item.num||item.nom||item.cNom||cfg.label)+' » dans la corbeille ? Restaurable pendant 30 jours.'))return;
     nxTrash.unshift({trashId:nxId(),type,item:nxClone(item),deletedAt:Date.now(),expiresAt:Date.now()+30*86400000});arr.splice(i,1);save(cfg.key(),arr);nxSave(NX_KEYS.trash,nxTrash);cfg.render();nxUpdateTaskBadge();nxToast('Élément placé dans la corbeille','ok');
   }

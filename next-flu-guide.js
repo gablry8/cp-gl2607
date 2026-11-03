@@ -223,6 +223,7 @@
         var id0=g('fl_id'), before={}; try{ (FLU||[]).forEach(function(x){ before[x.id]=1; }); }catch(e){}
         var ref=g('nxfg_ref').trim(), snap={ref:ref,fluide:g('fl_fluide'),charge:num(g('fl_charge')),prp:num(g('fl_prg'))};
         var r=os.apply(this,arguments);
+        if(r===false) return r;   /* AF1 D6 : enregistrement refusé (fiche signée ou annulée) → rien d'autre n'est écrit */
         try{
           if(ref){ learn(snap);
             var f=id0?(FLU||[]).find(function(x){ return x.id===id0; }):(FLU||[]).find(function(x){ return !before[x.id]; });

@@ -266,6 +266,8 @@
     }catch(err){}
     return c;
   }
+  /* AF1 D0 (03/11/2026) : devis signé, accepté ou facturé → lecture seule ; enregistrement refusé (règle dans index.html, cpDevisVerrou) */
+  function verrou(){ try{ return (cur&&typeof window.cpDevisVerrouille==='function')?window.cpDevisVerrouille(cur.id):null; }catch(e){ return null; } }
   function syncCurFromStore(){
     try{
       if(!cur) return; var e=(DEVIS||[]).find(function(x){ return x.id===cur.id; }); if(!e) return;
@@ -280,8 +282,9 @@
     try{
       if(cur&&cur.id===id){
         var saved=(DEVIS||[]).some(function(x){ return x.id===cur.id; });
-        if(cur.v===2){ if((dirty||!saved)&&!saveV2(true)) return false; }
-        else if(window._curView==='wizard'){ /* ancien formulaire : on enregistre l'écran tel quel, sans quitter */
+        if(cur.v===2){ if(verrou()){ dirty=false; }   /* AF1 D0 : devis verrouillé = lecture seule, la copie enregistrée fait foi ; on facture celle-ci */
+          else if((dirty||!saved)&&!saveV2(true)) return false; }
+        else if(window._curView==='wizard'&&!verrou()){ /* ancien formulaire : on enregistre l'écran tel quel, sans quitter (jamais un devis verrouillé) */
           formToDevis(); protect(cur); var i=DEVIS.findIndex(function(x){ return x.id===cur.id; }); var cp=clone(cur);
           if(i>=0) DEVIS[i]=cp; else DEVIS.push(cp); persist(LS.devis,DEVIS);
         }
@@ -302,7 +305,7 @@
   function markDirty(){ dirty=true; clearTimeout(draftT); draftT=setTimeout(saveDraft,400); }
   /* un brouillon par devis (les 8 plus récents), pour ne jamais écraser un travail en cours par un autre */
   function drafts(){ var x=lsGet(DRAFTK,{}); if(!x||typeof x!=='object'||Array.isArray(x)) return {}; if(x.cur&&x.id){ var o={}; o[x.id]=x; return o; } return x; }
-  function saveDraft(){ try{ if(!(cur&&cur.v===2&&dirty)) return; var m=drafts(); m[cur.id]={id:cur.id,at:Date.now(),cur:cur};
+  function saveDraft(){ try{ if(!(cur&&cur.v===2&&dirty)||verrou()) return; var m=drafts(); m[cur.id]={id:cur.id,at:Date.now(),cur:cur};
     var ids=Object.keys(m).sort(function(a,b){ return m[b].at-m[a].at; }); ids.slice(8).forEach(function(k){ delete m[k]; }); lsSet(DRAFTK,m); }catch(e){} }
   function getDraft(id){ var m=drafts(); if(id) return m[id]&&m[id].cur&&m[id].cur.v===2?m[id]:null;
     var l=Object.keys(m).map(function(k){ return m[k]; }).filter(function(x){ return x&&x.cur&&x.cur.v===2; }).sort(function(a,b){ return b.at-a.at; }); return l[0]||null; }
@@ -362,6 +365,8 @@
     var e=(DEVIS||[]).find(function(x){ return x.id===id; }); if(!e) return;
     var d=clone(e), dr=getDraft(id); d._baseStatut=e.statut;
     openEditor(d,{tab:'lots'});
+    if(verrou()){ dropDraft(id); return; }   /* AF1 D0 : lecture seule (bandeau posé par updHead), un brouillon oublié n'est jamais repris */
+    if(d.avenantDe) showBanner('↪ <b>Avenant du devis n° '+esc(d.avenantDe.num||'')+'</b> — l\'original n\'a pas été modifié.');
     if(dr && dr.id===id && dr.at>(e.updatedAt||0) && JSON.stringify(dr.cur)!==JSON.stringify(e)){
       showBanner('<b>Modifications non enregistrées</b> du '+new Date(dr.at).toLocaleString('fr-FR',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})+' retrouvées. '+
         '<button class="nx-sbtn mar" onclick="nxd2.resumeDraft()">Les reprendre</button> <button class="nx-sbtn" onclick="nxd2.dropDraft()">Les ignorer</button>');
@@ -386,6 +391,7 @@
   /* ---------------- enregistrement ---------------- */
   function saveV2(silent){
     if(!cur||cur.v!==2) return false;
+    var vr=verrou(); if(vr){ try{ window.cpRefusEnregistrement(cur,vr); }catch(e){ say('🔒 Devis '+(cur.num||'')+' '+vr.texte+' : il ne se modifie plus.'); } dirty=false; dropDraft(cur.id); return false; }
     if(!String(cur.cNom||'').trim()&&!confirm('Nom client vide. Enregistrer quand même ?')){ TAB='client'; renderBody(); return false; }
     var sepN=null; try{ if(CFG().ctrSep&&['brouillon','verifier','pret'].indexOf(cur.statut||'brouillon')>=0) sepN=splitContract(true); }catch(e){}
     protect(cur); derive(cur); cur.updatedAt=Date.now(); delete cur._statutSet;
@@ -521,7 +527,7 @@
     s.addEventListener('change',function(e){ var el=e.target; if(!el.dataset||!el.dataset.k) return; apply(el,true); });
   }
   function apply(el,isChange){
-    if(!cur||cur.v!==2) return;
+    if(!cur||cur.v!==2||verrou()) return;
     var k=el.dataset.k, t=el.dataset.t||'s', v;
     if(t==='b') v=!!el.checked; else if(t==='n') v=num(el.value); else v=el.value;
     var lotEl=el.closest('[data-lot]'), li=lotEl?+lotEl.dataset.lot:-1;
@@ -552,15 +558,27 @@
   function updHead(){
     var h=document.getElementById('nxd2Head'); if(!h||!cur) return;
     var st=''; try{ st=statusTag(cur.statut); }catch(e){ st=cur.statut; }
-    var saved=(DEVIS||[]).some(function(x){ return x.id===cur.id; });
+    var saved=(DEVIS||[]).some(function(x){ return x.id===cur.id; }), vr=verrou();
     h.innerHTML='<div class="nxd2-head"><div style="min-width:0"><h2>'+esc(cur.cNom||'Sans nom')+'</h2>'+
       '<div class="sub">Devis n° <b>'+esc(cur.num)+'</b> · '+esc(derive(cur).type)+(saved?'':' · <b>pas encore enregistré</b>')+'</div></div>'+
       '<div class="row-actions" style="flex-wrap:wrap">'+st+
       '<button class="btn-ghost btn-sm" onclick="nxd2.close()">Fermer</button>'+
       '<button class="btn-ghost btn-sm" onclick="printDevis()">📄 PDF</button>'+
       (typeof window.nxSaveCurrentTemplate==='function'?'<button class="btn-ghost btn-sm" onclick="nxSaveCurrentTemplate()" title="Enregistrer ce devis comme modèle réutilisable">⚡ Modèle</button>':'')+
-      '<button class="btn-ghost btn-sm" onclick="nxd2.sign()">✍️ Signature</button>'+
-      '<button class="btn-dark btn-sm" onclick="nxd2.save()">💾 Enregistrer</button></div></div>';
+      (vr?'<button class="btn-pri btn-sm" onclick="cpDevisAvenant(\''+esc(cur.id)+'\')">Faire un avenant</button><button class="btn-ghost btn-sm" onclick="cpDevisDupliquer(\''+esc(cur.id)+'\')">Dupliquer</button>'
+         :'<button class="btn-ghost btn-sm" onclick="nxd2.sign()">✍️ Signature</button>'+
+          '<button class="btn-dark btn-sm" onclick="nxd2.save()">💾 Enregistrer</button>')+'</div></div>';
+    /* AF1 D0 : bandeau permanent tant que le devis est verrouillé */
+    if(vr) showBanner('🔒 <b>Devis '+esc(cur.num)+' '+esc(vr.texte)+' : il ne se modifie plus.</b> Pour changer quelque chose : '+
+      '<button class="nx-sbtn mar" onclick="cpDevisAvenant(\''+esc(cur.id)+'\')">Faire un avenant</button> <button class="nx-sbtn" onclick="cpDevisDupliquer(\''+esc(cur.id)+'\')">Dupliquer</button>');
+  }
+  /* AF1 D0 : champs et actions de l'éditeur verrouillés (le bloc facturation du récapitulatif reste utilisable : acompte, solde, payée) */
+  function verrouBody(){
+    var b=document.getElementById('nxd2Body'); if(!b||!verrou()) return;
+    b.querySelectorAll('[data-k],button').forEach(function(el){
+      if(el.closest('#nxd2FHost')) return;
+      var oc=el.getAttribute('onclick')||''; if(/printDevis|printVisite|printChecklist|nxd2\.(tab|alertes|mail)\(/.test(oc)) return;
+      el.disabled=true; });
   }
   function renderTabs(){
     var t=document.getElementById('nxd2Tabs'); if(!t) return;
@@ -573,7 +591,7 @@
     restoreFBloc();   /* toujours avant de réécrire le contenu, sinon le bloc facturation serait détruit */
     b.innerHTML=TAB==='client'?tabClient():TAB==='visite'?tabVisite():TAB==='recap'?tabRecap():tabLots();
     if(TAB==='recap') mountFBloc();
-    renderTabs();
+    renderTabs(); verrouBody();
   }
   function showBanner(html){
     var b=document.getElementById('nxd2Banner'); if(!b) return;
@@ -759,7 +777,7 @@
     if(bar) bar.innerHTML='<div class="t"><b>'+money(c.franchise?c.totalHT:c.totalTTC)+'</b> '+(c.franchise?'net':'TTC')+' · marge <b style="color:'+(c.margePct<20?'var(--red)':'var(--green)')+'">'+pct(c.margePct)+'</b> · '+fq(r2(c.heures))+' h'+
       (c.options.length?' · +'+c.options.length+' option(s)':'')+(dirty?' · <span style="color:var(--orange,#d97706)">non enregistré</span>':'')+
       (function(){ var g=alertGroups(c), n=g.fix.length+g.zero.length+(c.absents&&c.absents.length?1:0); return n?' · <a href="#" style="color:'+(g.fix.length?'var(--red,#c0392b)':'var(--orange,#d97706)')+';font-weight:700" onclick="nxd2.alertes();return false">⚠ '+n+' point'+(n>1?'s':'')+' à régler</a>':''; })()+'</div>'+
-      '<button class="btn-dark btn-sm" onclick="nxd2.save()">💾 Enregistrer</button>';
+      (verrou()?'<span class="sub">🔒 lecture seule</span>':'<button class="btn-dark btn-sm" onclick="nxd2.save()">💾 Enregistrer</button>');
     /* C3 : bandeau rouge des articles absents de la base de prix, sur tous les onglets (ouverture comprise) */
     var ab=document.getElementById('nxd2Abs'); if(ab){ try{ ab.innerHTML=(c.absents&&c.absents.length&&typeof window.nxAbsentsBandeau==='function')?window.nxAbsentsBandeau(c.absents):''; }catch(e){ console.warn('ClimPilot (C3) bandeau des articles absents :',e); } }
     c.lots.concat(c.options).forEach(function(x){ var el=document.getElementById('nxd2LotTot'+x.i); if(el) el.textContent=x.alt?('total '+money(x.altTotalHT)+' HT si retenue'):(money(x.ht)+' HT'+(x.option?' (option)':'')); });
@@ -1004,10 +1022,11 @@
     moveLot:function(i,dir){ var j=i+dir; if(j<0||j>=cur.lots.length) return; var t=cur.lots[i]; cur.lots[i]=cur.lots[j]; cur.lots[j]=t; markDirty(); render(); },
     act:function(name,i){ var lot=cur.lots[i], m=lot&&MODS[lot.module]; if(!m||!m.actions||!m.actions[name]) return; var args=[].slice.call(arguments,2); var r=m.actions[name].apply(null,[lot,i,api].concat(args)); markDirty(); if(r!==false) rerender('lot',i); refreshLive(); },
     applyVisite:function(i){ var lot=cur.lots[i], m=lot&&MODS[lot.module]; if(!m||!m.applyVisite) return; var msgs=m.applyVisite(lot,api)||[]; markDirty(); say(msgs.length?('Reporté au devis : '+msgs.join(' · ')):'Rien à reporter automatiquement'); renderBody(); refreshLive(); },
-    statut:function(s){ cur.statut=s; cur._statutSet=true; if(s==='envoye'&&!cur.sentAt) cur.sentAt=Date.now(); markDirty(); updHead(); renderBody(); refreshLive(); },
+    statut:function(s){ if(verrou()){ say('🔒 Devis '+(cur.num||'')+' '+verrou().texte+' : son statut ne change plus (avenant ou duplication)'); return; } cur.statut=s; cur._statutSet=true; if(s==='envoye'&&!cur.sentAt) cur.sentAt=Date.now(); markDirty(); updHead(); renderBody(); refreshLive(); },
     sign:function(){
       if(typeof window.nxsSendDevis!=='function'){ say('Signature en ligne indisponible'); return; }
       if(!String(cur.cNom||'').trim()){ say('Renseigne le client avant d\'envoyer le devis'); return; }
+      if(verrou()){ say('🔒 Devis '+(cur.num||'')+' '+verrou().texte+' : il ne se renvoie pas en signature (fais un avenant)'); return; }
       /* C3 : article compté 0 € → confirmation AVANT tout (refus : rien envoyé, rien enregistré, modifications gardées) */
       if(typeof window.nxAbsentsOk==='function'&&!window.nxAbsentsOk(cur)) return;
       protect(cur); derive(cur); cur.updatedAt=Date.now(); delete cur._statutSet;

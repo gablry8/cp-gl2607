@@ -69,7 +69,8 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
 }
 
 /* I3b devis OUVERT à l'écran, serveur injoignable : rien de PROVISOIRE ne reste sur l'écran ni n'est enregistré ;
-   puis devis modifié à l'écran et facturé : modification gardée ET facture émise (essai du 08/10 sur la copie d'essai) */
+   puis devis ACCEPTÉ modifié à l'écran et facturé : depuis AF1 D0 (03/11/2026, devis accepté en lecture seule) la modification n'est PAS
+   enregistrée, et la facture est émise quand même (avant AF1 : modification gardée ET facture émise, essai du 08/10 sur la copie d'essai) */
 {
   const {p,ctx,errs}=await page({mobile:false});
   p.removeAllListeners('dialog'); const dlg=[]; p.on('dialog',d=>{ dlg.push(d.message()); d.accept().catch(()=>{}); });
@@ -93,7 +94,7 @@ const close=`(()=>{ const c=document.getElementById('nx-pdf-close'); if(c) c.cli
   rec('Émission','Devis ouvert + serveur injoignable : aucun numéro PROVISOIRE à l\'écran',!r.ecran&&!r.bloc,JSON.stringify(r));
   rec('Émission','Devis ouvert + serveur injoignable : « Enregistrer » n\'enregistre aucune fausse facture',!r.stocke&&!r.ls,JSON.stringify(r));
   rec('Émission','Réseau revenu : la facture est émise normalement (F-AAAA-001), écran à jour',/^F-\d{4}-001$/.test(r.apres||'')&&r.ecranApres===r.apres&&r.docs[0]===r.apres,JSON.stringify(r));
-  rec('Émission','Devis modifié à l\'écran puis facturé : modification enregistrée ET facture émise',r.modif&&/^F-\d{4}-002$/.test(r.fac2||''),JSON.stringify(r));
+  rec('Émission','Devis accepté modifié à l\'écran puis facturé : modification NON enregistrée (AF1 D0, lecture seule) ET facture émise',!r.modif&&/^F-\d{4}-002$/.test(r.fac2||''),JSON.stringify(r));
   rec('Émission','Aucune erreur JavaScript (devis ouvert)',errs.length===0,errs.join(' | '));
   await ctx.close();
 }

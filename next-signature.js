@@ -125,8 +125,11 @@
   window.nxsSendFlu = function(id){
     try{
       var f=(FLU||[]).find(function(x){ return x.id===id; }); if(!f){ toastX('Enregistre d\'abord la fiche','warn'); return; }
-      var html=capture(function(){ window.printFicheFlu(id); });
       var cl=(CLIENTS||[]).find(function(c){ return (c.nom||'').toLowerCase()===(f.client||'').toLowerCase(); })||{};
+      /* AF1 D5 (03/11/2026) : sans adresse du détenteur, la fiche envoyée porterait « Adresse : — » → envoi refusé */
+      if(!String(f.detAdr||cl.adr||'').trim()){ toastX('⚠ Adresse du détenteur manquante : complète-la sur la fiche avant d\'envoyer le lien de signature','warn'); return; }
+      if(f.annulee){ toastX('Fiche annulée : pas de signature à demander','warn'); return; }
+      var html=capture(function(){ window.printFicheFlu(id); });
       var o={type:'fluide',docId:f.id,num:f.num,client:f.client,titre:'Intervention du '+new Date((f.date||'')+'T12:00:00').toLocaleDateString('fr-FR')+' — '+(f.fluide||''),montant:null,html:html,email:cl.mail,tel:cl.tel};
       createLink(o).then(function(r){
         if(!r || r.error || !r.data){ toastX('⚠ '+((r&&r.error&&r.error.message)||'Lien impossible'),'warn'); return; }
