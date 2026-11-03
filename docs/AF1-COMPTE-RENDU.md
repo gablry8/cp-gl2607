@@ -120,6 +120,8 @@ Total : **57 contrôles, 46 rouges sur `main`, 57 verts après** (résultats bru
 
 **Un test existant change d'attendu, à cause de la décision 1** : `suiteI-emission.mjs`, I3b « devis modifié à l'écran puis facturé » attendait « modification enregistrée ET facture émise » sur un devis **accepté**. Avec D0, la modification d'un devis accepté n'est plus enregistrée ; la facture doit être émise quand même. Le contrôle devient « modification NON enregistrée (AF1 D0, lecture seule) ET facture émise ». La première batterie l'a trouvé **rouge** (la facture n'était même plus émise : `avantFacture` s'arrêtait sur le refus d'enregistrement) → correction dans `next-devis2.js` (un devis verrouillé se facture d'après sa copie enregistrée) → suite I 40/40.
 
+**Un second test existant change de jeu de données, même cause** : `suiteQ-recette.mjs`, parcours « Devis ouvert pendant une mise à jour » ouvrait un devis **accepté** et tapait un titre de lot : champ désormais désactivé (lecture seule) → le parcours s'interrompait (délai de saisie dépassé) et laissait le PC dans l'éditeur, ce qui faisait aussi échouer le parcours suivant (« Client ajouté puis supprimé »). Le parcours prend maintenant un devis au nouveau format **encore modifiable** (envoyé ou brouillon, non facturé) ; son objet (saisie pendant une mise à jour) est inchangé. `tests/isolation/rapport.mjs` : la suite AD est ajoutée à la liste des étapes du rapport (sinon elle tournait sans figurer dans `rapport.md`).
+
 Deux ajustements de la suite AD après la correction, tous deux dus à mes propres changements, pas à un relâchement : le sélecteur du bouton « 🧪 Fiche fluide » (son `onclick` commence maintenant par `formToDep();`) et la copie de référence de T1/T2/T3 prise **après** l'ouverture (constat 2.9 : des couches existantes ajoutent des champs par défaut à l'ouverture ; T1 vérifie que ce sont **seulement** ceux-là).
 
 ## 6. Batterie complète et CI
@@ -170,7 +172,7 @@ Avant : copie d'essai à jour sur la branche (F5), données fictives.
 
 ## 9. Fichiers modifiés
 
-`index.html` (D0, D2, D3, D5, D6, A-N5), `next-devis2.js` (D0, éditeur v2, facturation d'un devis verrouillé), `tests/suiteI-emission.mjs` (attendu I3b aligné sur la décision 1), `next-fiabilite.js` (D0, suppression), `next-addons.js` (D2, corbeille), `next-cerfa.js` (D5, D6, PDF), `next-flu-guide.js` (D6), `next-flubilan.js` (D2, bilan), `next-signature.js` (D5, envoi), `next-particuliers.js` (C-N1), `sw.js` (cache 1133), `tests/suiteAD-af1-pertes.mjs` (nouvelle), `tests/run-all.sh`, `tests/LISEZMOI.md`, `docs/AF1-COMPTE-RENDU.md`, `docs/APRES-PRO-V1.md` (3 idées datées 03/11).
+`index.html` (D0, D2, D3, D5, D6, A-N5), `next-devis2.js` (D0, éditeur v2, facturation d'un devis verrouillé), `tests/suiteI-emission.mjs` (attendu I3b aligné sur la décision 1), `tests/suiteQ-recette.mjs` (parcours « devis ouvert pendant une mise à jour » sur un devis modifiable), `tests/isolation/rapport.mjs` (suite AD dans le rapport), `next-fiabilite.js` (D0, suppression), `next-addons.js` (D2, corbeille), `next-cerfa.js` (D5, D6, PDF), `next-flu-guide.js` (D6), `next-flubilan.js` (D2, bilan), `next-signature.js` (D5, envoi), `next-particuliers.js` (C-N1), `sw.js` (cache 1133), `tests/suiteAD-af1-pertes.mjs` (nouvelle), `tests/run-all.sh`, `tests/LISEZMOI.md`, `docs/AF1-COMPTE-RENDU.md`, `docs/APRES-PRO-V1.md` (3 idées datées 03/11).
 
 ## 10. Ce qui n'a pas pu être vérifié
 
