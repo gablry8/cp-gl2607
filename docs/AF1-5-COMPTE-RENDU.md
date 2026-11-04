@@ -35,7 +35,7 @@ Dans `openEditor`, `showBanner('')` **avant** `render()` : le bandeau du devis p
 ## 6. Batterie complète et CI
 | Passage | Résultat |
 |---|---|
-| Batterie complète ici, sur `ea0f7f1` (arbre propre, Chrome 153 `CP_SANS_NETNS=1`, PostgreSQL 16) | BATTERIE_AF15 |
+| Batterie complète ici, sur `d5911f2` (= code `ea0f7f1` + documents ; arbre propre, Chrome 153 `CP_SANS_NETNS=1`, PostgreSQL 16, validateurs CEN / FNFE) | **COMPLET, RÉUSSI — 1 389 réussis, 0 échoué, 2 SKIP (les 2 connus), 5 À TRANCHER** inchangés. Comparé suite par suite à la batterie AF1-quater : **une seule différence de contenu, la suite AD 101 → 104** (T25) ; suite Q 64 / 64 ; golden **Y 21 + 5** et **Z 55** identiques, **W 64** (aucune enveloppe nouvelle), **U 27**, SQL 66 / 66, fonctions 90 / 90. |
 | CI GitHub de la tête | CI_AF15 |
 
 ## 7. Fichiers modifiés
