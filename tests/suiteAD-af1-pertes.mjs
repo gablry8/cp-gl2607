@@ -562,6 +562,161 @@ const GB = { AV: 'AF1-bis avenant / original', AN: 'AF1-bis annuler le devis', S
   rec(G.D5, 'T17 « L’Atelier du Froid » (apostrophe ’) trouve la fiche client comme « L\'Atelier du Froid » : adresse et ville reprises, champ de la fiche pré-rempli', r.a.adr === "2 rue de l'Église" && r.a.ville === '60100 Creil' && r.a.adr === r.b.adr && r.champ === "2 rue de l'Église", j(r));
 }
 
+/* ================= AF1-ter (relecture indépendante du 04/11/2026) : T18 signature tardive, T19 famille original + avenants (fusion entre appareils, deux avenants),
+   T20 ordre des messages en démonstration, T21 liens de signature désactivés ================= */
+const GC = { SIG: 'AF1-ter signature tardive', FAM: 'AF1-ter famille original / avenants', MSG: 'AF1-ter ordre des messages', LNK: 'AF1-ter liens de signature' };
+const SIG = (d, extra) => Object.assign({ doc_type: 'devis', doc_id: d.id, statut: 'signe', signed_at: REF.horloge, signer_nom: 'Client Tardif', doc_hash: 'h-' + d.id, token: 't-' + d.id, signature_png: null, signer_ip: null }, extra || {});
+/* original accepté → avenant créé et accepté dans l'éditeur v2 → l'original est « remplacé » (prérequis T14b, déjà vérifié) */
+const MK = `(async function(){ const o=AD.v2({statut:'accepte',acceptedAt:Date.parse(__REF.horloge)-86400000}); go('tous'); await new Promise(r=>setTimeout(r,120));
+  cpDevisAvenant(o.id); await new Promise(r=>setTimeout(r,250)); const a=DEVIS.find(x=>x.avenantDe&&x.avenantDe.id===o.id); if(!a) return null;
+  nxd2.statut('accepte'); nxd2.save(); await new Promise(r=>setTimeout(r,150)); nxd2.close(); go('tous'); await new Promise(r=>setTimeout(r,120));
+  return {o:o.id,a:a.id,oNum:o.num,aNum:a.num,statutO:(DEVIS.find(x=>x.id===o.id)||{}).statut}; })()`;
+
+/* ---------------- T18 : une signature (ou un refus) en ligne qui arrive APRÈS le remplacement ou l'annulation ne change plus le statut ---------------- */
+{
+  const r = await p.evaluate(async (args) => {
+    const { MK, sig } = args; AD.reset(); if (typeof nxsApplySig !== 'function') return { absent: true };
+    const F = id => { const d = DEVIS.find(x => x.id === id); return !!(d && (d.facSolde || d.facAcompte)); };
+    /* a. original remplacé par un avenant accepté, puis le client signe l'ANCIEN lien de l'original */
+    const m = await eval(MK); if (!m || m.statutO !== 'remplace') return { prerequis: m && m.statutO };
+    const accAvant = DEVIS.filter(x => x.statut === 'accepte').length;
+    AD.reset(); const okA = nxsApplySig(Object.assign({}, sig, { doc_id: m.o, doc_hash: 'h-' + m.o, token: 't-' + m.o })); await new Promise(r => setTimeout(r, 100));
+    const O = DEVIS.find(x => x.id === m.o), stO = JSON.parse(localStorage.getItem(LS.devis) || '[]').find(x => x.id === m.o) || {};
+    const journal = JSON.parse(localStorage.getItem('cpnext_journal') || '[]').filter(x => x.id === m.o && x.type === 'signature_ignoree').length;
+    const msgsA = __msgs.slice();
+    AD.reset(); await facturerDevis(m.o, 'solde'); await new Promise(r => setTimeout(r, 300));
+    const ra = { okA, statut: O.statut, stStatut: stO.statut, sig: !!O.signature, attente: !!(O.signatureEnAttente && O.signatureEnAttente.nom === 'Client Tardif'), accAvant, accApres: DEVIS.filter(x => x.statut === 'accepte').length, journal, msgsA, fac: F(m.o), facMsgs: __msgs.slice() };
+    /* b. devis annulé (rétractation), puis signature tardive */
+    AD.reset(); const n = AD.v2({ statut: 'accepte' }); go('tous'); await new Promise(r => setTimeout(r, 150));
+    cpDevisAnnuler(n.id); await new Promise(r => setTimeout(r, 100));
+    const radio = document.querySelector('#mAnnulDevis input[name="cpAnnulMotif"][value="retractation"]'); if (radio) radio.checked = true;
+    cpDevisAnnulerOk(); await new Promise(r => setTimeout(r, 200));
+    if ((DEVIS.find(x => x.id === n.id) || {}).statut !== 'annule') return { prerequis2: (DEVIS.find(x => x.id === n.id) || {}).statut };
+    AD.reset(); nxsApplySig(Object.assign({}, sig, { doc_id: n.id, doc_hash: 'h-' + n.id, token: 't-' + n.id })); await new Promise(r => setTimeout(r, 100));
+    const N = DEVIS.find(x => x.id === n.id);
+    AD.reset(); await facturerDevis(n.id, 'solde'); await new Promise(r => setTimeout(r, 300));
+    const rb = { statut: N.statut, annulation: !!(N.annulation && N.annulation.motif === 'retractation'), sig: !!N.signature, attente: !!N.signatureEnAttente, fac: F(n.id) };
+    /* c. refus en ligne sur le devis remplacé : rien ne change non plus */
+    AD.reset(); nxsApplySig(Object.assign({}, sig, { doc_id: m.o, statut: 'refuse', motif_refus: 'trop tard' })); await new Promise(r => setTimeout(r, 100));
+    const O2 = DEVIS.find(x => x.id === m.o);
+    return { ra, rb, rc: { statut: O2.statut, refus: !!O2.refus } };
+  }, { MK, sig: SIG({ id: 'x' }) });
+  if (r.absent || r.prerequis || r.prerequis2) { rec(GC.SIG, 'T18 prérequis (avenant accepté → original remplacé ; annulation)', false, j(r)); r.ra = r.rb = r.rc = {}; }
+  rec(GC.SIG, 'T18a original remplacé, signature en ligne tardive : statut « remplacé » inchangé (mémoire et stockage), pas de signature posée, preuve gardée (signatureEnAttente), ligne au journal, message', !!(r.ra.statut === 'remplace' && r.ra.stStatut === 'remplace' && !r.ra.sig && r.ra.attente && r.ra.journal >= 1 && r.ra.msgsA.some(m => /remplacé/i.test(m) && /preuve gardée/i.test(m))), j({ statut: r.ra.statut, stStatut: r.ra.stStatut, sig: r.ra.sig, attente: r.ra.attente, journal: r.ra.journal, msgsA: r.ra.msgsA }));
+  rec(GC.SIG, 'T18a l\'original ne redevient pas facturable : « Facturer » refusé, aucune facture, « Chantiers signés » inchangé', !!(!r.ra.fac && r.ra.accApres === r.ra.accAvant && (r.ra.facMsgs || []).some(m => /ne se facture plus/i.test(m))), j({ fac: r.ra.fac, accAvant: r.ra.accAvant, accApres: r.ra.accApres, facMsgs: r.ra.facMsgs }));
+  rec(GC.SIG, 'T18b devis annulé, signature en ligne tardive : reste « annulé » (motif gardé), pas de signature posée, preuve gardée, pas facturable', !!(r.rb.statut === 'annule' && r.rb.annulation && !r.rb.sig && r.rb.attente && !r.rb.fac), j(r.rb));
+  rec(GC.SIG, 'T18c refus en ligne tardif sur un devis remplacé : rien ne change', !!(r.rc.statut === 'remplace' && !r.rc.refus), j(r.rc));
+}
+
+/* ---------------- T19 : jamais deux factures vivantes dans une famille (original + avenants), même après une fusion entre appareils ; deux avenants ---------------- */
+{
+  const r = await p.evaluate(async (MK) => {
+    AD.reset(); if (typeof cpRefusFacture !== 'function' || typeof cpReparerAvenants !== 'function') return { absent: true };
+    const F = id => { const d = DEVIS.find(x => x.id === id); return !!(d && (d.facSolde || d.facAcompte)); };
+    const S = id => (DEVIS.find(x => x.id === id) || {}).statut;
+    const ST = id => (JSON.parse(localStorage.getItem(LS.devis) || '[]').find(x => x.id === id) || {}).statut;
+    const K = LS.devis;
+    /* a. la VRAIE fonction de fusion : base = original accepté (sans avenant) ; cet appareil, pas à jour = original encore accepté + une date de planification ;
+          cloud = original remplacé + avenant accepté. « L'appareil actuel gagne » : l'original revient « accepté » à côté de l'avenant accepté. */
+    const m = await eval(MK); if (!m || m.statutO !== 'remplace') return { prerequis: m && m.statutO };
+    const cloud = JSON.parse(JSON.stringify(DEVIS));
+    const base = JSON.parse(JSON.stringify(cloud)).filter(x => x.id !== m.a).map(x => { if (x.id === m.o) { x.statut = 'accepte'; delete x.remplacePar; } return x; });
+    const local = JSON.parse(JSON.stringify(base)).map(x => { if (x.id === m.o) x.datePlanif = __REF.jour; return x; });
+    const M = cpMerge({ [K]: base }, { [K]: local }, { [K]: cloud })[K];
+    const apresFusion = { o: (M.find(x => x.id === m.o) || {}).statut, a: (M.find(x => x.id === m.a) || {}).statut };
+    DEVIS.length = 0; M.forEach(x => DEVIS.push(x)); save(K, DEVIS);
+    AD.reset(); await facturerDevis(m.o, 'solde'); await new Promise(r => setTimeout(r, 300));
+    const a1 = { apresFusion, facO: F(m.o), statutO: S(m.o), stO: ST(m.o), lien: ((DEVIS.find(x => x.id === m.o) || {}).remplacePar || {}).id === m.a, msgs: __msgs.slice() };
+    AD.reset(); await facturerDevis(m.a, 'acompte'); await new Promise(r => setTimeout(r, 400));
+    const a2 = { facA: F(m.a), msgs: __msgs.slice() };
+    /* b. l'original a été facturé sur l'appareil pas à jour (acompte), l'avenant est accepté : l'avenant ne se facture pas */
+    AD.reset(); const m2 = await eval(MK); if (!m2) return { absent: true };
+    const O2 = DEVIS.find(x => x.id === m2.o); O2.statut = 'accepte'; delete O2.remplacePar; O2.facAcompte = { num: 'TEST-F-' + __REF.an + '-0811', date: __REF.jour, montant: 50, baseTTC: 300, payeLe: null, mode: '' }; save(K, DEVIS);
+    AD.reset(); await facturerDevis(m2.a, 'solde'); await new Promise(r => setTimeout(r, 300));
+    const b = { facA: F(m2.a), statutO: S(m2.o), statutA: S(m2.a), msgs: __msgs.slice() };
+    /* c. deux avenants du même original : le second ne peut pas être accepté tant que le premier l'est ; forcés tous deux « acceptés » (fusion), aucun ne se facture */
+    AD.reset(); const m3 = await eval(MK); if (!m3) return { absent: true };
+    const O3 = DEVIS.find(x => x.id === m3.o); O3.statut = 'accepte'; delete O3.remplacePar; save(K, DEVIS);   /* comme si cet appareil n'avait pas vu l'avenant accepté */
+    cpDevisAvenant(m3.o); await new Promise(r => setTimeout(r, 250)); const b3 = DEVIS.find(x => x.avenantDe && x.avenantDe.id === m3.o && x.id !== m3.a); if (!b3) return { absent: true };
+    AD.reset(); nxd2.statut('accepte'); nxd2.save(); await new Promise(r => setTimeout(r, 150)); nxd2.close(); go('tous'); await new Promise(r => setTimeout(r, 120));
+    const c1 = { statutB: S(b3.id), msgs: __msgs.slice() };
+    AD.reset(); nxSetStatut(b3.id, 'accepte'); await new Promise(r => setTimeout(r, 120));
+    const c1b = { statutB: S(b3.id), msgs: __msgs.slice() };
+    const B = DEVIS.find(x => x.id === b3.id); B.statut = 'accepte'; save(K, DEVIS);   /* forcé, comme après une fusion */
+    AD.reset(); await facturerDevis(m3.a, 'solde'); await new Promise(r => setTimeout(r, 300)); const mA = __msgs.slice();
+    AD.reset(); await facturerDevis(b3.id, 'solde'); await new Promise(r => setTimeout(r, 300)); const mB = __msgs.slice();
+    const c2 = { facA: F(m3.a), facB: F(b3.id), mA, mB, repare: cpReparerAvenants(), statutO: S(m3.o) };
+    /* d. témoin : un avenant accepté dont l'original est remplacé se facture normalement ; réparation au démarrage d'un original revenu « accepté » */
+    AD.reset(); const m4 = await eval(MK); if (!m4) return { absent: true };
+    AD.reset(); await facturerDevis(m4.a, 'acompte'); await new Promise(r => setTimeout(r, 400));
+    const d1 = { facA: F(m4.a), statutO: S(m4.o), msgs: __msgs.slice() };
+    AD.reset(); const m5 = await eval(MK); if (!m5) return { absent: true };
+    const O5 = DEVIS.find(x => x.id === m5.o); O5.statut = 'accepte'; delete O5.remplacePar; save(K, DEVIS);
+    const n5 = cpReparerAvenants();
+    const d2 = { n5, statutO: S(m5.o), stO: ST(m5.o), lien: ((DEVIS.find(x => x.id === m5.o) || {}).remplacePar || {}).id === m5.a, journal: JSON.parse(localStorage.getItem('cpnext_journal') || '[]').filter(x => x.id === m5.o && x.action === 'reparation_demarrage').length, m5 };
+    return { a1, a2, b, c1, c1b, c2, d1, d2 };
+  }, MK);
+  if (r.absent || r.prerequis) { rec(GC.FAM, 'T19 prérequis (fonctions cpRefusFacture / cpReparerAvenants ; avenant accepté → original remplacé)', false, j(r)); r.a1 = r.a2 = r.b = r.c1 = r.c1b = r.c2 = r.d1 = r.d2 = {}; }
+  rec(GC.FAM, 'T19a fusion (cpMerge) sur l\'appareil pas à jour : l\'original revient « accepté » à côté de l\'avenant accepté (défaut D1 reproduit)', !!(r.a1.apresFusion && r.a1.apresFusion.o === 'accepte' && r.a1.apresFusion.a === 'accepte'), j(r.a1.apresFusion));
+  rec(GC.FAM, 'T19a après la fusion, « Facturer » l\'original : refusé, aucune facture, et l\'original repasse « remplacé » (mémoire et stockage, lien vers l\'avenant)', !!(!r.a1.facO && r.a1.statutO === 'remplace' && r.a1.stO === 'remplace' && r.a1.lien && (r.a1.msgs || []).some(m => /ne se facture plus/i.test(m) && /autre appareil/i.test(m))), j({ facO: r.a1.facO, statutO: r.a1.statutO, stO: r.a1.stO, lien: r.a1.lien, msgs: r.a1.msgs }));
+  rec(GC.FAM, 'T19a l\'avenant, lui, se facture (acompte d\'essai)', !!(r.a2.facA === true), j(r.a2));
+  rec(GC.FAM, 'T19b original facturé sur l\'appareil pas à jour + avenant accepté : facturer l\'avenant refusé (« jamais deux factures pour le même chantier »), aucune facture', !!(!r.b.facA && (r.b.msgs || []).some(m => /jamais deux factures/i.test(m) && /avoir/i.test(m))), j(r.b));
+  rec(GC.FAM, 'T19c deuxième avenant du même original : « Accepté » refusé tant que le premier est accepté (éditeur et liste), message clair', !!(r.c1.statutB !== 'accepte' && (r.c1.msgs || []).some(m => /autre avenant/i.test(m)) && r.c1b.statutB !== 'accepte' && (r.c1b.msgs || []).some(m => /autre avenant/i.test(m))), j({ c1: r.c1, c1b: r.c1b }));
+  rec(GC.FAM, 'T19c deux avenants forcés « acceptés » (fusion) : aucun des deux ne se facture (« annule l\'un des deux »), la réparation ne tranche pas', !!(!r.c2.facA && !r.c2.facB && (r.c2.mA || []).some(m => /Deux avenants/i.test(m)) && (r.c2.mB || []).some(m => /Deux avenants/i.test(m)) && r.c2.repare === 0 && r.c2.statutO === 'accepte'), j(r.c2));
+  rec(GC.FAM, 'Témoin : un avenant accepté dont l\'original est remplacé se facture normalement', !!(r.d1.facA === true && r.d1.statutO === 'remplace'), j(r.d1));
+  rec(GC.FAM, 'T19d réparation au démarrage (cpReparerAvenants) : un original revenu « accepté » sans facture, avenant accepté → « remplacé » (mémoire et stockage), ligne au journal', !!(r.d2.n5 === 1 && r.d2.statutO === 'remplace' && r.d2.stO === 'remplace' && r.d2.lien && r.d2.journal >= 1), j({ n5: r.d2.n5, statutO: r.d2.statutO, stO: r.d2.stO, lien: r.d2.lien, journal: r.d2.journal }));
+}
+
+/* ---------------- T19e : la réparation tourne bien au DÉMARRAGE (rechargement de la page) ---------------- */
+{
+  const avant = await p.evaluate(async (MK) => {
+    AD.reset(); const m = await eval(MK); if (!m) return null;
+    const O = DEVIS.find(x => x.id === m.o); O.statut = 'accepte'; delete O.remplacePar; save(LS.devis, DEVIS);
+    return { o: m.o, a: m.a, statut: (JSON.parse(localStorage.getItem(LS.devis) || '[]').find(x => x.id === m.o) || {}).statut };
+  }, MK);
+  await p.reload(); await p.waitForTimeout(2500); await p.evaluate(PREP);
+  const apres = await p.evaluate((ids) => { const o = DEVIS.find(x => x.id === ids.o) || {}; return { statut: o.statut, lien: (o.remplacePar || {}).id === ids.a, st: (JSON.parse(localStorage.getItem(LS.devis) || '[]').find(x => x.id === ids.o) || {}).statut }; }, avant || { o: '', a: '' });
+  rec(GC.FAM, 'T19e au rechargement de l\'appli : l\'original revenu « accepté » (stockage) repasse « remplacé par l\'avenant » (mémoire et stockage)', !!(!!avant && avant.statut === 'accepte' && apres.statut === 'remplace' && apres.st === 'remplace' && apres.lien), j({ avant, apres }));
+}
+
+/* ---------------- T20 : en démonstration, le refus « ne se facture plus » est le PREMIER message (avant « Document de TEST émis sans … ») ---------------- */
+{
+  const r = await p.evaluate(async (MK) => {
+    AD.reset(); const m = await eval(MK); if (!m || m.statutO !== 'remplace') return { prerequis: m && m.statutO };
+    /* entreprise sans assurance ni attestation : c'est ce qui déclenche « ⚠ Document de TEST émis sans … » en démonstration */
+    const ov = load(LS.over, {}) || {}; const ent0 = ov.entreprise === undefined ? undefined : JSON.parse(JSON.stringify(ov.entreprise)); const ent = Object.assign({}, ov.entreprise || {});
+    ['assurance', 'assuranceZone', 'attFluides', 'attOrganisme'].forEach(k => { delete ent[k]; }); ov.entreprise = ent; save(LS.over, ov); rebuildP();
+    const assurance = (P.entreprise || {}).assurance || '';
+    AD.reset(); await facturerDevis(m.o, 'solde'); await new Promise(r => setTimeout(r, 400));
+    const msgs = __msgs.slice();
+    /* témoin : sur l'avenant (facturable), l'avertissement de TEST apparaît bien dans cette configuration */
+    AD.reset(); await facturerDevis(m.a, 'acompte'); await new Promise(r => setTimeout(r, 500));
+    const temoin = __msgs.slice();
+    if (ent0 === undefined) delete ov.entreprise; else ov.entreprise = ent0; save(LS.over, ov); rebuildP();
+    return { msgs, temoin, assurance, fac: !!((DEVIS.find(x => x.id === m.o) || {}).facSolde) };
+  }, MK);
+  if (r.prerequis) { rec(GC.MSG, 'T20 prérequis', false, j(r)); r.msgs = r.temoin = []; }
+  rec(GC.MSG, 'T20 devis remplacé, « Facturer » en démonstration : le premier message est le refus « ne se facture plus », et aucun « Document de TEST émis » n\'est affiché', !!((r.msgs || []).length >= 1 && /ne se facture plus/i.test(r.msgs[0]) && !(r.msgs || []).some(m => /Document de TEST émis/.test(m)) && !r.fac), j({ msgs: r.msgs, fac: r.fac }));
+  rec(GC.MSG, 'Témoin : dans la même configuration, un devis facturable affiche bien l\'avertissement « Document de TEST émis sans … »', !!((r.temoin || []).some(m => /Document de TEST émis/.test(m))), j({ temoin: (r.temoin || []).slice(0, 4) }));
+}
+
+/* ---------------- T21 : remplacement ou annulation → les liens de signature en attente du devis sont désactivés (fonction du module signature appelée) ---------------- */
+{
+  const r = await p.evaluate(async (MK) => {
+    AD.reset(); const appels = []; const sauve = window.nxsDesactiverLiens; window.nxsDesactiverLiens = function (t, id, raison) { appels.push({ t, id, raison }); return Promise.resolve(0); };
+    try {
+      const m = await eval(MK); if (!m) return { absent: true };
+      const a = appels.slice();
+      const n = AD.v2({ statut: 'accepte' }); go('tous'); await new Promise(r => setTimeout(r, 150));
+      cpDevisAnnuler(n.id); await new Promise(r => setTimeout(r, 100));
+      const radio = document.querySelector('#mAnnulDevis input[name="cpAnnulMotif"][value="abandon"]'); if (radio) radio.checked = true;
+      cpDevisAnnulerOk(); await new Promise(r => setTimeout(r, 200));
+      return { fonction: typeof sauve === 'function', remplace: a.some(x => x.t === 'devis' && x.id === m.o && x.raison === 'remplace'), annule: appels.some(x => x.t === 'devis' && x.id === n.id && x.raison === 'annule'), appels };
+    } finally { window.nxsDesactiverLiens = sauve; }
+  }, MK);
+  rec(GC.LNK, 'T21 le module signature expose nxsDesactiverLiens ; il est appelé pour l\'original quand l\'avenant est accepté (raison « remplace ») et pour un devis annulé (raison « annule »)', !!(!r.absent && r.fonction && r.remplace && r.annule), j(r));
+}
+
 rec('AF1', 'Aucune erreur JavaScript pendant la suite', errs.length === 0, errs.join(' | '));
 await ctx.close();
 await closeBrowser();
