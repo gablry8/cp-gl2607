@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "deny": [
+      "Bash(git push * main)",
+      "Bash(git push * main *)",
+      "Bash(git push *:main*)",
+      "Bash(git push *refs/heads/main*)",
+      "Bash(git push *--force*)",
+      "Bash(git push *-f *)",
+      "Bash(git push *-f)",
+      "Bash(git push * +*)",
+      "Bash(git push *--delete*)",
+      "Bash(git push *-d *)",
+      "Bash(git push *-d)",
+      "Bash(git push * :**)",
+      "Bash(git push *--prune*)",
+      "Bash(git push *--mirror*)",
+      "Bash(gh pr merge *)",
+      "Bash(gh repo delete *)",
+      "Bash(gh api *-X DELETE*)",
+      "Bash(gh api *-XDELETE*)",
+      "Bash(gh api *--method DELETE*)",
+      "Bash(gh api *--method=DELETE*)",
+      "Bash(gh api *-X PUT*)",
+      "Bash(gh api *-XPUT*)",
+      "Bash(gh api *--method PUT*)",
+      "Bash(gh api *--method=PUT*)",
+      "Bash(gh release *)",
+      "Bash(supabase db push *)",
+      "Bash(supabase functions deploy *)",
+      "Bash(supabase secrets *)",
+      "Bash(supabase link *)",
+      "Bash(npx supabase db push *)",
+      "Bash(npx supabase functions deploy *)",
+      "Bash(npx supabase secrets *)",
+      "Bash(npx supabase link *)",
+      "mcp__Supabase__apply_migration",
+      "mcp__Supabase__deploy_edge_function",
+      "mcp__Supabase__create_edge_function_secret",
+      "mcp__Supabase__create_project",
+      "mcp__Supabase__pause_project",
+      "mcp__Supabase__restore_project",
+      "mcp__Supabase__create_branch",
+      "mcp__Supabase__delete_branch",
+      "mcp__Supabase__merge_branch",
+      "mcp__Supabase__reset_branch",
+      "mcp__Supabase__rebase_branch",
+      "SearchPlugins",
+      "SuggestPluginInstall"
+    ],
+    "ask": [
+      "mcp__Supabase__execute_sql"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/tools/claude/verif-secrets.sh\" --hook",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
