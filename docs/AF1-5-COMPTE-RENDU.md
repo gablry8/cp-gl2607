@@ -36,7 +36,7 @@ Dans `openEditor`, `showBanner('')` **avant** `render()` : le bandeau du devis p
 | Passage | Résultat |
 |---|---|
 | Batterie complète ici, sur `d5911f2` (= code `ea0f7f1` + documents ; arbre propre, Chrome 153 `CP_SANS_NETNS=1`, PostgreSQL 16, validateurs CEN / FNFE) | **COMPLET, RÉUSSI — 1 389 réussis, 0 échoué, 2 SKIP (les 2 connus), 5 À TRANCHER** inchangés. Comparé suite par suite à la batterie AF1-quater : **une seule différence de contenu, la suite AD 101 → 104** (T25) ; suite Q 64 / 64 ; golden **Y 21 + 5** et **Z 55** identiques, **W 64** (aucune enveloppe nouvelle), **U 27**, SQL 66 / 66, fonctions 90 / 90. |
-| CI GitHub de la tête | CI_AF15 |
+| CI GitHub de `a09573f` (= code `ea0f7f1` + documents) | **verte** sur le push ([run 88](https://github.com/gablry8/cp-gl2607/actions/runs/41897391804)) et sur la demande de fusion #10 ([run 89](https://github.com/gablry8/cp-gl2607/actions/runs/41897401416)) : « COMPLET, RÉUSSI — **1 389 réussis, 0 échoué, 2 SKIP** (les 2 connus), 5 À TRANCHER », chiffres identiques au passage local. Les runs 84-85 (`ea0f7f1`) et 86-87 (`d5911f2`) ont été annulés par les pushs suivants (`cancel-in-progress`, même code) : échec de forme (« code ? ») de leur check « rapport », pas un échec de tests. Le commit qui inscrit ces lignes ne touche que ce document : sa CI relance la même batterie. |
 
 ## 7. Fichiers modifiés
 `next-devis2.js` (1 ligne), `sw.js` (nom du cache), `tests/suiteAD-af1-pertes.mjs` (+3 contrôles), `docs/AF1-5-COMPTE-RENDU.md`, `docs/FILE-DES-MISSIONS.md`. Aucun fichier de `tests/golden/`. Contrôle des secrets : `tools/claude/verif-secrets.sh` passé sans alerte.
