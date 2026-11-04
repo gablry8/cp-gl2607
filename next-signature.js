@@ -59,6 +59,15 @@
       .catch(function(e){ console.warn('ClimPilot (AF1-ter) liens de signature :',e&&e.message||e); return 0; });
   }
   window.nxsDesactiverLiens=desactiverLiens;
+  /* AF1-quater : la réparation au démarrage (index.html, cpReparerAvenants) tourne avant ce module → ses demandes attendent dans
+     window.cpLiensADesactiver ; elles sont traitées au premier relevé qui a le cloud (refresh), et à chaque relevé suivant s'il en reste. */
+  function viderLiensEnAttente(){
+    var q=window.cpLiensADesactiver; if(!Array.isArray(q)||!q.length) return 0;
+    var f=(typeof window.nxsDesactiverLiens==='function')?window.nxsDesactiverLiens:desactiverLiens, items=q.splice(0);
+    items.forEach(function(a){ try{ f(a[0],a[1],a[2]); }catch(e){ console.warn('ClimPilot (AF1-quater) liens en attente :',e&&e.message||e); } });
+    return items.length;
+  }
+  window.nxsViderLiensEnAttente=viderLiensEnAttente;
 
   function showShare(o){
     var old=document.getElementById('nxsModal'); if(old) old.remove();
@@ -170,10 +179,21 @@
       /* AF1-bis (1c) : avenant signé en ligne alors que son original a été facturé entre-temps → la preuve est GARDÉE (signatureEnAttente), le statut n'avance pas ;
          après l'avoir, passer l'avenant en « Accepté » pose la signature (cpAvenantAccepte, index.html) */
       var orig=null; try{ orig=(typeof window.cpAvenantOriginal==='function')?window.cpAvenantOriginal(d):null; }catch(e){ console.warn('ClimPilot (AF1-bis) original :',e); }
-      if(s.statut==='signe' && orig && typeof window.cpFactureVivante==='function' && window.cpFactureVivante(orig)){
+      /* AF1-quater : la facture peut être n'importe où dans l'arbre (original, avenant, avenant d'avenant), pas seulement sur le parent */
+      var fac=null; try{ if(d.avenantDe&&typeof window.cpFamilleDevis==='function'&&typeof window.cpFactureVivante==='function') fac=window.cpFamilleDevis(d).find(function(x){ return x.id!==d.id&&window.cpFactureVivante(x); })||null;
+        else if(orig&&typeof window.cpFactureVivante==='function'&&window.cpFactureVivante(orig)) fac=orig; }catch(e){ console.warn('ClimPilot (AF1-quater) famille :',e); }
+      if(s.statut==='signe' && fac){
         d.signatureEnAttente=sig; save(LS.devis,DEVIS);
-        try{ window.cpJournal({type:'avenant_refuse',action:'signature_en_ligne',id:d.id,num:d.num||'',motif:'facture_original',original:orig.id}); }catch(e){ console.warn('ClimPilot (AF1-bis) journal :',e); }
-        toastX('⛔ Devis '+(d.num||'')+' signé en ligne par '+(s.signer_nom||'')+', mais le devis d\'origine '+(orig.num||'')+' a été facturé entre-temps : fais d\'abord un avoir, puis passe l\'avenant en « Accepté » (la signature est conservée).','warn');
+        try{ window.cpJournal({type:'avenant_refuse',action:'signature_en_ligne',id:d.id,num:d.num||'',motif:'facture_original',original:fac.id}); }catch(e){ console.warn('ClimPilot (AF1-bis) journal :',e); }
+        toastX('⛔ Devis '+(d.num||'')+' signé en ligne par '+(s.signer_nom||'')+', mais le devis '+(orig&&fac.id===orig.id?'d\'origine ':'')+(fac.num||'')+' a été facturé entre-temps : fais d\'abord un avoir, puis passe l\'avenant en « Accepté » (la signature est conservée).','warn');
+        try{ updateBadges(); }catch(e){} return true; }
+      /* AF1-quater (relecture du 04/11, soir) : un 2e avenant signé en ligne alors qu'un autre avenant du même devis est déjà accepté → même règle qu'à
+         l'écran (cpAvenantAcceptable) : statut inchangé, preuve gardée, l'original continue de pointer vers l'avenant déjà accepté */
+      var autre=null; try{ if(s.statut==='signe'&&d.avenantDe&&typeof window.cpAutreAccepte==='function') autre=window.cpAutreAccepte(d); }catch(e){ console.warn('ClimPilot (AF1-quater) autre avenant :',e); }
+      if(autre){
+        d.signatureEnAttente=sig; save(LS.devis,DEVIS);
+        try{ window.cpJournal({type:'avenant_refuse',action:'signature_en_ligne',id:d.id,num:d.num||'',motif:'autre_avenant',autre:autre.id}); }catch(e){ console.warn('ClimPilot (AF1-quater) journal :',e); }
+        toastX('⛔ Devis '+(d.num||'')+' signé en ligne par '+(s.signer_nom||'')+', mais un autre avenant du même devis est déjà accepté ('+(autre.num||'')+') : annule-le d\'abord, puis passe celui-ci en « Accepté » (la signature est conservée).','warn');
         try{ updateBadges(); }catch(e){} return true; }
       if(s.statut==='signe'){ d.statut='accepte'; d.signature=sig; d.acceptedAt=Date.parse(s.signed_at)||Date.now();
         /* 1.10 : date réelle de conclusion = horodatage du serveur (jour à Paris) + preuve ; le MODE n'est jamais deviné */
@@ -213,6 +233,7 @@
   window.nxsApplySig=applySig;
   function refresh(){
     if(!cloudOk()) return Promise.resolve();
+    try{ viderLiensEnAttente(); }catch(e){ console.warn('ClimPilot (AF1-quater) liens en attente :',e&&e.message||e); }
     return lireSignatures()
       .then(function(r){
         if(!r || r.error) return;
