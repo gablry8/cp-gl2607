@@ -50,6 +50,16 @@
     });
   }
 
+  /* AF1-ter (04/11/2026) : un devis remplacé par un avenant ou annulé ne doit plus pouvoir être signé en ligne → ses liens encore en attente sont
+     désactivés (même geste que la création d'un nouveau lien). Sans cloud : rien à faire ici, applySig ignore de toute façon une signature tardive. */
+  function desactiverLiens(docType,docId,raison){
+    if(!cloudOk()||!docId) return Promise.resolve(0);
+    return sb.from(TABLE).update({statut:'annule'}).eq('doc_id',docId).eq('doc_type',docType||'devis').eq('statut','en_attente').select('token')
+      .then(function(r){ var n=(r&&r.data&&r.data.length)||0; if(r&&r.error) console.warn('ClimPilot (AF1-ter) liens de signature :',r.error.message||r.error); else if(n) try{ refresh(); }catch(e){} return n; })
+      .catch(function(e){ console.warn('ClimPilot (AF1-ter) liens de signature :',e&&e.message||e); return 0; });
+  }
+  window.nxsDesactiverLiens=desactiverLiens;
+
   function showShare(o){
     var old=document.getElementById('nxsModal'); if(old) old.remove();
     var m=document.createElement('div'); m.id='nxsModal'; m.className='nxs-ov';
@@ -147,6 +157,16 @@
     var sig={at:s.signed_at,nom:s.signer_nom,hash:s.doc_hash,png:s.signature_png||null,token:s.token,ip:s.signer_ip||null};
     if(s.doc_type==='devis'){
       var d=(DEVIS||[]).find(function(x){ return x.id===s.doc_id; }); if(!d) return false;
+      /* AF1-ter (relecture du 04/11) : signature ou refus qui arrive APRÈS que le devis a été remplacé par un avenant ou annulé → le statut ne bouge pas
+         (sinon l'original redevenait facturable à côté de son avenant : double facture). La preuve est gardée (signatureEnAttente), tout est journalisé. */
+      if(d.statut==='remplace'||d.statut==='annule'){
+        var etat=d.statut==='annule'?'annulé':'remplacé par l\'avenant n° '+(d.remplacePar&&d.remplacePar.num||'');
+        if(s.statut==='signe'&&!d.signature) d.signatureEnAttente=sig;
+        save(LS.devis,DEVIS);
+        try{ window.cpJournal({type:'signature_ignoree',action:s.statut==='signe'?'signature_en_ligne':'refus_en_ligne',id:d.id,num:d.num||'',motif:d.statut,nom:s.signer_nom||''}); }catch(e){ console.warn('ClimPilot (AF1-ter) journal :',e); }
+        toastX((s.statut==='signe'?'⚠ Devis '+(d.num||'')+' signé en ligne par '+(s.signer_nom||'')+' alors qu\'il est '+etat+' : il reste '+etat+' et ne se facture pas (preuve gardée).'
+          :'ℹ Devis '+(d.num||'')+' refusé en ligne alors qu\'il est déjà '+etat+' : rien ne change.'),'warn');
+        try{ updateBadges(); }catch(e){} return true; }
       /* AF1-bis (1c) : avenant signé en ligne alors que son original a été facturé entre-temps → la preuve est GARDÉE (signatureEnAttente), le statut n'avance pas ;
          après l'avoir, passer l'avenant en « Accepté » pose la signature (cpAvenantAccepte, index.html) */
       var orig=null; try{ orig=(typeof window.cpAvenantOriginal==='function')?window.cpAvenantOriginal(d):null; }catch(e){ console.warn('ClimPilot (AF1-bis) original :',e); }

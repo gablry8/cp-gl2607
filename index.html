@@ -1770,17 +1770,56 @@ function cpRefusEnregistrement(d,v){cpJournal({type:'devis_verrouille',action:'e
    Aucun calcul de montant ne change. */
 function cpFactureVivante(d){return !!(d&&(d.facAcompte||d.facSolde));}
 function cpAvenantOriginal(d){if(!d||!d.avenantDe||!d.avenantDe.id)return null;const o=DEVIS.find(x=>x.id===d.avenantDe.id);return (o&&o.id!==d.id)?o:null;}
-function cpAvenantAcceptable(d){const o=cpAvenantOriginal(d);if(!o||!cpFactureVivante(o))return true;
-  cpJournal({type:'avenant_refuse',action:'accepter',id:d.id,num:d.num||'',motif:'facture_original',original:o.id});
-  toast('⛔ Le devis d\'origine '+(o.num||'')+' a été facturé entre-temps : l\'avenant '+(d.num||'')+' ne peut pas être accepté. Fais d\'abord un avoir sur cette facture (ou facture le supplément sur un nouveau devis).');return false;}
+/* AF1-ter (relecture indépendante du 04/11/2026, exception au gel décidée par Gabriel) — la FAMILLE d'un devis = le devis d'origine et tous ses avenants.
+   Règle : jamais deux factures vivantes dans une même famille, et jamais deux avenants acceptés. Elle se vérifie au moment d'ACCEPTER un avenant
+   (cpAvenantAcceptable) ET au moment de FACTURER (cpRefusFacture, lu par facturerDevis et par next-emission.js), parce qu'une fusion entre appareils
+   (« l'appareil actuel gagne », défaut D1 connu) peut remettre un original « accepté » à côté de son avenant accepté. */
+function cpFamilleDevis(d){const o=cpAvenantOriginal(d)||d;return [o].concat(DEVIS.filter(x=>x&&x.id!==o.id&&x.avenantDe&&x.avenantDe.id===o.id));}
+function cpAutreAvenantAccepte(d,o){return DEVIS.find(x=>x&&x.id!==d.id&&x.id!==o.id&&x.avenantDe&&x.avenantDe.id===o.id&&(x.statut==='accepte'||cpFactureVivante(x)))||null;}
+function cpAvenantAcceptable(d){const o=cpAvenantOriginal(d);if(!o)return true;
+  if(cpFactureVivante(o)){cpJournal({type:'avenant_refuse',action:'accepter',id:d.id,num:d.num||'',motif:'facture_original',original:o.id});
+    toast('⛔ Le devis d\'origine '+(o.num||'')+' a été facturé entre-temps : l\'avenant '+(d.num||'')+' ne peut pas être accepté. Fais d\'abord un avoir sur cette facture (ou facture le supplément sur un nouveau devis).');return false;}
+  const autre=cpAutreAvenantAccepte(d,o);
+  if(autre){cpJournal({type:'avenant_refuse',action:'accepter',id:d.id,num:d.num||'',motif:'autre_avenant',autre:autre.id});
+    toast('⛔ Un autre avenant du devis '+(o.num||'')+' est déjà accepté ('+(autre.num||'')+') : annule-le d\'abord, ou continue avec lui.');return false;}
+  return true;}
+/* l'original passe « remplacé par l'avenant n° … » (date d'acceptation gardée) ; vrai si quelque chose a changé. Les liens de signature encore en attente
+   sur l'original sont désactivés (next-signature.js, si le cloud répond ; sinon la signature tardive est de toute façon ignorée par applySig). */
+function cpMarquerRemplace(o,a,action){
+  if(!o||!a||o.id===a.id||o.statut==='annule'||cpFactureVivante(o)||(o.statut==='remplace'&&o.remplacePar&&o.remplacePar.id===a.id))return false;
+  o.statut='remplace';o.remplacePar={id:a.id,num:a.num||'',at:Date.now()};
+  cpJournal({type:'devis_remplace',action:action||'avenant_accepte',id:o.id,num:o.num||'',motif:'avenant',avenant:a.id});
+  try{if(typeof cur!=='undefined'&&cur&&cur.id===o.id&&cur!==o){cur.statut='remplace';cur.remplacePar=JSON.parse(JSON.stringify(o.remplacePar));}}catch(e){console.warn('ClimPilot (AF1-bis) copie ouverte :',e);}
+  try{if(typeof window.nxsDesactiverLiens==='function')window.nxsDesactiverLiens('devis',o.id,'remplace');}catch(e){console.warn('ClimPilot (AF1-ter) liens de signature :',e);}
+  return true;}
 function cpAvenantAccepte(d){if(!d||d.statut!=='accepte')return;const o=cpAvenantOriginal(d);
   if(d.signatureEnAttente&&!d.signature){d.signature=d.signatureEnAttente;delete d.signatureEnAttente;if(!d.acceptedAt)d.acceptedAt=Date.parse(d.signature.at)||Date.now();}
-  if(o&&o.statut!=='annule'&&!cpFactureVivante(o)&&!(o.statut==='remplace'&&o.remplacePar&&o.remplacePar.id===d.id)){
-    o.statut='remplace';o.remplacePar={id:d.id,num:d.num||'',at:Date.now()};
-    cpJournal({type:'devis_remplace',action:'avenant_accepte',id:o.id,num:o.num||'',motif:'avenant',avenant:d.id});
-    toast('Devis '+(o.num||'')+' remplacé par l\'avenant '+(d.num||'')+' : il sort de la facturation, d\'« À commander » et de « Planifier ».');
-    try{if(typeof cur!=='undefined'&&cur&&cur.id===o.id&&cur!==o){cur.statut='remplace';cur.remplacePar=JSON.parse(JSON.stringify(o.remplacePar));}}catch(e){console.warn('ClimPilot (AF1-bis) copie ouverte :',e);}}
+  if(cpMarquerRemplace(o,d,'avenant_accepte'))toast('Devis '+(o.num||'')+' remplacé par l\'avenant '+(d.num||'')+' : il sort de la facturation, d\'« À commander » et de « Planifier ».');
   save(LS.devis,DEVIS);}
+/* AF1-ter — refus de facturation (null = facturable). Lu AVANT tout autre contrôle par facturerDevis et par next-emission.js. Répare au passage un
+   original resté « accepté » alors qu'un avenant accepté le remplace (fusion entre appareils) ; ne crée jamais de facture, n'en annule jamais. */
+function cpRefusFacture(d){if(!d)return null;
+  const lib=x=>x.statut==='annule'?'annulé':'remplacé par l\'avenant n° '+(x.remplacePar&&x.remplacePar.num||'');
+  if(d.statut==='remplace'||d.statut==='annule')return '⛔ Devis '+(d.num||'')+' '+lib(d)+' : il ne se facture plus.';
+  const o=cpAvenantOriginal(d),fam=cpFamilleDevis(d).filter(x=>x.id!==d.id);if(!fam.length)return null;
+  const f=fam.find(x=>cpFactureVivante(x));
+  if(f){const n=((f.facSolde||f.facAcompte)||{}).num||'';cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'facture_famille',autre:f.id});
+    return '⛔ Une facture ('+n+') est déjà émise sur '+(o&&f.id===o.id?'le devis d\'origine ':'l\'avenant ')+(f.num||'')+' : jamais deux factures pour le même chantier. Fais d\'abord un avoir sur celle-ci.';}
+  if(!o){const a=fam.find(x=>x.statut==='accepte');
+    if(a){if(cpMarquerRemplace(d,a,'reparation_fusion'))save(LS.devis,DEVIS);cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'avenant_accepte',avenant:a.id});
+      return '⛔ Devis '+(d.num||'')+' remplacé par l\'avenant n° '+(a.num||'')+' (accepté sur un autre appareil) : il ne se facture plus. Facture l\'avenant.';}
+    return null;}
+  const a=cpAutreAvenantAccepte(d,o);
+  if(a){cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'deux_avenants',autre:a.id});
+    return '⛔ Deux avenants du devis '+(o.num||'')+' sont acceptés ('+(d.num||'')+' et '+(a.num||'')+') : annule l\'un des deux avant de facturer.';}
+  if(d.statut==='accepte'&&o.statut==='accepte'&&cpMarquerRemplace(o,d,'reparation_fusion'))save(LS.devis,DEVIS);
+  return null;}
+/* AF1-ter — au démarrage (donc aussi après chaque mise à jour reçue du cloud, qui recharge l'appli) : un original resté « accepté » sans facture
+   alors qu'un de ses avenants est accepté repasse « remplacé ». Deux avenants acceptés : rien n'est tranché ici (cpRefusFacture refuse de facturer). */
+function cpReparerAvenants(){let n=0;try{
+  DEVIS.forEach(a=>{if(!a||a.statut!=='accepte'||!a.avenantDe)return;const o=cpAvenantOriginal(a);if(!o||o.statut!=='accepte'||cpFactureVivante(o))return;
+    if(cpAutreAvenantAccepte(a,o))return;if(cpMarquerRemplace(o,a,'reparation_demarrage'))n++;});
+  if(n)save(LS.devis,DEVIS);}catch(e){console.warn('ClimPilot (AF1-ter) réparation avenants :',e);}return n;}
 /* boutons du bandeau d'un devis verrouillé : avenant / dupliquer / annuler ; sur un devis remplacé ou annulé : dupliquer seulement */
 function cpVerrouBoutons(id,vr,style){if(!vr)return '';const q=String(id).replace(/[\\']/g,'');const b=style==='bandeau'?{p:'nx-sbtn mar',g:'nx-sbtn'}:{p:'btn-pri btn-sm',g:'btn-ghost btn-sm'};
   const fin=vr.motif==='remplace'||vr.motif==='annule';let h='';
@@ -1815,6 +1854,7 @@ function cpDevisAnnulerOk(){const m=document.getElementById('mAnnulDevis');if(!m
   d.annulation={at:Date.now(),motif,libelle:lib,texte,statutAvant:d.statut};d.statut='annule';
   save(LS.devis,DEVIS);cpJournal({type:'devis_annule',action:'annuler',id:d.id,num:d.num||'',motif,texte});
   try{if(typeof cur!=='undefined'&&cur&&cur.id===d.id&&cur!==d){cur.statut='annule';cur.annulation=JSON.parse(JSON.stringify(d.annulation));}}catch(e){console.warn('ClimPilot (AF1-bis) copie ouverte :',e);}
+  try{if(typeof window.nxsDesactiverLiens==='function')window.nxsDesactiverLiens('devis',d.id,'annule');}catch(e){console.warn('ClimPilot (AF1-ter) liens de signature :',e);} /* AF1-ter : plus de signature possible sur un devis annulé */
   closeModal('mAnnulDevis');toast('⛔ Devis '+(d.num||'')+' annulé ('+lib+'). Il reste visible, son PDF porte le bandeau ANNULÉ.');
   updateBadges();
   if((window._curView==='wizard'||window._curView==='nx_devis2')&&cur&&cur.id===d.id)openDevis(d.id);else if(LISTV.includes(window._curView))renderList();else if(window._curView==='dash')renderDash();
@@ -3099,7 +3139,7 @@ const NX_ENC_ANNULE='Encaissement non enregistré (annulé)';
 function nxTraceEncaissement(o,payeLe,mode){(o.encaissementsAnnules=o.encaissementsAnnules||[]).push({payeLe:payeLe||null,mode:mode||'',annuleLe:new Date().toISOString()});}
 function facturerDevis(id,which){
   const d=DEVIS.find(x=>x.id===id);if(!d)return;
-  if(d.statut==='remplace'||d.statut==='annule'){toast('⛔ Devis '+(d.num||'')+' '+(d.statut==='annule'?'annulé':'remplacé par l\'avenant n° '+(d.remplacePar&&d.remplacePar.num||''))+' : il ne se facture plus.');return;} /* AF1-bis */
+  const refus=cpRefusFacture(d);if(refus){toast(refus);return;} /* AF1-bis / AF1-ter : remplacé, annulé, ou une autre facture vivante dans la famille */
   const c=compute(d);const today=todayISO();
   const tot=(typeof window.nxBillTotal==='function')?window.nxBillTotal(d,c):c.totalTTC; /* hors contrat d'entretien (facturé depuis l'onglet Contrats) */
   if(!(which==='acompte'?d.facAcompte:d.facSolde)&&typeof window.nxFigCheck==='function'&&!window.nxFigCheck(d,tot))return; /* montant ≠ celui envoyé au client */
@@ -4137,6 +4177,7 @@ async function initCloud(){
 /* ============ INIT ============ */
 window._curView='dash';
 seedAdiaArticles();dedupPrix();rebuildPrix();
+cpReparerAvenants(); /* AF1-ter : original resté « accepté » à côté d'un avenant accepté (fusion entre appareils) → « remplacé » */
 renderDash();updateBadges();
 syncNotion();
 if(pinActive())lockApp();
