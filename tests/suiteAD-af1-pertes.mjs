@@ -717,6 +717,142 @@ const MK = `(async function(){ const o=AD.v2({statut:'accepte',acceptedAt:Date.p
   rec(GC.LNK, 'T21 le module signature expose nxsDesactiverLiens ; il est appelé pour l\'original quand l\'avenant est accepté (raison « remplace ») et pour un devis annulé (raison « annule »)', !!(!r.absent && r.fonction && r.remplace && r.annule), j(r));
 }
 
+/* ================= AF1-quater (relecture indépendante du 04/11/2026, soir) : T22 chaîne d'avenants (avenant d'avenant) + fusion entre appareils,
+   T23 deuxième avenant signé EN LIGNE, T24 liens de signature mis en attente au démarrage ================= */
+const GQ = { ARB: 'AF1-quater arbre des avenants', SIG2: 'AF1-quater 2e avenant signé en ligne', LNK2: 'AF1-quater liens de signature au démarrage' };
+/* chaîne O → A1 → A2 : original accepté ; A1 avenant de O, accepté (O remplacé) ; A2 avenant de A1 (le chemin que l'appli conseille), accepté (A1 remplacé) */
+const MK3 = `(async function(){ const W=ms=>new Promise(r=>setTimeout(r,ms)); const o=AD.v2({statut:'accepte',acceptedAt:Date.parse(__REF.horloge)-86400000}); go('tous'); await W(120);
+  cpDevisAvenant(o.id); await W(250); const a1=DEVIS.find(x=>x.avenantDe&&x.avenantDe.id===o.id); if(!a1) return null;
+  nxd2.statut('accepte'); nxd2.save(); await W(150); nxd2.close(); go('tous'); await W(120);
+  cpDevisAvenant(a1.id); await W(250); const a2=DEVIS.find(x=>x.avenantDe&&x.avenantDe.id===a1.id); if(!a2) return null;
+  nxd2.statut('accepte'); nxd2.save(); await W(150); nxd2.close(); go('tous'); await W(120);
+  const S=id=>(DEVIS.find(x=>x.id===id)||{}).statut;
+  return {o:o.id,a1:a1.id,a2:a2.id,oNum:o.num,a1Num:a1.num,a2Num:a2.num,st:{o:S(o.id),a1:S(a1.id),a2:S(a2.id)},lienO:((DEVIS.find(x=>x.id===o.id)||{}).remplacePar||{}).id,lienA1:((DEVIS.find(x=>x.id===a1.id)||{}).remplacePar||{}).id}; })()`;
+
+/* ---------------- T22 : chaîne d'avenants O → A1 → A2 ; après une fusion entre appareils, O revient « accepté » : jamais deux factures, réparation ---------------- */
+{
+  const r = await p.evaluate(async (MK3) => {
+    AD.reset(); if (typeof cpRefusFacture !== 'function' || typeof cpReparerAvenants !== 'function') return { absent: true };
+    const W = ms => new Promise(r => setTimeout(r, ms));
+    const F = id => { const d = DEVIS.find(x => x.id === id); return !!(d && (d.facSolde || d.facAcompte)); };
+    const S = id => (DEVIS.find(x => x.id === id) || {}).statut;
+    const ST = id => (JSON.parse(localStorage.getItem(LS.devis) || '[]').find(x => x.id === id) || {}).statut;
+    const L = id => ((DEVIS.find(x => x.id === id) || {}).remplacePar || {}).id;
+    const K = LS.devis;
+    /* prérequis : la chaîne se construit (O remplacé par A1, A1 remplacé par A2, A2 accepté) */
+    const m = await eval(MK3); if (!m || m.st.o !== 'remplace' || m.st.a1 !== 'remplace' || m.st.a2 !== 'accepte' || m.lienO !== m.a1 || m.lienA1 !== m.a2) return { prerequis: m };
+    /* a. VRAIE fusion : base = O accepté seul (avant tout avenant) ; cet appareil, pas à jour = O accepté + date de planification ; cloud = la chaîne.
+          « L'appareil actuel gagne » : O revient « accepté » à côté de A1 (remplacé) et A2 (accepté) — le cas c2 de la relecture */
+    const cloud = JSON.parse(JSON.stringify(DEVIS));
+    const base = JSON.parse(JSON.stringify(cloud)).filter(x => x.id !== m.a1 && x.id !== m.a2).map(x => { if (x.id === m.o) { x.statut = 'accepte'; delete x.remplacePar; } return x; });
+    const local = JSON.parse(JSON.stringify(base)).map(x => { if (x.id === m.o) x.datePlanif = __REF.jour; return x; });
+    const fusion = cpMerge({ [K]: base }, { [K]: local }, { [K]: cloud })[K];
+    const poser = () => { DEVIS.length = 0; JSON.parse(JSON.stringify(fusion)).forEach(x => DEVIS.push(x)); save(K, DEVIS); };
+    poser();
+    const apresFusion = { o: S(m.o), a1: S(m.a1), a2: S(m.a2) };
+    /* a1. la réparation (démarrage) remet O « remplacé par A1 » */
+    const nRep = cpReparerAvenants();
+    const rep = { nRep, statutO: S(m.o), stO: ST(m.o), lienO: L(m.o), statutA1: S(m.a1), statutA2: S(m.a2) };
+    /* a2. même état fusionné, sans réparation : « Facturer » O est refusé (et O repasse remplacé) ; « Facturer » A2 émet : UNE seule facture dans l'arbre */
+    poser(); AD.reset(); await facturerDevis(m.o, 'solde'); await W(300);
+    const facO = { fac: F(m.o), statutO: S(m.o), stO: ST(m.o), lienO: L(m.o), msgs: __msgs.slice() };
+    AD.reset(); await facturerDevis(m.a2, 'acompte'); await W(400);
+    const facA2 = { fac: F(m.a2), nbFactures: [m.o, m.a1, m.a2].filter(F).length, msgs: __msgs.slice() };
+    /* b. O facturé sur l'appareil pas à jour (acompte) + A2 accepté : « Facturer » A2 refusé (le cas c3 de la relecture) */
+    AD.reset(); const m2 = await eval(MK3); if (!m2) return { absent: true };
+    const O2 = DEVIS.find(x => x.id === m2.o); O2.statut = 'accepte'; delete O2.remplacePar; O2.facAcompte = { num: 'TEST-F-' + __REF.an + '-0812', date: __REF.jour, montant: 50, baseTTC: 300, payeLe: null, mode: '' }; save(K, DEVIS);
+    AD.reset(); await facturerDevis(m2.a2, 'solde'); await W(300);
+    const b = { facA2: F(m2.a2), msgs: __msgs.slice() };
+    /* c. un 2e avenant DIRECT de O (créé pendant que O était accepté) ne passe pas « Accepté » tant que A2 (petit-fils) est accepté ; forcé : aucun des deux ne se facture, pas de réparation */
+    AD.reset(); const m3 = await eval(MK3); if (!m3) return { absent: true };
+    const O3 = DEVIS.find(x => x.id === m3.o); O3.statut = 'accepte'; delete O3.remplacePar; save(K, DEVIS);   /* comme si cet appareil n'avait pas vu les avenants */
+    cpDevisAvenant(m3.o); await W(250); const b1 = DEVIS.find(x => x.avenantDe && x.avenantDe.id === m3.o && x.id !== m3.a1); if (!b1) return { absent: true };
+    nxd2.close(); go('tous'); await W(120);
+    AD.reset(); nxSetStatut(b1.id, 'accepte'); await W(120);
+    const c1 = { statutB1: S(b1.id), msgs: __msgs.slice() };
+    const B1 = DEVIS.find(x => x.id === b1.id); B1.statut = 'accepte'; save(K, DEVIS);   /* forcé, comme après une fusion */
+    const nRep3 = cpReparerAvenants();
+    AD.reset(); await facturerDevis(m3.a2, 'solde'); await W(300); const mA2 = __msgs.slice();
+    AD.reset(); await facturerDevis(b1.id, 'solde'); await W(300); const mB1 = __msgs.slice();
+    const c2 = { nRep3, facA2: F(m3.a2), facB1: F(b1.id), mA2, mB1 };
+    /* d. témoin : la chaîne intacte, A2 se facture normalement ; O et A1 restent remplacés */
+    AD.reset(); const m4 = await eval(MK3); if (!m4) return { absent: true };
+    AD.reset(); await facturerDevis(m4.a2, 'acompte'); await W(400);
+    const d = { facA2: F(m4.a2), statutO: S(m4.o), statutA1: S(m4.a1), msgs: __msgs.slice() };
+    return { apresFusion, rep, facO, facA2, b, c1, c2, d, m };
+  }, MK3);
+  if (r.absent || r.prerequis) { rec(GQ.ARB, 'T22 prérequis (chaîne O → A1 → A2 : O remplacé par A1, A1 remplacé par A2, A2 accepté)', false, j(r)); r.apresFusion = r.rep = r.facO = r.facA2 = r.b = r.c1 = r.c2 = r.d = {}; }
+  rec(GQ.ARB, 'T22a fusion (cpMerge) sur l\'appareil pas à jour : O revient « accepté », A1 reste « remplacé », A2 « accepté » (défaut D1 reproduit sur une chaîne)', !!(r.apresFusion.o === 'accepte' && r.apresFusion.a1 === 'remplace' && r.apresFusion.a2 === 'accepte'), j(r.apresFusion));
+  rec(GQ.ARB, 'T22a réparation (cpReparerAvenants) : O repasse « remplacé par A1 » (mémoire et stockage), A1 et A2 inchangés', !!(r.rep.nRep === 1 && r.rep.statutO === 'remplace' && r.rep.stO === 'remplace' && r.rep.lienO === (r.m || {}).a1 && r.rep.statutA1 === 'remplace' && r.rep.statutA2 === 'accepte'), j(r.rep));
+  rec(GQ.ARB, 'T22a sans réparation, « Facturer » O : refusé (« ne se facture plus »), aucune facture, O repasse « remplacé par A1 »', !!(!r.facO.fac && r.facO.statutO === 'remplace' && r.facO.stO === 'remplace' && r.facO.lienO === (r.m || {}).a1 && (r.facO.msgs || []).some(x => /ne se facture plus/i.test(x) && /autre appareil/i.test(x))), j(r.facO));
+  rec(GQ.ARB, 'T22a puis « Facturer » A2 : émis — une seule facture dans tout l\'arbre O / A1 / A2', !!(r.facA2.fac === true && r.facA2.nbFactures === 1), j(r.facA2));
+  rec(GQ.ARB, 'T22b O facturé sur l\'appareil pas à jour + A2 accepté : « Facturer » A2 refusé (« jamais deux factures pour le même chantier »)', !!(!r.b.facA2 && (r.b.msgs || []).some(x => /jamais deux factures/i.test(x) && /avoir/i.test(x))), j(r.b));
+  rec(GQ.ARB, 'T22c 2e avenant direct de O alors que le petit-fils A2 est accepté : « Accepté » refusé (« autre avenant ») ; forcé : aucun des deux ne se facture (« Deux avenants »), la réparation ne tranche pas', !!(r.c1.statutB1 !== 'accepte' && (r.c1.msgs || []).some(x => /autre avenant/i.test(x)) && r.c2.nRep3 === 0 && !r.c2.facA2 && !r.c2.facB1 && (r.c2.mA2 || []).some(x => /Deux avenants/i.test(x)) && (r.c2.mB1 || []).some(x => /Deux avenants/i.test(x))), j({ c1: r.c1, c2: r.c2 }));
+  rec(GQ.ARB, 'Témoin : chaîne intacte, A2 se facture normalement, O et A1 restent « remplacés »', !!(r.d.facA2 === true && r.d.statutO === 'remplace' && r.d.statutA1 === 'remplace'), j(r.d));
+}
+
+/* ---------------- T22e : la réparation d'une chaîne tourne au DÉMARRAGE (rechargement) ---------------- */
+{
+  const avant = await p.evaluate(async (MK3) => {
+    AD.reset(); const m = await eval(MK3); if (!m) return null;
+    const O = DEVIS.find(x => x.id === m.o); O.statut = 'accepte'; delete O.remplacePar; save(LS.devis, DEVIS);
+    return { o: m.o, a1: m.a1, a2: m.a2, statut: (JSON.parse(localStorage.getItem(LS.devis) || '[]').find(x => x.id === m.o) || {}).statut };
+  }, MK3);
+  await p.reload(); await p.waitForTimeout(2500); await p.evaluate(PREP);
+  const apres = await p.evaluate((ids) => { const g = id => DEVIS.find(x => x.id === id) || {}; const st = id => (JSON.parse(localStorage.getItem(LS.devis) || '[]').find(x => x.id === id) || {}).statut;
+    return { o: g(ids.o).statut, stO: st(ids.o), lienO: (g(ids.o).remplacePar || {}).id === ids.a1, a1: g(ids.a1).statut, a2: g(ids.a2).statut }; }, avant || { o: '', a1: '', a2: '' });
+  rec(GQ.ARB, 'T22e au rechargement : O revenu « accepté » (stockage) au-dessus de la chaîne A1 (remplacé) → A2 (accepté) repasse « remplacé par A1 »', !!(!!avant && avant.statut === 'accepte' && apres.o === 'remplace' && apres.stO === 'remplace' && apres.lienO && apres.a1 === 'remplace' && apres.a2 === 'accepte'), j({ avant, apres }));
+}
+
+/* ---------------- T23 : un 2e avenant signé EN LIGNE alors qu'un autre avenant du même devis est déjà accepté : statut inchangé, preuve gardée ---------------- */
+{
+  const r = await p.evaluate(async (sig) => {
+    AD.reset(); if (typeof nxsApplySig !== 'function') return { absent: true };
+    const W = ms => new Promise(r => setTimeout(r, ms));
+    const S = id => (DEVIS.find(x => x.id === id) || {}).statut;
+    /* O accepté ; deux avenants directs créés pendant que O est accepté ; A1 accepté (liste) → O remplacé par A1 ; B1 reste « envoyé » */
+    const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 }); go('tous'); await W(120);
+    cpDevisAvenant(o.id); await W(250); const a1 = DEVIS.find(x => x.avenantDe && x.avenantDe.id === o.id); if (!a1) return { absent: true }; nxd2.close(); go('tous'); await W(120);
+    cpDevisAvenant(o.id); await W(250); const b1 = DEVIS.find(x => x.avenantDe && x.avenantDe.id === o.id && x.id !== a1.id); if (!b1) return { absent: true }; nxd2.close(); go('tous'); await W(120);
+    nxSetStatut(b1.id, 'envoye'); nxSetStatut(a1.id, 'accepte'); await W(150);
+    if (S(o.id) !== 'remplace' || S(a1.id) !== 'accepte' || ((DEVIS.find(x => x.id === o.id) || {}).remplacePar || {}).id !== a1.id) return { prerequis: { o: S(o.id), a1: S(a1.id) } };
+    /* le client signe EN LIGNE le lien de B1 (envoyé avant que A1 soit accepté) */
+    AD.reset(); const ok = nxsApplySig(Object.assign({}, sig, { doc_id: b1.id, doc_hash: 'h-' + b1.id, token: 't-' + b1.id })); await W(150);
+    const B = DEVIS.find(x => x.id === b1.id), O = DEVIS.find(x => x.id === o.id), stB = JSON.parse(localStorage.getItem(LS.devis) || '[]').find(x => x.id === b1.id) || {};
+    const journal = JSON.parse(localStorage.getItem('cpnext_journal') || '[]').filter(x => x.id === b1.id && x.type === 'avenant_refuse' && x.motif === 'autre_avenant').length;
+    const apresSig = { ok, statutB: B.statut, stStatutB: stB.statut, sigB: !!B.signature, attenteB: !!(B.signatureEnAttente && B.signatureEnAttente.nom === 'Client Tardif'), lienO: (O.remplacePar || {}).id === a1.id, statutA1: S(a1.id), journal, msgs: __msgs.slice() };
+    /* ensuite, A1 annulé (erreur de saisie) : B1 peut passer « Accepté », la signature gardée est posée, O pointe vers B1 */
+    AD.reset(); cpDevisAnnuler(a1.id); await W(100);
+    const radio = document.querySelector('#mAnnulDevis input[name="cpAnnulMotif"][value="erreur"]'); if (radio) radio.checked = true; cpDevisAnnulerOk(); await W(200);
+    AD.reset(); nxSetStatut(b1.id, 'accepte'); await W(150);
+    const B2 = DEVIS.find(x => x.id === b1.id), O2 = DEVIS.find(x => x.id === o.id);
+    const apresAnnul = { statutA1: S(a1.id), statutB: B2.statut, sigB: !!(B2.signature && B2.signature.nom === 'Client Tardif'), attenteB: !!B2.signatureEnAttente, lienO: (O2.remplacePar || {}).id === b1.id, statutO: O2.statut };
+    return { apresSig, apresAnnul };
+  }, SIG({ id: 'x' }));
+  if (r.absent || r.prerequis) { rec(GQ.SIG2, 'T23 prérequis (deux avenants directs ; A1 accepté par la liste → O remplacé)', false, j(r)); r.apresSig = r.apresAnnul = {}; }
+  rec(GQ.SIG2, 'T23 B1 signé en ligne alors que A1 est accepté : B1 ne passe pas « accepté » (mémoire et stockage), preuve gardée (signatureEnAttente), O reste « remplacé par A1 », ligne au journal, message', !!(r.apresSig.statutB && r.apresSig.statutB !== 'accepte' && r.apresSig.stStatutB !== 'accepte' && !r.apresSig.sigB && r.apresSig.attenteB && r.apresSig.lienO && r.apresSig.statutA1 === 'accepte' && r.apresSig.journal >= 1 && (r.apresSig.msgs || []).some(x => /autre avenant/i.test(x) && /conservée|gardée/i.test(x))), j(r.apresSig));
+  rec(GQ.SIG2, 'T23 après annulation de A1 : B1 passe « Accepté », la signature gardée est posée, O pointe vers B1', !!(r.apresAnnul.statutA1 === 'annule' && r.apresAnnul.statutB === 'accepte' && r.apresAnnul.sigB && !r.apresAnnul.attenteB && r.apresAnnul.lienO && r.apresAnnul.statutO === 'remplace'), j(r.apresAnnul));
+}
+
+/* ---------------- T24 : la réparation au démarrage tourne AVANT le module signature : les liens à désactiver sont mis en attente, puis traités ---------------- */
+{
+  const r = await p.evaluate(async (MK) => {
+    AD.reset(); const sauve = window.nxsDesactiverLiens, vider = window.nxsViderLiensEnAttente; const appels = [];
+    try {
+      const m = await eval(MK); if (!m) return { absent: true };
+      const O = DEVIS.find(x => x.id === m.o); O.statut = 'accepte'; delete O.remplacePar; save(LS.devis, DEVIS);
+      if (Array.isArray(window.cpLiensADesactiver)) window.cpLiensADesactiver.length = 0;   /* file vidée (le rechargement de T22e y a laissé la demande de son original : sans cloud, rien ne la traite) */
+      delete window.nxsDesactiverLiens;   /* comme au démarrage : index.html a tourné, next-signature.js pas encore */
+      const n = cpReparerAvenants();
+      const file = Array.isArray(window.cpLiensADesactiver) ? window.cpLiensADesactiver.slice() : null;
+      window.nxsDesactiverLiens = function (t, id, raison) { appels.push({ t, id, raison }); return Promise.resolve(0); };
+      const vides = (typeof vider === 'function') ? vider() : null;
+      return { n, file, vides, appels, reste: Array.isArray(window.cpLiensADesactiver) ? window.cpLiensADesactiver.length : null, o: m.o };
+    } finally { window.nxsDesactiverLiens = sauve; }
+  }, MK);
+  rec(GQ.LNK2, 'T24 réparation sans module signature : le lien à désactiver est mis en attente (cpLiensADesactiver), puis nxsViderLiensEnAttente le traite (appel « remplace » pour l\'original), file vidée', !!(!r.absent && r.n === 1 && Array.isArray(r.file) && r.file.some(x => x[0] === 'devis' && x[1] === r.o && x[2] === 'remplace') && r.vides === 1 && r.appels.some(x => x.t === 'devis' && x.id === r.o && x.raison === 'remplace') && r.reste === 0), j(r));
+}
+
 rec('AF1', 'Aucune erreur JavaScript pendant la suite', errs.length === 0, errs.join(' | '));
 await ctx.close();
 await closeBrowser();
