@@ -110,6 +110,7 @@ tbody tr:hover{background:#f7f9fd}
 .tag.envoye{background:var(--purple-soft);color:var(--purple)}
 .tag.accepte{background:var(--green-soft);color:var(--green)}
 .tag.refuse{background:var(--red-soft);color:var(--red)}
+.tag.remplace,.tag.annule{background:var(--line);color:var(--muted)}
 .tag.facturee{background:var(--purple-soft);color:var(--purple)}
 .tag.payee{background:var(--green-soft);color:var(--green)}
 .tag.attente{background:var(--orange-soft);color:var(--orange)}
@@ -142,7 +143,7 @@ tbody tr:hover{background:#f7f9fd}
 .note-inline{font-size:11.5px;color:var(--muted);font-weight:400;text-transform:none;letter-spacing:0;margin-top:2px}
 #devisDoc{display:none}
 @media print{body *{visibility:hidden}#devisDoc,#devisDoc *{visibility:visible}#devisDoc{display:block;position:absolute;inset:0;padding:34px;font-size:12px;color:#000}.side,.topbar{display:none}}
-@media(max-width:860px){.grid2{grid-template-columns:1fr}.side{flex-basis:62px;width:62px}.brand small,.nav a .txt,.nav .badge,.side .foot{display:none}.brand{justify-content:center}.nav a{justify-content:center;padding:12px}}
+@media(max-width:860px){#v-params{padding-bottom:84px}#v-params>.row-actions{position:fixed;left:0;right:0;bottom:0;z-index:40;background:var(--bg);padding:10px 150px 10px 12px;border-top:1px solid var(--line);box-shadow:0 -4px 12px rgba(0,0,0,.06)}.grid2{grid-template-columns:1fr}.side{flex-basis:62px;width:62px}.brand small,.nav a .txt,.nav .badge,.side .foot{display:none}.brand{justify-content:center}.nav a{justify-content:center;padding:12px}}
 </style>
 <link rel="stylesheet" href="next-theme.css">
 <link rel="stylesheet" href="next-pro.css">
@@ -749,7 +750,7 @@ tbody tr:hover{background:#f7f9fd}
         <div class="navbtns">
           <button class="btn-ghost" onclick="go('dep')">‹ Retour</button>
           <div class="row-actions">
-            <button class="btn-ghost btn-sm" onclick="openFlu(null,{client:document.getElementById('dp_cNom').value,date:document.getElementById('dp_date')?document.getElementById('dp_date').value:'',nature:curDep&&curDep.itype==='mes'?'mes':'depannage'})">🧪 Fiche fluide</button>
+            <button class="btn-ghost btn-sm" onclick="formToDep();openFlu(null,{client:document.getElementById('dp_cNom').value,date:document.getElementById('dp_date')?document.getElementById('dp_date').value:'',nature:curDep&&curDep.itype==='mes'?'mes':'depannage'})">🧪 Fiche fluide</button>
             <button class="btn-ghost btn-sm" onclick="printPV()">📋 PV de mise en service</button>
             <button class="btn-ghost" onclick="printFacture()">🧾 Facture (aperçu / PDF)</button>
             <button class="btn-pri" onclick="factureDep()">✓ Facturer (n° définitif)</button>
@@ -907,8 +908,11 @@ tbody tr:hover{background:#f7f9fd}
       <input type="hidden" id="fl_id">
       <label>Date d'intervention<input type="date" id="fl_date"></label>
       <label>Nature<select id="fl_nature"><option value="mes">Mise en service</option><option value="entretien">Entretien / maintenance</option><option value="depannage">Dépannage / réparation</option><option value="etancheite">Contrôle d'étanchéité périodique</option><option value="demantelement">Démantèlement / récupération finale</option></select></label>
-      <label>Client (détenteur) *<input id="fl_client" list="clientDL" onchange="fluEquipList()"></label>
+      <label>Client (détenteur) *<input id="fl_client" list="clientDL" onchange="fluEquipList();cpFluDetAuto()"></label>
       <label>Équipement du parc<select id="fl_equip" onchange="fluEquipPick()"><option value="">— saisie libre —</option></select></label>
+      <label class="full">Adresse du détenteur<input id="fl_detAdr" placeholder="reprise de l'intervention, du devis ou de la fiche client — modifiable"></label>
+      <label>Code postal et ville du détenteur<input id="fl_detVille" placeholder="Ex : 60600 Clermont"></label>
+      <label>SIRET du détenteur<input id="fl_detSiret" placeholder="vide pour un particulier"></label>
       <label class="full">Description équipement (type, marque, modèle, n° série)<input id="fl_desc" placeholder="Ex : Monosplit Samsung WindFree — SN 123456"></label>
       <label>Fluide<select id="fl_fluide"><option>R32</option><option>R410A</option><option>R134a</option><option>R290</option><option>R404A</option><option>R448A</option><option>Autre</option></select></label>
       <label>Charge nominale (kg)<input type="number" id="fl_charge" step="0.01" min="0" value="0"></label>
@@ -1253,7 +1257,20 @@ const TITLES={dash:['Tableau de bord','Prépare tes devis, vérifie la marge, su
   adia:['Rafraîchissement adiabatique','Dimensionne, choisis la machine, puis crée le devis vente ou la location en 1 clic.'],
   loc:['Locations adiabatique','Suivi du parc loué : réservations, contrats PDF, retours.']};
 const LISTV=['verifier','pret','envoye','accepte','tous'];
+/* AF1 D3 (03/11/2026) : quitter Paramètres avec des champs modifiés demandait rien et perdait tout. Désormais : question
+   « Enregistrer / Abandonner » au changement d'écran ; la fermeture de l'onglet est retenue par le navigateur tant que des
+   modifications existent. Seuls les champs lus par saveParams comptent (identifiants pe_, pg_, pf_, pm_, pz_, pb_, pt_, pa_, pmg_, pd_, pp_, pms_). */
+let _cpParamsDirty=false,_cpParamsRendu=false;
+function cpParamsEcoute(){const v=document.getElementById('v-params');if(!v||v._cpEcoute)return;v._cpEcoute=true;
+  /* pendant la reconstruction de l'écran, le navigateur peut émettre le « change » d'un champ qui avait le focus : ce n'est pas une saisie */
+  const h=e=>{const t=e.target;if(_cpParamsRendu||!t||!t.id||!/^(pe|pg|pf|pm|pz|pb|pt|pa|pmg|pd|pp|pms)_/.test(t.id))return;_cpParamsDirty=true;};
+  v.addEventListener('input',h);v.addEventListener('change',h);
+  window.addEventListener('beforeunload',e=>{if(_cpParamsDirty){e.preventDefault();e.returnValue='';}});}
+function cpParamsGarde(v){if(window._curView!=='params'||v==='params'||!_cpParamsDirty)return;
+  if(confirm('Paramètres modifiés et non enregistrés.\n\nOK = enregistrer\nAnnuler = PERDRE les modifications'))saveParams();
+  _cpParamsDirty=false;}
 function go(v){
+  cpParamsGarde(v);
   window._curView=v;
   document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.v===v));
   document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
@@ -1266,7 +1283,7 @@ function go(v){
   if(v==='commander')renderCommander();
   if(v==='clients')renderClients();
   if(v==='prix')renderPrix();
-  if(v==='params')renderParams();
+  if(v==='params'){cpParamsEcoute();renderParams();}
   if(v==='dep')renderDep();
   if(v==='dim'){dimClim();dimGain();dimPac();dimBal();dimCF();}
   if(v==='adia')renderAdia();
@@ -1281,7 +1298,7 @@ document.getElementById('nav').addEventListener('click',e=>{const a=e.target.clo
 
 /* ============ HELPERS ============ */
 function devisName(d){return d.cNom?`${d.type} – ${d.cNom}`:`${d.type} (sans client)`;}
-function statusTag(s){const m={brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'Accepté',refuse:'Refusé'};return `<span class="tag ${s}">${m[s]||s}</span>`;}
+function statusTag(s){const m={brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'Accepté',refuse:'Refusé',remplace:'Remplacé',annule:'Annulé'};return `<span class="tag ${s}">${m[s]||s}</span>`;}
 function updateBadges(){document.querySelectorAll('.badge[data-c]').forEach(b=>{b.textContent=DEVIS.filter(d=>d.statut===b.dataset.c).length;});
   const db=document.getElementById('depBadge');if(db)db.textContent=DEP.filter(x=>x.statut==='facturee').length;
   const lb=document.getElementById('locBadge');if(lb)lb.textContent=LOC.filter(x=>x.statut==='reserve'||x.statut==='encours').length;
@@ -1562,6 +1579,7 @@ function loadDevisToForm(){
   set('f_notes',cur.notes||'');
   set('f_statut',cur.statut);
   renderMachines();renderSplits();renderGoulottes();renderExtras();updateSplitNote();renderFBloc();
+  cpVerrouWizard(); /* AF1 D0 : devis signé, accepté ou facturé → lecture seule */
 }
 function formToDevis(){
   if(!cur)return;
@@ -1721,17 +1739,185 @@ function recalc(){formToDevis();const c=compute(cur);cpAbsentsWizard(c);
     </tbody></table></div>`:'<div class="empty">Pas de matériel chiffré.</div>';
 }
 function cancelWizard(){if(confirm('Abandonner ce devis sans enregistrer ?')){cur=null;go('dash');}}
-function upsertClient(){if(!cur.cNom)return;const i=CLIENTS.findIndex(c=>(c.nom||'').toLowerCase()===cur.cNom.toLowerCase());
-  const o={nom:cur.cNom,type:cur.cType,tel:cur.cTel,mail:cur.cMail,adr:cur.cAdr,ville:cur.cVille,siren:cur.cSiren||'',lastZone:cur.zone||''};
-  if(i>=0){CLIENTS[i]={...CLIENTS[i],...o};}else{CLIENTS.push({id:uid(),notes:'',...o});}save(LS.clients,CLIENTS);}
-function saveDevis(){formToDevis();if(!cur.cNom){if(!confirm('Nom client vide. Enregistrer quand même ?')){step(1);return;}}
+/* AF1 A-N5 (03/11/2026) : une fiche client EXISTANTE garde ses coordonnées — seuls ses champs vides sont complétés (l'adresse d'un
+   devis ou d'une intervention est celle du CHANTIER : pour une sous-traitance, l'adresse du donneur d'ordre devenait celle du chantier).
+   Un client nouveau est créé avec les coordonnées du document. La zone (« dernière zone utilisée ») se met toujours à jour. */
+function cpCompleterClient(o){if(!o||!o.nom)return;const i=CLIENTS.findIndex(c=>(c.nom||'').toLowerCase()===String(o.nom).toLowerCase());
+  if(i>=0){const c=CLIENTS[i];Object.keys(o).forEach(k=>{if(k==='nom')return;if(k==='lastZone'){if(o[k])c[k]=o[k];return;}if(c[k]==null||c[k]==='')c[k]=o[k];});}
+  else{CLIENTS.push({id:uid(),notes:'',...o});}save(LS.clients,CLIENTS);}
+function upsertClient(){if(!cur.cNom)return;
+  cpCompleterClient({nom:cur.cNom,type:cur.cType,tel:cur.cTel,mail:cur.cMail,adr:cur.cAdr,ville:cur.cVille,siren:cur.cSiren||'',lastZone:cur.zone||''});}
+/* AF1 D0 (03/11/2026) : un devis SIGNÉ, ACCEPTÉ (accord papier compris : décision de Gabriel) ou FACTURÉ ne se modifie plus et ne se
+   supprime plus. La règle se lit sur la copie ENREGISTRÉE (jamais sur le formulaire) ; pour changer quelque chose : « Faire un avenant »
+   (nouveau devis lié par avenantDe, l'original intact) ou « Dupliquer ». Toute tentative refusée est notée au journal (cpnext_journal). */
+function cpDevisVerrou(d){if(!d)return null;
+  if(d.facAcompte||d.facSolde){const f=d.facSolde||d.facAcompte;return {motif:'facture',texte:'facturé'+(f&&f.num?' (facture '+f.num+')':'')};}
+  /* AF1-bis (03/11/2026) : états finals — « remplacé par l'avenant n° … » (1b) et « annulé » (2) : lecture seule, non supprimable, hors facturation */
+  if(d.statut==='remplace')return {motif:'remplace',texte:'remplacé par l\'avenant n° '+(d.remplacePar&&d.remplacePar.num||'')};
+  if(d.statut==='annule'){const a=d.annulation||{};return {motif:'annule',texte:'annulé'+(a.at?' le '+new Date(a.at).toLocaleDateString('fr-FR'):'')+(a.libelle?' ('+a.libelle+')':'')};}
+  if(d.signature&&d.signature.at)return {motif:'signature',texte:'signé le '+new Date(d.signature.at).toLocaleDateString('fr-FR')};
+  if(d.statut==='accepte')return {motif:'accepte',texte:'accepté'+(d.acceptedAt?' le '+new Date(d.acceptedAt).toLocaleDateString('fr-FR'):'')};
+  return null;}
+function cpDevisVerrouille(id){return cpDevisVerrou(DEVIS.find(d=>d.id===id));}
+function cpJournal(evt){try{const a=load('cpnext_journal',[]),l=Array.isArray(a)?a:[];l.push(Object.assign({at:Date.now()},evt));while(l.length>200)l.shift();save('cpnext_journal',l);}catch(e){console.warn('ClimPilot journal :',e);}}
+function cpRefusEnregistrement(d,v){cpJournal({type:'devis_verrouille',action:'enregistrer',id:d.id,num:d.num||'',motif:v.motif});
+  toast('🔒 Devis '+(d.num||'')+' '+v.texte+' : il ne se modifie plus. Fais un avenant ou duplique-le.');}
+/* AF1-bis (relecture indépendante du 03/11/2026, exception au gel décidée par Gabriel) — avenant et original :
+   a) pas d'avenant sur un devis qui porte une facture vivante (acompte ou solde non annulés par un avoir) ;
+   b) quand l'avenant passe en « Accepté », l'original passe « remplacé par l'avenant n° … » (date d'acceptation gardée) : il sort de la facturation,
+      d'« À commander », de « Planifier » et du carnet de commandes (tous lisent statut==='accepte'), reste visible et non supprimable (cpDevisVerrou) ;
+   c) jamais une facture vivante sur l'original ET sur l'avenant : si l'original a été facturé entre-temps, l'acceptation de l'avenant est refusée.
+   Aucun calcul de montant ne change. */
+function cpFactureVivante(d){return !!(d&&(d.facAcompte||d.facSolde));}
+function cpAvenantOriginal(d){if(!d||!d.avenantDe||!d.avenantDe.id)return null;const o=DEVIS.find(x=>x.id===d.avenantDe.id);return (o&&o.id!==d.id)?o:null;}
+/* AF1-ter (relecture indépendante du 04/11/2026, exception au gel décidée par Gabriel) — la FAMILLE d'un devis = le devis d'origine et tous ses avenants.
+   Règle : jamais deux factures vivantes dans une même famille, et jamais deux avenants acceptés. Elle se vérifie au moment d'ACCEPTER un avenant
+   (cpAvenantAcceptable) ET au moment de FACTURER (cpRefusFacture, lu par facturerDevis et par next-emission.js), parce qu'une fusion entre appareils
+   (« l'appareil actuel gagne », défaut D1 connu) peut remettre un original « accepté » à côté de son avenant accepté. */
+/* AF1-quater (seconde relecture du 04/11, soir) : la famille est tout l'ARBRE des avenants — original → avenant → avenant d'avenant … (c'est le
+   chemin que l'appli conseille : « fais l'avenant depuis celui-ci »). Un seul niveau laissait passer deux factures sur une chaîne O → A1 → A2. */
+function cpAncetresDevis(d){const r=[],vus={};if(d)vus[d.id]=1;let x=d,n=0;while(x&&(x=cpAvenantOriginal(x))&&!vus[x.id]&&n++<50){vus[x.id]=1;r.push(x);}return r;}   /* parent d'abord, racine en dernier */
+function cpRacineDevis(d){const a=cpAncetresDevis(d);return a.length?a[a.length-1]:d;}
+function cpDescendantsDevis(o){const r=[],vus={};if(!o)return r;vus[o.id]=1;let front=[o.id],n=0;
+  while(front.length&&n++<50){const next=[];DEVIS.forEach(x=>{if(x&&x.avenantDe&&front.indexOf(x.avenantDe.id)>=0&&!vus[x.id]){vus[x.id]=1;r.push(x);next.push(x.id);}});front=next;}return r;}
+function cpFamilleDevis(d){const o=cpRacineDevis(d);return [o].concat(cpDescendantsDevis(o));}
+function cpEstAccepte(x){return !!(x&&(x.statut==='accepte'||cpFactureVivante(x)));}
+/* l'avenant direct de o sur le chemin qui mène à x (x descendant de o) ; null sinon */
+function cpEnfantVers(o,x){let y=x,n=0;while(y&&n++<50){const p=cpAvenantOriginal(y);if(!p)return null;if(p.id===o.id)return y;y=p;}return null;}
+/* un autre devis accepté (ou facturé) dans l'arbre, hors d et hors ses ancêtres : frère, cousin ou descendant */
+function cpAutreAccepte(d){const anc=cpAncetresDevis(d).map(x=>x.id);return cpFamilleDevis(d).find(x=>x.id!==d.id&&anc.indexOf(x.id)<0&&cpEstAccepte(x))||null;}
+function cpAvenantAcceptable(d){const o=cpAvenantOriginal(d);if(!o)return true;const racine=cpRacineDevis(d);
+  const f=cpFamilleDevis(d).find(x=>x.id!==d.id&&cpFactureVivante(x));
+  if(f){cpJournal({type:'avenant_refuse',action:'accepter',id:d.id,num:d.num||'',motif:'facture_original',original:f.id});
+    toast('⛔ Le devis '+(f.id===racine.id?'d\'origine ':'')+(f.num||'')+' a été facturé entre-temps : l\'avenant '+(d.num||'')+' ne peut pas être accepté. Fais d\'abord un avoir sur cette facture (ou facture le supplément sur un nouveau devis).');return false;}
+  const autre=cpAutreAccepte(d);
+  if(autre){cpJournal({type:'avenant_refuse',action:'accepter',id:d.id,num:d.num||'',motif:'autre_avenant',autre:autre.id});
+    toast('⛔ Un autre avenant du devis '+(racine.num||'')+' est déjà accepté ('+(autre.num||'')+') : annule-le d\'abord, ou continue avec lui.');return false;}
+  return true;}
+/* liens de signature : le module signature (next-signature.js) se charge APRÈS ce fichier ; au démarrage, la demande est mise en attente et traitée dès que le cloud répond */
+function cpDesactiverLiens(type,id,raison){try{if(typeof window.nxsDesactiverLiens==='function')window.nxsDesactiverLiens(type,id,raison);else (window.cpLiensADesactiver=window.cpLiensADesactiver||[]).push([type,id,raison]);}catch(e){console.warn('ClimPilot (AF1-ter) liens de signature :',e);}}
+/* l'original passe « remplacé par l'avenant n° … » (date d'acceptation gardée) ; vrai si quelque chose a changé. Les liens de signature encore en attente
+   sur l'original sont désactivés (next-signature.js, si le cloud répond ; sinon la signature tardive est de toute façon ignorée par applySig). */
+function cpMarquerRemplace(o,a,action){
+  if(!o||!a||o.id===a.id||o.statut==='annule'||cpFactureVivante(o)||(o.statut==='remplace'&&o.remplacePar&&o.remplacePar.id===a.id))return false;
+  o.statut='remplace';o.remplacePar={id:a.id,num:a.num||'',at:Date.now()};
+  cpJournal({type:'devis_remplace',action:action||'avenant_accepte',id:o.id,num:o.num||'',motif:'avenant',avenant:a.id});
+  try{if(typeof cur!=='undefined'&&cur&&cur.id===o.id&&cur!==o){cur.statut='remplace';cur.remplacePar=JSON.parse(JSON.stringify(o.remplacePar));}}catch(e){console.warn('ClimPilot (AF1-bis) copie ouverte :',e);}
+  cpDesactiverLiens('devis',o.id,'remplace');
+  return true;}
+function cpAvenantAccepte(d){if(!d||d.statut!=='accepte')return;const o=cpAvenantOriginal(d);
+  if(d.signatureEnAttente&&!d.signature){d.signature=d.signatureEnAttente;delete d.signatureEnAttente;if(!d.acceptedAt)d.acceptedAt=Date.parse(d.signature.at)||Date.now();}
+  if(cpMarquerRemplace(o,d,'avenant_accepte'))toast('Devis '+(o.num||'')+' remplacé par l\'avenant '+(d.num||'')+' : il sort de la facturation, d\'« À commander » et de « Planifier ».');
+  cpAncetresDevis(d).forEach(x=>{if(x!==o&&x.statut==='accepte'&&!cpFactureVivante(x))cpMarquerRemplace(x,cpEnfantVers(x,d)||d,'reparation_fusion');});   /* AF1-quater : grands-parents revenus « acceptés » */
+  save(LS.devis,DEVIS);}
+/* AF1-ter / AF1-quater — refus de facturation (null = facturable). Lu AVANT tout autre contrôle par facturerDevis et par next-emission.js. Regarde tout
+   l'arbre (original, avenants, avenants d'avenants). Répare au passage les ancêtres restés « acceptés » alors qu'un descendant accepté les remplace
+   (fusion entre appareils) ; ne crée jamais de facture, n'en annule jamais. */
+function cpRefusFacture(d){if(!d)return null;
+  const lib=x=>x.statut==='annule'?'annulé':'remplacé par l\'avenant n° '+(x.remplacePar&&x.remplacePar.num||'');
+  if(d.statut==='remplace'||d.statut==='annule')return '⛔ Devis '+(d.num||'')+' '+lib(d)+' : il ne se facture plus.';
+  const racine=cpRacineDevis(d),autres=cpFamilleDevis(d).filter(x=>x.id!==d.id);if(!autres.length)return null;
+  const f=autres.find(x=>cpFactureVivante(x));
+  if(f){const n=((f.facSolde||f.facAcompte)||{}).num||'';cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'facture_famille',autre:f.id});
+    return '⛔ Une facture ('+n+') est déjà émise sur '+(f.id===racine.id?'le devis d\'origine ':'l\'avenant ')+(f.num||'')+' : jamais deux factures pour le même chantier. Fais d\'abord un avoir sur celle-ci.';}
+  const anc=cpAncetresDevis(d),ancIds=anc.map(x=>x.id),desc=cpDescendantsDevis(d);
+  /* un descendant accepté : ce devis est remplacé (l'autre appareil l'a vu, pas celui-ci) */
+  const a=desc.find(x=>x.statut==='accepte');
+  if(a){const e=cpEnfantVers(d,a)||a;if(cpMarquerRemplace(d,e,'reparation_fusion'))save(LS.devis,DEVIS);cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'avenant_accepte',avenant:a.id});
+    return '⛔ Devis '+(d.num||'')+' remplacé par l\'avenant n° '+(e.num||'')+' (accepté sur un autre appareil) : il ne se facture plus. Facture l\'avenant'+(e.id!==a.id?' n° '+(a.num||'')+' (le dernier accepté)':'')+'.';}
+  /* un frère ou un cousin accepté : deux avenants concurrents, Gabriel tranche */
+  const c=autres.find(x=>ancIds.indexOf(x.id)<0&&desc.indexOf(x)<0&&x.statut==='accepte');
+  if(c){cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'deux_avenants',autre:c.id});
+    return '⛔ Deux avenants du devis '+(racine.num||'')+' sont acceptés ('+(d.num||'')+' et '+(c.num||'')+') : annule l\'un des deux avant de facturer.';}
+  /* les ancêtres restés « acceptés » sans facture repassent « remplacés » (vers l'avenant qui mène à d) */
+  if(d.statut==='accepte'){let chg=false;anc.forEach(o=>{if(o.statut==='accepte'&&!cpFactureVivante(o)&&cpMarquerRemplace(o,cpEnfantVers(o,d)||d,'reparation_fusion'))chg=true;});if(chg)save(LS.devis,DEVIS);}
+  return null;}
+/* AF1-ter — au démarrage (donc aussi après chaque mise à jour reçue du cloud, qui recharge l'appli) : un original resté « accepté » sans facture
+   alors qu'un de ses avenants est accepté repasse « remplacé ». Deux avenants acceptés : rien n'est tranché ici (cpRefusFacture refuse de facturer). */
+function cpReparerAvenants(){let n=0;try{const faits={};
+  DEVIS.forEach(a=>{if(!a||a.statut!=='accepte'||!a.avenantDe)return;
+    cpAncetresDevis(a).forEach(o=>{if(o.statut!=='accepte'||cpFactureVivante(o)||faits[o.id])return;   /* AF1-quater : tous les ancêtres, pas seulement le parent */
+      if(cpDescendantsDevis(o).filter(cpEstAccepte).length!==1)return;   /* deux avenants acceptés : rien n'est tranché ici */
+      faits[o.id]=1;if(cpMarquerRemplace(o,cpEnfantVers(o,a)||a,'reparation_demarrage'))n++;});});
+  if(n)save(LS.devis,DEVIS);}catch(e){console.warn('ClimPilot (AF1-ter) réparation avenants :',e);}return n;}
+/* boutons du bandeau d'un devis verrouillé : avenant / dupliquer / annuler ; sur un devis remplacé ou annulé : dupliquer seulement */
+function cpVerrouBoutons(id,vr,style){if(!vr)return '';const q=String(id).replace(/[\\']/g,'');const b=style==='bandeau'?{p:'nx-sbtn mar',g:'nx-sbtn'}:{p:'btn-pri btn-sm',g:'btn-ghost btn-sm'};
+  const fin=vr.motif==='remplace'||vr.motif==='annule';let h='';
+  if(!fin)h+='<button type="button" class="'+b.p+'" onclick="cpDevisAvenant(\''+q+'\')">Faire un avenant</button> ';
+  h+='<button type="button" class="'+b.g+'" onclick="cpDevisDupliquer(\''+q+'\')">Dupliquer</button>';
+  if(!fin)h+=' <button type="button" class="'+b.g+'" style="color:var(--red)" onclick="cpDevisAnnuler(\''+q+'\')">Annuler le devis</button>';
+  return h;}
+/* AF1-bis (2) — « Annuler le devis » : un devis accepté ou signé que le client abandonne → état « annulé » (motif obligatoire, date), hors
+   d'« À commander », « Planifier », carnet et CA signé ; reste visible, PDF avec bandeau ANNULÉ, non supprimable ; ligne au journal.
+   Refusé tant qu'une facture vivante existe (« fais d'abord un avoir ») ; possible après un avoir total. */
+const CP_MOTIFS_ANNULATION=[['abandon','Abandon du client'],['retractation','Rétractation dans les 14 jours'],['erreur','Erreur de saisie'],['autre','Autre (à préciser)']];
+function cpDevisAnnuler(id){const d=DEVIS.find(x=>x.id===id);if(!d)return false;
+  if(cpFactureVivante(d)){const f=d.facSolde||d.facAcompte;cpJournal({type:'devis_annulation',action:'refus',id:d.id,num:d.num||'',motif:'facture'});
+    toast('⛔ Une facture est émise sur ce devis ('+(f&&f.num||'')+') : fais d\'abord un avoir, puis annule le devis.');return false;}
+  if(d.statut==='annule'){toast('Devis '+(d.num||'')+' déjà annulé.');return false;}
+  if(d.statut==='remplace'){toast('Devis '+(d.num||'')+' déjà remplacé par l\'avenant n° '+(d.remplacePar&&d.remplacePar.num||'')+' : rien à annuler.');return false;}
+  const h=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let m=document.getElementById('mAnnulDevis');if(!m){m=document.createElement('div');m.className='modal';m.id='mAnnulDevis';document.body.appendChild(m);}
+  m.innerHTML='<div class="box" style="max-width:520px"><div class="hd"><b>Annuler le devis '+h(d.num)+'</b><button class="iconbtn" onclick="closeModal(\'mAnnulDevis\')">✕</button></div>'
+   +'<div class="bd"><input type="hidden" id="cpAnnulId" value="'+h(d.id)+'"><div class="sub" style="margin-bottom:10px">'+h(d.cNom||'')+' — '+h(statusTag(d.statut).replace(/<[^>]+>/g,''))+'. Le devis reste visible et ne se supprime pas ; il sort d\'« À commander », de « Planifier », du carnet de commandes et du chiffre signé. <b>Motif obligatoire.</b></div>'
+   +CP_MOTIFS_ANNULATION.map(x=>'<label style="display:flex;flex-direction:row;align-items:center;gap:8px;text-transform:none;margin:6px 0"><input type="radio" name="cpAnnulMotif" value="'+x[0]+'" style="width:auto"> '+h(x[1])+'</label>').join('')
+   +'<label class="full" style="margin-top:8px">Précision (obligatoire pour « Autre »)<textarea id="cpAnnulTexte" rows="2" placeholder="Ex. : le client a choisi un autre installateur"></textarea></label>'
+   +'<div class="row-actions" style="margin-top:12px;justify-content:flex-end"><button class="btn-ghost" onclick="closeModal(\'mAnnulDevis\')">Retour</button><button class="btn-dark" id="cpAnnulOk" style="background:var(--red)" onclick="cpDevisAnnulerOk()">⛔ Annuler le devis</button></div></div></div>';
+  openModal('mAnnulDevis');return true;}
+function cpDevisAnnulerOk(){const m=document.getElementById('mAnnulDevis');if(!m||!m.classList.contains('on'))return false;
+  const id=(document.getElementById('cpAnnulId')||{}).value,d=DEVIS.find(x=>x.id===id);if(!d){closeModal('mAnnulDevis');return false;}
+  const r=m.querySelector('input[name="cpAnnulMotif"]:checked'),motif=r?r.value:'',texte=String((document.getElementById('cpAnnulTexte')||{}).value||'').trim();
+  if(!motif){toast('Motif obligatoire : devis non annulé');return false;}
+  if(motif==='autre'&&texte.length<3){toast('Précise le motif (« Autre ») : devis non annulé');return false;}
+  if(cpFactureVivante(d)){closeModal('mAnnulDevis');return cpDevisAnnuler(id);} /* facturé entre-temps (autre appareil) : même refus */
+  const lib=(CP_MOTIFS_ANNULATION.find(x=>x[0]===motif)||[motif,motif])[1].replace(/ \(à préciser\)$/,'');
+  d.annulation={at:Date.now(),motif,libelle:lib,texte,statutAvant:d.statut};d.statut='annule';
+  save(LS.devis,DEVIS);cpJournal({type:'devis_annule',action:'annuler',id:d.id,num:d.num||'',motif,texte});
+  try{if(typeof cur!=='undefined'&&cur&&cur.id===d.id&&cur!==d){cur.statut='annule';cur.annulation=JSON.parse(JSON.stringify(d.annulation));}}catch(e){console.warn('ClimPilot (AF1-bis) copie ouverte :',e);}
+  cpDesactiverLiens('devis',d.id,'annule'); /* AF1-ter : plus de signature possible sur un devis annulé */
+  closeModal('mAnnulDevis');toast('⛔ Devis '+(d.num||'')+' annulé ('+lib+'). Il reste visible, son PDF porte le bandeau ANNULÉ.');
+  updateBadges();
+  if((window._curView==='wizard'||window._curView==='nx_devis2')&&cur&&cur.id===d.id)openDevis(d.id);else if(LISTV.includes(window._curView))renderList();else if(window._curView==='dash')renderDash();
+  return true;}
+/* bandeau rouge du PDF d'un devis annulé (les deux formulaires) ; rien pour les autres états : les golden (suite Y) restent identiques */
+function cpDevisBandeauPdf(d){if(!d||d.statut!=='annule')return '';const a=d.annulation||{};const h=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  return '<div data-annule="1" style="border:3px solid #b42318;color:#b42318;border-radius:8px;padding:10px 14px;margin:10px 0;text-align:center;font-weight:800;font-size:16px;letter-spacing:.08em">DEVIS ANNULÉ'+(a.at?' le '+new Date(a.at).toLocaleDateString('fr-FR'):'')
+   +(a.libelle?'<div style="font-size:11px;font-weight:600;letter-spacing:0;margin-top:4px">Motif : '+h(a.libelle)+(a.texte?' — '+h(a.texte):'')+'</div>':'')+'</div>';}
+function cpDevisAvenant(id){const src=DEVIS.find(d=>d.id===id);if(!src)return;
+  if(cpFactureVivante(src)){const f=src.facSolde||src.facAcompte;cpJournal({type:'avenant_refuse',action:'creer',id:src.id,num:src.num||'',motif:'facture'});
+    toast('⛔ Une facture est déjà émise sur ce devis ('+(f&&f.num||'')+') : fais d\'abord un avoir, ou facture le supplément sur un nouveau devis.');return;}
+  if(src.statut==='remplace'){toast('Devis '+(src.num||'')+' déjà remplacé par l\'avenant n° '+(src.remplacePar&&src.remplacePar.num||'')+' : fais l\'avenant depuis celui-ci.');return;}
+  if(src.statut==='annule'){toast('Devis '+(src.num||'')+' annulé : duplique-le plutôt.');return;}
+  const n0=DEVIS.length;dupDevis(id);if(DEVIS.length<=n0)return;
+  const n=DEVIS[DEVIS.length-1];n.avenantDe={id:src.id,num:src.num||'',at:Date.now()};delete n.conclusion; /* nouveau contrat : mode et date de conclusion à préciser */
+  n.notes='Avenant au devis n° '+(src.num||'')+'.'+(n.notes?'\n'+n.notes:'');save(LS.devis,DEVIS);
+  toast('Avenant créé : devis '+n.num+' — le devis '+(src.num||'')+' reste intact');openDevis(n.id);}
+function cpDevisDupliquer(id){const n0=DEVIS.length;dupDevis(id);if(DEVIS.length>n0)openDevis(DEVIS[DEVIS.length-1].id);}
+/* ancien formulaire : lecture seule + bandeau quand le devis enregistré est verrouillé (le bloc facturation reste utilisable) */
+function cpVerrouWizard(){const v=document.getElementById('v-wizard');if(!v)return;const old=document.getElementById('cpVerrouWiz');if(old)old.remove();
+  const vr=cur?cpDevisVerrouille(cur.id):null;
+  v.querySelectorAll('.step input,.step select,.step textarea,.step .card button').forEach(el=>{if(el.closest('#fBloc'))return;
+    if(vr){if(!el.disabled){el.disabled=true;el.setAttribute('data-cp-verrou','');}}else if(el.hasAttribute('data-cp-verrou')){el.disabled=false;el.removeAttribute('data-cp-verrou');}});
+  const sb=v.querySelector('.flexhead button[onclick="saveDevis()"]');if(sb)sb.style.display=vr?'none':'';
+  /* AF1-bis (3) : « ✍️ Signature » (en-tête), « ✍️ Faire signer en ligne » et « 💾 Enregistrer le devis » du récapitulatif aussi */
+  ['nxsBtnTop','nxsBtn'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display=vr?'none':'';});
+  v.querySelectorAll('.navbtns button[onclick="saveDevis()"]').forEach(b=>{b.style.display=vr?'none':'';});
+  const head=v.querySelector('.flexhead');if(!head)return;
+  const h=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  let html='';
+  if(vr)html+='🔒 <b>Devis '+h(cur.num)+' '+h(vr.texte)+' : il ne se modifie plus.</b> '+(vr.motif==='remplace'||vr.motif==='annule'?'':'Pour changer quelque chose : ')+cpVerrouBoutons(cur.id,vr,'head');
+  else if(cur&&cur.avenantDe)html+='↪ <b>Avenant du devis n° '+h(cur.avenantDe.num)+'</b> — l\'original n\'a pas été modifié.';
+  if(!html)return;const b=document.createElement('div');b.id='cpVerrouWiz';b.className='warnbox';b.style.margin='0 0 12px';b.innerHTML=html;head.after(b);}
+function saveDevis(){const vr0=cur?cpDevisVerrouille(cur.id):null;if(vr0){cpRefusEnregistrement(cur,vr0);return false;}
+  formToDevis();if(!cur.cNom){if(!confirm('Nom client vide. Enregistrer quand même ?')){step(1);return;}}
+  if(cur.statut==='accepte'&&cur.avenantDe&&!cpAvenantAcceptable(cur)){const e=DEVIS.find(d=>d.id===cur.id);cur.statut=e?e.statut:'brouillon';const st=document.getElementById('f_statut');if(st)st.value=cur.statut;return false;} /* AF1-bis 1c */
   if(cur.statut==='envoye'&&!cur.sentAt)cur.sentAt=Date.now();
   const td=load('cp2_typedefaults',{});
   td[cur.type]={moMode:cur.moMode,rateChoice:cur.rateChoice,rateCustom:cur.rateCustom,zone:cur.zone,brasure:cur.brasure,tests:cur.tests,taille:cur.taille};
   save('cp2_typedefaults',td);
   upsertClient();
   const i=DEVIS.findIndex(d=>d.id===cur.id); if(i>=0)DEVIS[i]=cur;else DEVIS.push(cur);
-  save(LS.devis,DEVIS);toast('💾 Devis enregistré');updateBadges();
+  save(LS.devis,DEVIS);toast('💾 Devis enregistré');if(cur.avenantDe)cpAvenantAccepte(cur); /* AF1-bis 1b */ updateBadges();
   go(cur.statut==='brouillon'?'dash':(LISTV.includes(cur.statut)?cur.statut:'tous'));
 }
 /* ============ LIST ============ */
@@ -1756,7 +1942,8 @@ function renderList(){
     </tr>`).join('')}</tbody></table></div>`+(nxTot>a.length?`<div class="row-actions" style="justify-content:center;margin:12px 0"><button class="btn-ghost" onclick="window._listMax=(window._listMax||100)+200;renderList()">Afficher plus (${nxTot-a.length} autres)</button></div>`:''):'<div class="empty">Aucun devis dans cette vue.</div>';
 }
 function dupDevis(id){const d=migrate(JSON.parse(JSON.stringify(DEVIS.find(x=>x.id===id))));d.id=uid();d.num='DV-'+todayISO().replace(/-/g,'')+'-'+uid();d.created=Date.now();d.statut='brouillon';DEVIS.push(d);save(LS.devis,DEVIS);renderList();toast('Devis dupliqué');}
-function delDevis(id){if(!confirm('Supprimer ce devis ?'))return;DEVIS=DEVIS.filter(d=>d.id!==id);save(LS.devis,DEVIS);renderList();updateBadges();}
+function delDevis(id){const vr=cpDevisVerrouille(id);if(vr){const d=DEVIS.find(x=>x.id===id);cpJournal({type:'devis_verrouille',action:'supprimer',id,num:d&&d.num||'',motif:vr.motif});toast('⛔ Devis '+(d&&d.num||'')+' '+vr.texte+' : il ne se supprime pas (comme un devis facturé).');return;}
+  if(!confirm('Supprimer ce devis ?'))return;DEVIS=DEVIS.filter(d=>d.id!==id);save(LS.devis,DEVIS);renderList();updateBadges();}
 
 /* ============ A COMMANDER ============ */
 let cmdView='article';
@@ -1916,6 +2103,7 @@ function selRow(label,id,val,opts){return '<label class="full">'+label+'<select 
 function numRow(label,id,val,note){return `<label>${label}<input type="number" step="0.01" id="${id}" value="${val}">${note?`<span class="note-inline">${note}</span>`:''}</label>`;}
 function txtRow(label,id,val,full){return `<label class="${full?'full':''}">${label}<input type="text" id="${id}" value="${(val||'').replace(/"/g,'&quot;')}"></label>`;}
 function renderParams(){
+  _cpParamsRendu=true;_cpParamsDirty=false;setTimeout(()=>{_cpParamsRendu=false;_cpParamsDirty=false;},0); /* AF1 D3 : l'écran est reconstruit depuis les valeurs enregistrées */
   const E=P.entreprise||{};
   document.getElementById('paramEnt').innerHTML=
     txtRow('Raison sociale','pe_nom',E.nom,true)+
@@ -1991,7 +2179,7 @@ function saveParams(){const g=id=>+document.getElementById(id).value;const t=id=
   PSCALARS.forEach(k=>{if(String(cand[k])!==String(PDEF[k]))ov[k]=cand[k];});
   PGROUPS.forEach(gp=>{Object.keys(cand[gp]).forEach(k=>{
     if(String(cand[gp][k])!==String(PDEF[gp][k])){if(!ov[gp])ov[gp]={};ov[gp][k]=cand[gp][k];}});});
-  save(LS.over,ov);rebuildP();toast('⚙️ Paramètres enregistrés');renderParams();
+  save(LS.over,ov);rebuildP();toast('⚙️ Paramètres enregistrés');_cpParamsDirty=false;renderParams();
 }
 function resetParams(){if(!confirm('Revenir aux valeurs Notion pour tous les tarifs ? (tes infos entreprise et réglages généraux sont conservés)'))return;
   const ov=load(LS.over,{});
@@ -2240,9 +2428,7 @@ function recalcDep(){
 }
 function saveDep(){formToDep();
   if(!curDep.cNom){if(!confirm('Nom client vide. Enregistrer quand même ?'))return;}
-  if(curDep.cNom){const i=CLIENTS.findIndex(c=>(c.nom||'').toLowerCase()===curDep.cNom.toLowerCase());
-    const o={nom:curDep.cNom,type:curDep.cType,tel:curDep.cTel,mail:curDep.cMail,adr:curDep.cAdr,ville:curDep.cVille,siren:curDep.cSiren||''};
-    if(i>=0){CLIENTS[i]={...CLIENTS[i],...o};}else{CLIENTS.push({id:uid(),notes:'',...o});}save(LS.clients,CLIENTS);}
+  if(curDep.cNom)cpCompleterClient({nom:curDep.cNom,type:curDep.cType,tel:curDep.cTel,mail:curDep.cMail,adr:curDep.cAdr,ville:curDep.cVille,siren:curDep.cSiren||''}); /* AF1 A-N5 */
   const i=DEP.findIndex(x=>x.id===curDep.id);if(i>=0)DEP[i]=curDep;else DEP.push(curDep);
   save(LS.dep,DEP);updateBadges();toast('💾 Intervention enregistrée');
 }
@@ -2406,7 +2592,7 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
     const montantAff = fr ? `${eur(c.totalHT)}` : `${eur(c.totalTTC)} TTC`;
     document.getElementById('devisDoc').innerHTML=`
      <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
-     ${docTop(E,NV,SNOW,today)}
+     ${docTop(E,NV,SNOW,today)}${cpDevisBandeauPdf(d)}
      <div style="margin:10px 0 4px"><span style="font-size:20px;font-weight:800;color:${NV}">Estimation indicative</span></div>
      <div style="font-size:11px;color:#555;margin-bottom:12px"><b>Objet :</b> ${d.type} — ${(d.splits||[]).length} unité(s) intérieure(s), ${(d.machines||[]).length} groupe(s) extérieur(s)${d.cNom?` &nbsp;·&nbsp; Pour : <b>${d.cNom}</b>`:''}</div>
      <div style="background:#fff7e6;border:1px solid #f0dcae;border-radius:8px;padding:10px 13px;font-size:11px;color:#7a5a12;margin-bottom:12px">
@@ -2474,7 +2660,7 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
     <tr><td style="text-align:right;padding:6px 8px">Solde à la fin des travaux</td><td style="text-align:right;padding:6px 8px">${eur(c.solde)}</td></tr>`:'';
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
-   ${docTop(E,NV,SNOW,today)}
+   ${docTop(E,NV,SNOW,today)}${cpDevisBandeauPdf(d)}
    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin:8px 0 14px">
      <div style="font-size:11px;color:#555;line-height:1.5;max-width:330px">
        <div style="font-size:20px;font-weight:800;color:${NV};letter-spacing:-.01em">Devis N° ${d.num}</div>
@@ -2973,6 +3159,7 @@ const NX_ENC_ANNULE='Encaissement non enregistré (annulé)';
 function nxTraceEncaissement(o,payeLe,mode){(o.encaissementsAnnules=o.encaissementsAnnules||[]).push({payeLe:payeLe||null,mode:mode||'',annuleLe:new Date().toISOString()});}
 function facturerDevis(id,which){
   const d=DEVIS.find(x=>x.id===id);if(!d)return;
+  const refus=cpRefusFacture(d);if(refus){toast(refus);return;} /* AF1-bis / AF1-ter : remplacé, annulé, ou une autre facture vivante dans la famille */
   const c=compute(d);const today=todayISO();
   const tot=(typeof window.nxBillTotal==='function')?window.nxBillTotal(d,c):c.totalTTC; /* hors contrat d'entretien (facturé depuis l'onglet Contrats) */
   if(!(which==='acompte'?d.facAcompte:d.facSolde)&&typeof window.nxFigCheck==='function'&&!window.nxFigCheck(d,tot))return; /* montant ≠ celui envoyé au client */
@@ -3409,6 +3596,42 @@ function fluEquipPick(){
   if(e.fluide&&e.fluide!=='Sans')document.getElementById('fl_fluide').value=e.fluide;
   document.getElementById('fl_charge').value=e.charge||0;
 }
+/* AF1 D5 (03/11/2026) : coordonnées du détenteur = celles de l'intervention ou du devis OUVERT (même pas encore enregistré),
+   sinon celles de la fiche client. Elles sont COPIÉES sur la fiche (detAdr, detVille, detSiret), visibles et modifiables. */
+/* AF1-bis (6) : l'apostrophe typographique ’ (clavier iPhone) et l'apostrophe droite ' désignent le même client */
+function cpNomCle(s){return String(s||'').trim().toLowerCase().replace(/[\u2019\u2018\u02BC`´]/g,"'");}
+function cpDetenteurCoord(nom){nom=cpNomCle(nom);if(!nom)return {adr:'',ville:'',siret:''};
+  const src=[];
+  if(window._curView==='depform'&&curDep&&cpNomCle(curDep.cNom)===nom)src.push({adr:curDep.cAdr,ville:curDep.cVille,siret:curDep.cSiren});
+  if(cur&&cpNomCle(cur.cNom)===nom)src.push({adr:cur.cAdr,ville:cur.cVille,siret:cur.cSiren});
+  const c=CLIENTS.find(x=>cpNomCle(x.nom)===nom);if(c)src.push({adr:c.adr,ville:[c.cp,c.ville].filter(Boolean).join(' '),siret:c.siren||c.siret});
+  const pick=k=>{for(const o of src){if(o[k])return String(o[k]);}return '';};
+  return {adr:pick('adr'),ville:pick('ville'),siret:pick('siret')};}
+function cpFluDetAuto(){const d=cpDetenteurCoord(document.getElementById('fl_client').value);
+  [['fl_detAdr',d.adr],['fl_detVille',d.ville],['fl_detSiret',d.siret]].forEach(([id,v])=>{const e=document.getElementById(id);if(e&&!e.value&&v)e.value=v;});}
+/* AF1 D2 / D6 : une fiche SIGNÉE par le détenteur ou ANNULÉE ne se modifie plus (lecture seule : modifier = nouvelle fiche) */
+function cpFluVerrou(f){if(!f)return null;
+  if(f.sigDetenteur&&f.sigDetenteur.at)return 'signée par le détenteur ('+(f.sigDetenteur.nom||'')+') le '+new Date(f.sigDetenteur.at).toLocaleDateString('fr-FR');
+  if(f.annulee)return 'annulée le '+new Date(f.annulee.at).toLocaleDateString('fr-FR')+' (motif : '+(f.annulee.motif||'')+')';
+  return null;}
+function cpFluVerrouForm(){const m=document.getElementById('mFlu');if(!m)return;const old=document.getElementById('cpFluVerrou');if(old)old.remove();
+  const id=(document.getElementById('fl_id')||{}).value,f=id?FLU.find(x=>x.id===id):null,vr=cpFluVerrou(f);
+  m.querySelectorAll('.bd input,.bd select,.bd textarea,.bd button').forEach(el=>{if(el.type==='hidden')return;
+    if(vr){if(!el.disabled){el.disabled=true;el.setAttribute('data-cp-verrou','');}}else if(el.hasAttribute('data-cp-verrou')){el.disabled=false;el.removeAttribute('data-cp-verrou');}});
+  m.querySelectorAll('.navbtns .row-actions button').forEach(b=>{b.style.display=vr?'none':'';});
+  if(!vr)return;const h=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const b=document.createElement('div');b.id='cpFluVerrou';b.className='warnbox';b.style.margin='0 0 10px';
+  b.innerHTML='🔒 <b>Fiche '+h(f.num)+' '+h(vr)+'</b> : elle est en lecture seule. Pour corriger : nouvelle fiche'+(f.annulee?'':' (ou « Annuler la fiche » avec un motif : elle reste au registre)')+'.';
+  const bd=m.querySelector('.bd');bd.insertBefore(b,bd.firstChild);}
+function cpFluConservationFin(f){const d=new Date(String(f.date||'').slice(0,10)+'T00:00:00');if(isNaN(d))return null;d.setFullYear(d.getFullYear()+5);return dISO(d);}
+function cpFluSupprimable(f){if(!f||!f.num)return true;const fin=cpFluConservationFin(f);return !!fin&&todayISO()>=fin;}
+function cpFluRefusSuppression(f){const fin=cpFluConservationFin(f);
+  return '⛔ Fiche '+(f.num||'')+' : conservation obligatoire 5 ans'+(fin?' (jusqu\'au '+new Date(fin+'T00:00:00').toLocaleDateString('fr-FR')+')':'')+'. Elle ne va pas à la corbeille : pour une erreur, « Annuler la fiche » (motif) la garde au registre avec la mention ANNULÉE.';}
+function annulerFlu(id){const f=FLU.find(x=>x.id===id);if(!f)return;if(f.annulee){toast('Fiche '+(f.num||'')+' déjà annulée');return;}
+  if(f.sigDetenteur&&!confirm('Cette fiche est signée par le détenteur. L\'annuler la garde au registre avec la mention ANNULÉE (rien n\'est supprimé). Continuer ?'))return;
+  const m=prompt('Motif de l\'annulation de la fiche '+(f.num||'')+' (obligatoire — la fiche reste au registre avec la mention ANNULÉE) :','');if(m==null)return;
+  const motif=String(m).trim();if(motif.length<3){toast('⚠ Motif obligatoire : fiche non annulée');return;}
+  f.annulee={at:Date.now(),date:todayISO(),motif};save('cp2_fluides',FLU);if(window._curView==='fluides')renderFluides();toast('Fiche '+(f.num||'')+' annulée — elle reste au registre (mention ANNULÉE)');}
 function openFlu(id,pre){
   const f=id?FLU.find(x=>x.id===id):null;
   eqSet('fl_id',f?f.id:'');
@@ -3422,24 +3645,35 @@ function openFlu(id,pre){
   eqSet('fl_qv',f?f.qv:0);eqSet('fl_qrec',f?f.qrec:0);eqSet('fl_qreg',f?f.qreg:0);
   eqSet('fl_qrt',f?f.qrt:0);eqSet('fl_qru',f?f.qru:0);eqSet('fl_bout',f?f.bout:'');
   eqSet('fl_obs',f?f.obs:'');
+  /* AF1 D5 : coordonnées du détenteur (fiche enregistrée → les siennes ; sinon pré-remplissage) */
+  const det=f?{adr:f.detAdr||'',ville:f.detVille||'',siret:f.detSiret||''}:(pre&&(pre.detAdr||pre.detVille||pre.detSiret))?{adr:pre.detAdr||'',ville:pre.detVille||'',siret:pre.detSiret||''}:cpDetenteurCoord((pre&&pre.client)||'');
+  eqSet('fl_detAdr',det.adr);eqSet('fl_detVille',det.ville);eqSet('fl_detSiret',det.siret);
   fillSelects&&fillSelects();
   openModal('mFlu');
+  cpFluVerrouForm();setTimeout(cpFluVerrouForm,80); /* AF1 D6 : fiche signée ou annulée → lecture seule (aussi pour les champs ajoutés par les couches) */
 }
 function saveFlu(printAfter){
   const g=id=>document.getElementById(id).value;const n=id=>Number(g(id))||0;
   if(!g('fl_client').trim()){toast('⚠ Renseigne le client (détenteur)');return;}
   if(!g('fl_desc').trim()){toast('⚠ Décris l\'équipement');return;}
-  const o={id:g('fl_id')||uid(),num:'',date:g('fl_date'),nature:g('fl_nature'),client:g('fl_client').trim(),
+  const saisie={id:g('fl_id')||uid(),num:'',date:g('fl_date'),nature:g('fl_nature'),client:g('fl_client').trim(),
     equipId:g('fl_equip'),desc:g('fl_desc'),fluide:g('fl_fluide'),charge:n('fl_charge'),ctrl:g('fl_ctrl'),
-    qv:n('fl_qv'),qrec:n('fl_qrec'),qreg:n('fl_qreg'),qrt:n('fl_qrt'),qru:n('fl_qru'),bout:g('fl_bout'),obs:g('fl_obs')};
-  const old=FLU.find(x=>x.id===o.id);o.num=old&&old.num?old.num:nextFluNum();
+    qv:n('fl_qv'),qrec:n('fl_qrec'),qreg:n('fl_qreg'),qrt:n('fl_qrt'),qru:n('fl_qru'),bout:g('fl_bout'),obs:g('fl_obs'),
+    detAdr:g('fl_detAdr').trim(),detVille:g('fl_detVille').trim(),detSiret:g('fl_detSiret').trim()};
+  const old=FLU.find(x=>x.id===saisie.id);
+  const vr=cpFluVerrou(old);if(vr){toast('🔒 Fiche '+(old.num||'')+' '+vr+' : elle ne se modifie plus (fais une nouvelle fiche)');return false;}
+  /* AF1 D6 (reproduit le 25/10) : la fiche est COMPLÉTÉE, jamais remplacée — tout champ que ce formulaire ne gère pas
+     (signature du détenteur, refus, lien de signature, repère, compléments Cerfa…) est gardé */
+  const o=Object.assign({},old||{},saisie);o.num=old&&old.num?old.num:nextFluNum();
   const i=FLU.findIndex(x=>x.id===o.id);if(i>=0)FLU[i]=o;else FLU.push(o);
   save('cp2_fluides',FLU);closeModal('mFlu');
   if(window._curView==='fluides')renderFluides();
   toast('🧪 Fiche '+o.num+' enregistrée — à conserver 5 ans');
   if(printAfter)printFicheFlu(o.id);
+  return true;
 }
 function delFlu(id){const f=FLU.find(x=>x.id===id);
+  if(f&&!cpFluSupprimable(f)){toast(cpFluRefusSuppression(f));return;} /* AF1 D2 : conservation 5 ans */
   if(!confirm('Supprimer la fiche '+(f&&f.num||'')+' ? Rappel : conservation obligatoire 5 ans — ne supprime que les erreurs de saisie.'))return;
   FLU=FLU.filter(x=>x.id!==id);save('cp2_fluides',FLU);renderFluides();}
 function printFicheFlu(id){
@@ -3453,11 +3687,12 @@ function printFicheFlu(id){
   document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px;font-size:11px">'
    +'<div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:15px">FICHE D\'INTERVENTION — FLUIDES FRIGORIGÈNES</b><span style="font-family:monospace;font-weight:700">'+f.num+'</span></div>'
    +'<div style="font-size:9.5px;color:#555;margin-bottom:6px">Établie conformément au modèle Cerfa n° 15497*04 (art. R.543-82 et R.543-83 du code de l\'environnement) — à conserver 5 ans par l\'opérateur ET le détenteur.</div>'
+   +(f.annulee?'<div style="border:2px solid #b03a2e;color:#b03a2e;font-weight:700;padding:6px 10px;margin:6px 0">FICHE ANNULÉE le '+new Date(f.annulee.at).toLocaleDateString('fr-FR')+' — motif : '+String(f.annulee.motif||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+' (conservée au registre)</div>':'')
    +sec('1 — Opérateur')
    +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>'+(E.nom||'—')+'</b><br>'+[E.adresse,E.cp,E.ville].filter(Boolean).join(' ')+'<br>SIRET : '+(E.siret||'—')+'</td>'
    +'<td style="'+cell+'">Attestation de capacité n° : <b>'+(E.attFluides||'⚠ À RENSEIGNER (Paramètres)')+'</b><br>Délivrée par : '+(E.attOrganisme||'—')+'</td></tr></table>'
    +sec('2 — Détenteur de l\'équipement')
-   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>'+f.client+'</b><br>'+[cl.adr,cl.ville].filter(Boolean).join(', ')+'</td><td style="'+cell+'">'+[cl.tel,cl.mail].filter(Boolean).join(' — ')+'</td></tr></table>'
+   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>'+f.client+'</b><br>'+[f.detAdr||cl.adr,f.detVille||cl.ville].filter(Boolean).join(', ')+(f.detSiret||cl.siren?'<br>SIRET : '+(f.detSiret||cl.siren):'')+'</td><td style="'+cell+'">'+[cl.tel,cl.mail].filter(Boolean).join(' — ')+'</td></tr></table>'
    +sec('3 — Équipement')
    +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'">'+f.desc+'</td><td style="'+cell+';width:130px">Fluide : <b>'+f.fluide+'</b></td><td style="'+cell+';width:150px">Charge nominale : <b>'+fmtQ(f.charge)+' kg</b></td></tr></table>'
    +sec('4 — Intervention du '+new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR'))
@@ -3481,15 +3716,18 @@ function renderFluides(){
   if(sel&&!sel.options.length)(years.length?years:[cy]).forEach(y=>{const o=document.createElement('option');o.textContent=y;sel.appendChild(o);});
   const y=(sel&&sel.value)||cy;
   const rows=FLU.filter(f=>(f.date||'').slice(0,4)===y).sort((a,b)=>a.date<b.date?-1:1);
-  const byF={};rows.forEach(f=>{if(!byF[f.fluide])byF[f.fluide]={ch:0,re:0};byF[f.fluide].ch+=f.qv+f.qrec+f.qreg;byF[f.fluide].re+=f.qrt+f.qru;});
+  const byF={};rows.forEach(f=>{if(f.annulee)return;if(!byF[f.fluide])byF[f.fluide]={ch:0,re:0};byF[f.fluide].ch+=f.qv+f.qrec+f.qreg;byF[f.fluide].re+=f.qrt+f.qru;}); /* AF1 D2 : une fiche annulée ne compte plus dans les quantités */
+  const nAnn=rows.filter(f=>f.annulee).length;
   document.getElementById('fluKpis').innerHTML=
-   '<div class="kpi blue"><div class="lab">Fiches '+y+'<span>🧪</span></div><div class="val">'+rows.length+'</div></div>'
+   '<div class="kpi blue"><div class="lab">Fiches '+y+'<span>🧪</span></div><div class="val">'+rows.length+(nAnn?'<div class="sub2">dont '+nAnn+' annulée'+(nAnn>1?'s':'')+'</div>':'')+'</div></div>'
    +Object.entries(byF).map(([k,v])=>'<div class="kpi"><div class="lab">'+k+' chargé / récupéré<span>⚖️</span></div><div class="val" style="font-size:17px">'+fmtQ(Math.round(v.ch*100)/100)+' / '+fmtQ(Math.round(v.re*100)/100)+' kg</div></div>').join('')
    +((P.entreprise||{}).attFluides?'':'<div class="kpi warn"><div class="lab">Attestation de capacité<span>⚠</span></div><div class="val" style="font-size:14px">à renseigner (Paramètres)</div></div>');
   el.innerHTML=rows.length?'<div class="scroll"><table><thead><tr><th class="l">N°</th><th class="l">Date</th><th class="l">Client</th><th class="l">Équipement</th><th class="l">Nature</th><th>Chargé</th><th>Récupéré</th><th class="l">Étanchéité</th><th></th></tr></thead><tbody>'
-   +rows.map(f=>'<tr'+(f.ctrl==='fuite_nonrep'?' style="background:var(--red-soft)"':'')+'><td class="l"><b>'+f.num+'</b></td><td class="l">'+new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td class="l">'+f.client+'</td><td class="l">'+f.desc+'</td><td class="l">'+(FLU_NAT[f.nature]||'')+'</td>'
+   +rows.map(f=>'<tr'+(f.ctrl==='fuite_nonrep'?' style="background:var(--red-soft)"':f.annulee?' style="opacity:.6"':'')+'><td class="l"><b>'+f.num+'</b>'+(f.annulee?' <span class="tag" style="background:#fde8eb;color:#7a1020" title="'+String(f.annulee.motif||'').replace(/"/g,'&quot;')+'">ANNULÉE</span>':'')+'</td><td class="l">'+new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td class="l">'+f.client+'</td><td class="l">'+f.desc+'</td><td class="l">'+(FLU_NAT[f.nature]||'')+'</td>'
     +'<td>'+fmtQ(Math.round((f.qv+f.qrec+f.qreg)*100)/100)+' kg</td><td>'+fmtQ(Math.round((f.qrt+f.qru)*100)/100)+' kg</td><td class="l">'+(FLU_CTRL[f.ctrl]||'')+'</td>'
-    +'<td style="white-space:nowrap"><button class="iconbtn" title="Fiche PDF" onclick="printFicheFlu(\''+f.id+'\')">🖨️</button><button class="iconbtn" onclick="openFlu(\''+f.id+'\')">✏️</button><button class="iconbtn d" onclick="delFlu(\''+f.id+'\')">🗑</button></td></tr>').join('')
+    +'<td style="white-space:nowrap"><button class="iconbtn" title="Fiche PDF" onclick="printFicheFlu(\''+f.id+'\')">🖨️</button><button class="iconbtn" title="'+(cpFluVerrou(f)?'Consulter (lecture seule)':'Modifier')+'" onclick="openFlu(\''+f.id+'\')">'+(cpFluVerrou(f)?'🔒':'✏️')+'</button>'
+    +(f.annulee?'':'<button class="iconbtn" title="Annuler la fiche (motif) : elle reste au registre avec la mention ANNULÉE" onclick="annulerFlu(\''+f.id+'\')">⛔</button>')
+    +(cpFluSupprimable(f)?'<button class="iconbtn d" onclick="delFlu(\''+f.id+'\')">🗑</button>':'')+'</td></tr>').join('')
    +'</tbody></table></div>'
    :'<div class="empty">Aucune fiche en '+y+'. Crée-en une à chaque manipulation de fluide (charge, récupération, contrôle) — bouton + Nouvelle fiche, ou 🧪 depuis une intervention.</div>';
 }
@@ -3499,8 +3737,8 @@ function exportCSVFlu(){
   if(!rows.length){toast('Aucune fiche à exporter');return;}
   const nf=n=>String((Math.round((Number(n)||0)*100)/100)).replace('.',',');
   const esc2=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
-  const csv='﻿'+[['N° fiche','Date','Client','Équipement','Fluide','Charge nominale kg','Nature','Étanchéité','Vierge kg','Recyclé kg','Régénéré kg','Récup. traitement kg','Récup. réutilisation kg','Contenants','Observations']]
-   .concat(rows.map(f=>[f.num,f.date,f.client,f.desc,f.fluide,nf(f.charge),FLU_NAT[f.nature]||'',FLU_CTRL[f.ctrl]||'',nf(f.qv),nf(f.qrec),nf(f.qreg),nf(f.qrt),nf(f.qru),f.bout||'',f.obs||''])).map(r=>r.map(esc2).join(';')).join('\r\n');
+  const csv='﻿'+[['N° fiche','Date','Client','Équipement','Fluide','Charge nominale kg','Nature','Étanchéité','Vierge kg','Recyclé kg','Régénéré kg','Récup. traitement kg','Récup. réutilisation kg','Contenants','Observations','Adresse du détenteur','Annulée (motif)']]
+   .concat(rows.map(f=>[f.num,f.date,f.client,f.desc,f.fluide,nf(f.charge),FLU_NAT[f.nature]||'',FLU_CTRL[f.ctrl]||'',nf(f.qv),nf(f.qrec),nf(f.qreg),nf(f.qrt),nf(f.qru),f.bout||'',f.obs||'',[f.detAdr,f.detVille].filter(Boolean).join(' '),f.annulee?'ANNULÉE le '+f.annulee.date+' : '+(f.annulee.motif||''):''])).map(r=>r.map(esc2).join(';')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ClimPilot_registre_fluides_'+y+'.csv';a.click();
   toast('🧪 Registre fluides '+y+' exporté — à archiver 5 ans');
@@ -3959,6 +4197,7 @@ async function initCloud(){
 /* ============ INIT ============ */
 window._curView='dash';
 seedAdiaArticles();dedupPrix();rebuildPrix();
+cpReparerAvenants(); /* AF1-ter : original resté « accepté » à côté d'un avenant accepté (fusion entre appareils) → « remplacé » */
 renderDash();updateBadges();
 syncNotion();
 if(pinActive())lockApp();

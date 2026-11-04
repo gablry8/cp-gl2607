@@ -66,7 +66,7 @@
   /* ---------- calcul ---------- */
   function auto(Y){
     var r={};
-    fiches().forEach(function(f){ if(!f||String(f.date||'').slice(0,4)!==String(Y)) return;
+    fiches().forEach(function(f){ if(!f||String(f.date||'').slice(0,4)!==String(Y)||f.annulee) return;   /* AF1 D2 : une fiche annulée (erreur de saisie) ne compte pas dans les quantités */
       var k=cle(f.fluide), x=r[k]=r[k]||{chN:0,chM:0,recHU:0,recM:0,n:0}, ch=num(f.qv)+num(f.qrec)+num(f.qreg), rc=num(f.qrt)+num(f.qru);
       x.n++; if(NEUF.indexOf(f.nature)>=0) x.chN+=ch; else x.chM+=ch; if(HU.indexOf(f.nature)>=0) x.recHU+=rc; else x.recM+=rc; });
     Object.keys(r).forEach(function(k){ ['chN','chM','recHU','recM'].forEach(function(c){ r[k][c]=r3(r[k][c]); }); });
@@ -168,6 +168,7 @@
     /* années proposées : depuis 2027 (début de l'activité et des règles de l'arrêté du 21/11/2025), + celles des fiches */
     for(var y=y0;y>=Math.min(2027,y0);y--) ans[y]=1; ans[Y]=1; fiches().forEach(function(f){ var a=String(f&&f.date||'').slice(0,4); if(/^\d{4}$/.test(a)) ans[a]=1; });
     var manque=B.filter(function(b){ return b.manque.length; }).length;
+    var annulees=fiches().filter(function(f){ return f&&String(f.date||'').slice(0,4)===String(Y)&&f.annulee; }).length;
     var FL=['R32','R410A','R134a','R290','R404A','R448A','R449A','R452A','R454B','R407C','R513A','R744','R1234yf','R600a','R22'];
     return '<div class="card" id="nxfb"><h2>Déclaration annuelle à l’organisme agréé</h2>'
       +'<div class="sub" style="line-height:1.5">Année <b>'+esc(Y)+'</b> → à transmettre <b>au plus tard le 31/01/'+(+Y+1)+'</b> à '+(E.attOrganisme?'<b>'+esc(E.attOrganisme)+'</b>':'l’organisme qui a délivré ton attestation de capacité (renseigne-le dans Paramètres)')+'. Les organismes agréés la demandent même si tu n’as manipulé aucun fluide (« déclaration à zéro ») : confirme avec le tien.'
@@ -178,6 +179,7 @@
       +(B.length?'<div style="display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr))">'+B.map(function(b){ return carteFluide(Y,b); }).join('')+'</div>'
         :'<div style="font-size:14px;margin:6px 0">Aucune fiche ni saisie pour '+esc(Y)+' : si tu n’as rien acheté, chargé, récupéré ni stocké, c’est une <b>déclaration à zéro</b>.</div>')
       +(manque?'<div class="sub" style="margin-top:8px;color:var(--orange,#b45309)">'+manque+' fluide(s) avec des cases vides (acquises, remises, cédées ou stock au 31/12) : mets 0 si c’est zéro.</div>':'')
+      +(annulees?'<div class="sub" style="margin-top:8px">'+annulees+' fiche'+(annulees>1?'s':'')+' annulée'+(annulees>1?'s':'')+' en '+esc(Y)+' : gardée'+(annulees>1?'s':'')+' au registre avec la mention ANNULÉE, non comptée'+(annulees>1?'s':'')+' dans les quantités ci-dessus.</div>':'')
       +'<div class="row-actions" style="margin-top:10px"><select id="nxfbNouv" style="max-width:150px" aria-label="Fluide à ajouter">'+FL.map(function(f){ return '<option>'+f+'</option>'; }).join('')+'</select><button class="btn-ghost btn-sm" onclick="nxfbAjouterFluide(\''+esc(Y)+'\',document.getElementById(\'nxfbNouv\').value)">+ Fluide en stock sans fiche</button></div>'
       +'<div class="sub" style="margin-top:10px;line-height:1.5">Chargées et récupérées : calculées depuis tes fiches de l’année. « Équipements neufs » = fiches « mise en service » et « assemblage » ; « hors d’usage » = fiches « démantèlement » ; le reste = maintenance (classement à confirmer avec ton organisme pour un cas douteux). La charge d’usine d’un équipement pré-chargé n’entre pas dans la déclaration (FAQ de l’AFCE) : sur la fiche, note seulement le complément. Acquises : poids net de fluide (sans la tare des bouteilles), d’après tes factures. Règle : arrêté du 21/11/2025, art. 1er (5°) ; Code de l’environnement, art. R543-100.</div></div>';
   }

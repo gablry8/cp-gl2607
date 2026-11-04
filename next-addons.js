@@ -125,7 +125,7 @@
 
   /* ===== REGISTRE DES DOCUMENTS (Claude) — tous les numéros classés + contrôle d'intégrité des séries ===== */
   function nxAllDocs(){
-    const docs=[];const st={brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'Accepté',refuse:'Refusé'};
+    const docs=[];const st={brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'Accepté',refuse:'Refusé',remplace:'Remplacé',annule:'Annulé'};
     (DEVIS||[]).forEach(d=>{let m=0;try{m=Math.round(compute(d).totalHT*100)/100;}catch(e){}
       docs.push({num:d.num||'',type:'Devis',date:d.created?isoLocal(new Date(d.created)):'',client:d.cNom||'—',montant:m,statut:st[d.statut]||d.statut,open:"openDevis('"+d.id+"')"});
       [['facAcompte','Facture (acompte)'],['facSolde','Facture']].forEach(p=>{const f=d[p[0]];
@@ -458,6 +458,8 @@
   };
   function nxSoftDelete(type,id){
     const cfg=nxEntityMap[type],arr=cfg&&cfg.array();if(!cfg||!arr)return;const i=arr.findIndex(x=>x.id===id),item=arr[i];if(i<0)return;
+    /* AF1 D2 (03/11/2026) : une fiche fluide numérotée ne va pas à la corbeille avant 5 ans (R.543-82) — « Annuler la fiche » à la place */
+    if(type==='flu'&&typeof window.cpFluSupprimable==='function'&&!window.cpFluSupprimable(item)){toast(window.cpFluRefusSuppression(item));return;}
     if(!confirm('Mettre « '+(item.num||item.nom||item.cNom||cfg.label)+' » dans la corbeille ? Restaurable pendant 30 jours.'))return;
     nxTrash.unshift({trashId:nxId(),type,item:nxClone(item),deletedAt:Date.now(),expiresAt:Date.now()+30*86400000});arr.splice(i,1);save(cfg.key(),arr);nxSave(NX_KEYS.trash,nxTrash);cfg.render();nxUpdateTaskBadge();nxToast('Élément placé dans la corbeille','ok');
   }

@@ -257,6 +257,12 @@
     if(window.__cpLectureSeule){ alert('Cet onglet est en lecture seule : rien ne peut y être émis.'); return Promise.resolve(null); }
     if(BUSY){ say('Émission en cours… patiente.'); return Promise.resolve(null); }
     var S=SORTES[sorte];
+    /* AF1-bis / AF1-ter (04/11/2026) : devis remplacé par un avenant, annulé, ou dont la famille (original + avenants) porte déjà une facture vivante
+       → il ne se facture plus. Ce refus passe AVANT tout autre message (dont « Document de TEST émis sans … » des particuliers). */
+    if(sorte==='devis'){ try{ var dv0=(DEVIS||[]).find(function(x){ return x.id===args[0]; });
+      var refus=(typeof window.cpRefusFacture==='function')?window.cpRefusFacture(dv0)
+        :(dv0&&(dv0.statut==='remplace'||dv0.statut==='annule')?'⛔ Devis '+(dv0.num||'')+' '+(dv0.statut==='annule'?'annulé':'remplacé par l\'avenant n° '+(dv0.remplacePar&&dv0.remplacePar.num||''))+' : il ne se facture plus.':null);
+      if(refus){ say(refus); return Promise.resolve(null); } }catch(e){ console.warn('ClimPilot (AF1-ter) garde de facturation :',e); } }
     /* contrôles propres aux particuliers (next-particuliers.js) : arrêt, date d'exigibilité, trace */
     var av={}; try{ if(typeof window.nxAvantEmission==='function') av=window.nxAvantEmission(sorte,args)||{}; }catch(e){ av={}; }
     if(av.stop){ relire(sorte); return Promise.resolve(null); }

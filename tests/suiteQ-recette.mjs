@@ -331,7 +331,11 @@ r('Téléphone hors ligne : il garde la modification et l’envoie au retour du 
 ETAPE = 'Devis ouvert pendant une mise à jour';
 try {
 await pret(S4, PC4); await pret(S4, TEL4);
-const idE = ids[3] || ids[ids.length - 1];
+/* AF1 D0 (03/11/2026) : un devis ACCEPTÉ est en lecture seule (titre du lot non modifiable) ; ce parcours teste la saisie pendant une
+   mise à jour → il prend un devis au nouveau format encore modifiable (envoyé ou brouillon, non facturé), à défaut l'ancien choix.
+   Comme avant, le devis n'est PAS celui du client dont le téléphone change la note (Dupré) : l'enregistrement d'un devis réécrit la fiche
+   de SON client (existant, hors AF1), ce que ce parcours ne mesure pas. */
+const idE = (await PC4.p.evaluate(() => (DEVIS.find((d) => d.v === 2 && (d.statut === 'brouillon' || d.statut === 'envoye') && !d.facAcompte && !d.facSolde && (d.lots || []).length && !/Dupr/.test(d.cNom || '')) || {}).id)) || ids[3] || ids[ids.length - 1];
 await PC4.p.evaluate((x) => openDevis(x), idE); await PC4.p.waitForTimeout(300);
 const titre = PC4.p.locator('input[placeholder^="Titre"]:visible').first();
 const titreVu = (await titre.count()) > 0; if (titreVu) { await titre.fill('Salle de réunion (saisi sur le PC)'); await titre.dispatchEvent('input'); await titre.dispatchEvent('change'); }

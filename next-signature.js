@@ -50,6 +50,25 @@
     });
   }
 
+  /* AF1-ter (04/11/2026) : un devis remplacé par un avenant ou annulé ne doit plus pouvoir être signé en ligne → ses liens encore en attente sont
+     désactivés (même geste que la création d'un nouveau lien). Sans cloud : rien à faire ici, applySig ignore de toute façon une signature tardive. */
+  function desactiverLiens(docType,docId,raison){
+    if(!cloudOk()||!docId) return Promise.resolve(0);
+    return sb.from(TABLE).update({statut:'annule'}).eq('doc_id',docId).eq('doc_type',docType||'devis').eq('statut','en_attente').select('token')
+      .then(function(r){ var n=(r&&r.data&&r.data.length)||0; if(r&&r.error) console.warn('ClimPilot (AF1-ter) liens de signature :',r.error.message||r.error); else if(n) try{ refresh(); }catch(e){} return n; })
+      .catch(function(e){ console.warn('ClimPilot (AF1-ter) liens de signature :',e&&e.message||e); return 0; });
+  }
+  window.nxsDesactiverLiens=desactiverLiens;
+  /* AF1-quater : la réparation au démarrage (index.html, cpReparerAvenants) tourne avant ce module → ses demandes attendent dans
+     window.cpLiensADesactiver ; elles sont traitées au premier relevé qui a le cloud (refresh), et à chaque relevé suivant s'il en reste. */
+  function viderLiensEnAttente(){
+    var q=window.cpLiensADesactiver; if(!Array.isArray(q)||!q.length) return 0;
+    var f=(typeof window.nxsDesactiverLiens==='function')?window.nxsDesactiverLiens:desactiverLiens, items=q.splice(0);
+    items.forEach(function(a){ try{ f(a[0],a[1],a[2]); }catch(e){ console.warn('ClimPilot (AF1-quater) liens en attente :',e&&e.message||e); } });
+    return items.length;
+  }
+  window.nxsViderLiensEnAttente=viderLiensEnAttente;
+
   function showShare(o){
     var old=document.getElementById('nxsModal'); if(old) old.remove();
     var m=document.createElement('div'); m.id='nxsModal'; m.className='nxs-ov';
@@ -95,6 +114,10 @@
   window.nxsSendDevis = function(){
     try{
       if(typeof cur==='undefined' || !cur){ toastX('Ouvre d\'abord un devis','warn'); return; }
+      /* AF1-bis (3) : devis signé, accepté, facturé, remplacé ou annulé → pas de nouvel envoi en signature, rien n'est réécrit (la règle se lit sur la copie enregistrée) */
+      var vr=null; try{ vr=(typeof window.cpDevisVerrouille==='function')?window.cpDevisVerrouille(cur.id):null; }catch(e){ console.warn('ClimPilot (AF1-bis) verrou :',e); }
+      if(vr){ try{ window.cpJournal({type:'devis_verrouille',action:'signature',id:cur.id,num:cur.num||'',motif:vr.motif}); }catch(e){ console.warn('ClimPilot (AF1-bis) journal :',e); }
+        toastX('🔒 Devis '+(cur.num||'')+' '+vr.texte+' : il ne se renvoie pas en signature (fais un avenant).','warn'); return; }
       formToDevis();
       if(!String(cur.cNom||'').trim()){ toastX('Renseigne le client avant d\'envoyer le devis','warn'); return; }
       var c=compute(cur);
@@ -125,8 +148,11 @@
   window.nxsSendFlu = function(id){
     try{
       var f=(FLU||[]).find(function(x){ return x.id===id; }); if(!f){ toastX('Enregistre d\'abord la fiche','warn'); return; }
-      var html=capture(function(){ window.printFicheFlu(id); });
       var cl=(CLIENTS||[]).find(function(c){ return (c.nom||'').toLowerCase()===(f.client||'').toLowerCase(); })||{};
+      /* AF1 D5 (03/11/2026) : sans adresse du détenteur, la fiche envoyée porterait « Adresse : — » → envoi refusé */
+      if(!String(f.detAdr||cl.adr||'').trim()){ toastX('⚠ Adresse du détenteur manquante : complète-la sur la fiche avant d\'envoyer le lien de signature','warn'); return; }
+      if(f.annulee){ toastX('Fiche annulée : pas de signature à demander','warn'); return; }
+      var html=capture(function(){ window.printFicheFlu(id); });
       var o={type:'fluide',docId:f.id,num:f.num,client:f.client,titre:'Intervention du '+new Date((f.date||'')+'T12:00:00').toLocaleDateString('fr-FR')+' — '+(f.fluide||''),montant:null,html:html,email:cl.mail,tel:cl.tel};
       createLink(o).then(function(r){
         if(!r || r.error || !r.data){ toastX('⚠ '+((r&&r.error&&r.error.message)||'Lien impossible'),'warn'); return; }
@@ -140,12 +166,42 @@
     var sig={at:s.signed_at,nom:s.signer_nom,hash:s.doc_hash,png:s.signature_png||null,token:s.token,ip:s.signer_ip||null};
     if(s.doc_type==='devis'){
       var d=(DEVIS||[]).find(function(x){ return x.id===s.doc_id; }); if(!d) return false;
+      /* AF1-ter (relecture du 04/11) : signature ou refus qui arrive APRÈS que le devis a été remplacé par un avenant ou annulé → le statut ne bouge pas
+         (sinon l'original redevenait facturable à côté de son avenant : double facture). La preuve est gardée (signatureEnAttente), tout est journalisé. */
+      if(d.statut==='remplace'||d.statut==='annule'){
+        var etat=d.statut==='annule'?'annulé':'remplacé par l\'avenant n° '+(d.remplacePar&&d.remplacePar.num||'');
+        if(s.statut==='signe'&&!d.signature) d.signatureEnAttente=sig;
+        save(LS.devis,DEVIS);
+        try{ window.cpJournal({type:'signature_ignoree',action:s.statut==='signe'?'signature_en_ligne':'refus_en_ligne',id:d.id,num:d.num||'',motif:d.statut,nom:s.signer_nom||''}); }catch(e){ console.warn('ClimPilot (AF1-ter) journal :',e); }
+        toastX((s.statut==='signe'?'⚠ Devis '+(d.num||'')+' signé en ligne par '+(s.signer_nom||'')+' alors qu\'il est '+etat+' : il reste '+etat+' et ne se facture pas (preuve gardée).'
+          :'ℹ Devis '+(d.num||'')+' refusé en ligne alors qu\'il est déjà '+etat+' : rien ne change.'),'warn');
+        try{ updateBadges(); }catch(e){} return true; }
+      /* AF1-bis (1c) : avenant signé en ligne alors que son original a été facturé entre-temps → la preuve est GARDÉE (signatureEnAttente), le statut n'avance pas ;
+         après l'avoir, passer l'avenant en « Accepté » pose la signature (cpAvenantAccepte, index.html) */
+      var orig=null; try{ orig=(typeof window.cpAvenantOriginal==='function')?window.cpAvenantOriginal(d):null; }catch(e){ console.warn('ClimPilot (AF1-bis) original :',e); }
+      /* AF1-quater : la facture peut être n'importe où dans l'arbre (original, avenant, avenant d'avenant), pas seulement sur le parent */
+      var fac=null; try{ if(d.avenantDe&&typeof window.cpFamilleDevis==='function'&&typeof window.cpFactureVivante==='function') fac=window.cpFamilleDevis(d).find(function(x){ return x.id!==d.id&&window.cpFactureVivante(x); })||null;
+        else if(orig&&typeof window.cpFactureVivante==='function'&&window.cpFactureVivante(orig)) fac=orig; }catch(e){ console.warn('ClimPilot (AF1-quater) famille :',e); }
+      if(s.statut==='signe' && fac){
+        d.signatureEnAttente=sig; save(LS.devis,DEVIS);
+        try{ window.cpJournal({type:'avenant_refuse',action:'signature_en_ligne',id:d.id,num:d.num||'',motif:'facture_original',original:fac.id}); }catch(e){ console.warn('ClimPilot (AF1-bis) journal :',e); }
+        toastX('⛔ Devis '+(d.num||'')+' signé en ligne par '+(s.signer_nom||'')+', mais le devis '+(orig&&fac.id===orig.id?'d\'origine ':'')+(fac.num||'')+' a été facturé entre-temps : fais d\'abord un avoir, puis passe l\'avenant en « Accepté » (la signature est conservée).','warn');
+        try{ updateBadges(); }catch(e){} return true; }
+      /* AF1-quater (relecture du 04/11, soir) : un 2e avenant signé en ligne alors qu'un autre avenant du même devis est déjà accepté → même règle qu'à
+         l'écran (cpAvenantAcceptable) : statut inchangé, preuve gardée, l'original continue de pointer vers l'avenant déjà accepté */
+      var autre=null; try{ if(s.statut==='signe'&&d.avenantDe&&typeof window.cpAutreAccepte==='function') autre=window.cpAutreAccepte(d); }catch(e){ console.warn('ClimPilot (AF1-quater) autre avenant :',e); }
+      if(autre){
+        d.signatureEnAttente=sig; save(LS.devis,DEVIS);
+        try{ window.cpJournal({type:'avenant_refuse',action:'signature_en_ligne',id:d.id,num:d.num||'',motif:'autre_avenant',autre:autre.id}); }catch(e){ console.warn('ClimPilot (AF1-quater) journal :',e); }
+        toastX('⛔ Devis '+(d.num||'')+' signé en ligne par '+(s.signer_nom||'')+', mais un autre avenant du même devis est déjà accepté ('+(autre.num||'')+') : annule-le d\'abord, puis passe celui-ci en « Accepté » (la signature est conservée).','warn');
+        try{ updateBadges(); }catch(e){} return true; }
       if(s.statut==='signe'){ d.statut='accepte'; d.signature=sig; d.acceptedAt=Date.parse(s.signed_at)||Date.now();
         /* 1.10 : date réelle de conclusion = horodatage du serveur (jour à Paris) + preuve ; le MODE n'est jamais deviné */
         try{ var c0=d.conclusion||{}, dt=new Date(s.signed_at), jour=dt.toLocaleDateString('sv-SE',{timeZone:'Europe/Paris'});
           if(!c0.date&&/^\d{4}-\d{2}-\d{2}$/.test(jour)) d.conclusion=Object.assign({mode:'a_preciser'},c0,{date:jour,preuve:{type:'signature_en_ligne',ref:'signature en ligne du '+dt.toLocaleString('fr-FR',{timeZone:'Europe/Paris'})+' (empreinte '+String(s.doc_hash||'').slice(0,12)+'…)',token:s.token}}); }catch(e){} }
       else if(s.statut==='refuse'){ d.statut='refuse'; d.refus={at:s.signed_at,nom:s.signer_nom,motif:s.motif_refus||''}; }
       save(LS.devis,DEVIS);
+      if(s.statut==='signe' && d.avenantDe && typeof window.cpAvenantAccepte==='function'){ try{ window.cpAvenantAccepte(d); }catch(e){ console.warn('ClimPilot (AF1-bis) avenant accepté :',e); } }   /* 1b */
       try{ if(typeof cur!=='undefined'&&cur&&cur.id===d.id){ cur.statut=d.statut; cur.signature=d.signature; cur.refus=d.refus; if(d.conclusion) cur.conclusion=JSON.parse(JSON.stringify(d.conclusion)); } }catch(e){}
       try{ updateBadges(); }catch(e){}
       return true;
@@ -177,6 +233,7 @@
   window.nxsApplySig=applySig;
   function refresh(){
     if(!cloudOk()) return Promise.resolve();
+    try{ viderLiensEnAttente(); }catch(e){ console.warn('ClimPilot (AF1-quater) liens en attente :',e&&e.message||e); }
     return lireSignatures()
       .then(function(r){
         if(!r || r.error) return;

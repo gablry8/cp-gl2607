@@ -105,6 +105,9 @@
       o.conclusion=Object.assign({},o.conclusion||{},{mode:mode,date:date,preuve:{type:g('nxpPreuve'),ref:g('nxpRef').trim()},urgence:!!document.getElementById('nxpUrg').checked,
         urgenceTexte:g('nxpUrgT').trim(),anticipe:!!document.getElementById('nxpAnt').checked,maj:Date.now()});
       enregistrer(kind); try{ if(kind==='devis'&&typeof cur!=='undefined'&&cur&&cur.id===o.id&&cur!==o) cur.conclusion=JSON.parse(JSON.stringify(o.conclusion)); }catch(e){}
+      /* AF1 C-N1 (trouvé le 27/10/2026) : l'intervention ouverte (curDep) est une COPIE de celle de la liste (openDep) ; sans cette ligne,
+         le clic suivant (« Enregistrer », DEP[i]=curDep) remettait la copie sans « conclusion » et effaçait le lieu et l'urgence */
+      try{ if(kind==='dep'&&typeof curDep!=='undefined'&&curDep&&curDep.id===o.id&&curDep!==o) curDep.conclusion=JSON.parse(JSON.stringify(o.conclusion)); }catch(e){ console.warn('ClimPilot (AF1 C-N1) copie ouverte non mise à jour :',e); }
       document.getElementById('nxPartM').remove(); say('Contrat : informations enregistrées');
       try{ renderFBloc(); }catch(e){} try{ if(kind==='dep') loadDepForm(); }catch(e){}
       if(typeof ensuite==='function') ensuite();
@@ -128,7 +131,11 @@
       if(avecRetr&&pieces.indexOf('retractation')<0&&!confirm('Le formulaire de rétractation n\'a pas été remis : il est obligatoire pour un contrat conclu hors établissement ou à distance (sinon le délai est prolongé de 12 mois, art. L221-20). Enregistrer quand même ?')) return;
       var iso=(document.getElementById('nxrDate')||{}).value||today();
       o.conclusion=Object.assign({},o.conclusion||{},{remise:{type:'papier',date:iso,pieces:pieces,accuseSigne:true,preuve:'déclarée par l\'entreprise — accusé de remise signé par le client (papier, à conserver)',at:Date.now()}});
-      enregistrer(kind); document.getElementById('nxPartM').remove(); say('Remise de l\'exemplaire enregistrée');
+      enregistrer(kind);
+      try{ if(kind==='devis'&&typeof cur!=='undefined'&&cur&&cur.id===o.id&&cur!==o) cur.conclusion=JSON.parse(JSON.stringify(o.conclusion));
+        if(kind==='dep'&&typeof curDep!=='undefined'&&curDep&&curDep.id===o.id&&curDep!==o) curDep.conclusion=JSON.parse(JSON.stringify(o.conclusion)); }   /* AF1 C-N1 : même famille (remise de l'exemplaire) */
+      catch(e){ console.warn('ClimPilot (AF1 C-N1) copie ouverte non mise à jour :',e); }
+      document.getElementById('nxPartM').remove(); say('Remise de l\'exemplaire enregistrée');
       try{ renderFBloc(); }catch(e){} try{ if(kind==='dep') loadDepForm(); }catch(e){}
     };
   };

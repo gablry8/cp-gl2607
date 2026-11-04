@@ -224,3 +224,17 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   19 « OK »), `6-droits-anon-retour-arriere.sql` (2 « OK »).
 - `tests/functions/test-superpdp-envoi.mjs` : 30 contrôles (bac à sable seulement si `env === 'sandbox'`, valeur brute enregistrée à la
   connexion) ; suite H, bloc H3 (environnement inattendu → compte réel).
+
+## Ajouts 03/11/2026 (mission AF1 — zéro perte de données)
+- suiteAD-af1-pertes.mjs : AF1-T1 à T13 du dossier `docs/MISSION-AF-CORRECTIONS.md` (§ 2) + C-N1 + A-N5 : devis signé, accepté ou
+  facturé en lecture seule (enregistrement refusé, « Faire un avenant », suppression refusée) ; fiche fluide numérotée jamais à la
+  corbeille avant 5 ans, « annulée » avec motif ; garde « Enregistrer / Abandonner » des Paramètres ; coordonnées du détenteur gardées
+  sur la fiche fluide et envoi du lien refusé sans adresse ; fiche fluide rouverte puis enregistrée sans perte (signature, refus, lien) ;
+  « Lieu / urgence » du contrat d'intervention gardé au clic suivant ; fiche client existante jamais écrasée par l'adresse d'un document.
+  Horloge figée sur REF. Rouge sur le code d'avant (46 contrôles), verte après la correction.
+- AF1-bis (relecture indépendante du 03/11, exception au gel décidée par Gabriel) : 17 contrôles ajoutés à la suite AD (74 en tout) et 2 contrôles T9 à l'attendu changé — T14 avenant / original
+  (pas d'avenant sur un devis facturé ; avenant accepté → original « remplacé par l'avenant », hors facturation, « À commander », « Planifier » et carnet ;
+  acceptation refusée si l'original a été facturé entre-temps), T15 « Annuler le devis » (motif obligatoire, refusé tant qu'une facture vivante existe,
+  PDF ANNULÉ, non supprimable, journal), T16 verrou de la signature sur l'ancien formulaire (boutons cachés, `nxsSendDevis` refusé), T17 apostrophe ’ du
+  détenteur, T9 texte de la question des Paramètres. Rouges sur `9fcf2cf`, verts après. Suite I : cas I3d (devis « envoyé » passé « Accepté » à l'écran
+  sans enregistrer, puis modifié → « Facturer » enregistre d'abord), vert d'emblée.

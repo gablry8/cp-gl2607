@@ -76,11 +76,17 @@
     var w=function(id){
       var f=facsOf(kind,id);
       if(f.length){ try{ toast('⛔ '+what+' avec facture émise ('+f.join(', ')+') : il reste dans ClimPilot, car une facture ne se supprime pas (elle s\'annule par un avoir).'); }catch(e){} return; }
+      /* AF1 D0 (03/11/2026) : un devis signé ou accepté (accord papier compris) ne se supprime pas non plus ; la tentative est notée au journal */
+      if(kind==='devis'&&typeof window.cpDevisVerrouille==='function'){ var vr=window.cpDevisVerrouille(id);
+        if(vr){ var d=(DEVIS||[]).find(function(x){ return x.id===id; })||{};
+          try{ window.cpJournal({type:'devis_verrouille',action:'supprimer',id:id,num:d.num||'',motif:vr.motif}); toast('⛔ Devis '+(d.num||'')+' '+vr.texte+' : il ne se supprime pas (comme un devis facturé) ; il reste dans ClimPilot.'); }
+          catch(e){ console.warn('ClimPilot (AF1 D0) refus de suppression :',e); } return; } }
       return o.apply(this,arguments);
     }; w._nxf=true; window[fn]=w;
   }
   /* 5. dupliquer un devis ne recopie ni ses factures, ni sa signature, ni son suivi */
-  var RESET=['facAcompte','facSolde','facAnnulees','signature','signLink','sentAt','relances','datePlanif','momentPlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv','rnd'];
+  var RESET=['facAcompte','facSolde','facAnnulees','signature','signLink','sentAt','relances','datePlanif','momentPlanif','matReserve','hReel','achatReel','refus','acceptedAt','updatedAt','_inboxId','_baseStatut','_statutSet','ctrFaits','figEnv','rnd',
+    'avenantDe','remplacePar','annulation','signatureEnAttente'];   /* AF1-bis : une copie n'est jamais l'avenant d'un autre devis, ni remplacée, ni annulée (cpDevisAvenant pose avenantDe après) */
   function guardDup(){
     var o=window.dupDevis; if(typeof o!=='function'||o._nxf) return;
     var w=function(id){
