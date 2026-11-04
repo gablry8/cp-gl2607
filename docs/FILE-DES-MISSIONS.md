@@ -10,7 +10,7 @@
 | 2 | C3 (P3) : article absent compté 0 € | `correctif/c3-article-absent` | **fusionnée le 03/11** (PR #6, `b9155b6`) | 3 cas golden C3 + 2 cas « Support mural » à corriger plus tard (accord de Gab) | Gab |
 | 3 | P6+ : environnement Super PDP, droits du visiteur non connecté | `correctif/p6-env-superpdp` | **fusionnée le 03/11** (PR #7, `1e33a67`) ; script TEST passé le 03/11 | script `6-REEL-droits-anon.sql` sur le réel (19 « OK ») ; déploiement de la fonction `superpdp` (TEST puis réel) ; supprimer la branche | Gab |
 | 4 | OUTILLAGE : CLAUDE.md, règles bloquantes, cette file | `outillage/claude-code` | **fusionnée le 04/11** (PR #8, `1bd4b0d`), relue par Fable 5.1 le 03/11 ; `main` protégée (vérifier que la demande de fusion y est exigée) | trous du contrôle des secrets (hook) dans une prochaine mission OUTILLAGE ; supprimer la branche | Gab |
-| 5 | AF1 + AF1-bis + AF1-ter : zéro perte de données (+ C-N1, A-N5 ; avenant / original, « Annuler le devis » ; signature tardive, famille original + avenants, fusion entre appareils) | `correctif/af1-pertes-donnees` | **fait les 03 et 04/11**, PR #9 en brouillon ; relectures Opus du 03/11 (AF1) et du 04/11 (AF1-bis) traitées ; `docs/AF1-COMPTE-RENDU.md` (§ 12 pour AF1-ter) | relecture P10 d'AF1-ter (Opus), essai de Gab (§ 8, § 11.6, § 12.6), fusion, F5 sur chaque appareil le même jour | Opus puis Gab |
+| 5 | AF1 + AF1-bis + AF1-ter + AF1-quater : zéro perte de données (+ C-N1, A-N5 ; avenant / original, « Annuler le devis » ; signature tardive, arbre complet des avenants, fusion entre appareils) | `correctif/af1-pertes-donnees` | **fait les 03 et 04/11**, PR #9 en brouillon ; relectures Opus du 03/11 (AF1), du 04/11 (AF1-bis) et du 04/11 soir (AF1-ter) traitées ; `docs/AF1-COMPTE-RENDU.md` (§ 12 AF1-ter, § 13 AF1-quater) | relecture courte d'AF1-quater (Opus, C5 à C7), essai de Gab (§ 8, § 11.6, § 12.6, § 13.5), fusion, F5 sur chaque appareil le même jour | Opus puis Gab |
 | 6 | S : sécurité de l'appli (dossier privé dans le Project) | `correctif/s-securite` | à lancer après la fusion de #9 | décisions 6 à 8 de la fiche du 26/10 | CC (Fable 5.1) |
 
 ## Ensuite, jusqu'à « prêt pour le terrain » (contrôle du 01/06/2027)
@@ -26,7 +26,7 @@ PILOTE A à C (plan contre réel, code en mars 2027, `claude/ClimPilot-MISSION-P
 - AF4, TVA, M3 C2 (devis accepté en franchise puis facturé après la bascule) : réponses de la comptable. Statut et régime de TVA : décembre 2026.
 
 ## Branches
-État lu le 03/11/2026 par OUTILLAGE (`git fetch --prune origin`, `git merge-base --is-ancestor <branche> origin/main`), `main` = `b9155b6`. **Aucune branche n'a été supprimée** : c'est un geste de Gab.
+État lu le 03/11/2026 par OUTILLAGE (`git fetch --prune origin`, `git merge-base --is-ancestor <branche> origin/main`), `main` = `b9155b6` ; tableau complété le 04/11 (AF1-ter : P6+ et OUTILLAGE fusionnées, `main` = `1bd4b0d`). **Aucune branche n'a été supprimée** : c'est un geste de Gab.
 
 **Contenues dans `main` → à supprimer par Gab (contenue dans main)** : 18 branches (16 le 03/11, + P6+ et OUTILLAGE le 04/11). Avance sur `main` = 0 commit pour chacune.
 | Branche | Tête | Dernier commit |
@@ -57,10 +57,10 @@ PILOTE A à C (plan contre réel, code en mars 2027, `claude/ClimPilot-MISSION-P
 | `claude/login-password-issue-f7cidd` | `ba4570d` | +1 / −144 | 28/08 — connexion : messages d'erreur honnêtes + réinitialisation du mot de passe (`index.html`, `sw.js`) ; très ancienne, à rapprocher de la mission COMPTE. |
 
 ## Demandes de fusion
-État lu le 03/11/2026 (`gh api repos/gablry8/cp-gl2607/pulls?state=all`), complété le 04/11 (AF1-ter).
+État lu le 03/11/2026 (`gh api repos/gablry8/cp-gl2607/pulls?state=all`), complété le 04/11 (AF1-ter, AF1-quater).
 | # | Branche → `main` | État | Note |
 |---|---|---|---|
-| 9 | `correctif/af1-pertes-donnees` | **ouverte, brouillon** | AF1 + AF1-bis + AF1-ter ; à fusionner après la relecture d'AF1-ter et l'essai de Gab |
+| 9 | `correctif/af1-pertes-donnees` | **ouverte, brouillon** | AF1 + AF1-bis + AF1-ter + AF1-quater ; à fusionner après la relecture courte d'AF1-quater (C5 à C7) et l'essai de Gab |
 | 8 | `outillage/claude-code` | fusionnée le 04/11 (`1bd4b0d`) | CI de `4c9c1da` : 1238 réussis / 0 échoué |
 | 7 | `correctif/p6-env-superpdp` | fusionnée le 03/11 (`1e33a67`) | CI de `b1560c9` : 1282 réussis / 0 échoué |
 | 6 | `correctif/c3-article-absent` | fusionnée le 03/11 (`b9155b6`) | CI de `5c2d470` : 1238 réussis / 0 échoué |
