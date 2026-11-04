@@ -1821,9 +1821,17 @@ function cpRefusFacture(d){if(!d)return null;
   if(f){const n=((f.facSolde||f.facAcompte)||{}).num||'';cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'facture_famille',autre:f.id});
     return '⛔ Une facture ('+n+') est déjà émise sur '+(f.id===racine.id?'le devis d\'origine ':'l\'avenant ')+(f.num||'')+' : jamais deux factures pour le même chantier. Fais d\'abord un avoir sur celle-ci.';}
   const anc=cpAncetresDevis(d),ancIds=anc.map(x=>x.id),desc=cpDescendantsDevis(d);
-  /* un descendant accepté : ce devis est remplacé (l'autre appareil l'a vu, pas celui-ci) */
-  const a=desc.find(x=>x.statut==='accepte');
-  if(a){const e=cpEnfantVers(d,a)||a;if(cpMarquerRemplace(d,e,'reparation_fusion'))save(LS.devis,DEVIS);cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'avenant_accepte',avenant:a.id});
+  /* un descendant accepté : ce devis est remplacé (l'autre appareil l'a vu, pas celui-ci). AF1-5 (relecture d'AF1-quater) : on vise la FEUILLE
+     acceptée (le dernier avenant de la chaîne) ; deux feuilles sur des branches différentes → rien n'est réécrit, Gabriel tranche ; un devis qui
+     porte déjà une facture n'est pas marqué « remplacé » (cpMarquerRemplace le refuse) : le message dit quoi faire au lieu de tourner en rond. */
+  const descAcc=desc.filter(x=>x.statut==='accepte');
+  if(descAcc.length){
+    const feuilles=descAcc.filter(x=>!descAcc.some(y=>y!==x&&cpAncetresDevis(y).some(z=>z.id===x.id)));
+    if(cpFactureVivante(d)){const a=feuilles[0],n=((d.facSolde||d.facAcompte)||{}).num||'';cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'facture_et_avenant',avenant:a.id});
+      return '⛔ Devis '+(d.num||'')+' porte déjà une facture ('+n+') et son avenant n° '+(a.num||'')+' est accepté : fais d\'abord un avoir sur cette facture (puis facture l\'avenant), ou annule l\'avenant.';}
+    if(feuilles.length>1){cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'deux_avenants',autre:feuilles[1].id});
+      return '⛔ Deux avenants du devis '+(d.num||'')+' sont acceptés ('+feuilles.map(x=>x.num||'').join(' et ')+') : annule l\'un des deux avant de facturer.';}
+    const a=feuilles[0],e=cpEnfantVers(d,a)||a;if(cpMarquerRemplace(d,e,'reparation_fusion'))save(LS.devis,DEVIS);cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'avenant_accepte',avenant:a.id});
     return '⛔ Devis '+(d.num||'')+' remplacé par l\'avenant n° '+(e.num||'')+' (accepté sur un autre appareil) : il ne se facture plus. Facture l\'avenant'+(e.id!==a.id?' n° '+(a.num||'')+' (le dernier accepté)':'')+'.';}
   /* un frère ou un cousin accepté : deux avenants concurrents, Gabriel tranche */
   const c=autres.find(x=>ancIds.indexOf(x.id)<0&&desc.indexOf(x)<0&&x.statut==='accepte');
