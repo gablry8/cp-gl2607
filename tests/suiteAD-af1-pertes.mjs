@@ -853,6 +853,34 @@ const MK3 = `(async function(){ const W=ms=>new Promise(r=>setTimeout(r,ms)); co
   rec(GQ.LNK2, 'T24 réparation sans module signature : le lien à désactiver est mis en attente (cpLiensADesactiver), puis nxsViderLiensEnAttente le traite (appel « remplace » pour l\'original), file vidée', !!(!r.absent && r.n === 1 && Array.isArray(r.file) && r.file.some(x => x[0] === 'devis' && x[1] === r.o && x[2] === 'remplace') && r.vides === 1 && r.appels.some(x => x.t === 'devis' && x.id === r.o && x.raison === 'remplace') && r.reste === 0), j(r));
 }
 
+/* ================= AF1-5 (essai dans le navigateur du 04/11/2026, soir) : T25 le bandeau 🔒 d'un devis verrouillé ne doit pas rester affiché
+   quand l'éditeur passe à un autre devis non verrouillé (« Dupliquer » depuis le bandeau, ou ouverture d'un brouillon depuis la liste) ================= */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = ms => new Promise(r => setTimeout(r, ms));
+    const ban = () => { const b = document.getElementById('nxd2Banner'); return b ? b.textContent.replace(/\s+/g, ' ').trim() : ''; };
+    /* boutons de statut (onglet Récapitulatif) : {total, actifs} */
+    const libres = async () => { nxd2.tab('recap'); await W(250); const bs = [...document.querySelectorAll('#v-nx_devis2 .nxd2-seg button')].filter(b => b.offsetParent !== null); return { total: bs.length, actifs: bs.filter(b => !b.disabled).length }; };
+    /* un devis accepté (verrouillé) ouvert dans l'éditeur v2 : bandeau 🔒 attendu */
+    const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 }); go('tous'); await W(120);
+    openDevis(o.id); await W(500);
+    const banO = ban(), libresO = await libres();
+    /* a. « Dupliquer » depuis le bandeau : le brouillon s'ouvre, le bandeau de l'original ne doit plus être là */
+    const n0 = DEVIS.length; cpDevisDupliquer(o.id); await W(600);
+    const dup = DEVIS[DEVIS.length - 1];
+    const a = { cree: DEVIS.length === n0 + 1 && dup.id !== o.id, cur: (typeof cur !== 'undefined' && cur) ? cur.id : null, statut: dup.statut, bandeau: ban(), libres: await libres() };
+    /* b. depuis la liste : ouvrir un verrouillé, puis un brouillon */
+    nxd2.close(); go('tous'); await W(150); openDevis(o.id); await W(400); const banO2 = ban();
+    nxd2.close(); go('tous'); await W(150); openDevis(dup.id); await W(500);
+    const b = { cur: (typeof cur !== 'undefined' && cur) ? cur.id : null, bandeau: ban(), libres: await libres(), banO2 };
+    nxd2.close(); go('tous'); await W(100);
+    return { o: o.id, oNum: o.num, banO, libresO, dup: dup.id, a, b };
+  });
+  rec('AF1-5 bandeau de l\'éditeur', 'Témoin : un devis accepté ouvert dans l\'éditeur porte le bandeau « il ne se modifie plus » et ses boutons de statut sont grisés', !!(/ne se modifie plus/.test(r.banO) && r.banO.includes(r.oNum) && r.libresO.total >= 4 && r.libresO.actifs === 0), j({ banO: r.banO, libresO: r.libresO }));
+  rec('AF1-5 bandeau de l\'éditeur', 'T25a « Dupliquer » depuis le bandeau d\'un devis verrouillé : le brouillon s\'ouvre SANS le bandeau 🔒 de l\'original, ses boutons de statut sont actifs', !!(r.a.cree && r.a.cur === r.dup && r.a.statut === 'brouillon' && !/ne se modifie plus/.test(r.a.bandeau) && !r.a.bandeau.includes(r.oNum) && r.a.libres.total >= 4 && r.a.libres.actifs === r.a.libres.total), j(r.a));
+  rec('AF1-5 bandeau de l\'éditeur', 'T25b depuis la liste : un verrouillé puis un brouillon → le brouillon n\'hérite pas du bandeau 🔒', !!(/ne se modifie plus/.test(r.b.banO2) && r.b.cur === r.dup && !/ne se modifie plus/.test(r.b.bandeau) && !r.b.bandeau.includes(r.oNum) && r.b.libres.total >= 4 && r.b.libres.actifs === r.b.libres.total), j(r.b));
+}
+
 rec('AF1', 'Aucune erreur JavaScript pendant la suite', errs.length === 0, errs.join(' | '));
 await ctx.close();
 await closeBrowser();
