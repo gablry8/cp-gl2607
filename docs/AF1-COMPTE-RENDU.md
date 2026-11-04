@@ -286,6 +286,20 @@ Même environnement qu'AF1 (§ 6 : `unshare -n`, PostgreSQL 16 local, validateur
 
 Écran du journal ; rappel « refais la fiche » après l'annulation d'une fiche fluide ; message quand le téléphone d'un devis diffère de la fiche client ; défaut de synchro D1 (P3).
 
+### 11.9 Relecture du 04/11 (seconde session AF1-bis) : tout rejoué ici, rien de nouveau dans le code
+
+Le code et les tests d'AF1-bis (`f6ed6a7`, `22ca108`) ont été relus point par point contre les 8 règles de Gabriel : rien à corriger. Les commits du 04/11 ne touchent que ce document. `git merge origin/main` : rien à intégrer (`main` = `1e33a67`, déjà contenue).
+
+| Vérification | Résultat |
+|---|---|
+| Preuve « rouge d'abord » rejouée : arbre `9fcf2cf` + tests de `f6ed6a7` (`tests/suiteAD-af1-pertes.mjs`, `tests/suiteI-emission.mjs`), `CP_SUITES="suiteAD-af1-pertes suiteI-emission"` | suite AD **56 réussis / 18 échoués** (T9 ×2, T14 ×8, T15 ×5, T16 ×2, T17 ×1 : exactement le § 11.3) ; suite I **43/43** (I3d vert d'emblée, comme écrit) ; journal `resAD-bis-rouge-9fcf2cf-04-11.log` gardé dans le dossier de la session |
+| Batterie complète locale sur `e01a905` (arbre propre ; même environnement qu'au § 6 : `unshare -n`, PostgreSQL 16.15, validateurs CEN `validation-1.3.16` et FNFE `v1.4.0.04`, Chromium 141 / Playwright 1.56.1) | **1 362 réussis, 1 échoué, 0 SKIP, 5 « À TRANCHER » inchangés** ; suite AD 74/74, suite I 43/43, suite W 64/64, suite X 8/8, suite Y 21 + 5, suite Z 55/55 (golden identiques), SQL 66/66, aperçu 11/11 ; 0 connexion externe. Le seul échec : suite Q, contrôle Q10 « voile pendant le rechargement qui suit une mise à jour » — `voile:false`, données finales justes (`apresA: pc:true, srv:true`) : le voile n'est pas apparu dans la fenêtre de 6 s, cas de temps déjà décrit dans le test (P0, 21/10 : « sur une machine chargée le voile arrivait après la fenêtre ; les données étaient bien conservées »). Aucune donnée perdue. |
+| Suite Q rejouée seule sur le même arbre | en cours au moment de ce commit : résultat porté au commit suivant |
+| CI GitHub de `18da052` (document seul, 03/11 au soir) | push ([run 62](https://github.com/gablry8/cp-gl2607/actions/runs/41724889387)) **verte** ; demande de fusion ([run 63](https://github.com/gablry8/cp-gl2607/actions/runs/41724900568)) **rouge sans qu'aucun test ait tourné** : `npm i -g playwright` coupé par un délai d'attente du registre npm (`EIDLETIMEOUT`, 5 min), incident de l'infrastructure. Relancé le 04/11 (2e tentative), puis annulé automatiquement par le run 65 (même groupe de concurrence, même code). |
+| CI GitHub des commits « document seul » du 04/11 | en cours au moment de ce commit : résultat porté au commit suivant |
+
+Le défaut constaté par la relecture sur l'énoncé : **PR #8 n'est pas fusionnée** (§ 11.8), donc `docs/FILE-DES-MISSIONS.md` reste à coller par Gabriel après #8.
+
 ### 11.8 `docs/FILE-DES-MISSIONS.md` — à coller par Gabriel après la fusion de PR #8
 
 Le fichier n'existe **que** sur `outillage/claude-code` (PR #8, **ouverte, brouillon** au moment d'AF1-bis **et encore le 04/11** d'après GitHub — `main` est à `1e33a67`, PR #7 ; l'énoncé du 04/11 disait #8 fusionnée : non). Le créer ici produirait un conflit d'ajout à la fusion de #8. Lignes prêtes :
