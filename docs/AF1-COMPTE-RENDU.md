@@ -15,7 +15,7 @@
 6. Batterie complète ici : AF1 sur `1f677d4` **COMPLET, RÉUSSI — 1 343 / 0 / 0** ; **AF1-bis : COMPLET, RÉUSSI — 1 363 réussis, 0 échoué, 0 SKIP**, 5 « À TRANCHER » inchangés (2e passage, sur `2fcb96d`, arbre propre ; le 1er passage avait planté sur la suite X sous charge, rejouée seule 8/8 : § 11.5) ; CI GitHub du même code (`1c9abf9`) : **verte** (push, run 60 ; demande de fusion, run 61). Détail § 6 et § 11.5.
 7. Golden Y (documents) et Z (calculs) **identiques**, les 5 « À TRANCHER » **inchangés** ; aucun montant, aucune règle fiscale, aucune mention légale, aucun arrondi ne change (AF1-bis compris : le bandeau ANNULÉ n'apparaît que sur un devis annulé, aucun golden n'en a).
 8. Données : seulement des **champs ajoutés** — AF1 : `avenantDe`, `detAdr`, `detVille`, `detSiret`, `annulee`, clé locale `cpnext_journal` ; **AF1-bis** : deux valeurs de statut nouvelles (`remplace`, `annule`) et les champs `remplacePar`, `annulation`, `signatureEnAttente` ; rien de retiré ; export CSV du registre fluides : 2 colonnes ajoutées à la fin.
-9. Ce qui n'est **pas** fait, volontairement (§ 10, § 11.7, `docs/APRES-PRO-V1.md`) : écran du journal ; rappel « refais la fiche » après l'annulation d'une fiche fluide ; message quand le téléphone d'un devis diffère de la fiche client ; défaut de synchro D1 (P3). **`docs/FILE-DES-MISSIONS.md` n'existe ni sur `main` ni sur cette branche** (il est sur `outillage/claude-code`, PR #8 **encore ouverte** au moment d'AF1-bis, contrairement à l'énoncé) : les lignes à y porter sont prêtes au § 11.8, à coller après la fusion de #8.
+9. Ce qui n'est **pas** fait, volontairement (§ 10, § 11.7, `docs/APRES-PRO-V1.md`) : écran du journal ; rappel « refais la fiche » après l'annulation d'une fiche fluide ; message quand le téléphone d'un devis diffère de la fiche client ; défaut de synchro D1 (P3). **`docs/FILE-DES-MISSIONS.md` n'existe ni sur `main` ni sur cette branche** (il est sur `outillage/claude-code`, PR #8 **encore ouverte, en brouillon**, vérifié sur GitHub le 03/11 au soir **et de nouveau le 04/11** — l'énoncé d'AF1-bis la disait fusionnée, ce n'est pas le cas ; `main` est toujours `1e33a67`) : les lignes à y porter sont prêtes au § 11.8, à coller après la fusion de #8. Créer le fichier ici provoquerait un conflit à la fusion de #8.
 10. Retour arrière à tout moment : revert des commits « code » (`a789cbd` pour AF1, `22ca108` pour AF1-bis) ; les tests restent et redeviennent rouges.
 
 ## 1. Synthèse
@@ -256,6 +256,7 @@ Journal des rouges : `resAD-bis-rouge-9fcf2cf.log` dans le dossier de la session
 4. **Avenant d'un devis remplacé ou annulé** : refusé (« fais l'avenant depuis l'avenant » / « duplique-le »).
 5. **Original déjà annulé** quand l'avenant est accepté : il reste « annulé » (pas « remplacé »).
 6. **Statut d'un devis remplacé ou annulé** : ne change plus jamais (ni « Rouvrir » ni « Refusé »). Pour reprendre un devis annulé par erreur : « Dupliquer ».
+7. **Deux avenants du même original** (tous deux créés pendant que l'original était encore « accepté » ; impossible ensuite, « Faire un avenant » étant refusé sur un devis remplacé) : le second avenant accepté remplace aussi l'original (`remplacePar` pointe vers lui) ; le premier avenant reste « accepté » et facturable. C'est à Gabriel de l'annuler (« Annuler le devis », motif « erreur de saisie »). Cas non testé, non rencontré (hypothèse, relecture du 04/11).
 
 ### 11.5 Batterie complète et CI (AF1-bis)
 
@@ -287,12 +288,12 @@ Même environnement qu'AF1 (§ 6 : `unshare -n`, PostgreSQL 16 local, validateur
 
 ### 11.8 `docs/FILE-DES-MISSIONS.md` — à coller par Gabriel après la fusion de PR #8
 
-Le fichier n'existe **que** sur `outillage/claude-code` (PR #8, **ouverte, brouillon** au moment d'AF1-bis — `main` est à `1e33a67`, PR #7). Le créer ici produirait un conflit d'ajout à la fusion de #8. Lignes prêtes :
+Le fichier n'existe **que** sur `outillage/claude-code` (PR #8, **ouverte, brouillon** au moment d'AF1-bis **et encore le 04/11** d'après GitHub — `main` est à `1e33a67`, PR #7 ; l'énoncé du 04/11 disait #8 fusionnée : non). Le créer ici produirait un conflit d'ajout à la fusion de #8. Lignes prêtes :
 
 | # | Mission | Branche | État | Prochain geste | Qui |
 |---|---|---|---|---|---|
 | 3 | P6+ : environnement Super PDP, droits du visiteur non connecté | `correctif/p6-env-superpdp` | **fusionnée le 03/11** (PR #7, `1e33a67`) ; branche contenue dans `main` | script `6-REEL-*` ; déploiement de `superpdp` ; supprimer la branche | Gab |
-| 4 | OUTILLAGE : CLAUDE.md, règles bloquantes, cette file | `outillage/claude-code` | PR #8 (fusion à confirmer par Gab : encore ouverte le 03/11 au soir) ; `main` protégée | relecture P10, fusion | Gab |
+| 4 | OUTILLAGE : CLAUDE.md, règles bloquantes, cette file | `outillage/claude-code` | PR #8 (fusion à confirmer par Gab : encore ouverte le 04/11) ; `main` protégée | relecture P10, fusion | Gab |
 | 5 | AF1 + AF1-bis : zéro perte de données (+ C-N1, A-N5 ; avenant / original, « Annuler le devis ») | `correctif/af1-pertes-donnees` | **fait le 03/11**, PR #9 en brouillon, batterie et CI vertes (`docs/AF1-COMPTE-RENDU.md`) | décisions 1 à 2 du compte rendu, essai § 8 et § 11.6, relecture, fusion | Gab |
 
-Demandes de fusion : 7 fusionnée le 03/11 (`1e33a67`) ; 8 ouverte (brouillon) ; 9 ouverte (brouillon, AF1 + AF1-bis). Branches : `correctif/p6-env-superpdp` et `correctif/c3-article-absent` contenues dans `main`.
+Demandes de fusion : 7 fusionnée le 03/11 (`1e33a67`) ; 8 ouverte (brouillon, encore le 04/11) ; 9 ouverte (brouillon, AF1 + AF1-bis). Branches : `correctif/p6-env-superpdp` et `correctif/c3-article-absent` contenues dans `main`.
