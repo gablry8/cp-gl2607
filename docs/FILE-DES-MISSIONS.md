@@ -16,6 +16,8 @@
 ## Ensuite, jusqu'à « prêt pour le terrain » (contrôle du 01/06/2027)
 S (sécurité, dossier dans le Project) → COMPTE (mot de passe, double authentification, appareils) → P11 (export automatique + journal d'erreurs) → AF1-B (factures jamais perdues) → AF2 → AF5 → AF4 (après les réponses de la comptable) → AF3 (après la décision 12) → TVA (après la comptable ET la décision de statut) → RAPPELS (dossier en février, code en mars si retenu). Juin 2027 : Supabase Pro + hébergement hors GitHub Pages (gestes de Gab).
 
+- **P3 : dossier prêt (`docs/MISSION-P3.md`), à lancer après la fusion de #10** (05/11, branche `docs/mission-p3`, documents seulement). Une seule mission sur le code à la fois : ordre avec S et périmètre à décider par Gab (questions du § 5.7 du dossier).
+
 ## Plus tard (gelé, voir `docs/APRES-PRO-V1.md`)
 PILOTE A à C (plan contre réel, code en mars 2027, `claude/ClimPilot-MISSION-PILOTE.md`) ; refonte R1 à R4 après l'ouverture (dont les écrans « style iPhone », phase R4) ; module clients / machines / fluides ; factures par ClimPilot (Super PDP réel + e-reporting), au plus tôt fin 2027.
 
