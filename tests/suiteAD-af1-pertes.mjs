@@ -962,6 +962,73 @@ const GQ2 = { MSG: 'AF1-5 messages de refus', BR: 'AF1-5 deux branches', LNK: 'A
   rec(GQ2.LNK, 'T28 la demande reste en file après une réponse en erreur (-1) ou un rejet, et n\'en sort qu\'après une réponse sans erreur', !!(!r.absent && r.n1 === 1 && JSON.stringify(r.apresErreur) === '["X-ERREUR"]' && r.n2 === 1 && JSON.stringify(r.apresOk) === '[]' && r.n3 === 1 && JSON.stringify(r.apresRejet) === '["X-REJET"]'), j(r));
 }
 
+/* ================= AF1-5 ter (relecture d'AF1-5 bis, Opus, 05/11/2026) : T29 chaîne d'avenants en boucle (données abîmées) → refus net, pas de plantage ;
+   T30 la file des liens couvre aussi les demandes faites en cours d'utilisation ; T31 messages avec deux branches (original facturé ; avenant du milieu) ================= */
+const GQ3 = { CYC: 'AF1-5 chaîne en boucle', LNK: 'AF1-5 file des liens (en cours d\'utilisation)', MSG: 'AF1-5 messages deux branches' };
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = ms => new Promise(r => setTimeout(r, ms)); const K = LS.devis;
+    const F = id => { const d = DEVIS.find(x => x.id === id); return !!(d && (d.facSolde || d.facAcompte)); };
+    /* données abîmées : X avenant de Z, Z avenant de Y, Y avenant de X ; Y et Z acceptés */
+    const X = AD.v2({ statut: 'accepte' }), Y = AD.v2({ statut: 'accepte' }), Z = AD.v2({ statut: 'accepte' });
+    X.avenantDe = { id: Z.id, num: Z.num }; Z.avenantDe = { id: Y.id, num: Y.num }; Y.avenantDe = { id: X.id, num: X.num }; save(K, DEVIS);
+    let refus = null, erreur = null; try { refus = cpRefusFacture(X); } catch (e) { erreur = String(e && e.message || e); }
+    AD.reset(); let erreur2 = null; try { await facturerDevis(X.id, 'solde'); } catch (e) { erreur2 = String(e && e.message || e); } await W(300);
+    const journal = JSON.parse(localStorage.getItem('cpnext_journal') || '[]').filter(x => x.id === X.id && x.motif === 'chaine_abimee').length;
+    /* nettoyage : ces trois devis abîmés ne doivent pas gêner la suite */
+    [X, Y, Z].forEach(d => { const i = DEVIS.findIndex(x => x.id === d.id); if (i >= 0) DEVIS.splice(i, 1); }); save(K, DEVIS);
+    return { refus, erreur, erreur2, fac: F(X.id), msgs: __msgs.slice(), journal };
+  });
+  rec(GQ3.CYC, 'T29 chaîne d\'avenants en boucle (X → Z → Y → X, Y et Z acceptés) : « Facturer » X refusé avec un message clair (chaîne abîmée, à vérifier), aucun plantage, aucune facture, ligne au journal', !!(!r.erreur && !r.erreur2 && typeof r.refus === 'string' && /abîmée/i.test(r.refus) && !r.fac && (r.msgs || []).some(x => /abîmée/i.test(x)) && r.journal >= 1), j(r));
+}
+
+/* ---------------- T30 : cpDesactiverLiens (en cours d'utilisation) remet la demande en file quand le cloud n'a pas répondu sans erreur ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    const W = ms => new Promise(r => setTimeout(r, ms)); const sauve = window.nxsDesactiverLiens; if (typeof cpDesactiverLiens !== 'function') return { absent: true };
+    try {
+      window.cpLiensADesactiver = [];
+      window.nxsDesactiverLiens = function () { return Promise.resolve(-1); }; cpDesactiverLiens('devis', 'X-RT-ERREUR', 'annule'); await W(50);
+      const apresErreur = window.cpLiensADesactiver.map(a => a[1]);
+      window.nxsDesactiverLiens = function () { return Promise.reject(new Error('réseau')); }; cpDesactiverLiens('devis', 'X-RT-REJET', 'remplace'); await W(50);
+      const apresRejet = window.cpLiensADesactiver.map(a => a[1]);
+      window.nxsDesactiverLiens = function () { return Promise.resolve(0); }; cpDesactiverLiens('devis', 'X-RT-OK', 'annule'); await W(50);
+      const apresOk = window.cpLiensADesactiver.map(a => a[1]);
+      cpDesactiverLiens('devis', 'X-RT-ERREUR', 'annule'); await W(50);   /* pas de doublon dans la file */
+      const sansDoublon = window.cpLiensADesactiver.filter(a => a[1] === 'X-RT-ERREUR').length;
+      window.cpLiensADesactiver.length = 0;
+      return { apresErreur, apresRejet, apresOk, sansDoublon };
+    } finally { window.nxsDesactiverLiens = sauve; }
+  });
+  rec(GQ3.LNK, 'T30 demande faite en cours d\'utilisation : mise en file sur -1 et sur un rejet, pas sur une réponse ≥ 0, sans doublon', !!(!r.absent && JSON.stringify(r.apresErreur) === '["X-RT-ERREUR"]' && JSON.stringify(r.apresRejet) === '["X-RT-ERREUR","X-RT-REJET"]' && JSON.stringify(r.apresOk) === '["X-RT-ERREUR","X-RT-REJET"]' && r.sansDoublon === 1), j(r));
+}
+
+/* ---------------- T31 : messages avec deux branches acceptées ---------------- */
+{
+  const r = await p.evaluate(async (MK3) => {
+    AD.reset(); const W = ms => new Promise(r => setTimeout(r, ms)); const K = LS.devis;
+    const F = id => { const d = DEVIS.find(x => x.id === id); return !!(d && (d.facSolde || d.facAcompte)); };
+    const S = id => (DEVIS.find(x => x.id === id) || {}).statut;
+    /* a. O porte un acompte, deux branches acceptées (B1 direct, A2 petit-fils) : le refus nomme les deux avenants */
+    const m = await eval(MK3); if (!m) return { absent: true };
+    const O = DEVIS.find(x => x.id === m.o); O.statut = 'accepte'; delete O.remplacePar; save(K, DEVIS);
+    go('tous'); await W(120); cpDevisAvenant(m.o); await W(250); const b1 = DEVIS.find(x => x.avenantDe && x.avenantDe.id === m.o && x.id !== m.a1); if (!b1) return { absent: true };
+    nxd2.close(); go('tous'); await W(120);
+    const B1 = DEVIS.find(x => x.id === b1.id); B1.statut = 'accepte'; O.facAcompte = { num: 'TEST-F-' + __REF.an + '-0814', date: __REF.jour, montant: 50, baseTTC: 300, payeLe: null, mode: '' }; save(K, DEVIS);
+    AD.reset(); await facturerDevis(m.o, 'solde'); await W(300);
+    const a = { facSolde: !!O.facSolde, statutO: S(m.o), msgs: __msgs.slice(), nommeLesDeux: __msgs.some(x => x.includes(m.a2Num) && x.includes(b1.num) && /avoir/i.test(x)) };
+    /* b. A1 revenu « accepté » entre O (remplacé) et deux branches acceptées (A2 et B1) : « Facturer » A1 → « Deux avenants » nommant A2 et B1, A1 inchangé */
+    delete O.facAcompte; O.statut = 'remplace'; O.remplacePar = { id: m.a1, num: m.a1Num, at: Date.now() };
+    const A1 = DEVIS.find(x => x.id === m.a1); A1.statut = 'accepte'; delete A1.remplacePar; save(K, DEVIS);
+    AD.reset(); await facturerDevis(m.a1, 'solde'); await W(300);
+    const b = { fac: F(m.a1), statutA1: S(m.a1), lienA1: !!(DEVIS.find(x => x.id === m.a1) || {}).remplacePar, msgs: __msgs.slice(), deuxAvenants: __msgs.some(x => /Deux avenants/i.test(x) && x.includes(m.a2Num) && x.includes(b1.num)), factureAvenant: __msgs.some(x => /Facture l'avenant/i.test(x)) };
+    return { a, b };
+  }, MK3);
+  if (r.absent) { rec(GQ3.MSG, 'T31 prérequis', false, j(r)); r.a = r.b = {}; }
+  rec(GQ3.MSG, 'T31a original facturé + deux branches acceptées : le refus nomme les deux avenants (avoir ou annulation), aucune facture', !!(!r.a.facSolde && r.a.statutO === 'accepte' && r.a.nommeLesDeux), j(r.a));
+  rec(GQ3.MSG, 'T31b avenant du milieu revenu « accepté » sous deux branches : « Deux avenants » nommant A2 et B1, pas « Facture l\'avenant », rien n\'est réécrit', !!(!r.b.fac && r.b.statutA1 === 'accepte' && !r.b.lienA1 && r.b.deuxAvenants && !r.b.factureAvenant), j(r.b));
+}
+
 rec('AF1', 'Aucune erreur JavaScript pendant la suite', errs.length === 0, errs.join(' | '));
 await ctx.close();
 await closeBrowser();
