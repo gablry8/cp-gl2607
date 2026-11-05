@@ -1,6 +1,6 @@
 # AF1-5 — le bandeau 🔒 d'un devis verrouillé restait affiché sur le devis suivant, et suites de la relecture d'AF1-quater — compte rendu (04/11/2026, soir)
 
-> Suite d'AF1 (PR #9 fusionnée par Gabriel le 04/11 à 20 h 46, `main` = `2e1214b`). Défaut vu par Claude (Fable 5.1) dans le navigateur de Gabriel pendant l'essai des parcours du compte rendu AF1 sur la copie d'essai AF1-quater ; présent sur `main`. Branche `correctif/af1-bandeau-residuel`, PR #10 (brouillon). Exécutant : Fable 5.1, dans la conversation du Project. Rien n'est fusionné ni déployé ; aucune base Supabase touchée.
+> Suite d'AF1 (PR #9 fusionnée par Gabriel le 04/11 à 19 h 46, heure de Paris — `merged_at` 18:46 UTC ; une première version de ce document disait 20 h 46, lecture faite dans un autre fuseau —, `main` = `2e1214b`). Défaut vu par Claude (Fable 5.1) dans le navigateur de Gabriel pendant l'essai des parcours du compte rendu AF1 sur la copie d'essai AF1-quater ; présent sur `main`. Branche `correctif/af1-bandeau-residuel`, PR #10 (brouillon). Exécutant : Fable 5.1, dans la conversation du Project. Rien n'est fusionné ni déployé ; aucune base Supabase touchée.
 
 > **AF1-5 bis (04/11, 23 h)** : les constats mineurs 1 à 3 de la relecture d'AF1-quater (Opus) sont traités dans la même branche (§ 9), pour ne pas ouvrir une 3e branche en conflit avec celle-ci sur la suite AD. Commits : `6ba943c` (tests d'abord, 5 rouges sur `bd07606`), `6bb5e20` (code), puis documents.
 
@@ -15,7 +15,7 @@
 ## 1. Constat (certain : reproduit deux fois à la main, puis par le test T25)
 Dans l'éditeur de devis (`next-devis2.js`), ouvrir un devis **verrouillé** (accepté, signé ou facturé : bandeau 🔒 « il ne se modifie plus »), puis cliquer **« Dupliquer »** dans ce bandeau : le brouillon créé s'ouvre, **mais le bandeau 🔒 de l'original reste affiché au-dessus**, avec ses boutons « Faire un avenant / Dupliquer / Annuler le devis » qui agissent sur l'**original**. Même chose en ouvrant ensuite un brouillon depuis la liste. Les champs du brouillon sont bien modifiables (pas de verrou réel), « ✍️ Signature » et « 💾 Enregistrer » sont présents : **aucune perte de données**. Le piège : Gabriel croit annuler ou amender le brouillon et vise l'original (pour un original facturé, l'annulation est de toute façon refusée ; pour un original accepté sans facture, la fenêtre « Annuler le devis » s'ouvrirait sur lui).
 
-Vu sur la copie d'essai `famous-gingersnap` (code AF1-quater `e6b31b5`, base TEST), donc aussi sur `main` après la fusion de #9. Le défaut date d'AF1 D0 (bandeau 🔒 ajouté le 03/11) : il n'était couvert ni par les tests (T1 à T24 n'enchaînent jamais deux ouvertures de devis différents), ni par les relectures.
+Vu sur la copie d'essai (Netlify, code AF1-quater `e6b31b5`, base TEST), donc aussi sur `main` après la fusion de #9. Le défaut date d'AF1 D0 (bandeau 🔒 ajouté le 03/11) : il n'était couvert ni par les tests (aucun contrôle de T1 à T24 ne lisait le bandeau après l'ouverture d'un second devis — le témoin de T4 ouvre bien un brouillon après les devis verrouillés de T1 à T3, sans regarder le bandeau), ni par les relectures.
 
 ## 2. Cause (certain, lu)
 `openEditor(d, opt)` posait le devis, appelait `render()` puis, éventuellement, `showBanner(opt.banner)`. `updHead()` pose le bandeau 🔒 **si** le devis ouvert est verrouillé, mais **ne l'enlève jamais** quand il ne l'est pas ; `openV2` pose les bandeaux « avenant du devis n° … » et « brouillon retrouvé ». Rien ne vidait le bandeau entre deux devis.
@@ -33,6 +33,7 @@ Dans `openEditor`, `showBanner('')` **avant** `render()` : le bandeau du devis p
 1. Ouvre un devis **facturé** (ou accepté) : **attendu** : bandeau 🔒 avec son numéro.
 2. Clique **« Dupliquer »** dans le bandeau. **Attendu** : le brouillon s'ouvre **sans** bandeau 🔒 ; en haut à droite : « ✍️ Signature » et « 💾 Enregistrer » ; « Brouillon » dans l'en-tête.
 3. Ferme, ouvre le même devis facturé, puis depuis la liste un brouillon : **attendu** : pas de bandeau 🔒 sur le brouillon.
+4. Le sens inverse (protège contre un effacement en trop) : ferme, ouvre un brouillon, puis le devis facturé : **attendu** : le bandeau 🔒 **revient**, avec son numéro.
 
 ## 6. Batterie complète et CI
 | Passage | Résultat |
@@ -45,6 +46,9 @@ Dans `openEditor`, `showBanner('')` **avant** `render()` : le bandeau du devis p
 
 ## 8. Ce qui n'a pas pu être vérifié
 - iPhone / Safari réels ; l'ancien formulaire (`index.html`, `wizard`) n'a pas ce bandeau (il a le sien, posé par `cpVerrouWizard` qui retire l'ancien bandeau et relève les champs à chaque chargement du formulaire : lu (**certain** pour le code), non joué dans le navigateur).
+
+## 8 bis. Relecture P10 courte d'AF1-5 (Opus, 04/11 soir, sur `bd07606` — avant AF1-5 bis)
+Verdict : **fusionnable**, rien de bloquant ; défaut reproduit par vrais clics sur `main`, disparu sur la tête ; 11 appelants qui passent `opt.banner` vérifiés (bandeau posé après `render()`), bandeau de l'assistant, copie d'un ancien devis, bloc facturation et bandeaux des modules sans effet de bord ; golden, périmètre, secrets (motifs privés actifs), CI : conformes. Quatre points mineurs de documents, corrigés dans ce commit : heure de fusion de #9 (19 h 46 Paris, pas 20 h 46), phrase du § 1 sur T1 à T24, nom de la copie d'essai retiré du dépôt public (décision prise par Claude, réversible : Gabriel peut préférer le garder), étape 4 du § 5 (le bandeau revient). Facultatif, non fait : T25 par vrais clics et avec les cas « avenant » / « brouillon retrouvé » (verts dans l'essai de la relecture, déjà sur `main`). Copie de la relecture : `claude/ClimPilot-AF1-5-RELECTURE.md` (Project). **AF1-5 bis (§ 9) n'était pas encore sur la branche : sa relecture courte reste à faire** (prompt remis à Gabriel le 04/11 au soir).
 
 ## 9. AF1-5 bis — constats mineurs de la relecture d'AF1-quater (Opus, 04/11 soir), traités ici
 Relecture copiée dans le Project : `claude/ClimPilot-AF1-quater-RELECTURE.md`. Verdict : « fusionnable, et déjà fusionné » (PR #9), CI de `main` verte, aucun trou bloquant ; six constats mineurs. Les constats 4 (nuance « jamais deux factures ») et 5 (avenant du milieu supprimé) sont écrits dans `docs/AF1-COMPTE-RENDU.md` (en-tête point 10, § 10) ; le 6 (file des missions) était déjà corrigé dans cette branche. Les constats 1 à 3 touchent le code :
