@@ -13,6 +13,11 @@
 | 5 | AF1 + AF1-bis + AF1-ter + AF1-quater : zéro perte de données (+ C-N1, A-N5 ; avenant / original, « Annuler le devis » ; signature tardive, arbre complet des avenants, fusion entre appareils) | `correctif/af1-pertes-donnees` | **fait les 03 et 04/11**, PR #9 en brouillon ; relectures Opus du 03/11 (AF1), du 04/11 (AF1-bis) et du 04/11 soir (AF1-ter) traitées ; `docs/AF1-COMPTE-RENDU.md` (§ 12 AF1-ter, § 13 AF1-quater) | relecture courte d'AF1-quater (Opus, C5 à C7), essai de Gab (§ 8, § 11.6, § 12.6, § 13.5), fusion, F5 sur chaque appareil le même jour | Opus puis Gab |
 | 6 | S : sécurité de l'appli (dossier privé dans le Project) | `correctif/s-securite` | à lancer après la fusion de #9 | décisions 6 à 8 de la fiche du 26/10 | CC (Fable 5.1) |
 
+## Outillage (aucun code de l'appli : peut avancer à côté de la mission en cours sur le code)
+| Mission | Branche | État | Prochain geste | Qui |
+|---|---|---|---|---|
+| OUTILLAGE-2 : faketime dans l'environnement, tests SQL de l'agenda indépendants de l'horloge, suite Q sans attentes fixes (Q5, Q10), trous du hook des secrets | `outillage/environnement-2` | **fait le 05/11** (Opus 5.5), **PR #12 en brouillon**, CI verte (run 108 : 1 386 / 0 / 2 SKIP connus, comme `main`) ; `docs/OUTILLAGE-2-COMPTE-RENDU.md` | relecture par Fable 5.1 (`relecture-p10`) ; Gab colle le nouveau setup script (§ 2 de `docs/ENVIRONNEMENT-CLAUDE-CODE.md`), décide de D1 à D5 du compte rendu, fusionne | Fable puis Gab |
+
 ## Ensuite, jusqu'à « prêt pour le terrain » (contrôle du 01/06/2027)
 S (sécurité, dossier dans le Project) → COMPTE (mot de passe, double authentification, appareils) → P11 (export automatique + journal d'erreurs) → AF1-B (factures jamais perdues) → AF2 → AF5 → AF4 (après les réponses de la comptable) → AF3 (après la décision 12) → TVA (après la comptable ET la décision de statut) → RAPPELS (dossier en février, code en mars si retenu). Juin 2027 : Supabase Pro + hébergement hors GitHub Pages (gestes de Gab).
 
