@@ -14,6 +14,11 @@
 | 6 | AF1-5 (bandeau 🔒 résiduel dans l'éditeur, vu dans le navigateur de Gab le 04/11 au soir) + AF1-5 bis (constats mineurs 1 à 3 de la relecture d'AF1-quater : file des liens de signature, messages de refus, deux branches) + AF1-5 ter (constats de la relecture d'AF1-5 bis : chaîne en boucle, file des liens en cours d'utilisation, messages, catch vides) | `correctif/af1-bandeau-residuel` | **fait le 04/11 au soir**, PR #10 en brouillon ; suite AD 115 / 0, cache 1134 ; relectures courtes d'AF1-5 (sur `bd07606`) et d'AF1-5 bis (sur `e75c893`) par Opus : **fusionnables** ; batterie et CI d'AF1-5 ter : `docs/AF1-5-COMPTE-RENDU.md` § 6 ter ; `docs/AF1-5-COMPTE-RENDU.md` | relecture finale courte d'AF1-5 ter (Opus), essai (§ 5), fusion, F5 sur chaque appareil le même jour | Opus puis Gab |
 | 7 | S : sécurité de l'appli (dossier privé dans le Project) | `correctif/s-securite` | à lancer après la fusion de #10 | décisions 6 à 8 de la fiche du 26/10 | CC (Fable 5.1) |
 
+## Outillage (aucun code de l'appli : peut avancer à côté de la mission en cours sur le code)
+| Mission | Branche | État | Prochain geste | Qui |
+|---|---|---|---|---|
+| OUTILLAGE-2 : faketime dans l'environnement, tests SQL de l'agenda indépendants de l'horloge, suite Q sans attentes fixes (Q5, Q10), trous du hook des secrets | `outillage/environnement-2` | **fait le 05/11** (Opus 5.5), **PR #12 en brouillon**, CI verte (run 108 : 1 386 / 0 / 2 SKIP connus, comme `main`) ; `docs/OUTILLAGE-2-COMPTE-RENDU.md` | relecture par Fable 5.1 (`relecture-p10`) ; Gab colle le nouveau setup script (§ 2 de `docs/ENVIRONNEMENT-CLAUDE-CODE.md`), décide de D1 à D5 du compte rendu, fusionne | Fable puis Gab |
+
 ## Ensuite, jusqu'à « prêt pour le terrain » (contrôle du 01/06/2027)
 S (sécurité, dossier dans le Project) → COMPTE (mot de passe, double authentification, appareils) → P11 (export automatique + journal d'erreurs) → AF1-B (factures jamais perdues) → AF2 → AF5 → AF4 (après les réponses de la comptable) → AF3 (après la décision 12) → TVA (après la comptable ET la décision de statut) → RAPPELS (dossier en février, code en mars si retenu). Juin 2027 : Supabase Pro + hébergement hors GitHub Pages (gestes de Gab).
 

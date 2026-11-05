@@ -20,7 +20,33 @@ const r = (nom, ok, detail, captures) => { rec(G, nom, ok, detail); K.etape({ pa
 /* attendre que le rapprochement de DÉMARRAGE d'un appareil (next-emission.js, boot : 2,5 s après le chargement des modules) soit passé : 8 s depuis le chargement de la page */
 const apresRapprochementDeDemarrage = async (A) => { for (let i = 0; i < 120; i++) { if (await A.p.evaluate(() => performance.now() > 8000 && typeof window.nxEmisRapprocher === 'function').catch(() => false)) return true; await A.p.waitForTimeout(100); } return false; };
 /* l'appareil est AU REPOS : ni envoi ni lecture en cours (cpVerifierDistant ignore le retour sur la fenêtre sinon), magasin prêt, pas de voile — attente bornée à 10 s */
-const auRepos = (A) => A.p.waitForFunction(() => !_cpPushing && !_cpPulling && !window.__cpGel && (!window.nxStore || nxStore.ready), null, { timeout: 10000, polling: 100 }).then(() => true, () => false);
+const auRepos = (A) => A.p.waitForFunction(() => !_cpPushing && !_cpPulling && !window.__cpGel && (!window.nxStore || nxStore.ready), null, { timeout: 25000, polling: 100 }).then(() => true, () => false);
+/* OUTILLAGE-2 (05/11/2026) : attentes SUR CONDITION au lieu d'attentes fixes (waitForTimeout) dans Q5 et Q10, les deux parties qui lâchaient
+   par aléa de temps sur machine lente. Règle : on attend l'état attendu, avec un délai maximal (≤ 30 s) ; à l'échéance, le contrôle lit l'état
+   réel et échoue normalement s'il n'est pas bon — rien n'est assoupli. Les fenêtres d'observation des contrôles « rien ne doit se passer »
+   (ex. Q10 e : aucun rechargement) restent des durées fixes : on ne peut pas attendre une absence.
+   - attendre(A, f, arg, max) : f (dans la page) rend une valeur « vraie » → cette valeur ; sinon false au bout de max ms. Un rechargement de la
+     page pendant l'attente est toléré (la lecture est refaite sur la nouvelle page).
+   - attendreQue(f, max) : même chose pour une condition côté Node (état du serveur commun, compteur de rechargements). */
+const dormir = (ms) => new Promise((x) => setTimeout(x, ms));
+const attendre = async (A, f, arg, max = 20000) => { const fin = Date.now() + max; for (;;) { const v = await A.p.evaluate(f, arg).catch(() => null); if (v) return v; if (Date.now() >= fin) return false; await dormir(100); } };
+const attendreQue = async (f, max = 20000) => { const fin = Date.now() + max; for (;;) { const v = await f(); if (v) return v; if (Date.now() >= fin) return false; await dormir(100); } };
+const vueAffichee = (S, A, v) => lire(S, A, (x) => { go(x); }, v).then(() => attendre(A, (x) => window._curView === x, v, 10000));
+/* Q5 : ouvrir la fiche d'un dépannage et cliquer un de ses boutons. Si l'appli se recharge entre l'ouverture et le clic (mise à jour reçue),
+   la fiche disparaît : avant, le clic attendait alors 30 s pour rien (« Timeout 30000ms exceeded », essai interrompu). Ici : fiche rouverte
+   tant que le bouton n'est pas visible, clic avec un délai court, au plus 30 s en tout. Un clic qui n'a pas pu se faire n'a rien déclenché. */
+async function cliquerSurLaFiche(S, A, id, selecteur, max = 30000) {
+  const fin = Date.now() + max; let derniere = null;
+  while (Date.now() < fin) {
+    await calme(S, A);
+    await lire(S, A, (x) => openDep(x), id);
+    const b = A.p.locator(selecteur + ':visible').first();
+    if (!(await b.waitFor({ state: 'visible', timeout: 5000 }).then(() => true, () => false))) { derniere = 'bouton ' + selecteur + ' absent'; continue; }
+    try { await b.click({ timeout: 5000 }); return; } catch (e) { derniere = String(e && e.message || e).slice(0, 120); }
+  }
+  throw new Error('fiche du dépannage ' + id + ' : clic impossible en ' + Math.round(max / 1000) + ' s (' + derniere + ')');
+}
+const factureDuDep = (A, id) => attendre(A, (x) => { const d = DEP.find((y) => y.id === x); return d && /^F-\d{4}-\d+$/.test(d.facNum || '') ? d.facNum : null; }, id, 25000);
 const PARTIES = (process.env.CP_Q_PARTIES || '').split(',').filter(Boolean); // débogage : CP_Q_PARTIES=4,5
 const partie = (n) => !PARTIES.length || PARTIES.includes(String(n));
 const lireCles = (S, re) => Object.keys((S.etat && S.etat.data) || {}).filter((k) => re.test(k));
@@ -446,35 +472,42 @@ await pret(S5, PC5);
 const TEL5 = await appareil(S5, 'tel', { mobile: true, horloge: H }); await seConnecter(S5, TEL5); await pret(S5, TEL5);
 try {
   /* 1. préparé au bureau sur le PC (menu « Créer › Dépannage »), enregistré */
+  await calme(S5, PC5);
   await PC5.p.evaluate(() => { go('dash'); const d = document.getElementById('nxCreateMenu'); if (d) d.open = true; });
-  await PC5.p.locator('.nx-create-panel button[onclick*="newDep(\'dep\')"]').first().click(); await PC5.p.waitForTimeout(400);
+  await PC5.p.locator('.nx-create-panel button[onclick*="newDep(\'dep\')"]').first().click({ timeout: 20000 });
+  await PC5.p.locator('#dp_cNom').waitFor({ state: 'visible', timeout: 20000 });
   await PC5.p.fill('#dp_cNom', 'Boulangerie Dupré'); await PC5.p.selectOption('#dp_cType', 'Professionnel').catch(() => {});
   await PC5.p.fill('#dp_cAdr', "1 rue de l'Exemple"); await PC5.p.fill('#dp_cVille', '60000 Beauvais');
   await PC5.p.fill('#dp_desc', 'Vitrine positive en défaut HP : condenseur encrassé, nettoyage et contrôle.');
   const capDep = await K.capture(PC5, 'depannage-prepare-pc');
-  await PC5.p.locator('button[onclick="saveDep()"]:visible').first().click(); await PC5.p.waitForTimeout(300);
-  const idDep = await lire(S5, PC5, () => (DEP[DEP.length - 1] || {}).id);
-  await lire(S5, PC5, () => go('dep')); await pret(S5, PC5); await revenir(S5, TEL5);
+  await PC5.p.locator('button[onclick="saveDep()"]:visible').first().click({ timeout: 20000 });
+  const idDep = await attendre(PC5, () => (DEP.find((d) => d.cNom === 'Boulangerie Dupré') || {}).id, null, 20000);
+  if (!idDep) throw new Error('dépannage non enregistré sur le PC en 20 s');
+  await vueAffichee(S5, PC5, 'dep'); await pret(S5, PC5); await revenir(S5, TEL5);
+  /* le téléphone a reçu le dépannage (son rechargement après la mise à jour est fini) avant d'agir dessus */
+  if (!(await attendre(TEL5, (x) => !window.__cpGel && !window.__rechargeEnCours && DEP.some((d) => d.id === x), idDep, 25000))) throw new Error('dépannage du PC pas reçu par le téléphone en 25 s');
   /* 2. facturé sur place depuis le téléphone ; le PC, resté ouvert au bureau, ne reçoit plus la synchro */
   S5.etatBloque.pc = true;
-  await lire(S5, TEL5, (x) => openDep(x), idDep); await TEL5.p.waitForTimeout(400);
   TEL5.reponses.push(true, true);
-  await TEL5.p.locator('button[onclick="factureDep()"]:visible').first().click(); await TEL5.p.waitForTimeout(500); await calme(S5, TEL5);
+  await cliquerSurLaFiche(S5, TEL5, idDep, 'button[onclick="factureDep()"]');
+  await factureDuDep(TEL5, idDep); await calme(S5, TEL5);
   await TEL5.p.evaluate(() => { const c = document.getElementById('nx-pdf-close'); if (c) c.click(); }).catch(() => {});
   const depTel = await lire(S5, TEL5, (x) => { const d = DEP.find((y) => y.id === x); return d ? { num: d.facNum, statut: d.statut } : null; }, idDep);
   const capDep2 = await K.capture(TEL5, 'depannage-facture-telephone');
   r('Dépannage préparé sur le PC, facturé sur le téléphone : numéro du serveur F-2027-001', depTel && depTel.num === 'F-2027-001' && depTel.statut === 'facturee', j({ depTel }), [capDep, capDep2]);
   await lire(S5, TEL5, () => go('dep')); await quitter(S5, TEL5);
   /* 3. le PC, resté ouvert sans recevoir la synchro, a encore le brouillon : « Facturer » ne crée pas de 2e facture */
-  await lire(S5, PC5, (x) => openDep(x), idDep); await PC5.p.waitForTimeout(400);
   PC5.reponses.push(true, true);
-  await PC5.p.locator('button[onclick="factureDep()"]:visible').first().click(); await PC5.p.waitForTimeout(600); await calme(S5, PC5);
+  await cliquerSurLaFiche(S5, PC5, idDep, 'button[onclick="factureDep()"]');
+  await factureDuDep(PC5, idDep); await calme(S5, PC5);
   const depPC = await lire(S5, PC5, (x) => { const d = DEP.find((y) => y.id === x); return d ? { num: d.facNum, statut: d.statut } : null; }, idDep);
-  /* la fiche ouverte doit montrer la facture reprise : « Enregistrer » ne doit pas effacer le numéro */
+  /* la fiche ouverte doit montrer la facture reprise : « Enregistrer » ne doit pas effacer le numéro (fiche NON rouverte : c'est celle-là qu'on enregistre) */
   const fiche = await lire(S5, PC5, () => ({ num: (typeof curDep !== 'undefined' && curDep) ? curDep.facNum : null }));
-  await PC5.p.locator('button[onclick="saveDep()"]:visible').first().click().catch(() => {}); await PC5.p.waitForTimeout(300);
+  await PC5.p.evaluate(() => { const t = document.getElementById('toast'); if (t) t.textContent = ''; }).catch(() => {});
+  const enrVu = await PC5.p.locator('button[onclick="saveDep()"]:visible').first().click({ timeout: 10000 }).then(() => true, () => false);
+  if (enrVu) await attendre(PC5, () => /Intervention enregistrée/.test((document.getElementById('toast') || {}).textContent || ''), null, 10000);
   const apresEnr = await lire(S5, PC5, (x) => { const d = DEP.find((y) => y.id === x); return d ? d.facNum : null; }, idDep);
-  await lire(S5, PC5, () => go('dep')); await PC5.p.waitForTimeout(400);
+  await vueAffichee(S5, PC5, 'dep');
   const capDep3 = await K.capture(PC5, 'depannage-pc-pas-a-jour');
   S5.etatBloque.pc = false;
   const docsDep = S5.docs.filter((d) => d.payload && d.payload.src && d.payload.src.k === 'dep').map((d) => d.num);
@@ -705,14 +738,50 @@ ETAPE = 'Écritures pendant une synchro';
 const S10 = serveurCommun();
 const PC10 = await appareil(S10, 'pc', { mobile: false, horloge: H, connecte: true, verifMinute: true });
 await PC10.p.evaluate(SEED); await pret(S10, PC10);
-const TEL10 = await appareil(S10, 'tel', { mobile: true, horloge: H, connecte: true, verifMinute: true }); await calme(S10, TEL10); await TEL10.p.waitForTimeout(1600); await calme(S10, TEL10);
+const TEL10 = await appareil(S10, 'tel', { mobile: true, horloge: H, connecte: true, verifMinute: true }); await calme(S10, TEL10);
+/* attente sur condition (au lieu de 1,6 s fixes) : le téléphone a reçu l'état du serveur (même date que le serveur) et son rechargement est fini — au plus 25 s */
+await attendreQue(async () => !!S10.etat && (await TEL10.p.evaluate(() => !window.__rechargeEnCours && load('cp2_sync', {}).lastRemote).catch(() => null)) === S10.etat.updated_at, 25000); await calme(S10, TEL10);
 const ids10 = await lire(S10, TEL10, () => CLIENTS.map((c) => c.id));
 const noteDe = (A, id) => lire(S10, A, (i) => (CLIENTS.find((c) => c.id === i) || {}).notes || '', id);
 const noteSrv = (id) => ((S10.etat.data.cp2_clients || []).find((c) => c.id === id) || {}).notes || '';
 const noter = (A, id, n) => lire(S10, A, ([i, x]) => { CLIENTS.find((c) => c.id === i).notes = x; save(LS.clients, CLIENTS); }, [id, n]);
 try {
 /* a. gel pendant le rechargement */
-await lire(S10, PC10, () => go('dep')); await PC10.p.waitForTimeout(300);
+await vueAffichee(S10, PC10, 'dep');
+/* OUTILLAGE-2 (05/11/2026) : le voile est relevé DANS la page, à l'instant où l'appli le pose (observateur armé AVANT la modification du téléphone,
+   reposé à chaque chargement, résultat gardé dans sessionStorage qui survit au rechargement). Rouge reproduit sur machine chargée (ancien test) :
+   « voile:false, stale:true, dirty:true » — la mise à jour était déjà arrivée (voile posé puis rechargement fini) AVANT la fenêtre d'observation,
+   lancée sans doute par la vérification de chaque minute (verifMinute) pendant le saut d'horloge de 21 s ; le focus ne trouvait alors plus rien
+   à relire. Mêmes contrôles qu'avant, faits au moment du voile : écran couvert, données en mémoire encore anciennes, réenregistrement sans effet.
+   « declenchement » dit si le voile est venu après le focus du test ou avant (vérification de chaque minute). */
+const observateurVoile = () => {
+  const armer = () => { try { if (sessionStorage.getItem('__q10Arme') !== '1') return; } catch (e) { return; }
+    const obs = new MutationObserver(() => { try {
+      if (!document.getElementById('cpGel') || sessionStorage.getItem('__q10Voile')) return;
+      obs.disconnect(); sessionStorage.removeItem('__q10Arme');
+      const ecr = () => (typeof _cpEcritures !== 'undefined' ? _cpEcritures : null);
+      const r = { dessus: (document.elementFromPoint(innerWidth / 2, innerHeight / 2) || {}).id || '', stale: DEP.some((d) => d.id === 'dep-tel-q10'), declenchement: window.__q10Focus ? 'après le focus' : 'avant le focus (vérification de chaque minute ou autre)',
+        dirtyAvant: !!localStorage.getItem('cp2_dirty'), ecrituresAvant: ecr() };
+      try { save(LS.dep, DEP); } catch (e) {} r.dirty = !!localStorage.getItem('cp2_dirty'); r.ecrituresApres = ecr();
+      sessionStorage.setItem('__q10Voile', JSON.stringify(r)); } catch (e) { try { sessionStorage.setItem('__q10Voile', JSON.stringify({ err: String(e) })); } catch (e2) {} } });
+    obs.observe(document, { childList: true, subtree: true }); };
+  armer(); window.__q10Armer = armer; };
+await PC10.p.addInitScript(observateurVoile); /* pages suivantes */
+await PC10.p.evaluate(observateurVoile);      /* page actuelle */
+/* « l'état d'avant n'est pas réenregistré » : le réenregistrement fait pendant le voile ne marque RIEN à envoyer.
+   - cas d'origine (PC sans modification en attente au moment du voile, dirtyAvant false) : exigence inchangée, rien à envoyer après (dirty false),
+     et en plus le compteur d'écritures de l'appli (_cpEcritures, qui n'avance pas pendant le gel : markDirty) n'a pas bougé ;
+   - mise à jour arrivée par un autre chemin que le focus (vérification de chaque minute, relecture au redémarrage) alors que le PC venait d'écrire
+     (dirtyAvant true, relevé 3 fois sur 3 sous charge le 05/11) : « rien à envoyer après » ne peut pas être vrai, quel que soit le comportement de
+     l'appli ; on exige alors que le réenregistrement n'ait rien ajouté (compteur d'écritures inchangé). */
+const sansReenregistrement = (x) => x.ecrituresAvant != null && x.ecrituresApres === x.ecrituresAvant && (x.dirtyAvant === true || x.dirty === false);
+/* précondition (relevé OUTILLAGE-2 sous charge : « dirtyAvant:true, écritures 14 → 14 ») : le PC n'a RIEN à envoyer et est au repos AVANT que la
+   modification du téléphone existe sur le serveur ; sinon une mise à jour arrivée tôt (vérification de chaque minute) trouvait une modification du PC
+   pas encore envoyée, et « rien à envoyer pendant le voile » ne pouvait pas être vérifié */
+const saleApresVue = await PC10.p.evaluate(() => !!localStorage.getItem('cp2_dirty')).catch(() => null); /* diagnostic seulement */
+await pret(S10, PC10);
+const propreAvant = (await auRepos(PC10)) && !(await PC10.p.evaluate(() => !!localStorage.getItem('cp2_dirty')));
+await PC10.p.evaluate(() => { sessionStorage.removeItem('__q10Voile'); sessionStorage.setItem('__q10Arme', '1'); window.__q10Armer(); });
 await lire(S10, TEL10, () => { DEP.push({ id: 'dep-tel-q10', date: '2027-09-15', cNom: 'Client fictif Q10', itype: 'dep', statut: 'a_faire' }); save(LS.dep, DEP); }); await pret(S10, TEL10);
 /* P0-suite (24/10/2026) : attendre le REPOS du PC. cpVerifierDistant (index.html) ignore le retour sur la fenêtre tant que le PC envoie ou lit (_cpPushing, _cpPulling) :
    le contrôle « voile » supposait que le PC relisait les données à ce moment-là, ce qui n'est pas toujours vrai (les données finissaient justes, sans voile observé). */
@@ -721,28 +790,34 @@ const reposAvant = await auRepos(PC10);
 await PC10.p.evaluate(() => { const o = window.nxStoreReload; window.nxStoreReload = function () { setTimeout(o, 1200); }; });
 await PC10.p.clock.fastForward(21000);
 const reposApres = await auRepos(PC10); /* les minuteries échues pendant le décalage de l'horloge ont pu lancer un envoi : on attend qu'il finisse */
-await PC10.p.evaluate(() => window.dispatchEvent(new Event('focus')));
-/* P0 (21/10/2026) : fenêtre d'observation 6 s au lieu de 1,5 s — sur une machine chargée le voile arrivait après la fenêtre (échec de timing, pas de défaut : les données étaient bien conservées) */
-let voile = false; for (let i = 0; i < 120 && !voile; i++) { await PC10.p.waitForTimeout(50); voile = await PC10.p.evaluate(() => !!document.getElementById('cpGel')).catch(() => false); }
-const pendant = await PC10.p.evaluate(() => { const r = { dessus: (document.elementFromPoint(innerWidth / 2, innerHeight / 2) || {}).id || '', stale: DEP.some((d) => d.id === 'dep-tel-q10') };
-  try { save(LS.dep, DEP); } catch (e) {} r.dirty = !!localStorage.getItem('cp2_dirty'); return r; }).catch((e) => ({ err: String(e) }));
-const cGel = voile ? await K.capture(PC10, 'pc-voile-mise-a-jour') : null;
-await PC10.p.waitForTimeout(2500); await calme(S10, PC10);
+await PC10.p.evaluate(() => { window.__q10Focus = true; window.dispatchEvent(new Event('focus')); });
+/* attente sur condition : voile relevé dans la page (au plus 25 s) */
+const vuVoile = await attendre(PC10, () => sessionStorage.getItem('__q10Voile'), null, 25000);
+const pendant = vuVoile ? JSON.parse(vuVoile) : { err: 'aucun voile posé en 25 s après le focus' };
+const voile = !!vuVoile && !pendant.err;
+const cGel = (await PC10.p.evaluate(() => !!document.getElementById('cpGel')).catch(() => false)) ? await K.capture(PC10, 'pc-voile-mise-a-jour') : null;
+await PC10.p.evaluate(() => { sessionStorage.removeItem('__q10Arme'); sessionStorage.removeItem('__q10Voile'); }).catch(() => {});
+/* attente sur condition : rechargement fini, le PC a l'intervention du téléphone (au plus 25 s) */
+await attendre(PC10, () => !window.__cpGel && !window.__rechargeEnCours && DEP.some((d) => d.id === 'dep-tel-q10'), null, 25000); await calme(S10, PC10);
 await noter(PC10, ids10[2], 'Après le rechargement'); await pret(S10, PC10);
 const apresA = { pc: await lire(S10, PC10, () => DEP.some((d) => d.id === 'dep-tel-q10')), srv: (S10.etat.data.cp2_dep || []).some((d) => d.id === 'dep-tel-q10') };
 r('Pendant le rechargement qui suit une mise à jour : voile sur l’écran, l’état d’avant n’est pas réenregistré, l’intervention du téléphone reste partout',
-  reposAvant && reposApres && voile && pendant.dessus === 'cpGel' && pendant.stale === false && pendant.dirty === false && apresA.pc && apresA.srv, j({ reposAvant, reposApres, voile, pendant, apresA }), [cGel]);
+  reposAvant && reposApres && voile && pendant.dessus === 'cpGel' && pendant.stale === false && sansReenregistrement(pendant) && apresA.pc && apresA.srv,
+  j({ saleApresVue, propreAvant, reposAvant, reposApres, voile, pendant, apresA }), [cGel]);
 /* b. enregistrement pendant un envoi réussi, puis mise à jour reçue avant l'envoi suivant */
 await pret(S10, TEL10); await revenir(S10, TEL10);
 S10.latence.tel = 900;
 await noter(TEL10, ids10[0], 'A pendant envoi');
 await TEL10.p.evaluate(() => { clearTimeout(_pushT); window.__envoi = pushState(); });
-await TEL10.p.waitForTimeout(250);
+await attendre(TEL10, () => _cpPushing, null, 5000); /* l'envoi est parti (et dure 0,9 s) : B s'écrit pendant l'envoi */
 await noter(TEL10, ids10[1], 'B pendant envoi');
 await TEL10.p.evaluate(() => window.__envoi); S10.latence.tel = 40;
 const dirtyB = await TEL10.p.evaluate(() => !!localStorage.getItem('cp2_dirty'));
 await noter(PC10, ids10[2], 'C sur le PC'); await pret(S10, PC10);
-await revenir(S10, TEL10); await TEL10.p.waitForTimeout(800); await calme(S10, TEL10); await pret(S10, TEL10);
+await revenir(S10, TEL10);
+/* attente sur condition : B et C arrivés au serveur, B gardé sur le téléphone (au plus 25 s) */
+await attendreQue(async () => noteSrv(ids10[1]) === 'B pendant envoi' && noteSrv(ids10[2]) === 'C sur le PC' && (await noteDe(TEL10, ids10[1]).catch(() => '')) === 'B pendant envoi', 25000);
+await calme(S10, TEL10); await pret(S10, TEL10);
 const b10 = { dirtyB, telB: await noteDe(TEL10, ids10[1]), srvA: noteSrv(ids10[0]), srvB: noteSrv(ids10[1]), srvC: noteSrv(ids10[2]) };
 r('Enregistré pendant un envoi : reste à envoyer, n’est pas écrasé par la mise à jour suivante, arrive au serveur avec celle du PC',
   b10.dirtyB && b10.telB === 'B pendant envoi' && b10.srvA === 'A pendant envoi' && b10.srvB === 'B pendant envoi' && b10.srvC === 'C sur le PC', j(b10));
@@ -751,40 +826,50 @@ await noter(PC10, ids10[2], 'C2 sur le PC'); await pret(S10, PC10);
 S10.latence.tel = 900;
 await noter(TEL10, ids10[0], 'A2 conflit');
 await TEL10.p.evaluate(() => { clearTimeout(_pushT); window.__envoi = pushState(); });
-await TEL10.p.waitForTimeout(250);
+await attendre(TEL10, () => _cpPushing, null, 5000);
 await noter(TEL10, ids10[1], 'B2 conflit');
 await TEL10.p.evaluate(() => window.__envoi).catch(() => {}); S10.latence.tel = 40;
-await TEL10.p.waitForTimeout(2500); await calme(S10, TEL10); await pret(S10, TEL10);
+/* attente sur condition : la fusion est faite et envoyée — A2, B2 et C2 au serveur (au plus 25 s) */
+await attendreQue(() => noteSrv(ids10[0]) === 'A2 conflit' && noteSrv(ids10[1]) === 'B2 conflit' && noteSrv(ids10[2]) === 'C2 sur le PC', 25000);
+await calme(S10, TEL10); await pret(S10, TEL10);
 const c10 = { telB: await noteDe(TEL10, ids10[1]), srvA: noteSrv(ids10[0]), srvB: noteSrv(ids10[1]), srvC: noteSrv(ids10[2]) };
 r('Enregistré pendant un envoi qui croise une modification du PC : la fusion garde les trois modifications',
   c10.telB === 'B2 conflit' && c10.srvA === 'A2 conflit' && c10.srvB === 'B2 conflit' && c10.srvC === 'C2 sur le PC', j(c10));
 /* d. filtre d'affichage touché sur le PC : la mise à jour n'attend pas */
-await revenir(S10, PC10); await lire(S10, PC10, () => go('dep')); await PC10.p.waitForTimeout(300);
+await revenir(S10, PC10); await vueAffichee(S10, PC10, 'dep');
 const opt = await PC10.p.evaluate(() => { const s = document.getElementById('depFilter'); const o = [...s.options].find((x) => !x.selected); return o ? o.value : null; });
 if (opt != null) await PC10.p.selectOption('#depFilter', opt);
 await PC10.p.locator('#depSrch').fill('fictif');
 await noter(TEL10, ids10[2], 'Pendant le filtre'); await pret(S10, TEL10);
 let n0 = PC10.chargements;
 await PC10.p.clock.fastForward(21000);
-await PC10.p.evaluate(() => window.dispatchEvent(new Event('focus'))); await PC10.p.waitForTimeout(2600); await calme(S10, PC10);
+await PC10.p.evaluate(() => window.dispatchEvent(new Event('focus')));
+/* attente sur condition : le PC s'est rechargé avec la note du téléphone (au plus 25 s) */
+await attendreQue(async () => PC10.chargements > n0 && (await noteDe(PC10, ids10[2]).catch(() => '')) === 'Pendant le filtre', 25000); await calme(S10, PC10);
 const d10 = { note: await noteDe(PC10, ids10[2]), v: await lire(S10, PC10, () => window._curView), recharges: PC10.chargements - n0 };
 r('Filtre et recherche touchés sur le PC (Interventions) : la mise à jour du téléphone arrive quand même, même écran', d10.note === 'Pendant le filtre' && d10.v === 'dep' && d10.recharges >= 1, j(d10));
 /* e. une case enregistrée tout de suite ne clôt pas la saisie d'un autre bloc de l'écran */
-await lire(S10, TEL10, () => go('params')); await TEL10.p.waitForTimeout(300);
+await vueAffichee(S10, TEL10, 'params');
 await TEL10.p.locator('#pe_avis').fill('https://g.page/r/q10-pas-enregistre/review');
 await TEL10.p.evaluate(() => { const c = document.createElement('div'); c.className = 'card'; c.innerHTML = '<label><input type="checkbox" id="zzAuto" onchange="CLIENTS[0].vip=this.checked;save(LS.clients,CLIENTS)"> Réglage enregistré tout de suite</label>'; document.getElementById('v-params').prepend(c); });
-await TEL10.p.locator('#zzAuto').click(); await TEL10.p.waitForTimeout(600);
+await TEL10.p.locator('#zzAuto').click(); await attendre(TEL10, () => CLIENTS[0].vip === true, null, 10000);
 await noter(PC10, ids10[2], 'Pendant les paramètres'); await pret(S10, PC10);
 n0 = TEL10.chargements;
+/* fenêtre d'observation FIXE gardée (1,5 s) : ce contrôle vérifie qu'AUCUN rechargement n'a lieu, on ne peut pas attendre une absence */
 await revenir(S10, TEL10); await TEL10.p.waitForTimeout(1500); await calme(S10, TEL10, 10000, { garderEnAttente: true });
 const e10 = { recharges: TEL10.chargements - n0, champ: await lire(S10, TEL10, () => (document.getElementById('pe_avis') || {}).value || '') };
 r('Paramètres : une case enregistrée tout de suite ne fait pas perdre le lien tapé dans un autre bloc (mise à jour en attente)', e10.recharges === 0 && /q10-pas-enregistre/.test(e10.champ), j(e10));
-await lire(S10, TEL10, () => go('nx_journee')); await TEL10.p.waitForTimeout(2600); await calme(S10, TEL10);
+n0 = TEL10.chargements;
+await lire(S10, TEL10, () => go('nx_journee'));
+/* attente sur condition : la mise à jour mise en attente s'applique au changement d'écran (rechargement, note du PC reçue ; au plus 25 s) */
+await attendreQue(async () => TEL10.chargements > n0 && (await noteDe(TEL10, ids10[2]).catch(() => '')) === 'Pendant les paramètres', 25000); await calme(S10, TEL10);
 /* f. fiche client ouverte : rouverte sur le même client */
-await lire(S10, TEL10, (id) => openClient360(id), ids10[1]); await TEL10.p.waitForTimeout(400);
+await lire(S10, TEL10, (id) => openClient360(id), ids10[1]); await attendre(TEL10, (id) => window._curView === 'client360' && window._cliId === id, ids10[1], 10000);
 await noter(PC10, ids10[1], 'Vu depuis la fiche'); await pret(S10, PC10);
 n0 = TEL10.chargements;
-await revenir(S10, TEL10); await TEL10.p.waitForTimeout(2600); await calme(S10, TEL10);
+await revenir(S10, TEL10);
+/* attente sur condition : le téléphone s'est rechargé avec la note du PC (au plus 25 s) */
+await attendreQue(async () => TEL10.chargements > n0 && (await noteDe(TEL10, ids10[1]).catch(() => '')) === 'Vu depuis la fiche', 25000); await calme(S10, TEL10);
 const f10 = await lire(S10, TEL10, () => ({ v: window._curView, cli: window._cliId }));
 const cFiche = await K.capture(TEL10, 'fiche-client-rouverte');
 r('Fiche client ouverte sur le téléphone : après la mise à jour, la même fiche est rouverte', TEL10.chargements > n0 && f10.v === 'client360' && f10.cli === ids10[1] && (await noteDe(TEL10, ids10[1])) === 'Vu depuis la fiche', j(f10), [cFiche]);
