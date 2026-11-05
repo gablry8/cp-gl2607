@@ -52,11 +52,13 @@
 
   /* AF1-ter (04/11/2026) : un devis remplacé par un avenant ou annulé ne doit plus pouvoir être signé en ligne → ses liens encore en attente sont
      désactivés (même geste que la création d'un nouveau lien). Sans cloud : rien à faire ici, applySig ignore de toute façon une signature tardive. */
+  /* Rend le nombre de liens désactivés ; -1 = pas de cloud, erreur du serveur ou coupure (AF1-5 : la file d'attente garde alors la demande). */
   function desactiverLiens(docType,docId,raison){
-    if(!cloudOk()||!docId) return Promise.resolve(0);
+    if(!docId) return Promise.resolve(0);
+    if(!cloudOk()) return Promise.resolve(-1);
     return sb.from(TABLE).update({statut:'annule'}).eq('doc_id',docId).eq('doc_type',docType||'devis').eq('statut','en_attente').select('token')
-      .then(function(r){ var n=(r&&r.data&&r.data.length)||0; if(r&&r.error) console.warn('ClimPilot (AF1-ter) liens de signature :',r.error.message||r.error); else if(n) try{ refresh(); }catch(e){} return n; })
-      .catch(function(e){ console.warn('ClimPilot (AF1-ter) liens de signature :',e&&e.message||e); return 0; });
+      .then(function(r){ if(!r||r.error){ console.warn('ClimPilot (AF1-ter) liens de signature :',r&&r.error&&(r.error.message||r.error)); return -1; } var n=(r.data&&r.data.length)||0; if(n) try{ refresh(); }catch(e){ console.warn('ClimPilot (AF1-ter) relevé après désactivation :',e&&e.message||e); } return n; })
+      .catch(function(e){ console.warn('ClimPilot (AF1-ter) liens de signature :',e&&e.message||e); return -1; });
   }
   window.nxsDesactiverLiens=desactiverLiens;
   /* AF1-quater : la réparation au démarrage (index.html, cpReparerAvenants) tourne avant ce module → ses demandes attendent dans
@@ -64,7 +66,12 @@
   function viderLiensEnAttente(){
     var q=window.cpLiensADesactiver; if(!Array.isArray(q)||!q.length) return 0;
     var f=(typeof window.nxsDesactiverLiens==='function')?window.nxsDesactiverLiens:desactiverLiens, items=q.splice(0);
-    items.forEach(function(a){ try{ f(a[0],a[1],a[2]); }catch(e){ console.warn('ClimPilot (AF1-quater) liens en attente :',e&&e.message||e); } });
+    /* AF1-5 : une demande ne sort de la file qu'après une réponse sans erreur ; sinon elle y retourne (pour le relevé suivant) */
+    var remettre=function(a){ try{ if(!Array.isArray(window.cpLiensADesactiver)) window.cpLiensADesactiver=[]; if(!window.cpLiensADesactiver.some(function(b){ return b[1]===a[1]&&b[0]===a[0]; })) window.cpLiensADesactiver.push(a); }catch(e){ console.warn('ClimPilot (AF1-5) file des liens :',e&&e.message||e); } };
+    items.forEach(function(a){
+      try{ Promise.resolve(f(a[0],a[1],a[2])).then(function(n){ if(typeof n==='number'&&n<0) remettre(a); }).catch(function(e){ console.warn('ClimPilot (AF1-5) liens en attente :',e&&e.message||e); remettre(a); }); }
+      catch(e){ console.warn('ClimPilot (AF1-5) liens en attente :',e&&e.message||e); remettre(a); }
+    });
     return items.length;
   }
   window.nxsViderLiensEnAttente=viderLiensEnAttente;

@@ -357,6 +357,7 @@
     ensureView();
     cur=d; dirty=!!opt.dirty; TAB=opt.tab||(d.lots&&d.lots.length?'lots':'client');
     go(VIEW);
+    showBanner('');   /* AF1-5 (04/11/2026) : le bandeau du devis précédent (🔒 verrouillé, avenant, brouillon retrouvé) ne survit pas à l'ouverture d'un autre devis — updHead/openV2 reposent le bon */
     render();
     if(opt.banner) showBanner(opt.banner);
     if(dirty) saveDraft();

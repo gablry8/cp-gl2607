@@ -1795,7 +1795,12 @@ function cpAvenantAcceptable(d){const o=cpAvenantOriginal(d);if(!o)return true;c
     toast('⛔ Un autre avenant du devis '+(racine.num||'')+' est déjà accepté ('+(autre.num||'')+') : annule-le d\'abord, ou continue avec lui.');return false;}
   return true;}
 /* liens de signature : le module signature (next-signature.js) se charge APRÈS ce fichier ; au démarrage, la demande est mise en attente et traitée dès que le cloud répond */
-function cpDesactiverLiens(type,id,raison){try{if(typeof window.nxsDesactiverLiens==='function')window.nxsDesactiverLiens(type,id,raison);else (window.cpLiensADesactiver=window.cpLiensADesactiver||[]).push([type,id,raison]);}catch(e){console.warn('ClimPilot (AF1-ter) liens de signature :',e);}}
+function cpDesactiverLiens(type,id,raison){
+  const file=()=>{try{const q=window.cpLiensADesactiver=Array.isArray(window.cpLiensADesactiver)?window.cpLiensADesactiver:[];if(!q.some(a=>a[0]===type&&a[1]===id))q.push([type,id,raison]);}catch(e){console.warn('ClimPilot (AF1-5) file des liens :',e);}};
+  try{if(typeof window.nxsDesactiverLiens!=='function'){file();return;}
+    /* AF1-5 ter : en cours d'utilisation aussi, la demande est gardée tant que le cloud n'a pas répondu sans erreur (-1 = pas de cloud / erreur) ; le relevé des signatures la rejouera */
+    Promise.resolve(window.nxsDesactiverLiens(type,id,raison)).then(n=>{if(typeof n==='number'&&n<0)file();}).catch(e=>{console.warn('ClimPilot (AF1-ter) liens de signature :',e&&e.message||e);file();});
+  }catch(e){console.warn('ClimPilot (AF1-ter) liens de signature :',e);file();}}
 /* l'original passe « remplacé par l'avenant n° … » (date d'acceptation gardée) ; vrai si quelque chose a changé. Les liens de signature encore en attente
    sur l'original sont désactivés (next-signature.js, si le cloud répond ; sinon la signature tardive est de toute façon ignorée par applySig). */
 function cpMarquerRemplace(o,a,action){
@@ -1821,12 +1826,24 @@ function cpRefusFacture(d){if(!d)return null;
   if(f){const n=((f.facSolde||f.facAcompte)||{}).num||'';cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'facture_famille',autre:f.id});
     return '⛔ Une facture ('+n+') est déjà émise sur '+(f.id===racine.id?'le devis d\'origine ':'l\'avenant ')+(f.num||'')+' : jamais deux factures pour le même chantier. Fais d\'abord un avoir sur celle-ci.';}
   const anc=cpAncetresDevis(d),ancIds=anc.map(x=>x.id),desc=cpDescendantsDevis(d);
-  /* un descendant accepté : ce devis est remplacé (l'autre appareil l'a vu, pas celui-ci) */
-  const a=desc.find(x=>x.statut==='accepte');
-  if(a){const e=cpEnfantVers(d,a)||a;if(cpMarquerRemplace(d,e,'reparation_fusion'))save(LS.devis,DEVIS);cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'avenant_accepte',avenant:a.id});
+  /* un descendant accepté : ce devis est remplacé (l'autre appareil l'a vu, pas celui-ci). AF1-5 (relecture d'AF1-quater) : on vise la FEUILLE
+     acceptée (le dernier avenant de la chaîne) ; deux feuilles sur des branches différentes → rien n'est réécrit, Gabriel tranche ; un devis qui
+     porte déjà une facture n'est pas marqué « remplacé » (cpMarquerRemplace le refuse) : le message dit quoi faire au lieu de tourner en rond. */
+  const descAcc=desc.filter(x=>x.statut==='accepte'),cousins=autres.filter(x=>ancIds.indexOf(x.id)<0&&desc.indexOf(x)<0&&x.statut==='accepte'),nums=l=>l.map(x=>x.num||'').join(' et ');
+  if(descAcc.length){
+    const feuilles=descAcc.filter(x=>!descAcc.some(y=>y!==x&&cpAncetresDevis(y).some(z=>z.id===x.id)));
+    /* AF1-5 ter : une boucle d'avenants (données abîmées : l'appli ne peut pas la créer) n'a pas de feuille → refus net, jamais de plantage */
+    if(!feuilles.length){cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'chaine_abimee'});
+      return '⛔ Devis '+(d.num||'')+' : sa chaîne d\'avenants est abîmée (elle tourne en boucle), à vérifier avant de facturer. Aucune facture émise.';}
+    const concurrents=feuilles.concat(cousins);
+    if(cpFactureVivante(d)){const n=((d.facSolde||d.facAcompte)||{}).num||'';cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'facture_et_avenant',avenant:concurrents[0].id});
+      return '⛔ Devis '+(d.num||'')+' porte déjà une facture ('+n+') et '+(concurrents.length>1?'ses avenants n° '+nums(concurrents)+' sont acceptés':'son avenant n° '+(concurrents[0].num||'')+' est accepté')+' : fais d\'abord un avoir sur cette facture (puis facture l\'avenant), ou annule '+(concurrents.length>1?'les avenants':'l\'avenant')+'.';}
+    if(concurrents.length>1){cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'deux_avenants',autre:concurrents[1].id});
+      return '⛔ Deux avenants du devis '+(racine.num||'')+' sont acceptés ('+nums(concurrents)+') : annule l\'un des deux avant de facturer.';}
+    const a=feuilles[0],e=cpEnfantVers(d,a)||a;if(cpMarquerRemplace(d,e,'reparation_fusion'))save(LS.devis,DEVIS);cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'avenant_accepte',avenant:a.id});
     return '⛔ Devis '+(d.num||'')+' remplacé par l\'avenant n° '+(e.num||'')+' (accepté sur un autre appareil) : il ne se facture plus. Facture l\'avenant'+(e.id!==a.id?' n° '+(a.num||'')+' (le dernier accepté)':'')+'.';}
   /* un frère ou un cousin accepté : deux avenants concurrents, Gabriel tranche */
-  const c=autres.find(x=>ancIds.indexOf(x.id)<0&&desc.indexOf(x)<0&&x.statut==='accepte');
+  const c=cousins[0];
   if(c){cpJournal({type:'facture_refusee',action:'facturer',id:d.id,num:d.num||'',motif:'deux_avenants',autre:c.id});
     return '⛔ Deux avenants du devis '+(racine.num||'')+' sont acceptés ('+(d.num||'')+' et '+(c.num||'')+') : annule l\'un des deux avant de facturer.';}
   /* les ancêtres restés « acceptés » sans facture repassent « remplacés » (vers l'avenant qui mène à d) */
