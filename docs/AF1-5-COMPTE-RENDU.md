@@ -86,5 +86,5 @@ Relecture copiée dans le Project : `claude/ClimPilot-AF1-5-bis-RELECTURE.md`. V
 ### 6 ter. Batterie complète et CI (AF1-5 ter)
 | Passage | Résultat |
 |---|---|
-| Batterie complète ici, sur `0082f8a` | en cours au moment de ce commit — résultat dans le commit suivant |
-| CI GitHub de la tête | en cours au moment de ce commit — résultat dans le commit suivant |
+| Batterie complète ici, sur `9315a30` (= code `0082f8a` + documents ; arbre propre, même environnement qu'au § 6) | **COMPLET, RÉUSSI — 1 400 réussis, 0 échoué, 2 SKIP (les 2 connus), 5 À TRANCHER** inchangés. Comparé suite par suite au passage AF1-5 bis (§ 6 bis) : **une seule différence, la suite AD 111 → 115** (T29 à T31) ; suite Q 64 / 64 ; golden Y 21 + 5 et Z 55 identiques, W 64 (aucune enveloppe nouvelle), U 27, SQL 66 / 66, fonctions 90 / 90. |
+| CI GitHub de `9315a30` (= code `0082f8a` + documents) | **verte** sur le push ([run 102](https://github.com/gablry8/cp-gl2607/actions/runs/42009658868)) et sur la demande de fusion #10 ([run 103](https://github.com/gablry8/cp-gl2607/actions/runs/42009667428)) : « COMPLET, RÉUSSI — **1 400 réussis, 0 échoué, 2 SKIP** (les 2 connus), 5 À TRANCHER », chiffres identiques au passage local. Les runs 100-101 (`0082f8a`) ont été annulés par le push des documents (`cancel-in-progress`, même code). Le commit qui inscrit ces lignes ne touche que ce document : sa CI relance la même batterie. |
