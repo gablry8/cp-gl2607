@@ -60,8 +60,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR}/tools/claude/verif-secrets.sh\" --hook",
-            "timeout": 30
+            "command": "f=\"${CLAUDE_PROJECT_DIR}/tools/claude/verif-secrets.sh\"; if [ -f \"$f\" ]; then bash \"$f\" --hook; else grep -qE 'git.*(commit|push)' && { echo 'BLOQUÉ : tools/claude/verif-secrets.sh introuvable (branche sans le contrôle des secrets) : git commit et git push refusés. Reviens sur une branche à jour (git checkout -) ou remets le fichier (git checkout origin/main -- tools/claude/verif-secrets.sh).' >&2; exit 2; }; exit 0; fi",
+            "timeout": 30,
+            "onFailure": "block"
           }
         ]
       }
