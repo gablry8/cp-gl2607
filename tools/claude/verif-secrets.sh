@@ -21,7 +21,8 @@
 #     courant du hook) ; les fichiers nommés dans un « git add … » de la même commande (le hook tourne AVANT le git add) ;
 #     « git add -A / --all / . » : tout le dossier de travail ; « git commit -a / --all » : les fichiers suivis modifiés ;
 #     « git commit <fichiers> » : ces fichiers.
-#   + (OUTILLAGE-3) le TEXTE du message : -m (répété), -mTEXTE, --message[=], -F fichier, -F - (document en ligne <<EOF,
+#   + (OUTILLAGE-3) l'auteur et le validateur qu'aura le commit (git var, avec -c user.* et GIT_AUTHOR_* de la commande)
+#     et le TEXTE du message : -m (répété), -mTEXTE, --message[=], -F fichier, -F - (document en ligne <<EOF,
 #     <<<, < fichier, echo / printf / cat … |), -t, -C / -c <commit>, --trailer, --author. Texte lu tel qu'écrit dans la
 #     commande ($VAR et $(…) ne sont pas développés : le contrôle du push relit les vrais messages). Source illisible : bloqué.
 #   « git push » (OUTILLAGE-3) : le contrôle de --branche pour chaque révision poussée (la branche courante par défaut) ;
@@ -274,8 +275,8 @@ CONNUS = set('status log diff show fetch push pull checkout switch branch merge 
              'clean notes submodule bisect cat-file rev-list for-each-ref symbolic-ref update-ref hash-object show-ref var help version'.split())
 
 def lire_git(mots, i, dossier):
-    """mots[i] est « git » : rend (dossier visé, sous-commande, arguments, dossier_inconnu)."""
-    j, d, inconnu = i + 1, dossier, False
+    """mots[i] est « git » : rend (dossier visé, sous-commande, arguments, dossier_inconnu, options -c d'identité)."""
+    j, d, inconnu, conf = i + 1, dossier, False, []
     while j < len(mots):
         w = mots[j]
         if w == '-C' and j + 1 < len(mots):
@@ -285,6 +286,7 @@ def lire_git(mots, i, dossier):
         if w.startswith('--git-dir=') or w.startswith('--work-tree='):
             inconnu = True; j += 1; continue
         if w in GIT_AVEC_ARG and j + 1 < len(mots):
+            if w == '-c' and re.match(r'(user|author|committer)\.', mots[j + 1]): conf += ['-c', mots[j + 1]]
             j += 2; continue
         if w.startswith('-'):
             j += 1; continue
@@ -301,7 +303,7 @@ def lire_git(mots, i, dossier):
             try: mots_alias = shlex.split(val)
             except ValueError: mots_alias = val.split()
             if mots_alias and mots_alias[0] in ('commit', 'add', 'push'): sous, args = mots_alias[0], mots_alias[1:] + args
-    return d, sous, args, inconnu
+    return d, sous, args, inconnu, conf
 
 def option_longue(w, connues):
     """« --mess=x » → « message » : git accepte tout début non ambigu d'une option longue."""
@@ -475,13 +477,13 @@ def analyser(cmd, cwd, etat, profondeur=0):
         if os.path.basename(reste[0]) in TEXTE: continue
         g = next((n for n, w in enumerate(reste) if os.path.basename(w) == 'git'), None)
         if g is None: continue
-        d, sous, args, inconnu = lire_git(reste, g, dossier)
+        d, sous, args, inconnu, conf = lire_git(reste, g, dossier)
         if inconnu: d = None
         ok = 'CP_SECRETS_OK=1' in tete
         if sous == 'commit':
             tout, chemins, sources = options_commit(args)
             etat['commits'].append({'d': d, 'ok': ok, 'tout': tout, 'chemins': chemins, 'sources': sources, 'sc': sc,
-                                    'dossier': dossier})
+                                    'dossier': dossier, 'tete': tete, 'conf': conf})
         elif sous == 'add':
             tout, suivis, force, chemins = options_add(args)
             etat['ajouts'].append({'d': d, 'tout': tout, 'suivis': suivis, 'force': force, 'chemins': chemins})
@@ -507,6 +509,21 @@ def textes_message(c, etat):
         else:
             sortie.append(('[--%s du commit]' % genre, resoudre(val)))
     return sortie
+
+def identite(c):
+    """Auteur et validateur qu'aura le commit (configuration, -c user.*, GIT_AUTHOR_* en tête), sans la date."""
+    env = dict(os.environ)
+    for a in c['tete']:
+        k, v = a.split('=', 1)
+        if k.startswith('GIT_'): env[k] = v
+    lignes = []
+    for var in ('GIT_AUTHOR_IDENT', 'GIT_COMMITTER_IDENT'):
+        try:
+            r = subprocess.run(['git', '-C', c['d']] + c['conf'] + ['var', var], capture_output=True, timeout=20, env=env)
+        except Exception as e:
+            print('git impossible dans ' + c['d'] + ' : ' + str(e), file=sys.stderr); sys.exit(3)
+        if r.returncode == 0: lignes.append(re.sub(r' [0-9]+ [+-][0-9]{4}$', '', r.stdout.decode('utf-8', 'replace').strip()))
+    return '\n'.join(lignes)
 
 def lignes_diff(d, *args):
     code, out = git(d, 'diff', '--unified=0', '--no-color', *args)
@@ -572,6 +589,7 @@ def principal():
         if c['tout']: sortie.append(lignes_diff(c['d']))
         if c['chemins']: sortie.append(lignes_diff(c['d'], '--', *c['chemins']))
         for endroit, texte in textes_message(c, etat): sortie.append(bloc(endroit, texte))
+        sortie.append(bloc('[auteur et validateur du commit]', identite(c)))
     for a in (etat['ajouts'] if a_controler else []):
         if git(a['d'], 'rev-parse', '--git-dir')[0] != 0: continue
         ch = a['chemins'] or ([':/'] if (a['tout'] or a['suivis']) else [])
