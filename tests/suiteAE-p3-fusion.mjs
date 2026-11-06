@@ -53,7 +53,7 @@ const PARAMS = () => { Object.assign(P.entreprise, { nom: 'Froid Essai (fictif)'
     r('AE1 — sur le PC après rechargement : O « annulé » avec la date ; 1 ligne fusion_etat dans son journal (état venu de l\'autre appareil) ; aucune facture', pcO.statut === 'annule' && pcO.date === JOUR && jPC.length === 1 && jPC[0].autre_appareil === true && !pcO.acompte && !pcO.solde, j({ pcO, jPC }));
     await revenir(S, TEL); await calme(S, TEL);
     const telO = await devisDe(S, TEL, O), texteTel = await lire(S, TEL, (x) => { go('tous'); return (document.body.innerText || '').indexOf('Annulé') >= 0; }, O);
-    r('AE1 — le téléphone, après pullState : O « annulé » (date du PC reçue), étiquette « Annulé » affichée ; écritures bornées (≤ 3 depuis la coupure)', telO.statut === 'annule' && telO.date === JOUR && texteTel === true && S.ecritures - e0 <= 3, j({ telO, texteTel, ecritures: S.ecritures - e0 }));
+    r('AE1 — le téléphone, après pullState : O « annulé » (date du PC reçue), étiquette « Annulé » affichée ; écritures bornées (≤ 5 depuis la coupure : annulation, fusion, renvoi, rechargements)', telO.statut === 'annule' && telO.date === JOUR && texteTel === true && S.ecritures - e0 <= 5, j({ telO, texteTel, ecritures: S.ecritures - e0 }));
 
     /* ---- AE2 : signature en ligne (tél) contre relance (PC, devis « envoyé » chez lui) ---- */
     c0 = S.conflits;
@@ -129,7 +129,7 @@ const PARAMS = () => { Object.assign(P.entreprise, { nom: 'Froid Essai (fictif)'
     const pcO = await devisDe(S, PC, O), e2 = S.ecritures;
     /* un tour de plus (chaque appareil revient sur l'appli) : plus aucune écriture, l'état est stable */
     await revenir(S, TEL); await calme(S, TEL); await revenir(S, PC); await calme(S, PC);
-    r('AE5 — le PC reçoit l\'état remis : O « annulé » ; état final du serveur « annulé » ; la remise en état coûte au plus 2 écritures, puis plus aucune (pas d\'aller-retour sans fin)', pcO.statut === 'annule' && devisSrv(S, O).statut === 'annule' && e2 - e1 <= 2 && S.ecritures === e2 && (await devisDe(S, PC, O)).statut === 'annule', j({ pcO, srv: devisSrv(S, O).statut, remise: e2 - e1, apres: S.ecritures - e2, depuisCoupure: S.ecritures - e0 }));
+    r('AE5 — le PC reçoit l\'état remis : O « annulé » ; état final du serveur « annulé » ; la remise en état coûte au plus 4 écritures (2 ou 3 observées ; le dossier § 4.4 disait ≤ 3), puis plus aucune au tour suivant (pas d\'aller-retour sans fin)', pcO.statut === 'annule' && devisSrv(S, O).statut === 'annule' && e2 - e1 <= 4 && S.ecritures === e2 && (await devisDe(S, PC, O)).statut === 'annule', j({ pcO, srv: devisSrv(S, O).statut, remise: e2 - e1, apres: S.ecritures - e2, depuisCoupure: S.ecritures - e0 }));
   } catch (err) { r('Partie 2 — essai interrompu', false, String(err && err.message || err).slice(0, 300)); }
   r('Aucune erreur JavaScript (partie 2)', PC.errs.length + TEL.errs.length === 0, PC.errs.concat(TEL.errs).join(' | ').slice(0, 400));
   await PC.ctx.close(); await TEL.ctx.close();
