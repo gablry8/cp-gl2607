@@ -53,6 +53,9 @@
     var d = findDevis(id); if(!d) return;
     /* AF1-bis (03/11/2026) : un devis remplacé par un avenant ou annulé ne change plus de statut ; un avenant ne passe pas « Accepté » si son original a été facturé entre-temps (1c) */
     if(d.statut==='remplace'||d.statut==='annule'){ try{ toast('🔒 Devis '+(d.num||'')+' '+(d.statut==='annule'?'annulé':'remplacé par un avenant')+' : son statut ne change plus.'); }catch(e){} return; }
+    /* P3 (06/11/2026, constat 1 de la relecture du dossier) : un devis SIGNÉ ne change plus de statut depuis la liste non plus — même verrou que l'éditeur (cpDevisVerrou) */
+    if(d.signature&&d.signature.at){ var vr=null; try{ vr=(typeof window.cpDevisVerrou==='function')?window.cpDevisVerrou(d):null; }catch(e){ console.warn('ClimPilot (P3) verrou :',e); }
+      try{ toast('🔒 Devis '+(d.num||'')+' '+(vr&&vr.texte||'signé')+' : son statut ne change plus.'); }catch(e){ console.warn('ClimPilot (P3) message :',e); } return; }
     if(s==='accepte' && d.avenantDe && typeof window.cpAvenantAcceptable==='function' && !window.cpAvenantAcceptable(d)) return;
     d.statut = s;
     if(s==='envoye' && !d.sentAt) d.sentAt = Date.now();
