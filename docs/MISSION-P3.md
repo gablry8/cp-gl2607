@@ -107,7 +107,7 @@ Suites U et AD rejouées ici sur `main` (Chromium 141, PostgreSQL 16) : **U 27 /
    - a. **Rang** de chaque côté.
      - Devis : 0 = brouillon, envoyé ou refusé ; 1 = accepté ; 2 = signé ; 3 = remplacé ou annulé ; 4 = facture vivante. Les factures annulées par un avoir sont réunies des deux côtés avant de compter.
      - Fiche fluide : 0 = normale ; 1 = signée par le détenteur ; 2 = annulée. Signée et annulée peuvent coexister.
-   - b. **Rang 2 ou plus (fiche : 1 ou plus) : ne recule jamais.** Aucun geste de l'appli ne défait ces états ; seul un avoir défait une facture, et il passe par `facAnnulees`. Le côté de plus haut rang fournit **l'objet entier**, contenu compris : c'est ce contenu-là que le client a signé, qui a été facturé ou qui a été annulé.
+   - b. **Rang 2 ou plus (fiche : 1 ou plus) : ne recule jamais.** Remplacé, annulé et facturé : aucun geste de l'appli ne les défait (seul un avoir défait une facture, et il passe par `facAnnulees`). Signé : **faux sur `main`** (relecture du 05/11, constat 1) — la liste des devis (`nxSetStatut`, `next-statut.js`) laisse un devis signé repasser « envoyé » ou « refusé », alors que l'éditeur le verrouille (`cpDevisVerrou`). P3 ferme ce trou (accord écrit de Gab du 06/11) : `nxSetStatut` refuse tout changement de statut d'un devis dont `signature` est posée, avec le même message 🔒 que l'éditeur, test AD rouge puis vert. À partir de là, la règle « rang 2 ne recule jamais » est vraie sur un seul appareil, donc à la fusion. Le côté de plus haut rang fournit **l'objet entier**, contenu compris : c'est ce contenu-là que le client a signé, qui a été facturé ou qui a été annulé.
    - c. **Rangs 0 et 1** (états réversibles : un devis accepté peut repasser « envoyé » depuis la liste) : fusion à trois voies. Le côté qui a changé l'état depuis la base gagne. Si les deux l'ont changé, « accepté » gagne : c'est le plus prudent (verrouillé, rien ne se perd). Sans base, le plus haut gagne.
    - d. Du côté qui perd, on reprend les **champs de suivi** qu'il a changés depuis la base : notes internes (non imprimées, `next-devis2.js` l. 725), date et moment de planification, matériel réservé, heures et achats réels, relances. Pour ces champs, rien ne change : l'appareil actuel gagne.
    - e. **Ne disparaissent jamais**, quel que soit le gagnant :
@@ -119,6 +119,7 @@ Suites U et AD rejouées ici sur `main` (Chromium 141, PostgreSQL 16) : **U 27 /
    - f. Compteur `cp2_fluseq` : le plus grand des deux (même règle que `cp2_facseq`).
    - g. Encaissements, seulement si tu le décides (question 3) : trois voies sur ce groupe seul. Pour un devis : `payeLe` et `mode` de chaque facture. Pour une intervention : statut payée ou facturée, `payeLe`, `modeReg`.
 3. La fonction **rend** la liste de ses arbitrages, sans rien écrire elle-même (elle reste pure). Ensuite `pushState` écrit dans `cpnext_journal` (`type:'fusion_etat'`) chaque geste fait sur cet appareil qui a été écarté, et affiche un message.
+   **Par où passe la liste** (relecture du 05/11) : `cpMerge` continue de rendre **l'état seul**. L'enveloppe `protegerFusion` (`next-emission.js` l. 820) ne transmet que `out` ; la suite U compare l'objet rendu ; `pushState` range `M` tel quel. Retenu : la liste est posée sur `out` comme **propriété non énumérable** (`Object.defineProperty`, nom `cpArbitrages`) : `JSON.stringify` l'ignore, donc elle n'est jamais écrite dans `localStorage` ni envoyée au serveur, et la suite U ne la voit pas ; `protegerFusion` rend le même objet `out` (l. 620), la propriété survit à l'enveloppe. Pas de variable globale.
 4. **Garde à la réception** (`pullState` l. 4102). Avant de ranger l'état reçu, on remet les états de rang 2 ou plus présents sur l'appareil mais absents de l'état reçu : ligne au journal, puis « à envoyer ». Cela ne vaut que pour les objets présents des deux côtés, donc une suppression passe toujours. La garde couvre un appareil resté sur l'ancienne version (§ 5.2).
 
 ### 3.3 Quand deux états terminaux se rencontrent
@@ -135,6 +136,8 @@ Suites U et AD rejouées ici sur `main` (Chromium 141, PostgreSQL 16) : **U 27 /
 | deux signatures différentes | — | impossible (un lien valable à la fois) | la plus ancienne ; l'autre au journal |
 | fiche signée | fiche annulée | annuler une fiche signée est permis (`annulerFlu` l. 3631) | les deux sont gardées |
 | numéro de fiche A | numéro de fiche B | impossible | celui de la base, sinon celui du serveur ; journal |
+
+**Limite des dates** (relecture du 05/11) : `signature.at` est l'heure du **serveur** (fonction `signature`, `signed_at`) ; `remplacePar.at` et `annulation.at` sont l'heure de **l'appareil** (`Date.now()`). Départager deux gestes par leur date suppose donc des horloges d'appareils à peu près justes : une dérive de quelques secondes peut inverser deux gestes faits presque en même temps, pas deux gestes à plusieurs minutes d'écart. Les tests qui départagent par date (U-P3-8, U-P3-9, T37) utilisent des dates **éloignées** (des minutes, pas des secondes) ; dans une page à horloge figée, ils posent ces dates à la main.
 
 ### 3.4 Ce qui reste « l'appareil actuel gagne », et pourquoi
 
