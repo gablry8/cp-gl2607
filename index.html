@@ -4082,11 +4082,14 @@ function cpMerge(B,L,R){ /* B peut être null (premier passage) */
    haut ; même rang : le premier geste en date (annulation.at, remplacePar.at, signature.at) ; rangs 0 et 1 : trois voies sur l'état (le côté qui a changé
    l'état depuis la base gagne ; les deux : « accepté » ; sans base : le plus haut). Champs de suivi (notes internes, planification, matériel réservé, heures
    et achats réels, relances) : repris du côté qui perd s'il les a changés ; signature et signatureEnAttente : jamais perdues (en attente si le gagnant est
-   remplacé / annulé APRÈS la signature, comme applySig) ; encaissements : trois voies sur leur seul groupe ; cp2_fluseq : le plus grand (même année). */
-function cpFusionEtats(B,L,R,out){
+   remplacé / annulé APRÈS la signature, comme applySig) ; encaissements : trois voies sur leur seul groupe ; cp2_fluseq : le plus grand (même année).
+   P3-bis (09/11/2026, relecture d'Opus) : un côté qui n'a RIEN changé depuis la base reçoit simplement le geste de l'autre (envoyé → accepté, accepté → annulé…) :
+   aucun arbitrage, rien à corriger ; « statut_ecarte » n'est posé que si le perdant a vraiment changé le statut. Option opts.reception (garde de pullState) :
+   seuls les rangs ≥ 2 d'un devis, les fiches ≥ 1 et le compteur des fiches sont remis — ni les rangs 0 / 1 ni les encaissements (dossier § 3.2 point 4). */
+function cpFusionEtats(B,L,R,out,opts){
   const cl=v=>v===undefined?undefined:JSON.parse(JSON.stringify(v)),same=(a,b)=>cpSame(a,b),t=v=>v==null?0:typeof v==='number'?v:(Date.parse(v)||0);
   const parId=a=>{const m={};(Array.isArray(a)?a:[]).forEach(x=>{if(x&&x.id!=null)m[x.id]=x;});return m;};
-  const res={},arb=[];L=L||{};R=R||{};out=out||{};
+  const res={},arb=[];L=L||{};R=R||{};out=out||{};const reception=!!(opts&&opts.reception);
   const SUIVI=['notes','datePlanif','momentPlanif','matReserve','hReel','achatReel','relances'];
   const TECH=['id','statut','acceptedAt','sentAt','refus','signature','signatureEnAttente','remplacePar','annulation','facAcompte','facSolde','facAnnulees','updatedAt','_baseStatut','_statutSet','figEnv','signLink','conclusion','encaissementsAnnules'];
   const changes=(x,b)=>{const ks={};Object.keys(x||{}).concat(Object.keys(b||{})).forEach(k=>{if(!same(x?x[k]:undefined,b?b[k]:undefined))ks[k]=1;});return Object.keys(ks);};
@@ -4111,7 +4114,7 @@ function cpFusionEtats(B,L,R,out){
         if(rl!==rr){w=rl>rr?l:r;etat=haut===4?'facture':haut===3?(w.statut==='annule'?'annule':'remplace'):'signe';}
         else if(haut===3){const tl=geste(l),tr=geste(r);if(tl!==tr){w=tl<tr?l:r;etat=w.statut==='annule'?'annule':'remplace';}}   /* le premier geste en date */
         else if(haut===2&&!same(l.signature,r.signature)){const tl=t(l.signature.at),tr=t(r.signature.at);if(tl!==tr){w=tl<tr?l:r;etat='signe';}}
-      }else if(l.statut!==r.statut){
+      }else if(!reception&&l.statut!==r.statut){   /* rangs 0 / 1 : jamais remis à la réception (l'autre appareil a le droit de revenir en arrière) */
         if(b){const cl_=l.statut!==b.statut,cr=r.statut!==b.statut;if(cl_&&!cr)w=l;else if(cr&&!cl_)w=r;else if(rl!==rr)w=rl>rr?l:r;}
         else if(rl!==rr)w=rl>rr?l:r;
         if(w)etat=w.statut==='accepte'?'accepte':'etat';}
@@ -4125,14 +4128,16 @@ function cpFusionEtats(B,L,R,out){
         if(x.signatureEnAttente&&!(o.signature&&o.signature.at)&&!o.signatureEnAttente)o.signatureEnAttente=cl(x.signatureEnAttente);
         if(o.signature&&o.signatureEnAttente&&same(o.signature,o.signatureEnAttente))delete o.signatureEnAttente;}
       /* encaissement d'une même facture (payeLe, mode) : trois voies sur ce groupe seul ; sans base, l'encaissement gagne ; les deux : l'appareil actuel */
-      let enc='';['facAcompte','facSolde'].forEach(k=>{const fl=l[k],fr=r[k],fb=b&&b[k],fo=o[k];if(!fl||!fr||!fo||!fl.num||fl.num!==fr.num||fo.num!==fl.num)return;
+      let enc='';if(!reception)['facAcompte','facSolde'].forEach(k=>{const fl=l[k],fr=r[k],fb=b&&b[k],fo=o[k];if(!fl||!fr||!fo||!fl.num||fl.num!==fr.num||fo.num!==fl.num)return;
         const g=f=>f?{payeLe:f.payeLe||null,mode:f.mode||''}:null,gl=g(fl),gr=g(fr),gb=g(fb);if(same(gl,gr))return;
         let v;if(gb){const cl_=!same(gl,gb),cr=!same(gr,gb);v=cl_&&!cr?gl:cr&&!cl_?gr:gl;}else v=gl.payeLe&&!gr.payeLe?gl:gr.payeLe&&!gl.payeLe?gr:gl;
         if(same(v,g(fo)))return;if(o===d)o=cl(d);o[k]=cl(o[k]);o[k].payeLe=v.payeLe;o[k].mode=v.mode;enc=same(v,gl)?'autre':'ici';});
       if(o===d)return d;
       const differe=!same(o,d);
       if(w){if(!differe&&x.statut===o.statut&&!ecarte.length)return d;
-        arb.push({cle:'cp2_devis',id:d.id,num:o.num||'',perdant:w===l?'autre':'ici',etat,statut:o.statut,statut_ecarte:x.statut,ecarte,version:cl(x)});}
+        /* P3-bis (C1) : le perdant n'a rien changé depuis la base — il reçoit un geste ordinaire de l'autre appareil : aucun arbitrage, aucune ligne, aucune version écartée */
+        if(b&&!changes(x,b).length&&!ecarte.length){if(!differe)return d;chg=true;return o;}
+        arb.push({cle:'cp2_devis',id:d.id,num:o.num||'',perdant:w===l?'autre':'ici',etat,statut:o.statut,statut_ecarte:(b?x.statut!==b.statut:x.statut!==o.statut)?x.statut:'',ecarte,version:cl(x)});}
       else{if(!differe)return d;
         arb.push({cle:'cp2_devis',id:d.id,num:o.num||'',perdant:enc,etat:'encaissement',statut:['facAcompte','facSolde'].some(k=>o[k]&&o[k].payeLe)?'payee':'facturee',statut_ecarte:'',ecarte:[],version:null});}
       chg=true;return o;});
@@ -4164,12 +4169,13 @@ function cpFusionEtats(B,L,R,out){
       if(o===f)return f;
       const differe=!same(o,f);
       if(!differe&&!ecarte.length)return f;
+      if(w&&b&&!changes(x,b).length&&!ecarte.length){chg=true;return o;}   /* P3-bis (C1) : le perdant n'a rien changé depuis la base : remise sans arbitrage */
       if(w||ecarte.length)arb.push({cle:'cp2_fluides',id:f.id,num:o.num||'',perdant:w?(w===l?'autre':'ici'):'',etat:o.annulee?'annulee':(o.sigDetenteur&&o.sigDetenteur.at)?'signee':'fiche',statut:'',statut_ecarte:'',ecarte,version:w?cl(x):null});
       chg=true;return o;});
     if(chg)res.cp2_fluides=liste;}
   /* ---- interventions : encaissement (statut payée / facturée, payeLe, modeReg) : trois voies sur ce groupe seul ---- */
   const Lp=parId(L.cp2_dep),Rp=parId(R.cp2_dep),Bp=parId(B&&B.cp2_dep);
-  if(Array.isArray(out.cp2_dep)){let chg=false;
+  if(!reception&&Array.isArray(out.cp2_dep)){let chg=false;   /* les encaissements ne sont pas remis à la réception (un encaissement retiré ailleurs est un geste légitime) */
     const g=d=>d?{statut:d.statut==='payee'?'payee':d.statut==='facturee'?'facturee':null,payeLe:d.payeLe||null,modeReg:d.modeReg||''}:null;
     const liste=out.cp2_dep.map(d=>{const l=d&&Lp[d.id],r=d&&Rp[d.id],b=d&&Bp[d.id];if(!d||!l||!r||same(l,r))return d;
       const gl=g(l),gr=g(r),gb=g(b);if(!gl.statut||!gr.statut||same(gl,gr))return d;   /* pas facturée des deux côtés, ou même encaissement : rien */
@@ -4208,16 +4214,19 @@ function cpFusionJournal(arb,source){try{if(!Array.isArray(arb)||!arb.length)ret
   try{sessionStorage.setItem('__cpFusionMsg',JSON.stringify({at:Date.now(),m}));}catch(e){console.warn('ClimPilot (P3) message de fusion :',e);}
   return m;}catch(e){console.warn('ClimPilot (P3) journal de fusion :',e);return '';}}
 /* P3 — garde à la réception (pullState) : dans l'état reçu, un objet présent ici qui a reculé (devis signé / remplacé / annulé / facturé, fiche signée / annulée,
-   encaissement, compteur des fiches) est remis avant d'être rangé, puis renvoyé. Objets présents des deux côtés seulement : une suppression passe toujours. */
+   compteur des fiches) est remis avant d'être rangé, puis renvoyé. Objets présents des deux côtés seulement : une suppression passe toujours.
+   P3-bis (C2) : rien sans base de synchro (premier passage, base illisible : journalisée) ; avec une base, ni les rangs 0 / 1 ni les encaissements ne sont remis. */
 function cpGardeReception(recu){try{if(!recu||typeof recu!=='object')return null;
-  const base=(()=>{try{return JSON.parse(localStorage.getItem('cp2_sync_base')||'null');}catch(e){return null;}})();
-  const f=cpFusionEtats(base,cpLocalData(),recu,recu);if(!f||!f.out||!Object.keys(f.out).length)return null;
+  let base=null;try{base=JSON.parse(localStorage.getItem('cp2_sync_base')||'null');}
+  catch(e){console.warn('ClimPilot (P3) base de synchro illisible :',e);try{cpJournal({type:'fusion_erreur',ou:'reception',message:'base de synchro illisible : '+String(e&&e.message||e).slice(0,120)});}catch(e2){console.warn('ClimPilot (P3) journal :',e2);}return null;}
+  if(!base||typeof base!=='object')return null;
+  const f=cpFusionEtats(base,cpLocalData(),recu,recu,{reception:true});if(!f||!f.out||!Object.keys(f.out).length)return null;
   const etat=Object.assign({},recu);Object.keys(f.out).forEach(k=>{etat[k]=f.out[k];});
   return {etat,arbitrages:f.arbitrages||[]};}catch(e){console.warn('ClimPilot (P3) garde à la réception :',e);return null;}}
 /* P3 (Q3 b) — une vieille sauvegarde restaurée ne défait ni un état terminal (signature, annulation, remplacé, facture, fiche signée ou annulée) ni un
    encaissement présents sur l'appareil : l'état gardé est remis dans ce qui va être restauré (sans base : le plus haut gagne). Rend {all, arbitrages}. */
 function cpGardeImport(all){try{if(!all||typeof all!=='object')return {all,arbitrages:[]};
-  const R={};['cp2_devis','cp2_fluides','cp2_dep','cp2_fluseq'].forEach(k=>{let v=all[k];if(typeof v==='string'){try{v=JSON.parse(v);}catch(e){v=undefined;}}if(v!==undefined)R[k]=v;});
+  const R={};['cp2_devis','cp2_fluides','cp2_dep','cp2_fluseq'].forEach(k=>{let v=all[k];if(typeof v==='string'){try{v=JSON.parse(v);}catch(e){console.warn('ClimPilot (P3) sauvegarde : clé '+k+' illisible :',e);try{cpJournal({type:'fusion_erreur',ou:'import',cle:k,message:String(e&&e.message||e).slice(0,120)});}catch(e2){console.warn('ClimPilot (P3) journal :',e2);}v=undefined;}}if(v!==undefined)R[k]=v;});
   if(!Object.keys(R).length)return {all,arbitrages:[]};
   const f=cpFusionEtats(null,cpLocalData(),R,R);if(!f||!f.out||!Object.keys(f.out).length)return {all,arbitrages:[]};
   const copie=Object.assign({},all);Object.keys(f.out).forEach(k=>{copie[k]=f.out[k];});
