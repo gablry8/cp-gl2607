@@ -10,6 +10,10 @@ import { ecrireResultats } from './env.mjs';
 //  AF1-bis (relecture indépendante du 03/11) : T14 avenant / original (jamais deux devis facturables, original « remplacé par l'avenant »), T15 « Annuler le devis »
 //  (motif obligatoire, hors d'« À commander », « Planifier », carnet et CA signé, PDF ANNULÉ), T16 verrou de la signature sur l'ancien formulaire, T17 apostrophe ’ du détenteur,
 //  T9 : texte de la question des Paramètres (« OK = enregistrer · Annuler = PERDRE les modifications »).
+//  P3 (06/11/2026) : T32 à T41 (états terminaux gagnent la fusion : annulé, remplacé, signé, facturé ; fiches fluides ; garde à la réception ; vieille sauvegarde ; encaissements) et
+//  T42 (constat 1 : nxSetStatut refuse sur un devis signé) ; T19a et T22a réécrits (la fusion ne reproduit plus le défaut D1 : l'original reste « remplacé »).
+//  P3-bis (09/11/2026, relecture P10 d'Opus) : T43 message exact sans « geste fait ici », T44 réception d'un geste ordinaire sans arbitrage fantôme (ni « à envoyer »), T45 garde sans base inactive,
+//  T46 garde avec base : rangs ≥ 2, fiches ≥ 1 et compteur remis, encaissements appliqués.
 // Horloge figée sur REF (tests/lib.mjs) : aucun test ne lit la vraie date. Serveur et cloud coupés (lib.mjs). Aucun montant n'est recalculé ici.
 import { page, rec, RES, closeBrowser, seed, REF } from './lib.mjs';
 const j = (o) => JSON.stringify(o);
@@ -623,8 +627,11 @@ const MK = `(async function(){ const o=AD.v2({statut:'accepte',acceptedAt:Date.p
     const base = JSON.parse(JSON.stringify(cloud)).filter(x => x.id !== m.a).map(x => { if (x.id === m.o) { x.statut = 'accepte'; delete x.remplacePar; } return x; });
     const local = JSON.parse(JSON.stringify(base)).map(x => { if (x.id === m.o) x.datePlanif = __REF.jour; return x; });
     const M = cpMerge({ [K]: base }, { [K]: local }, { [K]: cloud })[K];
-    const apresFusion = { o: (M.find(x => x.id === m.o) || {}).statut, a: (M.find(x => x.id === m.a) || {}).statut };
-    DEVIS.length = 0; M.forEach(x => DEVIS.push(x)); save(K, DEVIS);
+    const Mo = M.find(x => x.id === m.o) || {};
+    const apresFusion = { o: Mo.statut, a: (M.find(x => x.id === m.a) || {}).statut, lien: (Mo.remplacePar || {}).id === m.a, date: Mo.datePlanif === __REF.jour };
+    /* P3 (06/11/2026) : la fusion ne reproduit plus le défaut D1 ; l'état « O accepté à côté de l'avenant accepté » est POSÉ À LA MAIN (ancienne version qui a
+       fusionné, vieille sauvegarde) pour les contrôles suivants — la réparation d'AF1-ter / AF1-quater reste utile pour ces cas */
+    DEVIS.length = 0; M.forEach(x => DEVIS.push(x)); const Om = DEVIS.find(x => x.id === m.o); Om.statut = 'accepte'; delete Om.remplacePar; save(K, DEVIS);
     AD.reset(); await facturerDevis(m.o, 'solde'); await new Promise(r => setTimeout(r, 300));
     const a1 = { apresFusion, facO: F(m.o), statutO: S(m.o), stO: ST(m.o), lien: ((DEVIS.find(x => x.id === m.o) || {}).remplacePar || {}).id === m.a, msgs: __msgs.slice() };
     AD.reset(); await facturerDevis(m.a, 'acompte'); await new Promise(r => setTimeout(r, 400));
@@ -657,8 +664,8 @@ const MK = `(async function(){ const o=AD.v2({statut:'accepte',acceptedAt:Date.p
     return { a1, a2, b, c1, c1b, c2, d1, d2 };
   }, MK);
   if (r.absent || r.prerequis) { rec(GC.FAM, 'T19 prérequis (fonctions cpRefusFacture / cpReparerAvenants ; avenant accepté → original remplacé)', false, j(r)); r.a1 = r.a2 = r.b = r.c1 = r.c1b = r.c2 = r.d1 = r.d2 = {}; }
-  rec(GC.FAM, 'T19a fusion (cpMerge) sur l\'appareil pas à jour : l\'original revient « accepté » à côté de l\'avenant accepté (défaut D1 reproduit)', !!(r.a1.apresFusion && r.a1.apresFusion.o === 'accepte' && r.a1.apresFusion.a === 'accepte'), j(r.a1.apresFusion));
-  rec(GC.FAM, 'T19a après la fusion, « Facturer » l\'original : refusé, aucune facture, et l\'original repasse « remplacé » (mémoire et stockage, lien vers l\'avenant)', !!(!r.a1.facO && r.a1.statutO === 'remplace' && r.a1.stO === 'remplace' && r.a1.lien && (r.a1.msgs || []).some(m => /ne se facture plus/i.test(m) && /autre appareil/i.test(m))), j({ facO: r.a1.facO, statutO: r.a1.statutO, stO: r.a1.stO, lien: r.a1.lien, msgs: r.a1.msgs }));
+  rec(GC.FAM, 'T19a fusion (cpMerge) sur l\'appareil pas à jour : l\'original RESTE « remplacé » (lien vers l\'avenant), la date du PC est gardée, l\'avenant accepté (P3 : le défaut D1 ne se reproduit plus)', !!(r.a1.apresFusion && r.a1.apresFusion.o === 'remplace' && r.a1.apresFusion.a === 'accepte' && r.a1.apresFusion.lien && r.a1.apresFusion.date), j(r.a1.apresFusion));
+  rec(GC.FAM, 'T19a état posé à la main (ancienne version), « Facturer » l\'original : refusé, aucune facture, et l\'original repasse « remplacé » (mémoire et stockage, lien vers l\'avenant)', !!(!r.a1.facO && r.a1.statutO === 'remplace' && r.a1.stO === 'remplace' && r.a1.lien && (r.a1.msgs || []).some(m => /ne se facture plus/i.test(m) && /autre appareil/i.test(m))), j({ facO: r.a1.facO, statutO: r.a1.statutO, stO: r.a1.stO, lien: r.a1.lien, msgs: r.a1.msgs }));
   rec(GC.FAM, 'T19a l\'avenant, lui, se facture (acompte d\'essai)', !!(r.a2.facA === true), j(r.a2));
   rec(GC.FAM, 'T19b original facturé sur l\'appareil pas à jour + avenant accepté : facturer l\'avenant refusé (« jamais deux factures pour le même chantier »), aucune facture', !!(!r.b.facA && (r.b.msgs || []).some(m => /jamais deux factures/i.test(m) && /avoir/i.test(m))), j(r.b));
   rec(GC.FAM, 'T19c deuxième avenant du même original : « Accepté » refusé tant que le premier est accepté (éditeur et liste), message clair', !!(r.c1.statutB !== 'accepte' && (r.c1.msgs || []).some(m => /autre avenant/i.test(m)) && r.c1b.statutB !== 'accepte' && (r.c1b.msgs || []).some(m => /autre avenant/i.test(m))), j({ c1: r.c1, c1b: r.c1b }));
@@ -749,12 +756,15 @@ const MK3 = `(async function(){ const W=ms=>new Promise(r=>setTimeout(r,ms)); co
     const fusion = cpMerge({ [K]: base }, { [K]: local }, { [K]: cloud })[K];
     const poser = () => { DEVIS.length = 0; JSON.parse(JSON.stringify(fusion)).forEach(x => DEVIS.push(x)); save(K, DEVIS); };
     poser();
-    const apresFusion = { o: S(m.o), a1: S(m.a1), a2: S(m.a2) };
+    const apresFusion = { o: S(m.o), a1: S(m.a1), a2: S(m.a2), lienO: L(m.o), date: (DEVIS.find(x => x.id === m.o) || {}).datePlanif === __REF.jour };
+    /* P3 (06/11/2026) : la fusion ne reproduit plus le défaut ; O « accepté » à côté de la chaîne est POSÉ À LA MAIN (ancienne version) pour la réparation et le refus */
+    const poserMain = () => { poser(); const O = DEVIS.find(x => x.id === m.o); O.statut = 'accepte'; delete O.remplacePar; save(K, DEVIS); };
+    poserMain();
     /* a1. la réparation (démarrage) remet O « remplacé par A1 » */
     const nRep = cpReparerAvenants();
     const rep = { nRep, statutO: S(m.o), stO: ST(m.o), lienO: L(m.o), statutA1: S(m.a1), statutA2: S(m.a2) };
     /* a2. même état fusionné, sans réparation : « Facturer » O est refusé (et O repasse remplacé) ; « Facturer » A2 émet : UNE seule facture dans l'arbre */
-    poser(); AD.reset(); await facturerDevis(m.o, 'solde'); await W(300);
+    poserMain(); AD.reset(); await facturerDevis(m.o, 'solde'); await W(300);
     const facO = { fac: F(m.o), statutO: S(m.o), stO: ST(m.o), lienO: L(m.o), msgs: __msgs.slice() };
     AD.reset(); await facturerDevis(m.a2, 'acompte'); await W(400);
     const facA2 = { fac: F(m.a2), nbFactures: [m.o, m.a1, m.a2].filter(F).length, msgs: __msgs.slice() };
@@ -782,9 +792,9 @@ const MK3 = `(async function(){ const W=ms=>new Promise(r=>setTimeout(r,ms)); co
     return { apresFusion, rep, facO, facA2, b, c1, c2, d, m };
   }, MK3);
   if (r.absent || r.prerequis) { rec(GQ.ARB, 'T22 prérequis (chaîne O → A1 → A2 : O remplacé par A1, A1 remplacé par A2, A2 accepté)', false, j(r)); r.apresFusion = r.rep = r.facO = r.facA2 = r.b = r.c1 = r.c2 = r.d = {}; }
-  rec(GQ.ARB, 'T22a fusion (cpMerge) sur l\'appareil pas à jour : O revient « accepté », A1 reste « remplacé », A2 « accepté » (défaut D1 reproduit sur une chaîne)', !!(r.apresFusion.o === 'accepte' && r.apresFusion.a1 === 'remplace' && r.apresFusion.a2 === 'accepte'), j(r.apresFusion));
-  rec(GQ.ARB, 'T22a réparation (cpReparerAvenants) : O repasse « remplacé par A1 » (mémoire et stockage), A1 et A2 inchangés', !!(r.rep.nRep === 1 && r.rep.statutO === 'remplace' && r.rep.stO === 'remplace' && r.rep.lienO === (r.m || {}).a1 && r.rep.statutA1 === 'remplace' && r.rep.statutA2 === 'accepte'), j(r.rep));
-  rec(GQ.ARB, 'T22a sans réparation, « Facturer » O : refusé (« ne se facture plus »), aucune facture, O repasse « remplacé par A1 »', !!(!r.facO.fac && r.facO.statutO === 'remplace' && r.facO.stO === 'remplace' && r.facO.lienO === (r.m || {}).a1 && (r.facO.msgs || []).some(x => /ne se facture plus/i.test(x) && /autre appareil/i.test(x))), j(r.facO));
+  rec(GQ.ARB, 'T22a fusion (cpMerge) sur l\'appareil pas à jour : O RESTE « remplacé par A1 » (date du PC gardée), A1 « remplacé », A2 « accepté » (P3 : le défaut D1 ne se reproduit plus sur une chaîne)', !!(r.apresFusion.o === 'remplace' && r.apresFusion.a1 === 'remplace' && r.apresFusion.a2 === 'accepte' && r.apresFusion.lienO === (r.m || {}).a1 && r.apresFusion.date), j(r.apresFusion));
+  rec(GQ.ARB, 'T22a état posé à la main (ancienne version), réparation (cpReparerAvenants) : O repasse « remplacé par A1 » (mémoire et stockage), A1 et A2 inchangés', !!(r.rep.nRep === 1 && r.rep.statutO === 'remplace' && r.rep.stO === 'remplace' && r.rep.lienO === (r.m || {}).a1 && r.rep.statutA1 === 'remplace' && r.rep.statutA2 === 'accepte'), j(r.rep));
+  rec(GQ.ARB, 'T22a état posé à la main, sans réparation, « Facturer » O : refusé (« ne se facture plus »), aucune facture, O repasse « remplacé par A1 »', !!(!r.facO.fac && r.facO.statutO === 'remplace' && r.facO.stO === 'remplace' && r.facO.lienO === (r.m || {}).a1 && (r.facO.msgs || []).some(x => /ne se facture plus/i.test(x) && /autre appareil/i.test(x))), j(r.facO));
   rec(GQ.ARB, 'T22a puis « Facturer » A2 : émis — une seule facture dans tout l\'arbre O / A1 / A2', !!(r.facA2.fac === true && r.facA2.nbFactures === 1), j(r.facA2));
   rec(GQ.ARB, 'T22b O facturé sur l\'appareil pas à jour + A2 accepté : « Facturer » A2 refusé (« jamais deux factures pour le même chantier »)', !!(!r.b.facA2 && (r.b.msgs || []).some(x => /jamais deux factures/i.test(x) && /avoir/i.test(x))), j(r.b));
   rec(GQ.ARB, 'T22c 2e avenant direct de O alors que le petit-fils A2 est accepté : « Accepté » refusé (« autre avenant ») ; forcé : aucun des deux ne se facture (« Deux avenants »), la réparation ne tranche pas', !!(r.c1.statutB1 !== 'accepte' && (r.c1.msgs || []).some(x => /autre avenant/i.test(x)) && r.c2.nRep3 === 0 && !r.c2.facA2 && !r.c2.facB1 && (r.c2.mA2 || []).some(x => /Deux avenants/i.test(x)) && (r.c2.mB1 || []).some(x => /Deux avenants/i.test(x))), j({ c1: r.c1, c2: r.c2 }));
@@ -1027,6 +1037,386 @@ const GQ3 = { CYC: 'AF1-5 chaîne en boucle', LNK: 'AF1-5 file des liens (en cou
   if (r.absent) { rec(GQ3.MSG, 'T31 prérequis', false, j(r)); r.a = r.b = {}; }
   rec(GQ3.MSG, 'T31a original facturé + deux branches acceptées : le refus nomme les deux avenants (avoir ou annulation), aucune facture', !!(!r.a.facSolde && r.a.statutO === 'accepte' && r.a.nommeLesDeux), j(r.a));
   rec(GQ3.MSG, 'T31b avenant du milieu revenu « accepté » sous deux branches : « Deux avenants » nommant A2 et B1, pas « Facture l\'avenant », rien n\'est réécrit', !!(!r.b.fac && r.b.statutA1 === 'accepte' && !r.b.lienA1 && r.b.deuxAvenants && !r.b.factureAvenant), j(r.b));
+}
+
+/* ================= P3 (06/11/2026) — les états terminaux gagnent la fusion entre appareils (docs/MISSION-P3.md § 4.3) : T32 à T41, T42 = constat 1 de la relecture (nxSetStatut) =================
+   Faux cloud EN PAGE (comme la suite O) : vrais pushState / pullState, vraie cpMerge enveloppée par protegerFusion, rangement, rechargement compté (cpTestReload) et
+   mémoire relue depuis le stockage. PC = cet appareil (pas à jour, il fusionne) ; tél = l'état écrit sur le serveur. Horloge figée (REF) : les dates qui départagent
+   deux gestes sont posées à la main, à plusieurs minutes d'écart (§ 3.3 du dossier). */
+const GP = { FUS: 'P3 fusion états terminaux', REC: 'P3 garde à la réception', IMP: 'P3 vieille sauvegarde', ENC: 'P3 encaissements', STA: 'P3 constat 1 nxSetStatut' };
+const P3 = `(function(){
+  const W=ms=>new Promise(r=>setTimeout(r,ms));
+  window.P3={ S:null, W,
+    brancher(etat,ts){ const S={etat:etat?{data:JSON.parse(JSON.stringify(etat)),updated_at:ts||'2027-01-01T00:00:01Z'}:null,n:1,pushes:0,conflits:0};
+      S.ts=()=>'2027-01-01T00:00:'+String(++S.n).padStart(2,'0')+'Z';
+      S.push=p=>{ S.pushes++; if(S.etat&&!p.p_force&&p.p_expected!==S.etat.updated_at){ S.conflits++; return {ok:false,updated_at:S.etat.updated_at,data:JSON.parse(JSON.stringify(S.etat.data))}; }
+        S.etat={data:JSON.parse(JSON.stringify(p.p_data)),updated_at:S.ts()}; return {ok:true,updated_at:S.etat.updated_at}; };
+      S.poser=e=>{ S.etat={data:JSON.parse(JSON.stringify(e)),updated_at:S.ts()}; return S.etat.updated_at; };
+      window.SESS={user:{id:'u-essai'}}; window.__rechargements=0;
+      window.cpTestReload=()=>{ window.__rechargements++; P3.relire(); };
+      window.sb={ rpc:async(nom,p)=>nom==='cp_state_push'?{data:S.push(p)}:{data:null},
+        from:(table)=>{ const q={}; ['select','eq','neq','or','in','gte','lte','lt','gt','is','order','limit','range','update','insert','upsert','delete','not','match','filter'].forEach(m=>{ q[m]=()=>q; });
+          q.maybeSingle=async()=>({data:table==='climpilot_state'&&S.etat?{data:JSON.parse(JSON.stringify(S.etat.data)),updated_at:S.etat.updated_at}:null}); q.single=async()=>({data:null}); q.then=(ok,ko)=>Promise.resolve({data:[]}).then(ok,ko); return q; },
+        auth:{getSession:()=>Promise.resolve({data:{session:null}})}, channel:()=>({on(){return this;},subscribe(){return this;}}), removeChannel(){} };
+      P3.S=S; return S; },
+    debrancher(){ clearTimeout(window._pushT); window.sb=null; window.SESS=null; delete window.cpTestReload; localStorage.removeItem('cp2_dirty'); localStorage.removeItem('cp2_sync_base'); localStorage.removeItem('cp2_sync'); },
+    etat(){ return JSON.parse(JSON.stringify(cpLocalData())); },
+    /* l'appareil se met dans l'état e (stockage + mémoire), e étant aussi la dernière version connue du serveur (base, horodatage ts) */
+    poser(e,ts){ cpWriteLocal(e); localStorage.removeItem('cp2_dirty'); cpSetBase(e,ts); P3.relire(); },
+    relire(){ DEVIS.length=0; load(LS.devis,[]).forEach(x=>DEVIS.push(x)); FLU.length=0; load('cp2_fluides',[]).forEach(x=>FLU.push(x)); DEP.length=0; load(LS.dep,[]).forEach(x=>DEP.push(x)); },
+    calme(){ clearTimeout(window._pushT); },
+    journal(id){ return JSON.parse(localStorage.getItem('cpnext_journal')||'[]').filter(x=>x.type==='fusion_etat'&&(!id||x.id===id)); },
+    ecartes(){ return JSON.parse(localStorage.getItem('cpnext_fusion_ecartes')||'[]'); },
+    devis(id){ return DEVIS.find(x=>x.id===id)||{}; },
+    srvDevis(S,id){ return ((S.etat&&S.etat.data&&S.etat.data.cp2_devis)||[]).find(x=>x.id===id)||{}; },
+    /* scénario type : base e0 (synchronisée), le tél a écrit eTel sur le serveur ; cet appareil (pas à jour, état e0) fait sa modification puis envoie →
+       conflit → fusion → rangement → rechargement (compté) → nouvel envoi (c'est le résultat de la fusion qui devient l'état du serveur) */
+    async fusion(e0,eTel,modif,opts){ const S=P3.brancher(e0,'2027-01-01T00:00:01Z'); P3.poser(e0,'2027-01-01T00:00:01Z'); const telApres=!!(opts&&opts.telApres); if(!telApres) S.poser(eTel); AD.reset(); await modif(); P3.calme();
+      /* telApres : le PC agit (il facture) ALORS QU'IL EST À JOUR, puis le tél écrit sur le serveur — sinon le garde-fou C1 (« pas à jour ») refuse d'émettre, à juste titre */
+      if(telApres) S.poser(eTel);
+      const r0=window.__rechargements, prereq={ lectureSeule:!!window.__cpLectureSeule, enLigne:navigator.onLine, pret:!!(window.nxStore&&nxStore.ready), vue:window._curView, dirty:!!localStorage.getItem('cp2_dirty') };
+      await pushState(); P3.calme(); const msgs=__msgs.slice(), recharge=window.__rechargements-r0, dirtyApres=!!localStorage.getItem('cp2_dirty');
+      await pushState(); P3.calme(); return {S,msgs,recharge,dirtyApres,prereq,serveur:JSON.parse(JSON.stringify((S.etat&&S.etat.data)||{}))}; }
+  };
+})();`;
+await p.evaluate(P3);
+const SIGF = (id, extra) => Object.assign({ doc_type: 'fluide', doc_id: id, statut: 'signe', signed_at: REF.horloge, signer_nom: 'M. Détenteur Fictif', doc_hash: 'hf-' + id, token: 'tf-' + id, signature_png: null, signer_ip: null }, extra || {});
+
+/* ---------------- T32 : annulation (tél) contre planification (PC), par la vraie synchro ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 });
+    const e0 = P3.etat();
+    /* tél : « Annuler le devis », motif « abandon » */
+    cpDevisAnnuler(o.id); await W(100); const radio = document.querySelector('#mAnnulDevis input[name="cpAnnulMotif"][value="abandon"]'); if (radio) radio.checked = true; cpDevisAnnulerOk(); await W(200);
+    const eTel = P3.etat(), okTel = P3.devis(o.id).statut === 'annule';
+    /* PC pas à jour : une date de planification, puis envoi → conflit → fusion */
+    const f = await P3.fusion(e0, eTel, async () => { planifDevis(o.id, __REF.jour); });
+    const d = P3.devis(o.id), st = AD.stored(o.id), bandeau = typeof cpDevisBandeauPdf === 'function' ? cpDevisBandeauPdf(d) : '';
+    AD.reset(); await facturerDevis(o.id, 'solde'); await W(300);
+    const s = P3.srvDevis(f.S, o.id);
+    const res = { okTel, prereq: f.prereq, recharge: f.recharge, conflits: f.S.conflits, statut: d.statut, stStatut: st.statut, motif: (d.annulation || {}).motif, date: d.datePlanif, bandeau: /ANNUL/i.test(bandeau),
+      fac: !!(d.facSolde || d.facAcompte), facMsgs: __msgs.slice(), journal: P3.journal(o.id), msgs: f.msgs, serveur: { statut: s.statut, motif: (s.annulation || {}).motif, date: s.datePlanif }, ecartes: P3.ecartes().filter(x => x.id === o.id).length };
+    P3.debrancher(); return res;
+  });
+  if (!r.okTel || r.prereq.lectureSeule || !r.prereq.enLigne || !r.prereq.pret) rec(GP.FUS, 'T32 prérequis (annulation faite ; appareil en ligne, pas en lecture seule, magasin prêt)', false, j(r));
+  rec(GP.FUS, 'T32 annulation (tél) contre planification (PC) par la vraie synchro (conflit → cpMerge enveloppée → rangement → rechargement) : « Annulé » (mémoire et stockage), motif gardé, date du PC gardée, bandeau ANNULÉ', !!(r.conflits === 1 && r.recharge === 1 && r.statut === 'annule' && r.stStatut === 'annule' && r.motif === 'abandon' && r.date === REF.jour && r.bandeau), j({ conflits: r.conflits, recharge: r.recharge, statut: r.statut, stStatut: r.stStatut, motif: r.motif, date: r.date, bandeau: r.bandeau }));
+  rec(GP.FUS, 'T32 « Facturer » refusé ensuite (« ne se facture plus ») ; 1 ligne fusion_etat au journal (état gardé venu de l\'autre appareil) ; message de fusion ; version écartée gardée sur l\'appareil', !!(!r.fac && (r.facMsgs || []).some(m => /ne se facture plus/i.test(m)) && r.journal.length === 1 && r.journal[0].autre_appareil === true && r.journal[0].statut === 'annule' && (r.msgs || []).some(m => /fusion/i.test(m) && /annul/i.test(m)) && r.ecartes >= 1), j({ fac: r.fac, journal: r.journal, msgs: r.msgs, ecartes: r.ecartes }));
+  rec(GP.FUS, 'T32 le serveur reçoit l\'état fusionné au nouvel envoi : annulé, motif, date', !!(r.serveur && r.serveur.statut === 'annule' && r.serveur.motif === 'abandon' && r.serveur.date === REF.jour), j(r.serveur));
+}
+
+/* ---------------- T33 : signature en ligne (tél, nxsApplySig) contre relance (PC) ---------------- */
+{
+  const r = await p.evaluate(async ({ sig }) => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    const e = AD.v2({ statut: 'envoye', sentAt: Date.parse(__REF.horloge) - 3 * 86400000 });
+    const e0 = P3.etat();
+    const okSig = nxsApplySig(Object.assign({}, sig, { doc_id: e.id, doc_hash: 'h-' + e.id, token: 't-' + e.id })); await W(100);
+    const eTel = P3.etat(), okTel = okSig === true && P3.devis(e.id).statut === 'accepte' && !!P3.devis(e.id).signature;
+    const f = await P3.fusion(e0, eTel, async () => { const d = P3.devis(e.id); d.relances = [Date.parse(__REF.horloge)]; save(LS.devis, DEVIS); });
+    const d = P3.devis(e.id), s = P3.srvDevis(f.S, e.id);
+    /* le verrou d'AF1 refuse ensuite d'enregistrer */
+    AD.reset(); openDevis(e.id); await W(250); const avant = AD.stored(e.id); const c = NXD2.api.cur(); c.notes = 'MODIFIÉ APRÈS FUSION'; const ok = nxd2.save(); await W(100); const apres = AD.stored(e.id);
+    const verrou = { ok, identique: JSON.stringify(avant) === JSON.stringify(apres), msgs: __msgs.slice() }; nxd2.close(); go('tous'); await W(120);
+    const res = { okTel, conflits: f.S.conflits, statut: d.statut, signature: !!(d.signature && d.signature.at), relances: JSON.stringify(d.relances), journal: P3.journal(e.id), serveur: { statut: s.statut, signature: !!(s.signature && s.signature.at), relances: JSON.stringify(s.relances) }, verrou };
+    P3.debrancher(); return res;
+  }, { sig: SIG({ id: 'x' }) });
+  if (!r.okTel) rec(GP.FUS, 'T33 prérequis (signature en ligne appliquée sur le tél)', false, j(r));
+  rec(GP.FUS, 'T33 signature en ligne (tél) contre relance (PC, devis « envoyé » chez lui) : « Accepté », signature posée, relance gardée ; le serveur reçoit les trois', !!(r.conflits === 1 && r.statut === 'accepte' && r.signature && r.relances === JSON.stringify([Date.parse(REF.horloge)]) && r.serveur.statut === 'accepte' && r.serveur.signature && r.serveur.relances === r.relances), j({ conflits: r.conflits, statut: r.statut, signature: r.signature, relances: r.relances, serveur: r.serveur }));
+  rec(GP.FUS, 'T33 le verrou AF1 refuse ensuite d\'enregistrer le devis (« ne se modifie plus ») ; 1 ligne au journal', !!(r.verrou && r.verrou.ok === false && r.verrou.identique && r.verrou.msgs.some(m => /ne se modifie plus/i.test(m)) && r.journal.length === 1), j({ verrou: r.verrou, journal: r.journal }));
+}
+
+/* ---------------- T34 : signé (tél) contre lignes modifiées (PC) ---------------- */
+{
+  const r = await p.evaluate(async ({ sig }) => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    const e = AD.v2({ statut: 'envoye', sentAt: Date.parse(__REF.horloge) - 3 * 86400000 });
+    const e0 = P3.etat(), titre0 = P3.devis(e.id).lots[0].titre, tot0 = compute(P3.devis(e.id)).totalTTC;
+    nxsApplySig(Object.assign({}, sig, { doc_id: e.id, doc_hash: 'h-' + e.id, token: 't-' + e.id })); await W(100);
+    const eTel = P3.etat(), okTel = !!P3.devis(e.id).signature;
+    const f = await P3.fusion(e0, eTel, async () => { const d = P3.devis(e.id); d.lots[0].titre = 'Lot modifié sur le PC'; d.common = d.common || {}; d.common.prepH = (Number(d.common.prepH) || 0) + 7; save(LS.devis, DEVIS); });
+    const d = P3.devis(e.id), s = P3.srvDevis(f.S, e.id), jl = P3.journal(e.id), ec = P3.ecartes().filter(x => x.id === e.id);
+    const res = { okTel, conflits: f.S.conflits, statut: d.statut, signature: !!d.signature, titre: d.lots[0].titre, titre0, tot: compute(d).totalTTC === tot0, serveurTitre: (s.lots || [{}])[0].titre, journal: jl, ecarte: (jl[0] || {}).ecarte, msgs: f.msgs, versionEcartee: ec.length === 1 && ec[0].version && (ec[0].version.lots || [{}])[0].titre };
+    P3.debrancher(); return res;
+  }, { sig: SIG({ id: 'x' }) });
+  if (!r.okTel) rec(GP.FUS, 'T34 prérequis (signature en ligne appliquée)', false, j(r));
+  rec(GP.FUS, 'T34 signé (tél) contre lignes modifiées (PC) : la version SIGNÉE gagne (lignes et total d\'origine, mémoire et serveur), les lignes du PC sont écartées', !!(r.conflits === 1 && r.statut === 'accepte' && r.signature && r.titre === r.titre0 && r.tot && r.serveurTitre === r.titre0), j({ statut: r.statut, signature: r.signature, titre: r.titre, titre0: r.titre0, tot: r.tot, serveurTitre: r.serveurTitre }));
+  rec(GP.FUS, 'T34 le journal nomme « lignes » comme écartées ici ; message « fais un avenant » ; la version écartée (lignes du PC) est gardée sur l\'appareil', !!(r.journal.length === 1 && (r.ecarte || []).indexOf('lignes') >= 0 && r.journal[0].autre_appareil === true && (r.msgs || []).some(m => /fais un avenant/i.test(m)) && r.versionEcartee === 'Lot modifié sur le PC'), j({ journal: r.journal, msgs: r.msgs, versionEcartee: r.versionEcartee }));
+}
+
+/* ---------------- T35 : facture contre annulation, dans les deux sens ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    const annuler = async (id) => { cpDevisAnnuler(id); await W(100); const radio = document.querySelector('#mAnnulDevis input[name="cpAnnulMotif"][value="abandon"]'); if (radio) radio.checked = true; cpDevisAnnulerOk(); await W(200); };
+    /* a. tél facture (solde), PC annule */
+    const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 }); const e0 = P3.etat();
+    AD.reset(); await facturerDevis(o.id, 'solde'); await W(400); const eTel = P3.etat(), facTel = !!P3.devis(o.id).facSolde, numTel = (P3.devis(o.id).facSolde || {}).num;
+    const fa = await P3.fusion(e0, eTel, async () => { await annuler(o.id); });
+    const da = P3.devis(o.id), sa = P3.srvDevis(fa.S, o.id);
+    const a = { facTel, conflits: fa.S.conflits, statut: da.statut, fac: (da.facSolde || {}).num === numTel, annulation: !!da.annulation, serveur: { statut: sa.statut, fac: (sa.facSolde || {}).num === numTel, annulation: !!sa.annulation }, journal: P3.journal(o.id), msgs: fa.msgs };
+    P3.debrancher();
+    /* b. tél annule, PC facture (solde) */
+    AD.reset(); const o2 = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 }); const e02 = P3.etat();
+    await annuler(o2.id); const eTel2 = P3.etat(), annTel = P3.devis(o2.id).statut === 'annule';
+    const fb = await P3.fusion(e02, eTel2, async () => { await facturerDevis(o2.id, 'solde'); await W(400); }, { telApres: true });
+    const db = P3.devis(o2.id), sb2 = P3.srvDevis(fb.S, o2.id);
+    const b = { annTel, conflits: fb.S.conflits, statut: db.statut, fac: !!(db.facSolde && db.facSolde.num), annulation: !!db.annulation, serveur: { statut: sb2.statut, fac: !!(sb2.facSolde && sb2.facSolde.num), annulation: !!sb2.annulation }, journal: P3.journal(o2.id), msgs: fb.msgs };
+    P3.debrancher(); return { a, b };
+  });
+  if (!r.a.facTel || !r.b.annTel) rec(GP.FUS, 'T35 prérequis (facture d\'essai émise ; annulation faite)', false, j(r));
+  rec(GP.FUS, 'T35a facture (tél) contre annulation (PC) : la facture gagne — « accepté », facturé, pas d\'annulation (mémoire et serveur) ; message « annulation non appliquée » ; journal', !!(r.a.conflits === 1 && r.a.statut === 'accepte' && r.a.fac && !r.a.annulation && r.a.serveur.statut === 'accepte' && r.a.serveur.fac && !r.a.serveur.annulation && (r.a.msgs || []).some(m => /annulation non appliquée/i.test(m)) && r.a.journal.length === 1 && r.a.journal[0].statut_ecarte === 'annule'), j(r.a));
+  rec(GP.FUS, 'T35b annulation (tél) contre facture (PC) : même résultat — facturé, « accepté », l\'annulation du tél est écartée avec un message et une ligne au journal', !!(r.b.conflits === 1 && r.b.statut === 'accepte' && r.b.fac && !r.b.annulation && r.b.serveur.statut === 'accepte' && r.b.serveur.fac && !r.b.serveur.annulation && (r.b.msgs || []).some(m => /annulation non appliquée/i.test(m)) && r.b.journal.length === 1), j(r.b));
+}
+
+/* ---------------- T36 : deux appareils facturent chacun un devis du même arbre ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 }); const e0 = P3.etat();
+    /* tél : avenant accepté (O remplacé), puis acompte sur l'avenant */
+    cpDevisAvenant(o.id); await W(250); const a = DEVIS.find(x => x.avenantDe && x.avenantDe.id === o.id); if (!a) return { absent: true };
+    nxd2.statut('accepte'); nxd2.save(); await W(150); nxd2.close(); go('tous'); await W(120);
+    AD.reset(); await facturerDevis(a.id, 'acompte'); await W(400);
+    const eTel = P3.etat(), okTel = P3.devis(o.id).statut === 'remplace' && !!P3.devis(a.id).facAcompte, numA = (P3.devis(a.id).facAcompte || {}).num;
+    /* PC (état gelé : il ne connaît pas l'avenant) : acompte sur l'original */
+    const f = await P3.fusion(e0, eTel, async () => { await facturerDevis(o.id, 'acompte'); await W(400); }, { telApres: true });
+    const O = P3.devis(o.id), A = P3.devis(a.id), numO = (O.facAcompte || {}).num;
+    AD.reset(); await facturerDevis(a.id, 'solde'); await W(300); const m3a = __msgs.slice();
+    AD.reset(); await facturerDevis(o.id, 'solde'); await W(300); const m3o = __msgs.slice();
+    const O2 = P3.devis(o.id), A2 = P3.devis(a.id);
+    const res = { okTel, conflits: f.S.conflits, statutO: O.statut, statutA: A.statut, facO: !!numO, facA: (A.facAcompte || {}).num === numA, serveur: { facO: !!(P3.srvDevis(f.S, o.id).facAcompte || {}).num, facA: !!(P3.srvDevis(f.S, a.id).facAcompte || {}).num }, msgs: f.msgs, journal: P3.journal(),
+      troisieme: { soldeA: !!A2.facSolde, soldeO: !!O2.facSolde, m3a, m3o } };
+    P3.debrancher(); return res;
+  });
+  if (r.absent || !r.okTel) rec(GP.FUS, 'T36 prérequis (avenant accepté et facturé sur le tél)', false, j(r));
+  rec(GP.FUS, 'T36 deux factures dans le même arbre (PC : acompte de O ; tél : acompte de A) : les deux factures RESTENT (mémoire et serveur), O « accepté » facturé (la facture gagne sur « remplacé »), A accepté', !!(r.conflits === 1 && r.facO && r.facA && r.serveur.facO && r.serveur.facA && r.statutO === 'accepte' && r.statutA === 'accepte'), j({ conflits: r.conflits, statutO: r.statutO, statutA: r.statutA, facO: r.facO, facA: r.facA, serveur: r.serveur }));
+  rec(GP.FUS, 'T36 message « deux factures sur le même chantier » (avoir) et ligne au journal ; une 3e facture est refusée des deux côtés (« jamais deux factures »)', !!((r.msgs || []).some(m => /deux factures/i.test(m)) && (r.journal || []).some(x => x.etat_garde === 'deux_factures') && !r.troisieme.soldeA && !r.troisieme.soldeO && r.troisieme.m3a.some(m => /jamais deux factures/i.test(m)) && r.troisieme.m3o.some(m => /jamais deux factures|remplacé|facture/i.test(m))), j({ msgs: r.msgs, journal: r.journal, troisieme: r.troisieme }));
+}
+
+/* ---------------- T37 : avenant accepté (tél, O remplacé) contre original annulé (PC), dates dans les deux ordres ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120); const T = Date.parse(__REF.horloge), MIN = 60000;
+    const annuler = async (id) => { cpDevisAnnuler(id); await W(100); const radio = document.querySelector('#mAnnulDevis input[name="cpAnnulMotif"][value="abandon"]'); if (radio) radio.checked = true; cpDevisAnnulerOk(); await W(200); };
+    const scenario = async (dateRemplace, dateAnnule) => {
+      AD.reset(); const o = AD.v2({ statut: 'accepte', acceptedAt: T - 86400000 }); const e0 = P3.etat();
+      cpDevisAvenant(o.id); await W(250); const a = DEVIS.find(x => x.avenantDe && x.avenantDe.id === o.id); if (!a) return { absent: true };
+      nxd2.statut('accepte'); nxd2.save(); await W(150); nxd2.close(); go('tous'); await W(120);
+      const O = P3.devis(o.id); if (O.statut !== 'remplace' || !O.remplacePar) return { prerequis: O.statut }; O.remplacePar.at = dateRemplace; save(LS.devis, DEVIS);
+      const eTel = P3.etat();
+      const f = await P3.fusion(e0, eTel, async () => { await annuler(o.id); const d = P3.devis(o.id); d.annulation.at = dateAnnule; save(LS.devis, DEVIS); });
+      const Of = P3.devis(o.id), Af = P3.devis(a.id), sO = P3.srvDevis(f.S, o.id);
+      AD.reset(); await facturerDevis(a.id, 'acompte'); await W(400);
+      const res = { conflits: f.S.conflits, statutO: Of.statut, lien: (Of.remplacePar || {}).id === a.id, annulation: !!Of.annulation, statutA: Af.statut, serveurO: sO.statut, facA: !!P3.devis(a.id).facAcompte, msgs: f.msgs, journal: P3.journal(o.id) };
+      P3.debrancher(); return res; };
+    const premierRemplace = await scenario(T - 10 * MIN, T);           /* l'avenant a été accepté 10 min AVANT l'annulation */
+    const premierAnnule = await scenario(T - 10 * MIN, T - 20 * MIN);   /* l'annulation est de 10 min plus ANCIENNE que l'avenant */
+    return { premierRemplace, premierAnnule };
+  });
+  const a = r.premierRemplace || {}, b = r.premierAnnule || {};
+  if (a.absent || a.prerequis || b.absent || b.prerequis) rec(GP.FUS, 'T37 prérequis (avenant accepté → original remplacé)', false, j(r));
+  rec(GP.FUS, 'T37a avenant accepté (tél, −10 min) puis original annulé (PC) : le premier geste en date gagne → O « remplacé par A », l\'annulation écartée (journal, message « remplacé… autre appareil ») ; A reste accepté et se facture', !!(a.conflits === 1 && a.statutO === 'remplace' && a.lien && !a.annulation && a.serveurO === 'remplace' && a.statutA === 'accepte' && a.facA && a.journal.length === 1 && a.journal[0].statut_ecarte === 'annule' && (a.msgs || []).some(m => /remplac/i.test(m) && /autre appareil/i.test(m))), j(a));
+  rec(GP.FUS, 'T37b original annulé (PC, −20 min) puis avenant accepté (tél, −10 min) : O « annulé » (motif gardé), le « remplacé » du tél écarté (journal, message) ; A reste accepté et se facture', !!(b.conflits === 1 && b.statutO === 'annule' && b.annulation && b.serveurO === 'annule' && b.statutA === 'accepte' && b.facA && b.journal.length === 1 && b.journal[0].statut_ecarte === 'remplace' && (b.msgs || []).some(m => /annul/i.test(m) && /remplac/i.test(m))), j(b));
+}
+
+/* ---------------- T38 : fiche fluide annulée ou signée (tél) contre observation (PC) ---------------- */
+{
+  const r = await p.evaluate(async ({ mk1, mk2, sigF }) => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    /* a. annulée sur le tél */
+    const id1 = eval(mk1); const e0 = P3.etat();
+    __rep = 'Erreur de saisie : mauvais équipement'; annulerFlu(id1); await W(100); const eTel = P3.etat(), annTel = !!FLU.find(x => x.id === id1).annulee;
+    const fa = await P3.fusion(e0, eTel, async () => { const f = FLU.find(x => x.id === id1); f.obs = 'Observation ajoutée sur le PC'; save('cp2_fluides', FLU); });
+    const f1 = FLU.find(x => x.id === id1) || {}, s1 = ((fa.S.etat.data.cp2_fluides) || []).find(x => x.id === id1) || {};
+    const a = { annTel, conflits: fa.S.conflits, annulee: !!f1.annulee, obs: f1.obs, verrou: typeof cpFluVerrou === 'function' ? cpFluVerrou(f1) : null, serveur: { annulee: !!s1.annulee, obs: s1.obs }, journal: P3.journal(id1), msgs: fa.msgs };
+    P3.debrancher();
+    /* b. signée par le détenteur sur le tél (relevé des signatures) */
+    AD.reset(); const id2 = eval(mk2); const e02 = P3.etat();
+    const okSig = nxsApplySig(Object.assign({}, sigF, { doc_id: id2 })); await W(100); const eTel2 = P3.etat(), sigTel = okSig === true && !!FLU.find(x => x.id === id2).sigDetenteur;
+    const fb = await P3.fusion(e02, eTel2, async () => { const f = FLU.find(x => x.id === id2); f.obs = 'Observation ajoutée sur le PC'; save('cp2_fluides', FLU); });
+    const f2 = FLU.find(x => x.id === id2) || {}, s2 = ((fb.S.etat.data.cp2_fluides) || []).find(x => x.id === id2) || {};
+    const b = { sigTel, conflits: fb.S.conflits, sig: !!(f2.sigDetenteur && f2.sigDetenteur.at), obs: f2.obs, verrou: typeof cpFluVerrou === 'function' ? cpFluVerrou(f2) : null, serveur: { sig: !!s2.sigDetenteur, obs: s2.obs }, journal: P3.journal(id2) };
+    P3.debrancher(); return { a, b };
+  }, { mk1: FICHE({}), mk2: FICHE({}), sigF: SIGF('x') });
+  if (!r.a.annTel || !r.b.sigTel) rec(GP.FUS, 'T38 prérequis (fiche annulée ; fiche signée par le détenteur)', false, j(r));
+  rec(GP.FUS, 'T38a fiche fluide annulée (tél) contre observation (PC) : la fiche du tél entière (annulée, en lecture seule), l\'observation du PC écartée (journal), mémoire et serveur', !!(r.a.conflits === 1 && r.a.annulee && r.a.obs === '' && r.a.verrou && r.a.serveur.annulee && r.a.serveur.obs === '' && r.a.journal.length === 1 && (r.a.journal[0].ecarte || []).indexOf('obs') >= 0), j(r.a));
+  rec(GP.FUS, 'T38b fiche fluide signée par le détenteur (tél) contre observation (PC) : signature présente (fiche en lecture seule), observation écartée, journal', !!(r.b.conflits === 1 && r.b.sig && r.b.obs === '' && /signée par le détenteur/i.test(r.b.verrou || '') && r.b.serveur.sig && r.b.journal.length === 1), j(r.b));
+}
+
+/* ---------------- T39 : garde à la réception (pullState) — un appareil resté sur l'ancienne version renvoie O « accepté » ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 }); const eAvant = P3.etat();
+    cpDevisAnnuler(o.id); await W(100); const radio = document.querySelector('#mAnnulDevis input[name="cpAnnulMotif"][value="abandon"]'); if (radio) radio.checked = true; cpDevisAnnulerOk(); await W(200);
+    const eIci = P3.etat(); if (P3.devis(o.id).statut !== 'annule') return { prerequis: P3.devis(o.id).statut };
+    /* cet appareil est À JOUR (annulé, synchronisé) ; l'ancienne version a écrit O « accepté » + date sur le serveur */
+    const S = P3.brancher(eIci, '2027-01-01T00:00:05Z'); P3.poser(eIci, '2027-01-01T00:00:05Z');
+    const eVieux = JSON.parse(JSON.stringify(eAvant)); eVieux.cp2_devis.find(x => x.id === o.id).datePlanif = __REF.jour; S.poser(eVieux);
+    AD.reset(); const r0 = window.__rechargements; await pullState(); P3.calme();
+    const apres = { statut: P3.devis(o.id).statut, stStatut: (AD.stored(o.id) || {}).statut, motif: (P3.devis(o.id).annulation || {}).motif, date: P3.devis(o.id).datePlanif, dirty: !!localStorage.getItem('cp2_dirty'), recharge: window.__rechargements - r0, journal: P3.journal(o.id), msgs: __msgs.slice(), pushes: S.pushes };
+    await pushState(); P3.calme(); const s = P3.srvDevis(S, o.id);
+    const res = Object.assign(apres, { serveur: { statut: s.statut, motif: (s.annulation || {}).motif, date: s.datePlanif }, ecritures: S.pushes });
+    P3.debrancher(); return res;
+  });
+  if (r.prerequis) rec(GP.REC, 'T39 prérequis (annulation faite)', false, j(r));
+  rec(GP.REC, 'T39 réception d\'un état où O est revenu « accepté » (ancienne version) : O reste « annulé » (mémoire et stockage), motif gardé, la date de l\'autre appareil est reprise, « à synchroniser », rechargement, ligne au journal, message', !!(r.statut === 'annule' && r.stStatut === 'annule' && r.motif === 'abandon' && r.date === REF.jour && r.dirty && r.recharge === 1 && r.pushes === 0 && r.journal.length === 1 && (r.msgs || []).some(m => /fusion|annul/i.test(m))), j({ statut: r.statut, stStatut: r.stStatut, motif: r.motif, date: r.date, dirty: r.dirty, recharge: r.recharge, pushes: r.pushes, journal: r.journal, msgs: r.msgs }));
+  rec(GP.REC, 'T39 puis l\'envoi remet l\'état terminal sur le serveur (annulé, motif, date) en une écriture', !!(r.serveur && r.serveur.statut === 'annule' && r.serveur.motif === 'abandon' && r.serveur.date === REF.jour && r.ecritures === 1), j({ serveur: r.serveur, ecritures: r.ecritures }));
+}
+
+/* ---------------- T40 : encaissement (tél) contre note (PC) — intervention et facture de devis ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    /* a. intervention facturée des deux côtés ; le tél l'encaisse (payDep), le PC change la note */
+    const x = { id: 'dep-p3-' + Math.random().toString(36).slice(2, 8), cNom: 'Boulangerie Dupré', cType: 'Professionnel', date: __REF.jour, desc: 'Dépannage essai', notes: '', heures: 1, statut: 'facturee', facNum: 'TEST-F-' + __REF.an + '-0821', facDate: __REF.jour, payeLe: null, modeReg: '', mode: 'depl', itype: 'dep' };
+    DEP.push(x); save(LS.dep, DEP); const e0 = P3.etat();
+    __rep = 'Virement'; payDep(x.id); await W(100); const eTel = P3.etat(), payeTel = (DEP.find(d => d.id === x.id) || {}).statut === 'payee';
+    const fa = await P3.fusion(e0, eTel, async () => { const d = DEP.find(d => d.id === x.id); d.notes = 'Note du PC'; save(LS.dep, DEP); });
+    const d1 = DEP.find(d => d.id === x.id) || {}, s1 = ((fa.S.etat.data.cp2_dep) || []).find(d => d.id === x.id) || {};
+    const a = { payeTel, conflits: fa.S.conflits, statut: d1.statut, payeLe: d1.payeLe, modeReg: d1.modeReg, notes: d1.notes, facNum: d1.facNum, serveur: { statut: s1.statut, payeLe: s1.payeLe, notes: s1.notes }, journal: P3.journal(x.id) };
+    P3.debrancher();
+    /* b. facture de solde d'un devis des deux côtés ; le tél l'encaisse (payerFacture), le PC pose une date de planification */
+    AD.reset(); const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 }); await facturerDevis(o.id, 'solde'); await W(400);
+    if (!P3.devis(o.id).facSolde) return { a, b: { prerequis: 'pas de facture' } };
+    const e02 = P3.etat(); __rep = 'CB'; payerFacture('devis', o.id, 'solde'); await W(100); const eTel2 = P3.etat(), payeTel2 = !!(P3.devis(o.id).facSolde || {}).payeLe;
+    const fb = await P3.fusion(e02, eTel2, async () => { planifDevis(o.id, __REF.jour); });
+    const d2 = P3.devis(o.id), s2 = P3.srvDevis(fb.S, o.id);
+    const b = { payeTel2, conflits: fb.S.conflits, payeLe: (d2.facSolde || {}).payeLe, mode: (d2.facSolde || {}).mode, date: d2.datePlanif, serveur: { payeLe: (s2.facSolde || {}).payeLe, date: s2.datePlanif } };
+    P3.debrancher(); return { a, b };
+  });
+  if (!r.a.payeTel || !r.b.payeTel2 || r.b.prerequis) rec(GP.ENC, 'T40 prérequis (encaissements faits sur le tél)', false, j(r));
+  rec(GP.ENC, 'T40a intervention encaissée (tél) contre note (PC) : « payée », date et mode de règlement gardés, note du PC gardée, facture intacte (mémoire et serveur), journal', !!(r.a.conflits === 1 && r.a.statut === 'payee' && r.a.payeLe === REF.jour && r.a.modeReg === 'Virement' && r.a.notes === 'Note du PC' && /TEST-F-/.test(r.a.facNum || '') && r.a.serveur.statut === 'payee' && r.a.serveur.notes === 'Note du PC' && r.a.journal.length === 1), j(r.a));
+  rec(GP.ENC, 'T40b facture de devis encaissée (tél) contre planification (PC) : encaissement gardé (date, mode), date du PC gardée, serveur à jour', !!(r.b.conflits === 1 && r.b.payeLe === REF.jour && r.b.mode === 'CB' && r.b.date === REF.jour && r.b.serveur.payeLe === REF.jour && r.b.serveur.date === REF.jour), j(r.b));
+}
+
+/* ---------------- T41 : vieille sauvegarde restaurée (importJSON) : aucun état terminal ni encaissement défait ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 });
+    const x = { id: 'dep-p3-' + Math.random().toString(36).slice(2, 8), cNom: 'Boulangerie Dupré', cType: 'Professionnel', date: __REF.jour, desc: 'Dépannage essai 2', notes: '', heures: 1, statut: 'facturee', facNum: 'TEST-F-' + __REF.an + '-0822', facDate: __REF.jour, payeLe: null, modeReg: '', mode: 'depl', itype: 'dep' };
+    DEP.push(x); save(LS.dep, DEP);
+    /* la sauvegarde : l'état d'AVANT (O accepté, intervention non encaissée), avec un devis Z qui n'existe plus ici */
+    const vieille = JSON.parse(JSON.stringify(cpLocalData())); vieille.cp2_devis.push(Object.assign(JSON.parse(JSON.stringify(o)), { id: 'z-p3-' + o.id, num: 'DV-Z-P3', statut: 'envoye' }));
+    /* depuis : O annulé, intervention encaissée, un nouveau devis N */
+    cpDevisAnnuler(o.id); await W(100); const radio = document.querySelector('#mAnnulDevis input[name="cpAnnulMotif"][value="erreur"]'); if (radio) radio.checked = true; cpDevisAnnulerOk(); await W(200);
+    __rep = 'Espèces'; payDep(x.id); await W(100);
+    const n = AD.v2({ statut: 'brouillon' });
+    if (P3.devis(o.id).statut !== 'annule' || (DEP.find(d => d.id === x.id) || {}).statut !== 'payee') return { prerequis: true };
+    const sauvegarde = { format: 'climpilot-complet-1', exported: '2027-01-01T08:00:00Z', all: vieille, compte: { devis: vieille.cp2_devis.length, clients: (vieille.cp2_clients || []).length } };
+    /* pas de vrai rechargement de page pendant la suite : il est compté, et la mémoire est relue */
+    const ancienReload = window.nxStoreReload; window.__rechargements = 0; window.nxStoreReload = () => { window.__rechargements++; P3.relire(); };
+    AD.reset(); __oui = true;
+    const input = { files: [new File([JSON.stringify(sauvegarde)], 'ClimPilot_sauvegarde_essai.json', { type: 'application/json' })], value: '' };
+    importJSON(input); await W(1200);
+    window.nxStoreReload = ancienReload;
+    const d = P3.devis(o.id), st = AD.stored(o.id), dep = DEP.find(y => y.id === x.id) || {}, stDep = (load(LS.dep, []).find(y => y.id === x.id) || {});
+    return { recharge: window.__rechargements, statut: d.statut, stStatut: st && st.statut, motif: (d.annulation || {}).motif, dep: { statut: dep.statut, payeLe: dep.payeLe, stStatut: stDep.statut }, z: !!P3.devis('z-p3-' + o.id).id, n: !!P3.devis(n.id).id, dirty: !!localStorage.getItem('cp2_dirty'), journal: P3.journal().filter(y => y.source === 'import'), msgs: __msgs.slice(), dlg: __dlg.slice() };
+  });
+  if (r.prerequis) rec(GP.IMP, 'T41 prérequis (annulation, encaissement)', false, j(r));
+  rec(GP.IMP, 'T41 vieille sauvegarde restaurée (importJSON) : la sauvegarde est bien restaurée (devis Z revenu, brouillon N parti, rechargement, « à envoyer »), MAIS l\'annulation de O est gardée (motif) et l\'encaissement de l\'intervention aussi (mémoire et stockage)', !!(r.recharge === 1 && r.z && !r.n && r.dirty && r.statut === 'annule' && r.stStatut === 'annule' && r.motif === 'erreur' && r.dep.statut === 'payee' && r.dep.stStatut === 'payee' && r.dep.payeLe === REF.jour), j({ recharge: r.recharge, z: r.z, n: r.n, dirty: r.dirty, statut: r.statut, stStatut: r.stStatut, motif: r.motif, dep: r.dep, dlg: r.dlg }));
+  rec(GP.IMP, 'T41 journal : 2 lignes fusion_etat (source « import ») ; message', !!(r.journal && r.journal.length === 2 && (r.msgs || []).some(m => /sauvegarde/i.test(m) && /gard/i.test(m))), j({ journal: r.journal, msgs: r.msgs }));
+}
+
+/* ---------------- T42 (constat 1 de la relecture du dossier) : nxSetStatut refuse tout changement de statut d'un devis SIGNÉ ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    const s = AD.v2({ statut: 'accepte', signature: { at: __REF.horloge, nom: 'Client Signataire', hash: 'c1' }, acceptedAt: Date.parse(__REF.horloge) });
+    AD.reset(); nxSetStatut(s.id, 'envoye'); await W(120); const a = { statut: P3.devis(s.id).statut, stStatut: (AD.stored(s.id) || {}).statut, msgs: __msgs.slice() };
+    AD.reset(); nxSetStatut(s.id, 'refuse'); await W(120); const b = { statut: P3.devis(s.id).statut, msgs: __msgs.slice() };
+    /* témoin : un devis accepté SANS signature repasse « envoyé » depuis la liste (retour en arrière voulu) */
+    AD.reset(); const t = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) }); nxSetStatut(t.id, 'envoye'); await W(120); const c = { statut: P3.devis(t.id).statut };
+    return { a, b, c };
+  });
+  rec(GP.STA, 'T42 devis signé : « Envoyé » depuis la liste refusé — statut inchangé (mémoire et stockage), message 🔒 « son statut ne change plus » (comme l\'éditeur)', !!(r.a.statut === 'accepte' && r.a.stStatut === 'accepte' && r.a.msgs.some(m => /🔒/.test(m) && /ne change plus/i.test(m) && /signé/i.test(m))), j(r.a));
+  rec(GP.STA, 'T42 devis signé : « Refusé » depuis la liste refusé aussi', !!(r.b.statut === 'accepte' && r.b.msgs.some(m => /ne change plus/i.test(m))), j(r.b));
+  rec(GP.STA, 'Témoin : un devis accepté sans signature repasse « envoyé » depuis la liste', r.c.statut === 'envoye', j(r.c));
+}
+
+/* ================= P3-bis (09/11/2026, relecture P10 d'Opus 5.5) — C1 : un geste ORDINAIRE reçu de l'autre appareil n'est pas un arbitrage (ni journal, ni « à envoyer », ni version écartée) ;
+   C2 : la garde à la réception ne fait rien sans base, et ne remet que les rangs ≥ 2 (devis), les fiches ≥ 1 et le compteur des fiches ================= */
+const GP2 = { FAN: 'P3-bis gestes ordinaires', REC: 'P3-bis garde à la réception' };
+/* réception d'un état du serveur par un appareil qui n'a rien à envoyer : état ici (= base, horodatage ts), état du serveur plus récent, pullState, puis mesures */
+const RECEVOIR = `(async function(eIci,eSrv,sansBase){ const S=P3.brancher(eIci,'2027-01-01T00:00:05Z'); P3.poser(eIci,'2027-01-01T00:00:05Z'); if(sansBase) localStorage.removeItem('cp2_sync_base'); S.poser(eSrv);
+  AD.reset(); const r0=window.__rechargements, j0=P3.journal().length, ec0=P3.ecartes().length; await pullState(); P3.calme();
+  const res={ recharge:window.__rechargements-r0, dirty:!!localStorage.getItem('cp2_dirty'), journal:P3.journal().slice(j0), ecartes:P3.ecartes().length-ec0, pushes:S.pushes, msgs:__msgs.slice(), lbl:(document.getElementById('cloudLbl')||{}).textContent||'' };
+  /* l'appli n'envoie que s'il reste quelque chose « à envoyer » (cpEnvoiSiBesoin) : même règle ici */
+  if(localStorage.getItem('cp2_dirty')){ await pushState(); P3.calme(); } res.ecritures=S.pushes; res.serveur=JSON.parse(JSON.stringify(S.etat.data)); P3.debrancher(); return res; })`;
+
+/* ---------------- T43 (C1) : le PC a seulement posé une date, le tél a annulé : message exact, pas de « geste fait ici … écarté » ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 }); const e0 = P3.etat();
+    cpDevisAnnuler(o.id); await W(100); const radio = document.querySelector('#mAnnulDevis input[name="cpAnnulMotif"][value="abandon"]'); if (radio) radio.checked = true; cpDevisAnnulerOk(); await W(200);
+    const eTel = P3.etat(); if (P3.devis(o.id).statut !== 'annule') return { prerequis: P3.devis(o.id).statut };
+    const f = await P3.fusion(e0, eTel, async () => { planifDevis(o.id, __REF.jour); });
+    const res = { num: o.num, msgs: f.msgs, journal: P3.journal(o.id), statut: P3.devis(o.id).statut, date: P3.devis(o.id).datePlanif }; P3.debrancher(); return res;
+  });
+  if (r.prerequis) rec(GP2.FAN, 'T43 prérequis (annulation faite)', false, j(r));
+  const attendu = 'devis ' + r.num + ' : annulé sur l\'autre appareil';
+  rec(GP2.FAN, 'T43 (C1) PC : seulement une date ; tél : annulé → message exact « ☁️ Fusion — devis N : annulé sur l\'autre appareil », SANS « le geste fait ici (« accepté ») est écarté » ; journal : statut_ecarte vide, message identique ; annulé, date gardée', !!(r.statut === 'annule' && r.date === REF.jour && (r.msgs || []).some((m) => m === '☁️ Fusion — ' + attendu) && !(r.msgs || []).some((m) => /geste fait ici/i.test(m)) && r.journal.length === 1 && r.journal[0].statut_ecarte === '' && r.journal[0].message === attendu), j({ msgs: (r.msgs || []).filter((m) => /fusion/i.test(m)), journal: (r.journal || []).map((x) => [x.statut_ecarte, x.message]) }));
+}
+
+/* ---------------- T44 (C1) : réception d'un geste ordinaire fait sur l'autre appareil, rien changé ici → appliqué tel quel, aucun arbitrage fantôme ---------------- */
+{
+  const r = await p.evaluate(async (RECEVOIR) => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120); const recevoir = eval(RECEVOIR); const T = Date.parse(__REF.horloge);
+    const e = AD.v2({ statut: 'envoye', sentAt: T - 3 * 86400000 }), b = AD.v2({ statut: 'brouillon' }), o = AD.v2({ statut: 'accepte', acceptedAt: T - 86400000 }), o2 = AD.v2({ statut: 'accepte', acceptedAt: T - 86400000 }), o3 = AD.v2({ statut: 'accepte', acceptedAt: T - 86400000 });
+    const e0 = P3.etat(), cas = [];
+    const srv = (f) => { const s = JSON.parse(JSON.stringify(e0)); f(s.cp2_devis); return s; };
+    const cl = (x) => JSON.parse(JSON.stringify(x));
+    const S1 = srv((L) => { const d = L.find((x) => x.id === e.id); d.statut = 'accepte'; d.acceptedAt = T; });
+    const S2 = srv((L) => { const d = L.find((x) => x.id === b.id); d.statut = 'envoye'; d.sentAt = T; });
+    const S3 = srv((L) => { const d = L.find((x) => x.id === o.id); d.statut = 'envoye'; });   /* retour en arrière voulu, non signé */
+    const S4 = srv((L) => { const d = L.find((x) => x.id === o2.id); d.statut = 'annule'; d.annulation = { at: T, motif: 'abandon', libelle: 'Abandon du client', texte: '', statutAvant: 'accepte' }; });
+    const S5 = srv((L) => { const d = L.find((x) => x.id === o3.id); const a = cl(d); a.id = 'a-p3bis-' + o3.id; a.num = 'DV-A-P3BIS'; a.avenantDe = { id: o3.id, num: o3.num, at: T - 60000 }; a.statut = 'accepte'; L.push(a); d.statut = 'remplace'; d.remplacePar = { id: a.id, num: a.num, at: T }; });
+    for (const [nom, id, attendu, Ssrv] of [['envoyé → accepté', e.id, 'accepte', S1], ['brouillon → envoyé', b.id, 'envoye', S2], ['accepté → envoyé (retour voulu, non signé)', o.id, 'envoye', S3], ['accepté → annulé', o2.id, 'annule', S4], ['accepté → remplacé', o3.id, 'remplace', S5]]) {
+      P3.poser(e0, '2027-01-01T00:00:05Z');
+      const res = await recevoir(e0, Ssrv, false);
+      cas.push({ nom, attendu, statut: P3.devis(id).statut, stStatut: (AD.stored(id) || {}).statut, recharge: res.recharge, dirty: res.dirty, journal: res.journal.length, ecartes: res.ecartes, pushes: res.pushes, ecritures: res.ecritures, msgsRemis: res.msgs.filter((m) => /remis|fusion/i.test(m)), lbl: res.lbl });
+    }
+    return { cas };
+  }, RECEVOIR);
+  for (const c of r.cas || []) rec(GP2.FAN, 'T44 (C1) réception « ' + c.nom + ' » fait sur l\'autre appareil, rien changé ici : statut appliqué (mémoire et stockage), rechargement normal, PAS « à envoyer », aucune ligne fusion_etat, aucune version écartée, aucun message « états remis », aucune écriture serveur', !!(c.statut === c.attendu && c.stStatut === c.attendu && c.recharge === 1 && !c.dirty && c.journal === 0 && c.ecartes === 0 && c.pushes === 0 && c.ecritures === 0 && c.msgsRemis.length === 0), j(c));
+}
+
+/* ---------------- T45 (C2) : sans base de synchro, la garde à la réception ne fait rien ---------------- */
+{
+  const r = await p.evaluate(async (RECEVOIR) => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120); const recevoir = eval(RECEVOIR); const T = Date.parse(__REF.horloge);
+    const o = AD.v2({ statut: 'accepte', acceptedAt: T - 86400000 }), s = AD.v2({ statut: 'accepte', signature: { at: __REF.horloge, nom: 'Client Signataire', hash: 'sb1' }, acceptedAt: T });
+    const x = { id: 'dep-p3bis-' + Math.random().toString(36).slice(2, 8), cNom: 'Boulangerie Dupré', cType: 'Professionnel', date: __REF.jour, desc: 'Dépannage essai 3', notes: '', heures: 1, statut: 'payee', facNum: 'TEST-F-' + __REF.an + '-0831', facDate: __REF.jour, payeLe: __REF.jour, modeReg: 'Virement', mode: 'depl', itype: 'dep' };
+    DEP.push(x); save(LS.dep, DEP); const eIci = P3.etat();
+    const eSrv = JSON.parse(JSON.stringify(eIci)); eSrv.cp2_devis.find((d) => d.id === o.id).statut = 'envoye'; const sd = eSrv.cp2_devis.find((d) => d.id === s.id); sd.statut = 'envoye'; delete sd.signature; const xd = eSrv.cp2_dep.find((d) => d.id === x.id); xd.statut = 'facturee'; xd.payeLe = null; xd.modeReg = '';
+    const res = await recevoir(eIci, eSrv, true);
+    return { o: P3.devis(o.id).statut, s: { statut: P3.devis(s.id).statut, signature: !!P3.devis(s.id).signature }, dep: (DEP.find((d) => d.id === x.id) || {}).statut, recharge: res.recharge, dirty: res.dirty, journal: res.journal.length, ecartes: res.ecartes, pushes: res.pushes, ecritures: res.ecritures, msgsRemis: res.msgs.filter((m) => /remis|fusion/i.test(m)) };
+  }, RECEVOIR);
+  rec(GP2.REC, 'T45 (C2) réception SANS base de synchro (premier passage) : l\'état reçu est rangé tel quel — « accepté » reçu « envoyé » appliqué, intervention payée reçue « facturée » appliquée, devis signé ici reçu « envoyé » sans signature appliqué aussi (sans base, la garde ne tranche pas) ; rechargement normal, PAS « à envoyer », aucune ligne, aucune écriture', !!(r.o === 'envoye' && r.s.statut === 'envoye' && !r.s.signature && r.dep === 'facturee' && r.recharge === 1 && !r.dirty && r.journal === 0 && r.ecartes === 0 && r.pushes === 0 && r.ecritures === 0 && r.msgsRemis.length === 0), j(r));
+}
+
+/* ---------------- T46 (C2) : avec base, seuls les rangs ≥ 2, les fiches ≥ 1 et le compteur sont remis ---------------- */
+{
+  const r = await p.evaluate(async ({ RECEVOIR, mk }) => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120); const recevoir = eval(RECEVOIR); const T = Date.parse(__REF.horloge);
+    const s = AD.v2({ statut: 'accepte', signature: { at: __REF.horloge, nom: 'Client Signataire', hash: 'sb2' }, acceptedAt: T });
+    const idF = eval(mk); const F = FLU.find((f) => f.id === idF); F.annulee = { at: T, date: __REF.jour, motif: 'erreur de saisie' }; save('cp2_fluides', FLU);
+    localStorage.setItem('cp2_fluseq', JSON.stringify({ year: +__REF.an, seq: 7 }));
+    const x = { id: 'dep-p3bis-' + Math.random().toString(36).slice(2, 8), cNom: 'Boulangerie Dupré', cType: 'Professionnel', date: __REF.jour, desc: 'Dépannage essai 4', notes: '', heures: 1, statut: 'payee', facNum: 'TEST-F-' + __REF.an + '-0832', facDate: __REF.jour, payeLe: __REF.jour, modeReg: 'CB', mode: 'depl', itype: 'dep' };
+    DEP.push(x); save(LS.dep, DEP); const eIci = P3.etat();
+    /* l'état reçu (ancienne version) : la signature a sauté, la fiche n'est plus annulée, le compteur a reculé, l'encaissement a été retiré ailleurs (geste légitime : appliqué) */
+    const eSrv = JSON.parse(JSON.stringify(eIci)); const sd = eSrv.cp2_devis.find((d) => d.id === s.id); sd.statut = 'envoye'; delete sd.signature; delete eSrv.cp2_fluides.find((f) => f.id === idF).annulee; eSrv.cp2_fluseq = { year: +__REF.an, seq: 6 };
+    const xd = eSrv.cp2_dep.find((d) => d.id === x.id); xd.statut = 'facturee'; xd.payeLe = null; xd.modeReg = '';
+    const res = await recevoir(eIci, eSrv, false);
+    const sS = (res.serveur.cp2_devis || []).find((d) => d.id === s.id) || {}, fS = (res.serveur.cp2_fluides || []).find((f) => f.id === idF) || {};
+    return { s: { statut: P3.devis(s.id).statut, signature: !!P3.devis(s.id).signature }, fiche: !!(FLU.find((f) => f.id === idF) || {}).annulee, seq: (JSON.parse(localStorage.getItem('cp2_fluseq') || '{}')).seq, dep: (DEP.find((d) => d.id === x.id) || {}).statut, recharge: res.recharge, dirty: res.dirty, journal: res.journal.map((y) => y.cle + '/' + y.etat_garde), pushes: res.pushes, ecritures: res.ecritures, msgs: res.msgs.filter((m) => /remis/i.test(m)), serveur: { statut: sS.statut, signature: !!sS.signature, fiche: !!fS.annulee, seq: (res.serveur.cp2_fluseq || {}).seq, dep: ((res.serveur.cp2_dep || []).find((d) => d.id === x.id) || {}).statut } };
+  }, { RECEVOIR, mk: FICHE({}) });
+  rec(GP2.REC, 'T46 (C2) réception AVEC base : le devis signé ici reçu « envoyé » sans signature est REMIS (accepté + signature, rang 2), la fiche annulée ici est remise, le compteur revenu à 6 est remis à 7 ; l\'encaissement retiré ailleurs est APPLIQUÉ (facturée) ; « à envoyer », message « états remis », 3 lignes au journal, rechargement', !!(r.s.statut === 'accepte' && r.s.signature && r.fiche && r.seq === 7 && r.dep === 'facturee' && r.recharge === 1 && r.dirty && r.pushes === 0 && r.journal.length === 2 && r.msgs.length === 1), j(r));
+  rec(GP2.REC, 'T46 puis l\'envoi remet ces trois états sur le serveur en une écriture (l\'encaissement y reste retiré)', !!(r.ecritures === 1 && r.serveur && r.serveur.statut === 'accepte' && r.serveur.signature && r.serveur.fiche && r.serveur.seq === 7 && r.serveur.dep === 'facturee'), j(r.serveur));
 }
 
 rec('AF1', 'Aucune erreur JavaScript pendant la suite', errs.length === 0, errs.join(' | '));

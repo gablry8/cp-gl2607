@@ -239,3 +239,31 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   PDF ANNULÉ, non supprimable, journal), T16 verrou de la signature sur l'ancien formulaire (boutons cachés, `nxsSendDevis` refusé), T17 apostrophe ’ du
   détenteur, T9 texte de la question des Paramètres. Rouges sur `9fcf2cf`, verts après. Suite I : cas I3d (devis « envoyé » passé « Accepté » à l'écran
   sans enregistrer, puis modifié → « Facturer » enregistre d'abord), vert d'emblée.
+
+## Ajouts 06/11/2026 (mission P3 — branche `correctif/p3-fusion-etats`, compte rendu `docs/P3-COMPTE-RENDU.md`)
+- **suiteU-fusion.mjs** : la seconde passe `cpFusionEtats` (états terminaux) est extraite d'`index.html` avec `cpMerge` ; cas **U-P3-1 à U-P3-16** sur les vraies clés
+  (`cp2_devis`, `cp2_fluides`, `cp2_dep`, `cp2_fluseq`) : annulé / remplacé / signé / facturé contre planification, relance ou lignes modifiées ; deux gestes terminaux
+  (premier en date) ; fiche fluide annulée ou signée contre observation ; compteur des fiches au plus grand ; encaissements à trois voies ; témoins (retour en arrière voulu,
+  sans base) ; **U-P3-15** symétrie (L et R échangés → même état) ; propriétés : idempotence avec des devis, entrées intactes, liste des arbitrages non énumérable ni sérialisée.
+  **Golden `tests/golden/fusion-empreinte.txt` régénéré** (3f01fbdc → 76e10290) avec l'accord écrit de Gabriel du 06/11 : les 23 cas et 3 propriétés d'origine sont inchangés.
+- **suiteAD-af1-pertes.mjs** : **T32 à T41** (faux cloud EN PAGE : vrais `pushState` / `pullState`, vraie `cpMerge` enveloppée, rechargement compté) — annulation, signature
+  en ligne, signé contre lignes, facture contre annulation (deux sens), deux factures dans l'arbre, avenant contre annulation (dates dans les deux ordres, posées à la main),
+  fiches fluides, **garde à la réception** (T39), encaissements (T40), **vieille sauvegarde restaurée** (T41, `importJSON`) ; **T42** : `nxSetStatut` refuse un changement de
+  statut sur un devis signé (constat 1). **T19a et T22a réécrits** : la fusion ne reproduit plus le défaut D1 (l'original reste « remplacé ») ; les contrôles de réparation
+  partent d'un état posé à la main. Rouges sur `297cc7e` (24 ; le 1er contrôle de T36 est un témoin), verts après.
+- **suiteAE-p3-fusion.mjs** (nouvelle, 22 contrôles, banc deux appareils `banc-appareils.mjs`) : AE1 annulation contre planification par la vraie synchro (conflit, fusion,
+  rechargement, nouvel envoi, réception sur le téléphone) ; AE2 signature en ligne contre relance (le PC refuse ensuite d'enregistrer) ; AE3 avenant accepté contre date sur
+  l'original (une seule facture dans l'arbre) ; AE6 témoins ; AE5 **ancienne version** (seconde passe et garde remplacées par l'identité sur le PC) : le téléphone P3 remet
+  l'état, écritures bornées (2 ou 3 observées, borne du test 4) puis plus aucune au tour suivant ; AE4 **facturation réelle démarrée**, deux appareils facturent chacun un devis du même arbre (état gelé, registre ouvert) :
+  les deux factures restent, message « deux factures », une 3e est refusée. Inscrite dans `run-all.sh` (`SUITES_DEFAUT`) et `isolation/rapport.mjs` (`resAE.json`).
+- Pièges rencontrés en écrivant ces tests (côté test, pas côté appli) : en mode démonstration connecté, un appareil **n'émet pas** de facture si le serveur a un état plus
+  récent que le sien (garde-fou C1 « pas à jour ») : dans un scénario « le PC facture pendant que le téléphone annule », le PC doit facturer **avant** que l'état du téléphone
+  n'arrive au serveur ; un avenant est un nouveau contrat au mode de conclusion « à préciser » : pour un **particulier**, la facture est bloquée (L221-10, voulu), d'où un
+  client professionnel dans AE4. Dates qui départagent deux gestes : posées à la main, à 10 ou 20 minutes d'écart (horloge figée dans la page).
+- **P3-bis (09/11/2026, relecture P10 d'Opus 5.5)** : suite U, cas **U-P3bis-1 à 9** (un geste ordinaire reçu de l'autre appareil n'est pas un arbitrage ; libellé exact sans « geste fait
+  ici » ; option `{reception:true}` de `cpFusionEtats` : rangs ≥ 2, fiches ≥ 1 et compteur seulement, rien sans base ; `cpFusionLibelle` extraite d'`index.html` comme `cpFusionEtats`) ;
+  suite AD **T43 à T46** (message exact ; réception d'un geste ordinaire sans « à envoyer », sans ligne, sans version écartée, sans écriture serveur ; garde sans base inactive ; garde avec base :
+  signature, fiche annulée et compteur remis, encaissement retiré appliqué) ; suite AE **AE7** (témoin deux appareils : trois gestes ordinaires du PC en ligne, le téléphone au repos ne journalise
+  rien et n'affiche aucun message « états remis » ; revu en **P3-ter** : chaque écriture serveur est attribuée à l'appareil qui la fait en enveloppant `S.appel`, et chaque écriture du téléphone
+  ne change que `figEnv` dans `cp2_devis` ou `cpnext_objsuivi`, ou rien — comme sur `main` (1 à 3 écritures du téléphone, borne large 4) ; plus de borne sur le total, qui varie avec la charge).
+  Rouges sur `a2e15a8` : U 82 / 8, AD 141 / 7, AE 24 / 1 ; verts après.

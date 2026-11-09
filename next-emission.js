@@ -817,7 +817,7 @@
     /* l'indicateur de mode suit les mises à jour de l'appli (SIRET saisi, démarrage, émission) */
     var ub=window.updateBadges; if(typeof ub==='function'&&!ub._nxem){ var wb=function(){ var r=ub.apply(this,arguments); try{ badge(); }catch(e){} return r; }; wb._nxem=true; window.updateBadges=wb; }
     /* fusion de synchro protégée */
-    var mg=window.cpMerge; if(typeof mg==='function'&&!mg._nxem){ var wm=function(B,L,R){ var out=mg.apply(this,arguments); try{ return protegerFusion(B||{},L||{},R||{},out); }catch(e){ return out; } }; wm._nxem=true; window.cpMerge=wm; }
+    var mg=window.cpMerge; if(typeof mg==='function'&&!mg._nxem){ var wm=function(B,L,R){ var out=mg.apply(this,arguments); try{ return protegerFusion(B||{},L||{},R||{},out); }catch(e){ console.warn('ClimPilot (fusion) protection des factures :',e); return out; } }; wm._nxem=true; window.cpMerge=wm; }
     /* onglet en lecture seule : pas de synchro */
     ['pushState','pullState','markDirty'].forEach(function(f){ var o=window[f]; if(typeof o!=='function'||o._nxro) return; var w=function(){ if(window.__cpLectureSeule) return; return o.apply(this,arguments); }; w._nxro=true; window[f]=w; });
   }
