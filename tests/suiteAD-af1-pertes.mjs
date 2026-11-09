@@ -12,6 +12,8 @@ import { ecrireResultats } from './env.mjs';
 //  T9 : texte de la question des Paramètres (« OK = enregistrer · Annuler = PERDRE les modifications »).
 //  P3 (06/11/2026) : T32 à T41 (états terminaux gagnent la fusion : annulé, remplacé, signé, facturé ; fiches fluides ; garde à la réception ; vieille sauvegarde ; encaissements) et
 //  T42 (constat 1 : nxSetStatut refuse sur un devis signé) ; T19a et T22a réécrits (la fusion ne reproduit plus le défaut D1 : l'original reste « remplacé »).
+//  P3-bis (09/11/2026, relecture P10 d'Opus) : T43 message exact sans « geste fait ici », T44 réception d'un geste ordinaire sans arbitrage fantôme (ni « à envoyer »), T45 garde sans base inactive,
+//  T46 garde avec base : rangs ≥ 2, fiches ≥ 1 et compteur remis, encaissements appliqués.
 // Horloge figée sur REF (tests/lib.mjs) : aucun test ne lit la vraie date. Serveur et cloud coupés (lib.mjs). Aucun montant n'est recalculé ici.
 import { page, rec, RES, closeBrowser, seed, REF } from './lib.mjs';
 const j = (o) => JSON.stringify(o);
@@ -1333,6 +1335,87 @@ const SIGF = (id, extra) => Object.assign({ doc_type: 'fluide', doc_id: id, stat
   rec(GP.STA, 'T42 devis signé : « Envoyé » depuis la liste refusé — statut inchangé (mémoire et stockage), message 🔒 « son statut ne change plus » (comme l\'éditeur)', !!(r.a.statut === 'accepte' && r.a.stStatut === 'accepte' && r.a.msgs.some(m => /🔒/.test(m) && /ne change plus/i.test(m) && /signé/i.test(m))), j(r.a));
   rec(GP.STA, 'T42 devis signé : « Refusé » depuis la liste refusé aussi', !!(r.b.statut === 'accepte' && r.b.msgs.some(m => /ne change plus/i.test(m))), j(r.b));
   rec(GP.STA, 'Témoin : un devis accepté sans signature repasse « envoyé » depuis la liste', r.c.statut === 'envoye', j(r.c));
+}
+
+/* ================= P3-bis (09/11/2026, relecture P10 d'Opus 5.5) — C1 : un geste ORDINAIRE reçu de l'autre appareil n'est pas un arbitrage (ni journal, ni « à envoyer », ni version écartée) ;
+   C2 : la garde à la réception ne fait rien sans base, et ne remet que les rangs ≥ 2 (devis), les fiches ≥ 1 et le compteur des fiches ================= */
+const GP2 = { FAN: 'P3-bis gestes ordinaires', REC: 'P3-bis garde à la réception' };
+/* réception d'un état du serveur par un appareil qui n'a rien à envoyer : état ici (= base, horodatage ts), état du serveur plus récent, pullState, puis mesures */
+const RECEVOIR = `(async function(eIci,eSrv,sansBase){ const S=P3.brancher(eIci,'2027-01-01T00:00:05Z'); P3.poser(eIci,'2027-01-01T00:00:05Z'); if(sansBase) localStorage.removeItem('cp2_sync_base'); S.poser(eSrv);
+  AD.reset(); const r0=window.__rechargements, j0=P3.journal().length, ec0=P3.ecartes().length; await pullState(); P3.calme();
+  const res={ recharge:window.__rechargements-r0, dirty:!!localStorage.getItem('cp2_dirty'), journal:P3.journal().slice(j0), ecartes:P3.ecartes().length-ec0, pushes:S.pushes, msgs:__msgs.slice(), lbl:(document.getElementById('cloudLbl')||{}).textContent||'' };
+  await pushState(); P3.calme(); res.ecritures=S.pushes; res.serveur=JSON.parse(JSON.stringify(S.etat.data)); P3.debrancher(); return res; })`;
+
+/* ---------------- T43 (C1) : le PC a seulement posé une date, le tél a annulé : message exact, pas de « geste fait ici … écarté » ---------------- */
+{
+  const r = await p.evaluate(async () => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120);
+    const o = AD.v2({ statut: 'accepte', acceptedAt: Date.parse(__REF.horloge) - 86400000 }); const e0 = P3.etat();
+    cpDevisAnnuler(o.id); await W(100); const radio = document.querySelector('#mAnnulDevis input[name="cpAnnulMotif"][value="abandon"]'); if (radio) radio.checked = true; cpDevisAnnulerOk(); await W(200);
+    const eTel = P3.etat(); if (P3.devis(o.id).statut !== 'annule') return { prerequis: P3.devis(o.id).statut };
+    const f = await P3.fusion(e0, eTel, async () => { planifDevis(o.id, __REF.jour); });
+    const res = { num: o.num, msgs: f.msgs, journal: P3.journal(o.id), statut: P3.devis(o.id).statut, date: P3.devis(o.id).datePlanif }; P3.debrancher(); return res;
+  });
+  if (r.prerequis) rec(GP2.FAN, 'T43 prérequis (annulation faite)', false, j(r));
+  const attendu = 'devis ' + r.num + ' : annulé sur l\'autre appareil';
+  rec(GP2.FAN, 'T43 (C1) PC : seulement une date ; tél : annulé → message exact « ☁️ Fusion — devis N : annulé sur l\'autre appareil », SANS « le geste fait ici (« accepté ») est écarté » ; journal : statut_ecarte vide, message identique ; annulé, date gardée', !!(r.statut === 'annule' && r.date === REF.jour && (r.msgs || []).some((m) => m === '☁️ Fusion — ' + attendu) && !(r.msgs || []).some((m) => /geste fait ici/i.test(m)) && r.journal.length === 1 && r.journal[0].statut_ecarte === '' && r.journal[0].message === attendu), j({ msgs: (r.msgs || []).filter((m) => /fusion/i.test(m)), journal: (r.journal || []).map((x) => [x.statut_ecarte, x.message]) }));
+}
+
+/* ---------------- T44 (C1) : réception d'un geste ordinaire fait sur l'autre appareil, rien changé ici → appliqué tel quel, aucun arbitrage fantôme ---------------- */
+{
+  const r = await p.evaluate(async (RECEVOIR) => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120); const recevoir = eval(RECEVOIR); const T = Date.parse(__REF.horloge);
+    const e = AD.v2({ statut: 'envoye', sentAt: T - 3 * 86400000 }), b = AD.v2({ statut: 'brouillon' }), o = AD.v2({ statut: 'accepte', acceptedAt: T - 86400000 }), o2 = AD.v2({ statut: 'accepte', acceptedAt: T - 86400000 }), o3 = AD.v2({ statut: 'accepte', acceptedAt: T - 86400000 });
+    const e0 = P3.etat(), cas = [];
+    const srv = (f) => { const s = JSON.parse(JSON.stringify(e0)); f(s.cp2_devis); return s; };
+    const cl = (x) => JSON.parse(JSON.stringify(x));
+    const S1 = srv((L) => { const d = L.find((x) => x.id === e.id); d.statut = 'accepte'; d.acceptedAt = T; });
+    const S2 = srv((L) => { const d = L.find((x) => x.id === b.id); d.statut = 'envoye'; d.sentAt = T; });
+    const S3 = srv((L) => { const d = L.find((x) => x.id === o.id); d.statut = 'envoye'; });   /* retour en arrière voulu, non signé */
+    const S4 = srv((L) => { const d = L.find((x) => x.id === o2.id); d.statut = 'annule'; d.annulation = { at: T, motif: 'abandon', libelle: 'Abandon du client', texte: '', statutAvant: 'accepte' }; });
+    const S5 = srv((L) => { const d = L.find((x) => x.id === o3.id); const a = cl(d); a.id = 'a-p3bis-' + o3.id; a.num = 'DV-A-P3BIS'; a.avenantDe = { id: o3.id, num: o3.num, at: T - 60000 }; a.statut = 'accepte'; L.push(a); d.statut = 'remplace'; d.remplacePar = { id: a.id, num: a.num, at: T }; });
+    for (const [nom, id, attendu, Ssrv] of [['envoyé → accepté', e.id, 'accepte', S1], ['brouillon → envoyé', b.id, 'envoye', S2], ['accepté → envoyé (retour voulu, non signé)', o.id, 'envoye', S3], ['accepté → annulé', o2.id, 'annule', S4], ['accepté → remplacé', o3.id, 'remplace', S5]]) {
+      P3.poser(e0, '2027-01-01T00:00:05Z');
+      const res = await recevoir(e0, Ssrv, false);
+      cas.push({ nom, attendu, statut: P3.devis(id).statut, stStatut: (AD.stored(id) || {}).statut, recharge: res.recharge, dirty: res.dirty, journal: res.journal.length, ecartes: res.ecartes, pushes: res.pushes, ecritures: res.ecritures, msgsRemis: res.msgs.filter((m) => /remis|fusion/i.test(m)), lbl: res.lbl });
+    }
+    return { cas };
+  }, RECEVOIR);
+  for (const c of r.cas || []) rec(GP2.FAN, 'T44 (C1) réception « ' + c.nom + ' » fait sur l\'autre appareil, rien changé ici : statut appliqué (mémoire et stockage), rechargement normal, PAS « à envoyer », aucune ligne fusion_etat, aucune version écartée, aucun message « états remis », aucune écriture serveur', !!(c.statut === c.attendu && c.stStatut === c.attendu && c.recharge === 1 && !c.dirty && c.journal === 0 && c.ecartes === 0 && c.pushes === 0 && c.ecritures === 0 && c.msgsRemis.length === 0), j(c));
+}
+
+/* ---------------- T45 (C2) : sans base de synchro, la garde à la réception ne fait rien ---------------- */
+{
+  const r = await p.evaluate(async (RECEVOIR) => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120); const recevoir = eval(RECEVOIR); const T = Date.parse(__REF.horloge);
+    const o = AD.v2({ statut: 'accepte', acceptedAt: T - 86400000 }), s = AD.v2({ statut: 'accepte', signature: { at: __REF.horloge, nom: 'Client Signataire', hash: 'sb1' }, acceptedAt: T });
+    const x = { id: 'dep-p3bis-' + Math.random().toString(36).slice(2, 8), cNom: 'Boulangerie Dupré', cType: 'Professionnel', date: __REF.jour, desc: 'Dépannage essai 3', notes: '', heures: 1, statut: 'payee', facNum: 'TEST-F-' + __REF.an + '-0831', facDate: __REF.jour, payeLe: __REF.jour, modeReg: 'Virement', mode: 'depl', itype: 'dep' };
+    DEP.push(x); save(LS.dep, DEP); const eIci = P3.etat();
+    const eSrv = JSON.parse(JSON.stringify(eIci)); eSrv.cp2_devis.find((d) => d.id === o.id).statut = 'envoye'; const sd = eSrv.cp2_devis.find((d) => d.id === s.id); sd.statut = 'envoye'; delete sd.signature; const xd = eSrv.cp2_dep.find((d) => d.id === x.id); xd.statut = 'facturee'; xd.payeLe = null; xd.modeReg = '';
+    const res = await recevoir(eIci, eSrv, true);
+    return { o: P3.devis(o.id).statut, s: { statut: P3.devis(s.id).statut, signature: !!P3.devis(s.id).signature }, dep: (DEP.find((d) => d.id === x.id) || {}).statut, recharge: res.recharge, dirty: res.dirty, journal: res.journal.length, ecartes: res.ecartes, pushes: res.pushes, ecritures: res.ecritures, msgsRemis: res.msgs.filter((m) => /remis|fusion/i.test(m)) };
+  }, RECEVOIR);
+  rec(GP2.REC, 'T45 (C2) réception SANS base de synchro (premier passage) : l\'état reçu est rangé tel quel — « accepté » reçu « envoyé » appliqué, intervention payée reçue « facturée » appliquée, devis signé ici reçu « envoyé » sans signature appliqué aussi (sans base, la garde ne tranche pas) ; rechargement normal, PAS « à envoyer », aucune ligne, aucune écriture', !!(r.o === 'envoye' && r.s.statut === 'envoye' && !r.s.signature && r.dep === 'facturee' && r.recharge === 1 && !r.dirty && r.journal === 0 && r.ecartes === 0 && r.pushes === 0 && r.ecritures === 0 && r.msgsRemis.length === 0), j(r));
+}
+
+/* ---------------- T46 (C2) : avec base, seuls les rangs ≥ 2, les fiches ≥ 1 et le compteur sont remis ---------------- */
+{
+  const r = await p.evaluate(async ({ RECEVOIR, mk }) => {
+    AD.reset(); const W = P3.W; go('tous'); await W(120); const recevoir = eval(RECEVOIR); const T = Date.parse(__REF.horloge);
+    const s = AD.v2({ statut: 'accepte', signature: { at: __REF.horloge, nom: 'Client Signataire', hash: 'sb2' }, acceptedAt: T });
+    const idF = eval(mk); const F = FLU.find((f) => f.id === idF); F.annulee = { at: T, date: __REF.jour, motif: 'erreur de saisie' }; save('cp2_fluides', FLU);
+    localStorage.setItem('cp2_fluseq', JSON.stringify({ year: +__REF.an, seq: 7 }));
+    const x = { id: 'dep-p3bis-' + Math.random().toString(36).slice(2, 8), cNom: 'Boulangerie Dupré', cType: 'Professionnel', date: __REF.jour, desc: 'Dépannage essai 4', notes: '', heures: 1, statut: 'payee', facNum: 'TEST-F-' + __REF.an + '-0832', facDate: __REF.jour, payeLe: __REF.jour, modeReg: 'CB', mode: 'depl', itype: 'dep' };
+    DEP.push(x); save(LS.dep, DEP); const eIci = P3.etat();
+    /* l'état reçu (ancienne version) : la signature a sauté, la fiche n'est plus annulée, le compteur a reculé, l'encaissement a été retiré ailleurs (geste légitime : appliqué) */
+    const eSrv = JSON.parse(JSON.stringify(eIci)); const sd = eSrv.cp2_devis.find((d) => d.id === s.id); sd.statut = 'envoye'; delete sd.signature; delete eSrv.cp2_fluides.find((f) => f.id === idF).annulee; eSrv.cp2_fluseq = { year: +__REF.an, seq: 6 };
+    const xd = eSrv.cp2_dep.find((d) => d.id === x.id); xd.statut = 'facturee'; xd.payeLe = null; xd.modeReg = '';
+    const res = await recevoir(eIci, eSrv, false);
+    const sS = (res.serveur.cp2_devis || []).find((d) => d.id === s.id) || {}, fS = (res.serveur.cp2_fluides || []).find((f) => f.id === idF) || {};
+    return { s: { statut: P3.devis(s.id).statut, signature: !!P3.devis(s.id).signature }, fiche: !!(FLU.find((f) => f.id === idF) || {}).annulee, seq: (JSON.parse(localStorage.getItem('cp2_fluseq') || '{}')).seq, dep: (DEP.find((d) => d.id === x.id) || {}).statut, recharge: res.recharge, dirty: res.dirty, journal: res.journal.map((y) => y.cle + '/' + y.etat_garde), pushes: res.pushes, ecritures: res.ecritures, msgs: res.msgs.filter((m) => /remis/i.test(m)), serveur: { statut: sS.statut, signature: !!sS.signature, fiche: !!fS.annulee, seq: (res.serveur.cp2_fluseq || {}).seq, dep: ((res.serveur.cp2_dep || []).find((d) => d.id === x.id) || {}).statut } };
+  }, { RECEVOIR, mk: FICHE({}) });
+  rec(GP2.REC, 'T46 (C2) réception AVEC base : le devis signé ici reçu « envoyé » sans signature est REMIS (accepté + signature, rang 2), la fiche annulée ici est remise, le compteur revenu à 6 est remis à 7 ; l\'encaissement retiré ailleurs est APPLIQUÉ (facturée) ; « à envoyer », message « états remis », 3 lignes au journal, rechargement', !!(r.s.statut === 'accepte' && r.s.signature && r.fiche && r.seq === 7 && r.dep === 'facturee' && r.recharge === 1 && r.dirty && r.pushes === 0 && r.journal.length === 2 && r.msgs.length === 1), j(r));
+  rec(GP2.REC, 'T46 puis l\'envoi remet ces trois états sur le serveur en une écriture (l\'encaissement y reste retiré)', !!(r.ecritures === 1 && r.serveur && r.serveur.statut === 'accepte' && r.serveur.signature && r.serveur.fiche && r.serveur.seq === 7 && r.serveur.dep === 'facturee'), j(r.serveur));
 }
 
 rec('AF1', 'Aucune erreur JavaScript pendant la suite', errs.length === 0, errs.join(' | '));

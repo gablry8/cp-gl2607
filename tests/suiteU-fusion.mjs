@@ -13,8 +13,8 @@ function extraire(nom) {
 }
 /* P3 (06/11/2026) : la seconde passe (cpFusionEtats, états terminaux) est extraite si elle existe — sur l'ancien code, elle manque et les cas P3 sont rouges */
 const extraireOpt = (nom) => (src.indexOf('\nfunction ' + nom + '(') < 0 ? '' : extraire(nom));
-const code = ['cpStable', 'cpSame', 'cpIdArr', 'cpMergeArr', 'cpMerge'].map(extraire).concat([extraireOpt('cpFusionEtats')]).join('\n');
-const { cpMerge, cpMergeArr } = new Function(code + '\nreturn {cpMerge, cpMergeArr, cpSame, cpIdArr};')();
+const code = ['cpStable', 'cpSame', 'cpIdArr', 'cpMergeArr', 'cpMerge'].map(extraire).concat([extraireOpt('cpFusionEtats'), extraireOpt('cpFusionLibelle')]).join('\n');
+const { cpMerge, cpMergeArr, cpFusionEtats, cpFusionLibelle } = new Function(code + '\nreturn {cpMerge, cpMergeArr, cpSame, cpIdArr, cpFusionEtats: typeof cpFusionEtats === "function" ? cpFusionEtats : null, cpFusionLibelle: typeof cpFusionLibelle === "function" ? cpFusionLibelle : null};')();
 const RES = []; const rec = (g, n, ok, d) => { RES.push({ group: g, name: n, ok: ok ? 'PASS' : 'FAIL', detail: d == null ? '' : (typeof d === 'string' ? d : JSON.stringify(d)) }); };
 const j = (o) => JSON.stringify(o);
 const G = 'Fusion 3 voies';
@@ -172,6 +172,48 @@ rec(G3, 'fusion idempotente avec des devis : fusionner le résultat avec lui-mê
 rec(G3, 'les entrées ne sont pas modifiées par la seconde passe', (() => { const B = { [K]: [D('O')] }, L = { [K]: [D('O', { statut: 'annule', annulation: ANN(T0) })] }, R = { [K]: [D('O', { facAcompte: FAC('TEST-F-2027-0001') })] }; const sB = JSON.stringify(B), sL = JSON.stringify(L), sR = JSON.stringify(R); cpMerge(B, L, R); return sB === JSON.stringify(B) && sL === JSON.stringify(L) && sR === JSON.stringify(R); })());
 rec(G3, 'la liste des arbitrages n\'est ni énumérable ni sérialisée (jamais écrite dans localStorage ni envoyée)', (() => { const M = m({ [K]: [D('O')] }, { [K]: [D('O', { statut: 'annule', annulation: ANN(T0) })] }, { [K]: [D('O', { facAcompte: FAC('TEST-F-2027-0001') })] }); return arbs(M).length === 1 && Object.keys(M).indexOf('cpArbitrages') < 0 && JSON.stringify(M).indexOf('cpArbitrages') < 0; })());
 rec(G3, 'témoins (verts avant comme après) : ' + temoins.length + ' cas', temoins.length === 2, temoins.join(' | '));
+
+/* ---------- P3-bis (09/11/2026, relecture P10 d'Opus 5.5, conditions C1 et C2) : un geste ORDINAIRE reçu de l'autre appareil n'est pas un arbitrage ;
+   la garde à la réception (option {reception:true}) ne remet que les rangs ≥ 2 (devis), les fiches ≥ 1 et le compteur des fiches ---------- */
+const G4 = 'Fusion P3-bis gestes ordinaires';
+const FE = (B, L, R, opts) => (cpFusionEtats ? cpFusionEtats(B, JSON.parse(JSON.stringify(L)), JSON.parse(JSON.stringify(R)), JSON.parse(JSON.stringify(R)), opts) : null);
+const ORD = [
+  ['envoyé → accepté', E(), E({ statut: 'accepte', acceptedAt: T0 })],
+  ['brouillon → envoyé', D('O', { statut: 'brouillon' }), D('O', { statut: 'envoye', sentAt: T0 })],
+  ['accepté → envoyé (retour en arrière voulu)', D('O'), D('O', { statut: 'envoye' })],
+  ['accepté → annulé', D('O'), D('O', { statut: 'annule', annulation: ANN(T0) })],
+  ['accepté → remplacé par un avenant', D('O'), D('O', { statut: 'remplace', remplacePar: { id: 'A', num: 'DV-A', at: T0 } })],
+];
+for (const [nom, avant, apres] of ORD) {
+  const B = { [K]: [avant] }, L = { [K]: [avant] }, R = { [K]: [apres].concat(nom.indexOf('avenant') >= 0 ? [D('A', { avenantDe: { id: 'O', num: 'DV-O', at: T0 - MIN } })] : []) };
+  let M, f, err = null; try { M = m(B, L, R); f = FE(B, L, R); } catch (e) { err = String(e); }
+  rec(G4, 'U-P3bis-1 geste ordinaire « ' + nom + ' » fait sur l\'autre appareil, rien changé ici (base = ici) : le statut reçu est appliqué, AUCUN arbitrage, rien à corriger (out vide)',
+    !err && dv(M, apres.id).statut === apres.statut && arbs(M).length === 0 && !!f && Object.keys(f.out).length === 0 && f.arbitrages.length === 0,
+    err || { statut: dv(M, apres.id).statut, arbitrages: arbs(M), out: f ? Object.keys(f.out) : 'cpFusionEtats absent', arbF: f ? f.arbitrages : null });
+}
+rec(G4, 'U-P3bis-2 témoins : fiche fluide annulée sur l\'autre appareil, intervention encaissée sur l\'autre appareil, rien changé ici → appliquées, aucun arbitrage', (() => {
+  const B1 = { cp2_fluides: [FL()] }, R1 = { cp2_fluides: [FL({ annulee: { at: T0, date: '2027-03-01', motif: 'erreur' } })] }, M1 = m(B1, B1, R1), f1 = FE(B1, B1, R1);
+  const B2 = { cp2_dep: [DEP()] }, R2 = { cp2_dep: [DEP({ statut: 'payee', payeLe: '2027-03-02', modeReg: 'Virement' })] }, M2 = m(B2, B2, R2), f2 = FE(B2, B2, R2);
+  return !!(M1.cp2_fluides[0].annulee && arbs(M1).length === 0 && f1 && Object.keys(f1.out).length === 0 && M2.cp2_dep[0].statut === 'payee' && arbs(M2).length === 0 && f2 && Object.keys(f2.out).length === 0); })(), 'témoin (vert avant comme après)');
+rec(G4, 'U-P3bis-3 le PC a seulement posé une date, le tél a annulé : libellé exact « devis DV-O : annulé sur l\'autre appareil », SANS « le geste fait ici (« accepté ») est écarté » ; statut_ecarte vide ; date gardée', (() => {
+  const M = m({ [K]: [D('O')] }, { [K]: [D('O', { datePlanif: '2027-03-02' })] }, { [K]: [D('O', { statut: 'annule', annulation: ANN(T0) })] }); const a = arbs(M)[0];
+  const lib = a && cpFusionLibelle ? cpFusionLibelle(a) : null;
+  return !!(a && a.statut_ecarte === '' && lib === 'devis DV-O : annulé sur l\'autre appareil' && dv(M, 'O').statut === 'annule' && dv(M, 'O').datePlanif === '2027-03-02'); })(), (() => { const M = m({ [K]: [D('O')] }, { [K]: [D('O', { datePlanif: '2027-03-02' })] }, { [K]: [D('O', { statut: 'annule', annulation: ANN(T0) })] }); const a = arbs(M)[0]; return { statut_ecarte: a && a.statut_ecarte, libelle: a && cpFusionLibelle ? cpFusionLibelle(a) : null }; })());
+rec(G4, 'U-P3bis-3 bis témoin : le geste écarté reste nommé quand il a vraiment été fait (signé ici contre « refusé » posé sur l\'autre appareil)', (() => {
+  const M = m({ [K]: [E()] }, { [K]: [E({ statut: 'accepte', signature: SIG(T0), acceptedAt: T0 })] }, { [K]: [E({ statut: 'refuse' })] }); const a = arbs(M)[0]; const lib = a && cpFusionLibelle ? cpFusionLibelle(a) : '';
+  return !!(a && a.statut_ecarte === 'refuse' && /geste fait sur l'autre appareil/.test(lib) && /refusé/.test(lib)); })(), 'témoin (vert avant comme après)');
+rec(G4, 'U-P3bis-4 réception (option reception), base = ici : « accepté » ici, reçu « envoyé » non signé → rien à remettre (rangs 0 / 1 : l\'autre appareil a le droit de revenir en arrière)', (() => { const O = D('O'); const f = FE({ [K]: [O] }, { [K]: [O] }, { [K]: [D('O', { statut: 'envoye' })] }, { reception: true }); return !!(f && Object.keys(f.out).length === 0 && f.arbitrages.length === 0); })());
+rec(G4, 'U-P3bis-5 réception, base = ici : signé ici, reçu « envoyé » sans signature (ancienne version) → remis : accepté + signature (rang 2), 1 arbitrage', (() => { const S0 = D('O', { signature: SIG(T0), acceptedAt: T0 }); const f = FE({ [K]: [S0] }, { [K]: [S0] }, { [K]: [D('O', { statut: 'envoye' })] }, { reception: true }); const o = f && (f.out[K] || []).find((x) => x.id === 'O'); return !!(o && o.statut === 'accepte' && o.signature && f.arbitrages.length === 1); })());
+rec(G4, 'U-P3bis-6 réception, base = ici : encaissement retiré sur l\'autre appareil (intervention payée ici, reçue facturée) → appliqué tel quel, rien à remettre (les encaissements ne sont pas remis à la réception)', (() => { const P = DEP({ statut: 'payee', payeLe: '2027-03-02', modeReg: 'Virement' }); const f = FE({ cp2_dep: [P] }, { cp2_dep: [P] }, { cp2_dep: [DEP()] }, { reception: true }); return !!(f && Object.keys(f.out).length === 0); })());
+rec(G4, 'U-P3bis-7 réception SANS base : « accepté » ici, reçu « envoyé » → rien ; intervention payée ici, reçue facturée → rien (sans base, la garde ne tranche pas les rangs 0 / 1 ni les encaissements)', (() => { const f1 = FE(null, { [K]: [D('O')] }, { [K]: [D('O', { statut: 'envoye' })] }, { reception: true }); const P = DEP({ statut: 'payee', payeLe: '2027-03-02', modeReg: 'Virement' }); const f2 = FE(null, { cp2_dep: [P] }, { cp2_dep: [DEP()] }, { reception: true }); return !!(f1 && f2 && Object.keys(f1.out).length === 0 && Object.keys(f2.out).length === 0); })());
+rec(G4, 'U-P3bis-8 réception : compteur des fiches fluides reçu en recul (7 ici, 6 reçu) → remis à 7 ; fiche annulée ici (base), reçue sans annulation → remise', (() => {
+  const f = FE({ cp2_fluseq: { year: 2027, seq: 7 } }, { cp2_fluseq: { year: 2027, seq: 7 } }, { cp2_fluseq: { year: 2027, seq: 6 } }, { reception: true });
+  const FA = FL({ annulee: { at: T0, date: '2027-03-01', motif: 'erreur' } }), g = FE({ cp2_fluides: [FA] }, { cp2_fluides: [FA] }, { cp2_fluides: [FL()] }, { reception: true });
+  return !!(f && JSON.stringify(f.out.cp2_fluseq) === JSON.stringify({ year: 2027, seq: 7 }) && g && g.out.cp2_fluides && g.out.cp2_fluides[0].annulee); })());
+rec(G4, 'U-P3bis-9 la fusion (sans option) garde ses règles : encaissement à trois voies et rangs 0 / 1 inchangés (U-P3-12, U-P3-13 bis rejoués)', (() => {
+  const M1 = m({ cp2_dep: [DEP()] }, { cp2_dep: [DEP({ notes: 'note du PC' })] }, { cp2_dep: [DEP({ statut: 'payee', payeLe: '2027-03-02', modeReg: 'Virement' })] });
+  const M2 = m({ [K]: [D('O')] }, { [K]: [D('O', { statut: 'envoye' })] }, { [K]: [D('O', { notes: 'note du tél' })] });
+  return M1.cp2_dep[0].statut === 'payee' && M1.cp2_dep[0].notes === 'note du PC' && dv(M2, 'O').statut === 'envoye' && dv(M2, 'O').notes === 'note du tél'; })(), 'témoin (vert avant comme après)');
 
 rec(G, 'texte de cpMergeArr / cpMerge extrait d\'index.html (empreinte figée, à mettre à jour si le comportement change volontairement)', (() => {
   const crypto = globalThis.crypto; const h = [...new Uint8Array(0)]; void h;

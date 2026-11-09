@@ -4,6 +4,7 @@
 //  AE1 annulation (tél) contre planification (PC) ; AE2 signature en ligne (tél) contre relance (PC) ; AE3 avenant accepté (tél) contre date sur l'original (PC) ;
 //  AE4 deux appareils facturent chacun un devis du même arbre (état gelé, registre ouvert) ; AE5 ancienne version (seconde passe et garde remplacées par l'identité sur le PC) :
 //  le téléphone P3 remet l'état terminal, écritures bornées ; AE6 témoins (pas de conflit → rien ; suppression contre signature → devis gardé, signé).
+//  AE7 (P3-bis, 09/11) : témoin deux appareils — gestes ordinaires du PC en ligne reçus par le téléphone au repos : aucun arbitrage fantôme, aucune écriture du téléphone.
 // Horloge : serveurCommun(debutISO) et une horloge de page figée à un instant du jeu de données (aucun test ne lit la vraie date).
 import { rec, RES, SEED, REF } from './lib.mjs';
 import { ecrireResultats } from './env.mjs';
@@ -166,6 +167,35 @@ const PARAMS = () => { Object.assign(P.entreprise, { nom: 'Froid Essai (fictif)'
     r('AE4 — une 3e facture (solde de A1) est refusée sur le PC (« jamais deux factures pour le même chantier »), rien n\'est émis au registre', S.docs.length === n0 && msgs.some((m) => /jamais deux factures/i.test(m)), j({ docs: S.docs.map((d) => d.num), msgs: msgs.slice(-2) }));
   } catch (err) { r('Partie 3 — essai interrompu', false, String(err && err.message || err).slice(0, 300)); }
   r('Aucune erreur JavaScript (partie 3)', PC.errs.length + TEL.errs.length === 0, PC.errs.concat(TEL.errs).join(' | ').slice(0, 400));
+  await PC.ctx.close(); await TEL.ctx.close();
+}
+
+/* ================= Partie 4 — AE7 (P3-bis, C1) : témoin deux appareils, gestes ORDINAIRES faits sur le PC en ligne, reçus par le téléphone au repos =================
+   Attendu : aucun arbitrage fantôme sur le téléphone (aucune ligne fusion_etat, versions écartées inchangées, aucun message « états remis »), AUCUNE écriture serveur
+   du téléphone, autant d'écritures serveur en tout que sur main (mesuré sur main : 3, une par geste du PC). */
+{
+  const S = serveurCommun('2027-09-15T06:30:00Z');
+  const PC = await appareil(S, 'pc', { mobile: false, horloge: H, connecte: true });
+  await PC.p.evaluate(SEED); await pret(S, PC);
+  const TEL = await appareil(S, 'tel', { mobile: true, horloge: H }); await seConnecter(S, TEL); await pret(S, TEL);
+  const ids = await lire(S, PC, () => ({ e: (DEVIS.find((d) => d.statut === 'envoye') || {}).id, b: (DEVIS.find((d) => d.statut === 'brouillon') || {}).id, o: (DEVIS.find((d) => d.statut === 'accepte') || {}).id }));
+  try {
+    const e0 = S.ecritures, h0 = S.historique.length, j0 = (await journalFusion(S, TEL)).length, ec0 = await lire(S, TEL, () => (JSON.parse(localStorage.getItem('cpnext_fusion_ecartes') || '[]')).length);
+    /* 1. envoyé → accepté depuis la liste */
+    await lire(S, PC, (x) => { nxSetStatut(x, 'accepte'); }, ids.e); await pret(S, PC); await revenir(S, TEL); await calme(S, TEL);
+    const s1 = await devisDe(S, TEL, ids.e);
+    /* 2. brouillon → envoyé */
+    await lire(S, PC, (x) => { nxSetStatut(x, 'envoye'); }, ids.b); await pret(S, PC); await revenir(S, TEL); await calme(S, TEL);
+    const s2 = await devisDe(S, TEL, ids.b);
+    /* 3. « Annuler le devis » */
+    const okAnn = await annuler(S, PC, ids.o, 'abandon'); await pret(S, PC); await revenir(S, TEL); await calme(S, TEL);
+    const s3 = await devisDe(S, TEL, ids.o);
+    const jTel = (await journalFusion(S, TEL)).slice(j0), ecTel = await lire(S, TEL, () => (JSON.parse(localStorage.getItem('cpnext_fusion_ecartes') || '[]')).length), msgTel = await lire(S, TEL, () => sessionStorage.getItem('__cpFusionMsg'));
+    const ecrituresTel = S.historique.slice(h0).filter((h) => h.dev === 'tel').length, total = S.ecritures - e0;
+    r('AE7 — témoin : trois gestes ordinaires sur le PC en ligne (envoyé → accepté, brouillon → envoyé, « Annuler le devis ») : le téléphone au repos les reçoit tels quels', !!(ids.e && ids.b && ids.o && okAnn === true && s1.statut === 'accepte' && s2.statut === 'envoye' && s3.statut === 'annule' && s3.motif === 'abandon'), j({ ids, okAnn, s1: s1.statut, s2: s2.statut, s3: s3.statut }));
+    r('AE7 — sur le téléphone : aucune ligne fusion_etat, versions écartées inchangées, aucun message « états remis » gardé ; AUCUNE écriture serveur du téléphone ; écritures en tout = 3 (comme sur main : une par geste du PC)', !!(jTel.length === 0 && ecTel === ec0 && !msgTel && ecrituresTel === 0 && total === 3), j({ jTel: jTel.map((x) => x.source + '/' + x.etat_garde), ecartes: [ec0, ecTel], msgTel, ecrituresTel, total, historique: S.historique.slice(h0).map((h) => h.dev) }));
+  } catch (err) { r('Partie 4 — essai interrompu', false, String(err && err.message || err).slice(0, 300)); }
+  r('Aucune erreur JavaScript (partie 4)', PC.errs.length + TEL.errs.length === 0, PC.errs.concat(TEL.errs).join(' | ').slice(0, 400));
   await PC.ctx.close(); await TEL.ctx.close();
 }
 
