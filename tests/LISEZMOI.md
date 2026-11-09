@@ -250,7 +250,7 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   en ligne, signé contre lignes, facture contre annulation (deux sens), deux factures dans l'arbre, avenant contre annulation (dates dans les deux ordres, posées à la main),
   fiches fluides, **garde à la réception** (T39), encaissements (T40), **vieille sauvegarde restaurée** (T41, `importJSON`) ; **T42** : `nxSetStatut` refuse un changement de
   statut sur un devis signé (constat 1). **T19a et T22a réécrits** : la fusion ne reproduit plus le défaut D1 (l'original reste « remplacé ») ; les contrôles de réparation
-  partent d'un état posé à la main. Rouges sur `297cc7e` (25), verts après.
+  partent d'un état posé à la main. Rouges sur `297cc7e` (24 ; le 1er contrôle de T36 est un témoin), verts après.
 - **suiteAE-p3-fusion.mjs** (nouvelle, 22 contrôles, banc deux appareils `banc-appareils.mjs`) : AE1 annulation contre planification par la vraie synchro (conflit, fusion,
   rechargement, nouvel envoi, réception sur le téléphone) ; AE2 signature en ligne contre relance (le PC refuse ensuite d'enregistrer) ; AE3 avenant accepté contre date sur
   l'original (une seule facture dans l'arbre) ; AE6 témoins ; AE5 **ancienne version** (seconde passe et garde remplacées par l'identité sur le PC) : le téléphone P3 remet
@@ -260,3 +260,9 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   récent que le sien (garde-fou C1 « pas à jour ») : dans un scénario « le PC facture pendant que le téléphone annule », le PC doit facturer **avant** que l'état du téléphone
   n'arrive au serveur ; un avenant est un nouveau contrat au mode de conclusion « à préciser » : pour un **particulier**, la facture est bloquée (L221-10, voulu), d'où un
   client professionnel dans AE4. Dates qui départagent deux gestes : posées à la main, à 10 ou 20 minutes d'écart (horloge figée dans la page).
+- **P3-bis (09/11/2026, relecture P10 d'Opus 5.5)** : suite U, cas **U-P3bis-1 à 9** (un geste ordinaire reçu de l'autre appareil n'est pas un arbitrage ; libellé exact sans « geste fait
+  ici » ; option `{reception:true}` de `cpFusionEtats` : rangs ≥ 2, fiches ≥ 1 et compteur seulement, rien sans base ; `cpFusionLibelle` extraite d'`index.html` comme `cpFusionEtats`) ;
+  suite AD **T43 à T46** (message exact ; réception d'un geste ordinaire sans « à envoyer », sans ligne, sans version écartée, sans écriture serveur ; garde sans base inactive ; garde avec base :
+  signature, fiche annulée et compteur remis, encaissement retiré appliqué) ; suite AE **AE7** (témoin deux appareils : trois gestes ordinaires du PC en ligne, le téléphone au repos ne journalise
+  rien, ses envois ne changent aucun champ d'état sur le serveur, écritures bornées par la mesure sur `main`, trois passages : 5 ou 6 en tout, dont 1 à 2 du téléphone qui n'écrivent que `cpnext_objsuivi`).
+  Rouges sur `a2e15a8` : U 82 / 8, AD 141 / 7, AE 24 / 1 ; verts après.
