@@ -264,5 +264,6 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   ici » ; option `{reception:true}` de `cpFusionEtats` : rangs ≥ 2, fiches ≥ 1 et compteur seulement, rien sans base ; `cpFusionLibelle` extraite d'`index.html` comme `cpFusionEtats`) ;
   suite AD **T43 à T46** (message exact ; réception d'un geste ordinaire sans « à envoyer », sans ligne, sans version écartée, sans écriture serveur ; garde sans base inactive ; garde avec base :
   signature, fiche annulée et compteur remis, encaissement retiré appliqué) ; suite AE **AE7** (témoin deux appareils : trois gestes ordinaires du PC en ligne, le téléphone au repos ne journalise
-  rien, ses envois ne changent aucun champ d'état sur le serveur, écritures bornées par la mesure sur `main`, trois passages : 5 ou 6 en tout, dont 1 à 2 du téléphone qui n'écrivent que `cpnext_objsuivi`).
+  rien et n'affiche aucun message « états remis » ; revu en **P3-ter** : chaque écriture serveur est attribuée à l'appareil qui la fait en enveloppant `S.appel`, et chaque écriture du téléphone
+  ne change que `figEnv` dans `cp2_devis` ou `cpnext_objsuivi`, ou rien — comme sur `main` (1 à 3 écritures du téléphone, borne large 4) ; plus de borne sur le total, qui varie avec la charge).
   Rouges sur `a2e15a8` : U 82 / 8, AD 141 / 7, AE 24 / 1 ; verts après.
