@@ -1344,7 +1344,8 @@ const GP2 = { FAN: 'P3-bis gestes ordinaires', REC: 'P3-bis garde à la récepti
 const RECEVOIR = `(async function(eIci,eSrv,sansBase){ const S=P3.brancher(eIci,'2027-01-01T00:00:05Z'); P3.poser(eIci,'2027-01-01T00:00:05Z'); if(sansBase) localStorage.removeItem('cp2_sync_base'); S.poser(eSrv);
   AD.reset(); const r0=window.__rechargements, j0=P3.journal().length, ec0=P3.ecartes().length; await pullState(); P3.calme();
   const res={ recharge:window.__rechargements-r0, dirty:!!localStorage.getItem('cp2_dirty'), journal:P3.journal().slice(j0), ecartes:P3.ecartes().length-ec0, pushes:S.pushes, msgs:__msgs.slice(), lbl:(document.getElementById('cloudLbl')||{}).textContent||'' };
-  await pushState(); P3.calme(); res.ecritures=S.pushes; res.serveur=JSON.parse(JSON.stringify(S.etat.data)); P3.debrancher(); return res; })`;
+  /* l'appli n'envoie que s'il reste quelque chose « à envoyer » (cpEnvoiSiBesoin) : même règle ici */
+  if(localStorage.getItem('cp2_dirty')){ await pushState(); P3.calme(); } res.ecritures=S.pushes; res.serveur=JSON.parse(JSON.stringify(S.etat.data)); P3.debrancher(); return res; })`;
 
 /* ---------------- T43 (C1) : le PC a seulement posé une date, le tél a annulé : message exact, pas de « geste fait ici … écarté » ---------------- */
 {

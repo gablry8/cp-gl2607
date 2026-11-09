@@ -171,8 +171,8 @@ const PARAMS = () => { Object.assign(P.entreprise, { nom: 'Froid Essai (fictif)'
 }
 
 /* ================= Partie 4 — AE7 (P3-bis, C1) : témoin deux appareils, gestes ORDINAIRES faits sur le PC en ligne, reçus par le téléphone au repos =================
-   Attendu : aucun arbitrage fantôme sur le téléphone (aucune ligne fusion_etat, versions écartées inchangées, aucun message « états remis »), AUCUNE écriture serveur
-   du téléphone, autant d'écritures serveur en tout que sur main (mesuré sur main : 3, une par geste du PC). */
+   Attendu : aucun arbitrage fantôme sur le téléphone (aucune ligne fusion_etat, versions écartées inchangées, aucun message « états remis »), ses envois ne changent
+   aucun champ d'état sur le serveur, et pas plus d'écritures serveur que sur main (mesuré sur main le 09/11, trois passages : 5 ou 6 en tout, dont 1 à 2 du téléphone). */
 {
   const S = serveurCommun('2027-09-15T06:30:00Z');
   const PC = await appareil(S, 'pc', { mobile: false, horloge: H, connecte: true });
@@ -181,19 +181,29 @@ const PARAMS = () => { Object.assign(P.entreprise, { nom: 'Froid Essai (fictif)'
   const ids = await lire(S, PC, () => ({ e: (DEVIS.find((d) => d.statut === 'envoye') || {}).id, b: (DEVIS.find((d) => d.statut === 'brouillon') || {}).id, o: (DEVIS.find((d) => d.statut === 'accepte') || {}).id }));
   try {
     const e0 = S.ecritures, h0 = S.historique.length, j0 = (await journalFusion(S, TEL)).length, ec0 = await lire(S, TEL, () => (JSON.parse(localStorage.getItem('cpnext_fusion_ecartes') || '[]')).length);
+    /* ce que les envois du téléphone changent sur le serveur, à chaque réception : les clés dont le contenu diffère entre avant (état poussé par le PC) et après */
+    const c = (v) => JSON.parse(JSON.stringify(v)); const diffs = [];
+    const ETAT = ['statut', 'annulation', 'remplacePar', 'signature', 'signatureEnAttente', 'acceptedAt', 'facAcompte', 'facSolde', 'annulee', 'sigDetenteur', 'payeLe', 'modeReg'];
+    const champs = (A, Bq) => { const m = {}; (A || []).forEach((x) => { m[x.id] = x; }); const out = []; (Bq || []).forEach((y) => { const x = m[y.id]; if (!x) { out.push(y.id + ':+'); return; } Object.keys(Object.assign({}, x, y)).forEach((k) => { if (JSON.stringify(x[k]) !== JSON.stringify(y[k])) out.push(y.id + ':' + k); }); }); return out; };
+    const reception = async () => { const avant = c(S.etat.data); await revenir(S, TEL); await calme(S, TEL); const apres = S.etat.data;
+      const cles = Object.keys(Object.assign({}, avant, apres)).filter((k) => JSON.stringify(avant[k]) !== JSON.stringify(apres[k]));
+      diffs.push({ cles, devis: champs(avant.cp2_devis, apres.cp2_devis), fluides: champs(avant.cp2_fluides, apres.cp2_fluides), dep: champs(avant.cp2_dep, apres.cp2_dep) }); };
     /* 1. envoyé → accepté depuis la liste */
-    await lire(S, PC, (x) => { nxSetStatut(x, 'accepte'); }, ids.e); await pret(S, PC); await revenir(S, TEL); await calme(S, TEL);
+    await lire(S, PC, (x) => { nxSetStatut(x, 'accepte'); }, ids.e); await pret(S, PC); await reception();
     const s1 = await devisDe(S, TEL, ids.e);
     /* 2. brouillon → envoyé */
-    await lire(S, PC, (x) => { nxSetStatut(x, 'envoye'); }, ids.b); await pret(S, PC); await revenir(S, TEL); await calme(S, TEL);
+    await lire(S, PC, (x) => { nxSetStatut(x, 'envoye'); }, ids.b); await pret(S, PC); await reception();
     const s2 = await devisDe(S, TEL, ids.b);
     /* 3. « Annuler le devis » */
-    const okAnn = await annuler(S, PC, ids.o, 'abandon'); await pret(S, PC); await revenir(S, TEL); await calme(S, TEL);
+    const okAnn = await annuler(S, PC, ids.o, 'abandon'); await pret(S, PC); await reception();
     const s3 = await devisDe(S, TEL, ids.o);
     const jTel = (await journalFusion(S, TEL)).slice(j0), ecTel = await lire(S, TEL, () => (JSON.parse(localStorage.getItem('cpnext_fusion_ecartes') || '[]')).length), msgTel = await lire(S, TEL, () => sessionStorage.getItem('__cpFusionMsg'));
     const ecrituresTel = S.historique.slice(h0).filter((h) => h.dev === 'tel').length, total = S.ecritures - e0;
+    /* ce que les envois du téléphone changent sur le serveur : aucun champ d'ÉTAT (statut, annulation, avenant, signature, facture, encaissement) ni le compteur des fiches */
+    const touche = diffs.flatMap((d) => d.devis.concat(d.fluides, d.dep)).filter((x) => ETAT.indexOf(x.split(':')[1]) >= 0).concat(diffs.flatMap((d) => d.cles).filter((k) => k === 'cp2_fluseq'));
     r('AE7 — témoin : trois gestes ordinaires sur le PC en ligne (envoyé → accepté, brouillon → envoyé, « Annuler le devis ») : le téléphone au repos les reçoit tels quels', !!(ids.e && ids.b && ids.o && okAnn === true && s1.statut === 'accepte' && s2.statut === 'envoye' && s3.statut === 'annule' && s3.motif === 'abandon'), j({ ids, okAnn, s1: s1.statut, s2: s2.statut, s3: s3.statut }));
-    r('AE7 — sur le téléphone : aucune ligne fusion_etat, versions écartées inchangées, aucun message « états remis » gardé ; AUCUNE écriture serveur du téléphone ; écritures en tout = 3 (comme sur main : une par geste du PC)', !!(jTel.length === 0 && ecTel === ec0 && !msgTel && ecrituresTel === 0 && total === 3), j({ jTel: jTel.map((x) => x.source + '/' + x.etat_garde), ecartes: [ec0, ecTel], msgTel, ecrituresTel, total, historique: S.historique.slice(h0).map((h) => h.dev) }));
+    /* sur main (mesuré le 09/11, même scénario, trois passages) : 5 ou 6 écritures en tout dont 1 à 2 du téléphone — des envois qui n'écrivent que cpnext_objsuivi (clé de suivi écrite par l'appli à son démarrage) ; P3-bis ne doit rien y ajouter */
+    r('AE7 — sur le téléphone : aucune ligne fusion_etat, versions écartées inchangées, aucun message « états remis » gardé ; ses envois ne changent aucun champ d\'état (statut, annulation, avenant, signature, facture, encaissement) ni le compteur des fiches sur le serveur ; écritures bornées par la mesure sur main (téléphone ≤ 2, en tout ≤ 6)', !!(jTel.length === 0 && ecTel === ec0 && !msgTel && touche.length === 0 && ecrituresTel <= 2 && total <= 6), j({ jTel: jTel.map((x) => x.source + '/' + x.etat_garde), ecartes: [ec0, ecTel], msgTel, touche, diffs, ecrituresTel, total, historique: S.historique.slice(h0).map((h) => h.dev) }));
   } catch (err) { r('Partie 4 — essai interrompu', false, String(err && err.message || err).slice(0, 300)); }
   r('Aucune erreur JavaScript (partie 4)', PC.errs.length + TEL.errs.length === 0, PC.errs.concat(TEL.errs).join(' | ').slice(0, 400));
   await PC.ctx.close(); await TEL.ctx.close();
