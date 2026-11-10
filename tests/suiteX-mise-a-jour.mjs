@@ -29,7 +29,7 @@ const srv = http.createServer((req, res) => {
   if (u === '/_installer.html') { res.writeHead(200, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-store' }); res.end(INSTALLER); return; }
   const f = path.join(racine, u === '/' ? 'index.html' : u);
   if (!f.startsWith(racine) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end('absent'); return; }
-  res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); res.end(fs.readFileSync(f));
+  res.writeHead(200, { 'Content-Type': MIME[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-store' }); fs.createReadStream(f).pipe(res); /* S : en flux (fichiers de plusieurs Mo de la lecture de plaque) */
 });
 await new Promise((r) => srv.listen(8766, '127.0.0.1', r));
 const URL = 'http://localhost:8766/';
@@ -48,7 +48,7 @@ const b = await lancerNavigateur();
   for (const m of idx.matchAll(/<script[^>]*\s(?:src|data-src)="([^"h][^"]*)"/g)) besoins.add('/' + m[1].split('?')[0]);
   for (const m of idx.matchAll(/<link rel="(?:stylesheet|manifest|apple-touch-icon)" href="([^"h][^"]*)"/g)) besoins.add('/' + m[1]);
   for (const css of [...besoins].filter((f) => f.endsWith('.css'))) { const t = fs.existsSync(path.join(RACINE, css)) ? fs.readFileSync(path.join(RACINE, css), 'utf8') : ''; for (const m of t.matchAll(/url\(\s*['"]?(?!data:|https?:)([^'")]+)['"]?\s*\)/g)) besoins.add('/' + m[1].replace(/^\.?\//, '')); }
-  const ctx0 = await b.newContext({ serviceWorkers: 'allow' }); const p0 = await ctx0.newPage(); const errs0 = []; p0.on('pageerror', (e) => errs0.push(String(e).slice(0, 160)));
+  const ctx0 = await b.newContext({ serviceWorkers: 'allow' }); const p0 = await ctx0.newPage(); p0.setDefaultTimeout(90000); p0.setDefaultNavigationTimeout(90000); const errs0 = []; p0.on('pageerror', (e) => errs0.push(String(e).slice(0, 160)));
   await p0.goto(URL + '_installer.html');
   const cles = await p0.evaluate(async ([re, n]) => { for (let i = 0; i < 120; i++) { const ks = await caches.keys(); const k = ks.find((x) => new RegExp(re).test(x)); if (k) { const c = await caches.open(k); const l = await c.keys(); if (l.length >= n) return l.map((r) => new URL(r.url).pathname).sort(); } await new Promise((r) => setTimeout(r, 250)); } return null; }, [cacheActuel.replace(/[-.]/g, '\\$&'), listeSw.length]);
   const manquants = cles ? [...besoins].filter((f) => !cles.includes(f)) : [...besoins];
@@ -58,6 +58,8 @@ const b = await lancerNavigateur();
 
 const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, serviceWorkers: 'allow' }); await sansBibliothequesCloud(ctx);
 const p = await ctx.newPage(); const errs = []; p.on('pageerror', (e) => errs.push(String(e).slice(0, 160)));
+/* S (10/11/2026) : le cache à installer a grossi de 12,7 Mo (lecture de plaque) ; sur un runner lent, un chargement de page pendant l'installation dépassait les 30 s par défaut */
+p.setDefaultTimeout(90000); p.setDefaultNavigationTimeout(90000);
 await p.route(/supabase/, (r) => r.abort());
 const caches = () => p.evaluate(async () => (await caches.keys()).sort());
 const attendreCache = (re, n) => p.evaluate(async ([re, n]) => { for (let i = 0; i < 80; i++) { const ks = await caches.keys(); const k = ks.find((x) => new RegExp(re).test(x)); if (k) { const c = await caches.open(k); if ((await c.keys()).length >= n) return { nom: k, fichiers: (await c.keys()).length }; } await new Promise((r) => setTimeout(r, 250)); } return null; }, [re, n]);

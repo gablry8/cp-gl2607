@@ -51,6 +51,8 @@ etape() { # etape <nom> <commande…> : journal dans journaux/<nom>.log, code de
   local code=$?
   echo "$nom $code $((SECONDS-debut))" >> "$CP_TEST_OUT/codes.txt"
   echo "code $code ($((SECONDS-debut)) s) — PASS $(grep -c '^PASS' "$CP_TEST_OUT/journaux/$nom.log"), autres $(grep -cE '^(FAIL|SKIP)' "$CP_TEST_OUT/journaux/$nom.log")"
+  # S (10/11/2026) : une étape qui plante (code ≠ 0) montre la fin de son journal ici même, pour que la sortie de la CI dise la cause sans l'artefact
+  if [ "$code" != 0 ]; then echo "  --- fin du journal de $nom (code $code) ---"; tail -n 40 "$CP_TEST_OUT/journaux/$nom.log" | cut -c1-300 | sed 's/^/  | /'; echo "  --- fin ---"; fi
 }
 
 etape autotest-isolation node "$ICI/isolation/autotest.mjs"
