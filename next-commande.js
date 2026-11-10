@@ -50,8 +50,8 @@
                                             : '<div style="font-size:19px;font-weight:800">'+(E.nom||'—')+'</div>';
     var body = toOrder.map(function(r){
       return '<tr>' +
-        '<td style="padding:8px 10px;border-top:1px solid #e6ebf2">'+r.nom+'</td>' +
-        '<td style="padding:8px 10px;border-top:1px solid #e6ebf2;text-align:center;font-weight:600">'+fmtQ(r.aCmd)+' '+r.unite+'</td>' +
+        '<td style="padding:8px 10px;border-top:1px solid #e6ebf2">'+cpEsc(r.nom)+'</td>' +
+        '<td style="padding:8px 10px;border-top:1px solid #e6ebf2;text-align:center;font-weight:600">'+fmtQ(r.aCmd)+' '+cpEsc(r.unite)+'</td>' +
         '<td style="padding:8px 10px;border-top:1px solid #e6ebf2;text-align:right">'+eur(r.achatU)+'</td>' +
         '<td style="padding:8px 10px;border-top:1px solid #e6ebf2;text-align:right;font-weight:600">'+eur(r.aCmd*r.achatU)+'</td></tr>';
     }).join('');
@@ -59,7 +59,7 @@
       '<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">' +
       head +
       '<div style="margin:12px 0 4px"><span style="font-size:20px;font-weight:800;color:'+NV+'">Bon de commande '+ref+'</span></div>' +
-      (fourn ? '<div style="font-size:12px;margin-bottom:4px"><b>Fournisseur :</b> '+fourn+'</div>' : '') +
+      (fourn ? '<div style="font-size:12px;margin-bottom:4px"><b>Fournisseur :</b> '+cpEsc(fourn)+'</div>' : '') +
       '<div style="font-size:11px;color:#555;margin-bottom:12px">Matériel nécessaire aux chantiers signés, déduction faite du stock. Quantités à commander uniquement.</div>' +
       '<table style="width:100%;border-collapse:collapse;font-size:12px;border:1px solid #dce3ec">' +
         '<thead><tr style="background:'+NV+';color:#fff"><th style="text-align:left;padding:9px 10px">Article</th><th style="padding:9px 10px">Qté à commander</th><th style="text-align:right;padding:9px 10px">PU HT</th><th style="text-align:right;padding:9px 10px">Total HT</th></tr></thead>' +
@@ -92,8 +92,8 @@
       var at = d.matReserve ? new Date(d.matReserve).toLocaleDateString('fr-FR') : '';
       return '<label class="nxresa-row">' +
         '<input type="checkbox" '+(d.matReserve?'checked':'')+' onchange="nxToggleResa(\''+d.id+'\',this.checked)">' +
-        '<span class="nxresa-nm">'+devisName(d)+'</span>' +
-        '<span class="nxresa-meta">'+d.num+' · achat '+eur(tot)+(at?' · réservé le '+at:'')+'</span></label>';
+        '<span class="nxresa-nm">'+cpEsc(devisName(d))+'</span>' +
+        '<span class="nxresa-meta">'+cpEsc(d.num)+' · achat '+eur(tot)+(at?' · réservé le '+at:'')+'</span></label>';
     }).join('');
     host.innerHTML =
       '<div class="card" style="border-left:4px solid var(--blue)">' +

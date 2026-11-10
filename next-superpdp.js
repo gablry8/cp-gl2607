@@ -21,7 +21,7 @@
   'use strict';
   var MK='cpnext_pdp';
   try{ if(Array.isArray(window.SYNC_KEYS)&&SYNC_KEYS.indexOf(MK)<0) SYNC_KEYS.push(MK); }catch(e){}
-  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function esc(s){ return window.cpEsc(s); } /* S : une seule fonction d'échappement, celle du cœur */
   function say(m){ try{ toast(m); }catch(e){} }
   function lsGet(k,fb){ try{ var v=localStorage.getItem(k); return v==null?fb:JSON.parse(v); }catch(e){ return fb; } }
   function put(k,v){ try{ save(k,v); }catch(e){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(_){} } }
@@ -253,7 +253,7 @@
     var it=RECU.items||[];
     box.innerHTML=it.length?'<div class="scroll"><table><thead><tr><th class="l">Fournisseur</th><th class="l">N°</th><th class="l">Date</th><th>Montant</th><th class="l">Statut</th><th></th></tr></thead><tbody>'+it.map(function(x){ var le=lastEv(x.events.map(function(v){ return {status_code:v.code,status_text:v.texte,created_at:v.at}; }));
       return '<tr><td class="l"><b>'+esc(x.vendeur||'—')+'</b></td><td class="l">'+esc(x.numero||x.id)+'</td><td class="l">'+esc(x.date||'')+'</td><td>'+(x.total!=null?money(x.total):'—')+'</td><td class="l"><span class="nxpdp-st '+cls(le&&le.status_code)+'">'+esc(le?lab(le.status_code,le.status_text):'—')+'</span></td>'+
-        '<td><button class="btn-ghost btn-sm" onclick="nxPdpDownload('+Number(x.id)+',\''+esc(x.numero||x.id)+'\')">Fichier</button> <button class="btn-ghost btn-sm" onclick="nxPdpDecide('+Number(x.id)+',\'fr:205\')">Approuver</button> <button class="btn-ghost btn-sm" onclick="nxPdpDecide('+Number(x.id)+',\'fr:210\')">Refuser</button></td></tr>'; }).join('')+'</tbody></table></div>'
+        '<td><button class="btn-ghost btn-sm" data-num="'+esc(x.numero||x.id)+'" onclick="nxPdpDownload('+Number(x.id)+',this.dataset.num)">Fichier</button> <button class="btn-ghost btn-sm" onclick="nxPdpDecide('+Number(x.id)+',\'fr:205\')">Approuver</button> <button class="btn-ghost btn-sm" onclick="nxPdpDecide('+Number(x.id)+',\'fr:210\')">Refuser</button></td></tr>'; }).join('')+'</tbody></table></div>'
       :'<div class="empty">Aucune facture reçue pour l\'instant.</div>';
   }
   window.nxPdpDecide=function(id,code){

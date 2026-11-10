@@ -28,7 +28,7 @@
       var box = el(prefix + "_cSearchRes"); if (box) { box.innerHTML = ""; box.classList.remove("on"); }
     }
   };
-  function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];}); }
+  function esc(s){ return window.cpEsc(s); } /* S : une seule fonction d'échappement, celle du cœur (l'apostrophe aussi) */
   function close(prefix){ var b=el(prefix+"_cSearchRes"); if(b){ b.innerHTML=""; b.classList.remove("on"); } }
 
   window.climSirenSearch = function (q, prefix) {

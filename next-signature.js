@@ -17,7 +17,7 @@
   if(!/^https:\/\//.test(BASE)) BASE='https://gablry8.github.io/cp-gl2607/signer.html';
   var PENDING=[];
 
-  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function esc(s){ return window.cpEsc(s); } /* S : une seule fonction d'échappement, celle du cœur */
   function toastX(m,t){ try{ if(window.nxToast) return window.nxToast(m,t); }catch(e){} try{ toast(m); }catch(e){} }
   function cloudOk(){ try{ return !!(sb && SESS && SESS.user); }catch(e){ return false; } }
   function fmt(ts){ try{ return new Date(ts).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}); }catch(e){ return ''; } }
@@ -283,7 +283,7 @@
   function sigBlock(sig, label){
     return '<div style="margin-top:14px;border:1.5px solid #1e7a4c;border-radius:8px;padding:10px 12px;font-family:Arial,Helvetica,sans-serif;font-size:10.5px;color:#16263a;page-break-inside:avoid">'+
       '<b style="color:#1e7a4c">✔ '+label+' — signé électroniquement</b><br>Par <b>'+esc(sig.nom)+'</b> le '+esc(new Date(sig.at).toLocaleString('fr-FR',{dateStyle:'long',timeStyle:'short'}))+
-      (sig.png?'<br><img src="'+esc(sig.png)+'" alt="signature" style="height:60px;margin:6px 0">':'')+
+      (cpImagePng(sig.png)?'<br><img src="'+esc(sig.png)+'" alt="signature" style="height:60px;margin:6px 0">':'')+ /* S4 : PNG embarqué seulement */
       '<br><span style="color:#5f6f84">Mention : « Bon pour accord ». Empreinte SHA-256 du document signé : '+esc(sig.hash||'')+' — signature électronique (art. 1366-1367 C. civ.), preuve conservée par ClimPilot (horodatage, IP, navigateur).</span></div>';
   }
   window.nxsSigBlock = sigBlock;

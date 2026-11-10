@@ -15,7 +15,7 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'application/javascri
 const ANCIEN = out('maj-ancienne'); fs.rmSync(ANCIEN, { recursive: true, force: true }); fs.mkdirSync(path.join(ANCIEN, 'fonts'), { recursive: true }); fs.mkdirSync(path.join(ANCIEN, 'vendor'), { recursive: true });
 const swTxt = fs.readFileSync(path.join(RACINE, 'sw.js'), 'utf8');
 const listeSw = [...swTxt.matchAll(/'(\.\/[^']+)'/g)].map((m) => m[1]).filter((f) => f !== './');
-for (const f of listeSw) { const src = path.join(RACINE, f); if (fs.existsSync(src)) fs.copyFileSync(src, path.join(ANCIEN, f)); }
+for (const f of listeSw) { const src = path.join(RACINE, f); if (fs.existsSync(src)) { fs.mkdirSync(path.dirname(path.join(ANCIEN, f)), { recursive: true }); fs.copyFileSync(src, path.join(ANCIEN, f)); } } /* S (10/11/2026) : sous-dossiers de vendor/ (lecture de plaque) */
 fs.copyFileSync(path.join(RACINE, 'manifest.json'), path.join(ANCIEN, 'manifest.json'));
 fs.writeFileSync(path.join(ANCIEN, 'sw.js'), swTxt.replace(/^const C='[^']+';/, "const C='climpilot-next-0000-ancienne';"));
 const cacheActuel = (swTxt.match(/^const C='([^']+)';/) || [])[1];

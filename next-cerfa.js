@@ -19,7 +19,7 @@
   'use strict';
   var MKEY='cpnext_materiel';
   try{ if(Array.isArray(SYNC_KEYS) && SYNC_KEYS.indexOf(MKEY)<0) SYNC_KEYS.push(MKEY); }catch(e){}
-  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function esc(s){ return window.cpEsc(s); } /* S : une seule fonction d'échappement, celle du cœur */
   function toastX(m,t){ try{ if(window.nxToast) return window.nxToast(m,t); }catch(e){} try{ toast(m); }catch(e){} }
   function M(){ var m; try{ m=JSON.parse(localStorage.getItem(MKEY)||'null'); }catch(e){} m=m||{}; m.detecteurs=m.detecteurs||[]; m.unCodes=m.unCodes||{}; return m; }
   function saveM(m){ try{ if(typeof save==='function') save(MKEY,m); else localStorage.setItem(MKEY,JSON.stringify(m)); }catch(e){} }
@@ -177,7 +177,7 @@
     var fuite=f.ctrl==='fuite_rep'||f.ctrl==='fuite_nonrep';
     var chTot=num(f.qv)+num(f.qrec)+num(f.qreg), reTot=num(f.qrt)+num(f.qru);
     var nat=f.nature;
-    var detSig=f.sigDetenteur?('<b>'+esc(f.sigDetenteur.nom)+'</b> — signé électroniquement le '+esc(new Date(f.sigDetenteur.at).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}))+(f.sigDetenteur.png?'<br><img src="'+esc(f.sigDetenteur.png)+'" style="height:48px">':'')):'<b>'+esc(f.client)+'</b>';
+    var detSig=f.sigDetenteur?('<b>'+esc(f.sigDetenteur.nom)+'</b> — signé électroniquement le '+esc(new Date(f.sigDetenteur.at).toLocaleString('fr-FR',{dateStyle:'short',timeStyle:'short'}))+(cpImagePng(f.sigDetenteur.png)?'<br><img src="'+esc(f.sigDetenteur.png)+'" style="height:48px">':'')):'<b>'+esc(f.client)+'</b>';
     var html='<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:780px">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-end;border-bottom:2px solid '+B+';padding-bottom:4px;margin-bottom:6px"><div><b style="font-size:14px">FICHE D\'INTERVENTION</b><br><span style="font-size:9.5px">Opérations nécessitant une manipulation de fluides frigorigènes — équivalent électronique du formulaire <b>Cerfa n° 15497*04</b> (art. R.543-82 du code de l\'environnement)</span></div><div style="text-align:right;font-size:10px">N° <b style="font-family:monospace;font-size:12px">'+esc(f.num)+'</b><br>Date : <b>'+esc(frDate(f.date))+'</b></div></div>'+
       (f.annulee?'<div style="border:2px solid #b03a2e;color:#b03a2e;font-weight:700;padding:6px 10px;margin:6px 0">FICHE ANNULÉE le '+esc(new Date(f.annulee.at).toLocaleDateString('fr-FR'))+' — motif : '+esc(f.annulee.motif||'')+' (conservée au registre, art. R.543-82)</div>':'')+

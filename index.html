@@ -2,6 +2,9 @@
 <html lang="fr">
 <head>
 <meta charset="utf-8">
+<!-- S (10/11/2026) : politique de sécurité (CSP, étape 1). Scripts et styles de la page seulement (en ligne compris : le cœur s'exécute en ligne),
+     connexions limitées à Supabase (tout projet : la copie d'essai en utilise un autre), aux adresses (data.geopf.fr) et au SIREN ; moteur WASM et worker (lecture de plaque) locaux. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://*.supabase.co https://data.geopf.fr https://recherche-entreprises.api.gouv.fr; worker-src 'self' blob:; manifest-src 'self'; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>ClimPilot — GL Froid & Clim</title>
 <meta name="theme-color" content="#121417">
@@ -990,6 +993,23 @@ window.onerror=function(msg,src,line){try{var d=document.createElement('div');
 /* ============ STORAGE ============ */
 const LS={devis:'cp2_devis',clients:'cp2_clients',custom:'cp2_prix_custom',over:'cp2_params_over',cmd:'cp2_cmd',cache:'cp2_tarif_cache',machlib:'cp2_machlib',dep:'cp2_dep',facseq:'cp2_facseq',loc:'cp2_loc',locseq:'cp2_locseq',adiacat:'cp2_adiacat',pin:'cp2_pin',lastbk:'cp2_lastbackup'};
 const load=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v;}catch(e){return d}};
+/* S (10/11/2026) : UNE seule fonction d'échappement pour tout ce qui s'affiche (cœur et couches next-*.js) : & < > " ' deviennent des entités.
+   Le texte visible ne change pas ; un texte venu d'ailleurs (site, assistant, tarif, plateforme, sauvegarde) ne peut plus devenir du code. */
+window.cpEsc=function(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]);};
+/* S : un identifiant (devis, client, article, lot…) est recopié dans le code des boutons : il ne contient que lettres, chiffres, _ et - (64 caractères au plus).
+   Un identifiant restauré ou synchronisé qui sort de la règle est remplacé par un identifiant dérivé (toujours le même pour le même texte : les appareils restent d'accord) et journalisé. */
+const CP_ID_OK=/^[A-Za-z0-9_-]{1,64}$/;
+/* S : texte venu d'ailleurs (site, assistant, tarif, facture lue, sauvegarde) : caractères de contrôle retirés, longueur bornée si demandé. Rien d'autre : le rempart, c'est l'échappement à l'affichage. */
+window.cpTexteSain=function(s,max){s=String(s==null?'':s).replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g,'');return max?s.slice(0,max):s;};
+function cpSainDeep(v){if(typeof v==='string')return cpTexteSain(v);if(Array.isArray(v)){for(let i=0;i<v.length;i++)v[i]=cpSainDeep(v[i]);return v;}if(v&&typeof v==='object'){for(const k in v)v[k]=cpSainDeep(v[k]);return v;}return v;}
+/* S : une image de signature n'est acceptée que si c'est un PNG embarqué (jamais une adresse extérieure) */
+window.cpImagePng=function(u){return /^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(String(u==null?'':u));};
+/* S : une cellule de texte d'un CSV qui commence comme une formule (= + - @, tabulation, retour chariot) reçoit une apostrophe en tête ; un nombre (dont un montant négatif) reste un nombre */
+window.cpCsvTexte=function(v){v=String(v==null?'':v);return (/^[=+\-@\t\r]/.test(v)&&!/^[-+]?\d+([.,]\d+)?$/.test(v))?"'"+v:v;};
+function cpIdDerive(t){let h=5381;t=String(t);for(let i=0;i<t.length;i++)h=((h*33)^t.charCodeAt(i))>>>0;return 'rep'+h.toString(36);}
+function cpIdsValider(a,cle){if(!Array.isArray(a))return 0;let n=0;const un=(o,k)=>{if(!o||typeof o!=='object'||o.id==null||CP_ID_OK.test(String(o.id)))return;const ancien=String(o.id).slice(0,40);o.id=cpIdDerive(o.id);n++;
+    console.warn('ClimPilot : identifiant invalide remplacé ('+k+')');cpJournal({type:'id_repare',cle:k,ancien,nouveau:o.id});};
+  a.forEach(x=>{un(x,cle);if(x&&Array.isArray(x.lots))x.lots.forEach(l=>un(l,cle+'.lots'));});return n;}
 /* ===== CLOUD : déclarations précoces (le module complet est plus bas) ===== */
 var SUPA_URL='https://onnmomydxfoozcmmtsnz.supabase.co';
 var SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9ubm1vbXlkeGZvb3pjbW10c256Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODM4MzkzMjUsImV4cCI6MjA5OTQxNTMyNX0.wfGW17EMzPTUMMG23Aegg4-iAvfE3QrBOqVlKW0uFn0';
@@ -1023,6 +1043,7 @@ function loadArr(k){const raw=localStorage.getItem(k);if(raw==null)return [];let
   const out=v.filter(x=>x&&typeof x==='object'&&!Array.isArray(x));
   if(out.length!==v.length)nxFlag(k);
   out.forEach(x=>{if(!x.id)x.id='r'+Math.random().toString(36).slice(2,10);});
+  cpIdsValider(out,k);
   return /<[a-zA-Z\/!?]/.test(raw)?nxClean(out):out;}
 function loadObj(k){const v=load(k,{});return (v&&typeof v==='object'&&!Array.isArray(v))?v:{};}
 function isoLocal(d){d=d||new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');}
@@ -1164,7 +1185,7 @@ function cotisPct(d){try{if(typeof window.nxCotisPct==='function')return window.
 function cotisLbl(d){return String(cotisPct(d)).replace('.',',');}
 const PSCALARS=['tauxHoraire','coutInterne','tva','cotisTaux','defaultRate','accGoulParM','fraisAdmin','fraisCommande','regimeTVA','achatTVA','objectifCA','acomptePctDefaut','validiteJours'];
 function rebuildPrix(){
-  const customs=load(LS.custom,[]);
+  const customs=load(LS.custom,[]);if(cpIdsValider(customs,LS.custom))save(LS.custom,customs);
   const names=new Set(customs.map(c=>c.nom));
   const mat2=buildPrixMatos(MATOS).filter(p=>!names.has(p.nom));
   const m2names=new Set(mat2.map(p=>p.nom));
@@ -1365,13 +1386,13 @@ function renderDash(){
   const top=Object.entries(byClient).sort((x,y)=>y[1]-x[1]).slice(0,6);
   const maxc=top.length?top[0][1]:1;
   document.getElementById('dashTop').innerHTML=top.length?top.map(([n,v])=>`
-    <div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between"><b>${n}</b><b>${eur0(v)}</b></div>
+    <div style="margin-bottom:9px"><div style="display:flex;justify-content:space-between"><b>${cpEsc(n)}</b><b>${eur0(v)}</b></div>
     <div style="height:7px;border-radius:5px;background:var(--line);margin-top:3px;overflow:hidden"><div style="height:100%;width:${maxc>0?v/maxc*100:0}%;background:var(--blue)"></div></div></div>`).join(''):'<div class="empty">Aucun devis accepté encore.</div>';
   const rel=document.getElementById('dashRelance');
   if(rel){const stale=a.filter(x=>x.statut==='envoye'&&x.sentAt&&(Date.now()-x.sentAt)>7*86400000)
       .sort((x,y)=>x.sentAt-y.sentAt);
     rel.innerHTML=stale.length?'<div class="card" style="border-left:4px solid var(--orange)"><h2>📞 À relancer <span class="sub" style="font-weight:400">(devis envoyés depuis plus de 7 jours sans réponse)</span></h2>'
-      +stale.map(d=>'<div class="recap-line"><div style="cursor:pointer" onclick="openDevis(\''+d.id+'\')"><b>'+devisName(d)+'</b><div class="sub2">'+d.num+' · envoyé il y a '+Math.floor((Date.now()-d.sentAt)/86400000)+' jours · '+(d.cTel||'pas de tél')+'</div></div><div class="row-actions"><b>'+eur0(d._c.totalHT)+'</b><button class="iconbtn" title="Mail de relance" onclick="mailRelance(\''+d.id+'\')">✉️</button></div></div>').join('')+'</div>':'';}
+      +stale.map(d=>'<div class="recap-line"><div style="cursor:pointer" onclick="openDevis(\''+d.id+'\')"><b>'+cpEsc(devisName(d))+'</b><div class="sub2">'+cpEsc(d.num)+' · envoyé il y a '+Math.floor((Date.now()-d.sentAt)/86400000)+' jours · '+cpEsc(d.cTel||'pas de tél')+'</div></div><div class="row-actions"><b>'+eur0(d._c.totalHT)+'</b><button class="iconbtn" title="Mail de relance" onclick="mailRelance(\''+d.id+'\')">✉️</button></div></div>').join('')+'</div>':'';}
   const fin=document.getElementById('dashFin');
   if(fin){
     const u=urssafNext();const q={T1:0,T2:1,T3:2,T4:3}[u.q];
@@ -1383,14 +1404,14 @@ function renderDash(){
      +'<div class="recap-line"><div class="lbl">🏦 À provisionner pour l\'URSSAF ('+u.q+' : '+eur0(encQ)+' encaissés × '+cotisLbl(qd)+' %)</div><div><b>'+eur0(prov)+'</b></div></div>'
      +'<div class="recap-line"><div class="lbl">📅 Prochaine déclaration '+u.q+'</div><div><b>avant le '+u.dl+'</b></div></div>'
      +(late.length?'<div style="margin-top:10px"><b style="color:var(--red)">Factures en retard (+30 j) :</b>'
-       +late.map(f=>'<div class="recap-line"><div><b>'+f.num+' — '+f.client+'</b><div class="sub2">émise le '+(f.date||'—')+' · '+f.days+' jours</div></div><div class="row-actions"><b>'+eur0(f.montant)+'</b><button class="iconbtn" title="Mail de rappel" onclick="mailRelancePaiement(\''+f.kind+'\',\''+f.id+'\',\''+f.which+'\')">✉️</button><button class="btn-pri btn-sm" onclick="payerFacture(\''+f.kind+'\',\''+f.id+'\',\''+f.which+'\')">💶 Payée</button></div></div>').join('')+'</div>'
+       +late.map(f=>'<div class="recap-line"><div><b>'+cpEsc(f.num)+' — '+cpEsc(f.client)+'</b><div class="sub2">émise le '+(f.date||'—')+' · '+f.days+' jours</div></div><div class="row-actions"><b>'+eur0(f.montant)+'</b><button class="iconbtn" title="Mail de rappel" onclick="mailRelancePaiement(\''+f.kind+'\',\''+f.id+'\',\''+f.which+'\')">✉️</button><button class="btn-pri btn-sm" onclick="payerFacture(\''+f.kind+'\',\''+f.id+'\',\''+f.which+'\')">💶 Payée</button></div></div>').join('')+'</div>'
        :'<div class="sub" style="margin-top:8px">✔ Aucune facture en retard de plus de 30 jours.</div>')
      +'</div>';
   }
   const rec=[...a].sort((x,y)=>(y.created||0)-(x.created||0)).slice(0,6);
   document.getElementById('dashRecent').innerHTML=rec.length?rec.map(d=>`
     <div class="recap-line" style="cursor:pointer" onclick="openDevis('${d.id}')">
-      <div><b>${devisName(d)}</b><div class="sub2">${d.num}</div></div>
+      <div><b>${cpEsc(devisName(d))}</b><div class="sub2">${cpEsc(d.num)}</div></div>
       <div style="text-align:right"><b>${eur(d._c.totalHT)}</b><div>${statusTag(d.statut)}</div></div></div>`).join(''):'<div class="empty">Aucun devis pour l\'instant.</div>';
   // rentabilité par type (marge % = Σ bénéfice brut ÷ Σ CA ; gain net/h = Σ net ÷ Σ heures)
   const byType={};
@@ -1540,7 +1561,7 @@ function openDevis(id){cur=migrate(JSON.parse(JSON.stringify(DEVIS.find(d=>d.id=
    choisie et signalée. Avant, le formulaire la remplaçait SANS RIEN DIRE par le premier choix de la liste (liaison, câble) ou par
    « Aucun(e) » (support, pompe, goulotte) dès l'ouverture du devis : le montant changeait à l'enregistrement. */
 function cpOptAbsente(v,liste,aussi){if(v==null||v===''||liste.includes(v)||(aussi||[]).includes(v))return '';
-  const a=String(v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const a=cpEsc(v);
   return `<option value="${a}" selected>${a}${findPrix(v)?'':' (absent de la base de prix)'}</option>`;}
 function fillSelects(){
   const su=PRIX.filter(p=>p.cat==='Supports').map(p=>p.nom);
@@ -1550,9 +1571,9 @@ function fillSelects(){
   document.getElementById('f_groupCable').innerHTML=GROUP_CABLES.map(n=>`<option>${n}</option>`).join('')+cpOptAbsente(cur&&cur.groupCable,GROUP_CABLES);
   document.getElementById('f_zone').innerHTML=Object.keys(P.zone).map(n=>`<option>${n}</option>`).join('');
   document.getElementById('f_mes').innerHTML=Object.keys(P.mes).map(n=>`<option>${n}</option>`).join('');
-  document.getElementById('f_brasure').innerHTML=Object.keys(P.bras).map(n=>`<option>${n}</option>`).join('');
+  document.getElementById('f_brasure').innerHTML=Object.keys(P.bras).map(n=>`<option>${cpEsc(n)}</option>`).join('');
   document.getElementById('f_rateChoice').innerHTML=[...new Set(P.rates||[45,75])].map(r=>`<option value="${r}">${r} €/h</option>`).join('')+'<option value="custom">Personnalisé…</option>';
-  document.getElementById('clientDL').innerHTML=CLIENTS.map(c=>`<option value="${(c.nom||'').replace(/"/g,'&quot;')}">`).join('');
+  document.getElementById('clientDL').innerHTML=CLIENTS.map(c=>`<option value="${cpEsc(c.nom||'')}">`).join('');
 }
 function onRateChange(){document.getElementById('f_rateCustom').style.display=document.getElementById('f_rateChoice').value==='custom'?'block':'none';recalc();}
 function updateWizName(){document.getElementById('wizTitle').textContent=(document.getElementById('f_cNom').value||'Sans nom');}
@@ -1623,15 +1644,15 @@ function addSplit(){formToDevis();cur.splits.push({puiss:3.5,liaison:'Liaison 1/
 function addGoulotte(){formToDevis();cur.goulottes.push({type:'Goulotte 80x60',long:0});renderGoulottes();}
 /* --- machines + bibliothèque --- */
 function renderMachines(){if(!cur)return;
-  const libOpts=MACHLIB.map((m,j)=>`<option value="${j}">${m.marque} ${m.ref} — ${eur(m.achat)}</option>`).join('');
+  const libOpts=MACHLIB.map((m,j)=>`<option value="${j}">${cpEsc(m.marque)} ${cpEsc(m.ref)} — ${eur(m.achat)}</option>`).join('');
   document.getElementById('machineList').innerHTML=(cur.machines||[]).map((m,i)=>`
    <div class="subcard"><h3>Machine ${i+1} <span style="float:right">
      <button class="iconbtn" title="Mémoriser dans la bibliothèque" onclick="memMachine(${i})">☆</button>
      ${cur.machines.length>1?`<button class="iconbtn d" onclick="delMachine(${i})">🗑</button>`:''}</span></h3>
    <div class="frm">
      ${MACHLIB.length?`<label>📚 Bibliothèque<select class="m-lib" onchange="applyLib(${i},this.value)"><option value="">— choisir —</option>${libOpts}</select></label>`:''}
-     <label>Marque<input class="m-marque" value="${(m.marque||'').replace(/"/g,'&quot;')}"></label>
-     <label>Référence<input class="m-ref" value="${(m.ref||'').replace(/"/g,'&quot;')}"></label>
+     <label>Marque<input class="m-marque" value="${cpEsc(m.marque||'')}"></label>
+     <label>Référence<input class="m-ref" value="${cpEsc(m.ref||'')}"></label>
      <label>Prix achat HT (€)<input type="number" class="m-achat" step="0.01" value="${m.achat||0}" oninput="liveCalcMachine(${i})"></label>
      <label>Marge % (sur prix vente)<input type="number" class="m-marge" value="${m.marge??35}" oninput="liveCalcMachine(${i})"></label>
    </div><div class="calc" id="mcalc${i}">Prix vente HT : ${eur(priceVente(m.achat,m.marge))}</div></div>`).join('');
@@ -1651,9 +1672,9 @@ function renderSplits(){if(!cur)return;
    <div class="subcard"><h3>Split ${i+1} ${cur.splits.length>1?`<button class="iconbtn d" style="float:right" onclick="delSplit(${i})">🗑</button>`:''}</h3>
    <div class="frm">
      <label>Puissance<select class="s-puiss" onchange="onPuissChange(${i})">${SPLIT_POWERS.map(p=>`<option value="${p}" ${p==s.puiss?'selected':''}>${p} kW</option>`).join('')}</select></label>
-     <label>Liaison cuivre (auto)<select class="s-liaison">${liais.map(n=>`<option ${n===s.liaison?'selected':''}>${n}</option>`).join('')}${cpOptAbsente(s.liaison,liais)}</select></label>
+     <label>Liaison cuivre (auto)<select class="s-liaison">${liais.map(n=>`<option ${n===s.liaison?'selected':''}>${cpEsc(n)}</option>`).join('')}${cpOptAbsente(s.liaison,liais)}</select></label>
      <label>Longueur liaison (m)<input type="number" class="s-long" value="${s.long||0}"></label>
-     <label>Câble interconnexion<select class="s-cable">${SPLIT_CABLES.map(n=>`<option ${n===s.cableInter?'selected':''}>${n}</option>`).join('')}${cpOptAbsente(s.cableInter,SPLIT_CABLES)}</select></label>
+     <label>Câble interconnexion<select class="s-cable">${SPLIT_CABLES.map(n=>`<option ${n===s.cableInter?'selected':''}>${cpEsc(n)}</option>`).join('')}${cpOptAbsente(s.cableInter,SPLIT_CABLES)}</select></label>
    </div></div>`).join('');
 }
 function onPuissChange(i){const c=document.querySelectorAll('#splitList .subcard')[i];const kw=+c.querySelector('.s-puiss').value;c.querySelector('.s-liaison').value=liaisonForPower(kw);}
@@ -1662,7 +1683,7 @@ function renderGoulottes(){if(!cur)return;
   const types=PRIX.filter(p=>p.cat==='Goulotte'&&p.unite==='m').map(p=>p.nom);
   document.getElementById('goulList').innerHTML=(cur.goulottes||[]).map((gx,i)=>`
    <div class="grow frm" style="margin-bottom:8px;align-items:end">
-     <label>Type<select class="g-type">${['Aucune',...types].map(n=>`<option ${n===gx.type?'selected':''}>${n}</option>`).join('')}${cpOptAbsente(gx.type,types,['Aucune'])}</select></label>
+     <label>Type<select class="g-type">${['Aucune',...types].map(n=>`<option ${n===gx.type?'selected':''}>${cpEsc(n)}</option>`).join('')}${cpOptAbsente(gx.type,types,['Aucune'])}</select></label>
      <label>Longueur (m)<input type="number" class="g-long" value="${gx.long||0}" onchange="recalc()"></label>
      <div>${cur.goulottes.length>1?`<button class="iconbtn d" onclick="delGoulotte(${i})">🗑 retirer</button>`:''}</div>
    </div>`).join('');
@@ -1681,13 +1702,13 @@ const KITS={
 };
 function renderExtras(){if(!cur)return;
   document.getElementById('kitBar').innerHTML=Object.keys(KITS).map(k=>`<span class="tag pret" style="cursor:pointer;padding:6px 12px" onclick="applyKit('${k.replace(/'/g,"\\'")}')">⚡ ${k}</span>`).join('');
-  const dl='<datalist id="extraDL">'+PRIX.map(p=>'<option value="'+p.nom.replace(/"/g,'&quot;')+'">').join('')+'</datalist>';
+  const dl='<datalist id="extraDL">'+PRIX.map(p=>'<option value="'+cpEsc(p.nom)+'">').join('')+'</datalist>';
   document.getElementById('extraList').innerHTML=dl+((cur.extras||[]).map((x,i)=>{
     const p=findPrix(x.nom);const u=p?venteOf(x.nom,p.marge):0;
     return `<div class="xrow frm" style="margin-bottom:8px;align-items:end;grid-template-columns:2.2fr .7fr 1fr auto">
-     <label>Article<input class="x-nom" list="extraDL" value="${(x.nom||'').replace(/"/g,'&quot;')}" onchange="onExtraChange()"></label>
+     <label>Article<input class="x-nom" list="extraDL" value="${cpEsc(x.nom||'')}" onchange="onExtraChange()"></label>
      <label>Qté<input type="number" class="x-qte" min="0" step="0.5" value="${x.qte||1}" onchange="onExtraChange()"></label>
-     <div class="calc" style="align-self:center">${p?eur(u)+' /'+p.unite+' → '+eur(u*(Number(x.qte)||0)):(x.nom?'⚠️ inconnu':'')}</div>
+     <div class="calc" style="align-self:center">${p?eur(u)+' /'+cpEsc(p.unite)+' → '+eur(u*(Number(x.qte)||0)):(x.nom?'⚠️ inconnu':'')}</div>
      <div><button class="iconbtn d" onclick="delExtra(${i})">🗑</button></div>
    </div>`;}).join('')||'<div class="sub" style="margin-bottom:8px">Aucun article complémentaire pour ce devis.</div>');
 }
@@ -1714,7 +1735,7 @@ function cpAbsentsWizard(c){try{const v=document.getElementById('v-wizard');if(!
   b.innerHTML=(a.length&&typeof window.nxAbsentsBandeau==='function')?window.nxAbsentsBandeau(a):'';
 }catch(e){console.warn('ClimPilot (C3) bandeau des articles absents :',e);}}
 function recalc(){formToDevis();const c=compute(cur);cpAbsentsWizard(c);
-  document.getElementById('recapDetail').innerHTML=c.lines.map(l=>`<div class="recap-line"><div class="lbl">${l.label}${l.detail?` <span class="sub2">— ${l.detail}</span>`:''}</div><div>${eur(l.ht)}</div></div>`).join('')||'<div class="empty">Rien à chiffrer.</div>';
+  document.getElementById('recapDetail').innerHTML=c.lines.map(l=>`<div class="recap-line"><div class="lbl">${cpEsc(l.label)}${l.detail?` <span class="sub2">— ${cpEsc(l.detail)}</span>`:''}</div><div>${eur(l.ht)}</div></div>`).join('')||'<div class="empty">Rien à chiffrer.</div>';
   document.getElementById('recapTotals').innerHTML=`<h2>💰 Totaux</h2>
     <div class="recap-line"><div class="lbl">Total HT</div><div><b>${eur(c.totalHT)}</b></div></div>
     ${c.franchise?`<div class="recap-line"><div class="lbl">TVA</div><div class="sub2">non applicable — art. 293 B du CGI</div></div>
@@ -1734,7 +1755,7 @@ function recalc(){formToDevis();const c=compute(cur);cpAbsentsWizard(c);
     ${(low||lowH)?`<div class="warnbox" style="margin-top:10px">⚠️ ${low?'Marge sous 20%. ':''}${lowH?'Gain sous 45 €/h. ':''}Vérifie si ce chantier n\'est pas sous-facturé.</div>`:'<div class="hint" style="margin-top:8px">✅ Marge et gain horaire corrects.</div>'}`;
   const m=c.mat;
   document.getElementById('recapMat').innerHTML=m.length?`<div class="scroll"><table><thead><tr><th class="l">Article</th><th>Qté</th><th>Achat U</th><th>Achat total</th><th>Vente HT</th></tr></thead><tbody>
-    ${m.map(x=>`<tr><td class="l">${x.nom}</td><td>${fmtQ(x.qte)} ${x.unite}</td><td>${eur(x.achatU)}</td><td>${eur(x.achatU*x.qte)}</td><td>${eur(x.ht)}</td></tr>`).join('')}
+    ${m.map(x=>`<tr><td class="l">${cpEsc(x.nom)}</td><td>${fmtQ(x.qte)} ${cpEsc(x.unite)}</td><td>${eur(x.achatU)}</td><td>${eur(x.achatU*x.qte)}</td><td>${eur(x.ht)}</td></tr>`).join('')}
     <tr><td class="l"><b>Total matériel</b></td><td></td><td></td><td><b>${eur(m.reduce((s,x)=>s+x.achatU*x.qte,0))}</b></td><td><b>${eur(m.reduce((s,x)=>s+x.ht,0))}</b></td></tr>
     </tbody></table></div>`:'<div class="empty">Pas de matériel chiffré.</div>';
 }
@@ -1873,7 +1894,7 @@ function cpDevisAnnuler(id){const d=DEVIS.find(x=>x.id===id);if(!d)return false;
     toast('⛔ Une facture est émise sur ce devis ('+(f&&f.num||'')+') : fais d\'abord un avoir, puis annule le devis.');return false;}
   if(d.statut==='annule'){toast('Devis '+(d.num||'')+' déjà annulé.');return false;}
   if(d.statut==='remplace'){toast('Devis '+(d.num||'')+' déjà remplacé par l\'avenant n° '+(d.remplacePar&&d.remplacePar.num||'')+' : rien à annuler.');return false;}
-  const h=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const h=cpEsc;
   let m=document.getElementById('mAnnulDevis');if(!m){m=document.createElement('div');m.className='modal';m.id='mAnnulDevis';document.body.appendChild(m);}
   m.innerHTML='<div class="box" style="max-width:520px"><div class="hd"><b>Annuler le devis '+h(d.num)+'</b><button class="iconbtn" onclick="closeModal(\'mAnnulDevis\')">✕</button></div>'
    +'<div class="bd"><input type="hidden" id="cpAnnulId" value="'+h(d.id)+'"><div class="sub" style="margin-bottom:10px">'+h(d.cNom||'')+' — '+h(statusTag(d.statut).replace(/<[^>]+>/g,''))+'. Le devis reste visible et ne se supprime pas ; il sort d\'« À commander », de « Planifier », du carnet de commandes et du chiffre signé. <b>Motif obligatoire.</b></div>'
@@ -1897,7 +1918,7 @@ function cpDevisAnnulerOk(){const m=document.getElementById('mAnnulDevis');if(!m
   if((window._curView==='wizard'||window._curView==='nx_devis2')&&cur&&cur.id===d.id)openDevis(d.id);else if(LISTV.includes(window._curView))renderList();else if(window._curView==='dash')renderDash();
   return true;}
 /* bandeau rouge du PDF d'un devis annulé (les deux formulaires) ; rien pour les autres états : les golden (suite Y) restent identiques */
-function cpDevisBandeauPdf(d){if(!d||d.statut!=='annule')return '';const a=d.annulation||{};const h=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+function cpDevisBandeauPdf(d){if(!d||d.statut!=='annule')return '';const a=d.annulation||{};const h=cpEsc;
   return '<div data-annule="1" style="border:3px solid #b42318;color:#b42318;border-radius:8px;padding:10px 14px;margin:10px 0;text-align:center;font-weight:800;font-size:16px;letter-spacing:.08em">DEVIS ANNULÉ'+(a.at?' le '+new Date(a.at).toLocaleDateString('fr-FR'):'')
    +(a.libelle?'<div style="font-size:11px;font-weight:600;letter-spacing:0;margin-top:4px">Motif : '+h(a.libelle)+(a.texte?' — '+h(a.texte):'')+'</div>':'')+'</div>';}
 function cpDevisAvenant(id){const src=DEVIS.find(d=>d.id===id);if(!src)return;
@@ -1920,7 +1941,7 @@ function cpVerrouWizard(){const v=document.getElementById('v-wizard');if(!v)retu
   ['nxsBtnTop','nxsBtn'].forEach(id=>{const b=document.getElementById(id);if(b)b.style.display=vr?'none':'';});
   v.querySelectorAll('.navbtns button[onclick="saveDevis()"]').forEach(b=>{b.style.display=vr?'none':'';});
   const head=v.querySelector('.flexhead');if(!head)return;
-  const h=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const h=cpEsc;
   let html='';
   if(vr)html+='🔒 <b>Devis '+h(cur.num)+' '+h(vr.texte)+' : il ne se modifie plus.</b> '+(vr.motif==='remplace'||vr.motif==='annule'?'':'Pour changer quelque chose : ')+cpVerrouBoutons(cur.id,vr,'head');
   else if(cur&&cur.avenantDe)html+='↪ <b>Avenant du devis n° '+h(cur.avenantDe.num)+'</b> — l\'original n\'a pas été modifié.';
@@ -1950,8 +1971,8 @@ function renderList(){
   document.getElementById('listTable').innerHTML=a.length?`<div class="scroll"><table>
     <thead><tr><th class="l">Devis</th><th class="l">N° / Type</th><th>Total HT</th><th>Total TTC</th><th>Marge</th><th class="l">Statut</th><th></th></tr></thead>
     <tbody>${a.map(d=>`<tr>
-      <td class="l"><b>${devisName(d)}</b><div class="sub2">${d.cVille||''}</div></td>
-      <td class="l">${d.num}<div class="sub2">${d.type}</div></td>
+      <td class="l"><b>${cpEsc(devisName(d))}</b><div class="sub2">${cpEsc(d.cVille||'')}</div></td>
+      <td class="l">${cpEsc(d.num)}<div class="sub2">${cpEsc(d.type)}</div></td>
       <td>${eur(d._c.totalHT)}</td><td>${eur(d._c.totalTTC)}</td>
       <td style="color:${d._c.margePct<20&&d._c.totalHT>0?'var(--red)':'var(--ink)'};font-weight:600">${d._c.totalHT>0?pct(d._c.margePct):'—'}</td>
       <td class="l">${statusTag(d.statut)}</td>
@@ -1989,18 +2010,18 @@ function renderCommander(){
       <div class="scroll"><table>
       <thead><tr><th class="l">✓</th><th class="l">Article</th><th>Besoin</th><th>En stock</th><th>À commander</th><th>Achat U</th><th>Total HT</th><th class="l">Chantiers</th></tr></thead>
       <tbody>${rows.map((r,ix)=>`<tr style="${CMD[r.nom]?'opacity:.5':''}">
-        <td class="l"><input type="checkbox" style="width:auto" ${CMD[r.nom]?'checked':''} data-nom="${r.nom.replace(/"/g,'&quot;')}" onchange="toggleCmd(this)"></td>
-        <td class="l"><b>${r.nom}</b></td><td>${fmtQ(r.qte)} ${r.unite}</td>
-        <td><input type="number" min="0" step="0.5" value="${r.stock}" style="width:70px;padding:4px 6px" onchange="setStock('${r.nom.replace(/'/g,"\\'")}',this.value)"></td>
-        <td>${r.aCmd>0?'<b style="color:var(--orange)">'+fmtQ(r.aCmd)+' '+r.unite+'</b>':'<b style="color:var(--green)">✔ en stock</b>'}</td>
+        <td class="l"><input type="checkbox" style="width:auto" ${CMD[r.nom]?'checked':''} data-nom="${cpEsc(r.nom)}" onchange="toggleCmd(this)"></td>
+        <td class="l"><b>${cpEsc(r.nom)}</b></td><td>${fmtQ(r.qte)} ${cpEsc(r.unite)}</td>
+        <td><input type="number" min="0" step="0.5" value="${r.stock}" style="width:70px;padding:4px 6px" data-nom="${cpEsc(r.nom)}" onchange="setStock(this.dataset.nom,this.value)"></td>
+        <td>${r.aCmd>0?'<b style="color:var(--orange)">'+fmtQ(r.aCmd)+' '+cpEsc(r.unite)+'</b>':'<b style="color:var(--green)">✔ en stock</b>'}</td>
         <td>${eur(r.achatU)}</td><td>${eur(r.aCmd*r.achatU)}</td>
-        <td class="l sub2">${r.chantiers.join(', ')}</td></tr>`).join('')}</tbody></table></div>
+        <td class="l sub2">${cpEsc(r.chantiers.join(', '))}</td></tr>`).join('')}</tbody></table></div>
       <div class="sub" style="margin-top:8px">Vue fournisseur : besoin cumulé des chantiers signés − ton stock = à commander. Le stock est mémorisé et synchronisé. Coche quand c'est commandé.</div>`;
   } else {
     box.innerHTML=acc.map(d=>{const mat=compute(d).mat;const tot=mat.reduce((s,m)=>s+m.achatU*m.qte,0);
-      return `<div class="subcard"><h3 style="color:var(--green)">🚚 ${devisName(d)} <span class="sub2" style="font-weight:400">— ${d.num} • achat ${eur(tot)}</span></h3>
+      return `<div class="subcard"><h3 style="color:var(--green)">🚚 ${cpEsc(devisName(d))} <span class="sub2" style="font-weight:400">— ${cpEsc(d.num)} • achat ${eur(tot)}</span></h3>
        ${mat.length?`<div class="scroll"><table><thead><tr><th class="l">Article</th><th>Qté</th><th>Achat U</th><th>Total achat</th></tr></thead>
-       <tbody>${mat.map(m=>`<tr><td class="l">${m.nom}</td><td>${fmtQ(m.qte)} ${m.unite}</td><td>${eur(m.achatU)}</td><td>${eur(m.achatU*m.qte)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="sub">Pas de matériel.</div>'}</div>`;
+       <tbody>${mat.map(m=>`<tr><td class="l">${cpEsc(m.nom)}</td><td>${fmtQ(m.qte)} ${cpEsc(m.unite)}</td><td>${eur(m.achatU)}</td><td>${eur(m.achatU*m.qte)}</td></tr>`).join('')}</tbody></table></div>`:'<div class="sub">Pas de matériel.</div>'}</div>`;
     }).join('')+'<div class="sub">Vue camion : matériel à préparer chantier par chantier.</div>';
   }
 }
@@ -2014,8 +2035,8 @@ function renderClients(){
   document.getElementById('clientTable').innerHTML=a.length?`<div class="scroll"><table>
    <thead><tr><th class="l">Nom</th><th class="l">Type</th><th class="l">Contact</th><th class="l">Ville</th><th>Devis</th><th>CA accepté HT</th><th></th></tr></thead>
    <tbody>${a.map(c=>`<tr>
-     <td class="l" style="cursor:pointer" onclick="openClient360('${c.id}')"><b style="color:var(--blue)">${c.nom}</b><div class="sub2" style="font-size:10px">fiche complète →</div></td><td class="l"><span class="tag ${c.type==='Professionnel'?'pro':'part'}">${c.type||'Particulier'}</span></td>
-     <td class="l">${c.tel||''}${c.mail?'<div class="sub2">'+c.mail+'</div>':''}</td><td class="l">${c.ville||''}</td>
+     <td class="l" style="cursor:pointer" onclick="openClient360('${c.id}')"><b style="color:var(--blue)">${cpEsc(c.nom)}</b><div class="sub2" style="font-size:10px">fiche complète →</div></td><td class="l"><span class="tag ${c.type==='Professionnel'?'pro':'part'}">${cpEsc(c.type||'Particulier')}</span></td>
+     <td class="l">${cpEsc(c.tel||'')}${c.mail?'<div class="sub2">'+cpEsc(c.mail)+'</div>':''}</td><td class="l">${cpEsc(c.ville||'')}</td>
      <td>${c._n}</td><td>${eur(c._ca)}</td>
      <td><button class="iconbtn" title="Fiche 360°" onclick="openClient360('${c.id}')">👤</button><button class="iconbtn" onclick="editClient('${c.id}')">✏️</button><button class="iconbtn d" onclick="delClient('${c.id}')">🗑</button></td>
    </tr>`).join('')}</tbody></table></div>`:'<div class="empty">Aucun client. Ils se créent automatiquement quand tu enregistres un devis avec un nom client.</div>';
@@ -2033,7 +2054,7 @@ function delClient(id){if(!confirm('Supprimer ce client ?'))return;CLIENTS=CLIEN
 let prixCatFilter='Tous';
 function renderPrix(){
   const cats=['Tous',...new Set(PRIX.map(p=>p.cat))];
-  document.getElementById('prixCats').innerHTML=cats.map(c=>`<span class="tag ${c===prixCatFilter?'pret':'brouillon'}" style="cursor:pointer;padding:5px 12px" onclick="prixCatFilter='${c}';renderPrix()">${c}</span>`).join('');
+  document.getElementById('prixCats').innerHTML=cats.map(c=>`<span class="tag ${c===prixCatFilter?'pret':'brouillon'}" style="cursor:pointer;padding:5px 12px" data-cat="${cpEsc(c)}" onclick="prixCatFilter=this.dataset.cat;renderPrix()">${cpEsc(c)}</span>`).join('');
   let a=PRIX.slice();if(prixCatFilter!=='Tous')a=a.filter(p=>p.cat===prixCatFilter);
   a.sort((x,y)=>x.cat.localeCompare(y.cat)||x.nom.localeCompare(y.nom));
   const customs=load(LS.custom,[]);const customNames=new Set(customs.map(c=>c.nom));
@@ -2041,9 +2062,9 @@ function renderPrix(){
    <thead><tr><th class="l">Article</th><th class="l">Source</th><th class="l">Catégorie</th><th class="l">Unité</th><th>Achat HT</th><th>Marge</th><th>Vente HT</th><th></th></tr></thead>
    <tbody>${a.map(p=>{const isLocal=p.src!=='notion';const overrides=isLocal&&NOTION_PRIX.some(n=>n.nom===p.nom);
      return `<tr>
-     <td class="l"><b>${p.nom}</b> ${p.verif?'<span class="tag verifier" style="font-size:9.5px">à vérifier</span>':''}</td>
+     <td class="l"><b>${cpEsc(p.nom)}</b> ${p.verif?'<span class="tag verifier" style="font-size:9.5px">à vérifier</span>':''}</td>
      <td class="l">${p.src==='notion'?'<span class="tag notion" style="font-size:9.5px">Notion</span>':overrides?'<span class="tag verifier" style="font-size:9.5px">local (remplace Notion)</span>':'<span class="tag local" style="font-size:9.5px">local</span>'}</td>
-     <td class="l">${p.cat}</td><td class="l">${p.unite}</td><td>${eur(p.achat)}</td><td>${p.marge!=null?p.marge+'%':'—'}</td><td><b>${eur(p.pv!=null?p.pv:priceVente(p.achat,p.marge))}</b></td>
+     <td class="l">${cpEsc(p.cat)}</td><td class="l">${cpEsc(p.unite)}</td><td>${eur(p.achat)}</td><td>${p.marge!=null?p.marge+'%':'—'}</td><td><b>${eur(p.pv!=null?p.pv:priceVente(p.achat,p.marge))}</b></td>
      <td><button class="iconbtn" title="${p.src==='notion'?'Créer une version locale qui remplace le prix Notion':'Modifier'}" onclick="editPrix('${p.id}')">✏️</button>
      ${isLocal?`<button class="iconbtn d" title="${overrides?'Supprimer et revenir au prix Notion':'Supprimer'}" onclick="delPrix('${p.id}')">${overrides?'↺':'🗑'}</button>`:''}</td>
    </tr>`;}).join('')}</tbody></table></div>`;
@@ -2118,7 +2139,7 @@ function delPrix(id){
 /* ============ PARAMS (Notion + surcharges locales) ============ */
 function selRow(label,id,val,opts){return '<label class="full">'+label+'<select id="'+id+'">'+opts.map(o=>'<option value="'+o[0]+'"'+(String(val)===o[0]?' selected':'')+'>'+o[1]+'</option>').join('')+'</select></label>';}
 function numRow(label,id,val,note){return `<label>${label}<input type="number" step="0.01" id="${id}" value="${val}">${note?`<span class="note-inline">${note}</span>`:''}</label>`;}
-function txtRow(label,id,val,full){return `<label class="${full?'full':''}">${label}<input type="text" id="${id}" value="${(val||'').replace(/"/g,'&quot;')}"></label>`;}
+function txtRow(label,id,val,full){return `<label class="${full?'full':''}">${label}<input type="text" id="${id}" value="${cpEsc(val||'')}"></label>`;}
 function renderParams(){
   _cpParamsRendu=true;_cpParamsDirty=false;setTimeout(()=>{_cpParamsRendu=false;_cpParamsDirty=false;},0); /* AF1 D3 : l'écran est reconstruit depuis les valeurs enregistrées */
   const E=P.entreprise||{};
@@ -2348,7 +2369,7 @@ function fillDepSelects(){
   document.getElementById('dp_rate').innerHTML=rates.map(r=>'<option value="'+r+'">'+r+' €/h</option>').join('')+'<option value="custom">Personnalisé…</option>';
   document.getElementById('dp_maj').innerHTML='<option value="0">Aucune (heures ouvrées)</option><option value="soir">Soir / samedi (+'+(P.dep.majSoir||0)+' %)</option><option value="dim">Dimanche / jour férié (+'+(P.dep.majDim||0)+' %)</option>';
   document.getElementById('dp_urgence').innerHTML='<option value="">Normal</option><option value="1">Urgent (+'+(P.dep.urgDepl||0)+' %)</option>';
-  document.getElementById('clientDLdep').innerHTML=CLIENTS.map(c=>'<option value="'+(c.nom||'').replace(/"/g,'&quot;')+'">').join('');
+  document.getElementById('clientDLdep').innerHTML=CLIENTS.map(c=>'<option value="'+cpEsc(c.nom||'')+'">').join('');
   document.getElementById('dp_margeInfo').textContent=P.dep.margeP||40;
   document.getElementById('dp_mesType').innerHTML=Object.keys(P.mes).filter(k=>k!=='Aucune').map(n=>'<option>'+n+'</option>').join('');
 }
@@ -2408,10 +2429,10 @@ function onDepRate(){document.getElementById('dp_rateCustom').style.display=docu
 function addPiece(){formToDep();curDep.pieces.push({nom:'',qte:1,achat:0,vente:0});renderPieces();}
 function delPiece(i){formToDep();curDep.pieces.splice(i,1);renderPieces();}
 function renderPieces(){
-  const dl='<datalist id="pieceDL">'+PRIX.map(p=>'<option value="'+p.nom.replace(/"/g,'&quot;')+'">').join('')+'</datalist>';
+  const dl='<datalist id="pieceDL">'+PRIX.map(p=>'<option value="'+cpEsc(p.nom)+'">').join('')+'</datalist>';
   document.getElementById('dp_pieces').innerHTML=dl+((curDep.pieces||[]).map((p,i)=>`
    <div class="prow frm" style="margin-bottom:8px;align-items:end;grid-template-columns:2fr .6fr 1fr 1fr auto">
-     <label>Pièce<input class="p-nom" list="pieceDL" value="${(p.nom||'').replace(/"/g,'&quot;')}" onchange="onPieceName(${i},this.value)"></label>
+     <label>Pièce<input class="p-nom" list="pieceDL" value="${cpEsc(p.nom||'')}" onchange="onPieceName(${i},this.value)"></label>
      <label>Qté<input type="number" class="p-qte" min="0" step="0.5" value="${p.qte||1}" onchange="recalcDep()"></label>
      <label>Achat HT / u<input type="number" class="p-achat" step="0.01" value="${p.achat||0}" onchange="onPieceAchat(${i})"></label>
      <label>Vente HT / u<input type="number" class="p-vente" step="0.01" value="${p.vente||0}" onchange="recalcDep()"></label>
@@ -2490,8 +2511,8 @@ function renderDep(){
    '<thead><tr><th class="l">Client</th><th class="l">Date / n° facture</th><th class="l">Mode</th><th>Total HT</th><th>Reste net</th><th class="l">Statut</th><th></th></tr></thead><tbody>'+
    a.map(x=>{const isMes=(x.itype||'dep')==='mes';
     const modeLbl=isMes?('MES '+(x.mesMode==='carte'?'à la carte':(x.mesType||''))):({forfaitH:'Forfait + heures',temps:'Temps passé',panne:'Forfait panne'}[x.mode]||x.mode);
-    return '<tr><td class="l"><b>'+(x.cNom||'(sans client)')+'</b><div class="sub2">'+((x.desc||'').slice(0,60))+'</div></td>'+
-    '<td class="l">'+(x.date?new Date(x.date+'T00:00:00').toLocaleDateString('fr-FR'):'')+'<div class="sub2">'+(x.facNum||'—')+'</div></td>'+
+    return '<tr><td class="l"><b>'+cpEsc(x.cNom||'(sans client)')+'</b><div class="sub2">'+cpEsc((x.desc||'').slice(0,60))+'</div></td>'+
+    '<td class="l">'+(x.date?new Date(x.date+'T00:00:00').toLocaleDateString('fr-FR'):'')+'<div class="sub2">'+cpEsc(x.facNum||'—')+'</div></td>'+
     '<td class="l">'+(isMes?'<span class="tag pret" style="font-size:9.5px">MES</span> ':'<span class="tag verifier" style="font-size:9.5px">DÉP</span> ')+modeLbl+(x.maj&&x.maj!=='0'?' <span class="tag attente" style="font-size:9.5px">majoré</span>':'')+'</td>'+
     '<td><b>'+eur(x._c.totalHT)+'</b></td><td>'+eur(x._c.benefNet)+'</td>'+
     '<td class="l">'+depTag(x.statut)+'</td>'+
@@ -2505,7 +2526,7 @@ function renderDep(){
 function exportCSVDep(){
   const a=DEP.map(x=>({...x,_c:computeDep(x)}));if(!a.length){toast('Aucun dépannage à exporter');return;}
   const nf=n=>String((Math.round((Number(n)||0)*100)/100)).replace('.',',');
-  const esc2=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
+  const esc2=s=>'"'+cpCsvTexte(s).replace(/"/g,'""')+'"';
   const head=['Type','N° facture','Date intervention','Date facture','Payée le','Client','Ville','Type client','Mode','Majoration','Heures','Taux €/h','MO (majorée)','Déplacement','Conso MES','Pièces vente','Pièces achat','Total HT','Cotisations','Reste net','Gain net €/h','Statut','Description','Notes / SAV'];
   const rows=a.map(x=>[(x.itype==='mes'?'Mise en service':'Dépannage'),x.facNum||'',x.date||'',x.facDate||'',x.payeLe||'',x.cNom,x.cVille,x.cType,(x.itype==='mes'?(x.mesMode||'forfait'):x.mode),x.maj,nf(x.heures),nf(depRate(x)),nf(x._c.mo+x._c.maj),nf(x._c.depl),nf(x._c.consoV),nf(x._c.piecesVente),nf(x._c.piecesAchat),nf(x._c.totalHT),nf(x._c.cotis),nf(x._c.benefNet),nf(x._c.gainHNet),x.statut,x.desc||'',x.notes||'']);
   const csv='﻿'+[head,...rows].map(r=>r.map(esc2).join(';')).join('\r\n');
@@ -2513,8 +2534,8 @@ function exportCSVDep(){
   const el=document.createElement('a');el.href=URL.createObjectURL(blob);el.download='ClimPilot_depannages_'+todayISO()+'.csv';el.click();
   toast('📊 Export dépannages téléchargé');
 }
-function docTop(E,C,ic,dateStr,sub){return '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;padding-bottom:10px;border-bottom:2px solid #c8102e"><div style="display:flex;gap:12px;align-items:center"><div style="width:54px;height:54px;border-radius:12px;background:'+C+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px">'+ic+'</div><div><div style="font-size:19px;font-weight:800">'+(E.nom||'—')+'</div><div style="font-size:10.5px;color:#666">'+((E.activite||'')+(sub||''))+'</div><div style="font-size:10.5px;color:#666">'+[E.adresse,E.cp,E.ville].filter(Boolean).join(' ')+'</div><div style="font-size:10.5px;color:#666">'+[E.tel?'Tél : '+E.tel:'',E.email].filter(Boolean).join(' — ')+'</div></div></div><div style="font-size:10.5px;color:#666;text-align:right">'+(E.ville?'À '+E.ville+', le ':'Le ')+dateStr+'<br>Page 1/1</div></div>';}
-function docLegal(E,C){const legal=[E.nom,[E.statut,E.capital?'capital '+E.capital+' €':'',E.naf?'Code NAF '+E.naf:''].filter(Boolean).join(' • '),[E.adresse,E.cp,E.ville].filter(Boolean).join(' '),[E.tel?'Tél : '+E.tel:'',E.email].filter(Boolean).join(' • '),E.siret?'SIRET : '+E.siret:'',E.tvaIntra?'N° TVA : '+E.tvaIntra:'',E.assurance?'Assurance pro : '+E.assurance+(E.assuranceZone?' — couverture : '+E.assuranceZone:''):'',E.attFluides?'Attestation de capacité fluides frigorigènes n° '+E.attFluides+(E.attOrganisme?' ('+E.attOrganisme+')':''):'',E.rib?'RIB : '+E.rib:''].filter(Boolean).map(x=>'<div>'+x+'</div>').join('');
+function docTop(E,C,ic,dateStr,sub){return '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;padding-bottom:10px;border-bottom:2px solid #c8102e"><div style="display:flex;gap:12px;align-items:center"><div style="width:54px;height:54px;border-radius:12px;background:'+C+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:26px">'+ic+'</div><div><div style="font-size:19px;font-weight:800">'+cpEsc(E.nom||'—')+'</div><div style="font-size:10.5px;color:#666">'+cpEsc((E.activite||'')+(sub||''))+'</div><div style="font-size:10.5px;color:#666">'+cpEsc([E.adresse,E.cp,E.ville].filter(Boolean).join(' '))+'</div><div style="font-size:10.5px;color:#666">'+cpEsc([E.tel?'Tél : '+E.tel:'',E.email].filter(Boolean).join(' — '))+'</div></div></div><div style="font-size:10.5px;color:#666;text-align:right">'+cpEsc(E.ville?'À '+E.ville+', le ':'Le ')+dateStr+'<br>Page 1/1</div></div>';}
+function docLegal(E,C){const legal=[E.nom,[E.statut,E.capital?'capital '+E.capital+' €':'',E.naf?'Code NAF '+E.naf:''].filter(Boolean).join(' • '),[E.adresse,E.cp,E.ville].filter(Boolean).join(' '),[E.tel?'Tél : '+E.tel:'',E.email].filter(Boolean).join(' • '),E.siret?'SIRET : '+E.siret:'',E.tvaIntra?'N° TVA : '+E.tvaIntra:'',E.assurance?'Assurance pro : '+E.assurance+(E.assuranceZone?' — couverture : '+E.assuranceZone:''):'',E.attFluides?'Attestation de capacité fluides frigorigènes n° '+E.attFluides+(E.attOrganisme?' ('+E.attOrganisme+')':''):'',E.rib?'RIB : '+E.rib:''].filter(Boolean).map(x=>'<div>'+cpEsc(x)+'</div>').join('');
   return '<div style="margin-top:8px;font-size:9.5px;color:#555;text-align:center;border-top:2px solid '+C+';padding-top:8px">'+(legal||'<i>Renseigne tes coordonnées entreprise dans Paramètres pour le pied de page.</i>')+'</div>';}
 /* Nouvelles mentions facturation électronique (obligatoires au 1er sept. 2026).
    « Catégorie de l'opération » affichée dès maintenant (inoffensif) ; les 3 autres
@@ -2525,9 +2546,9 @@ function natureChantierTxt(E){return (E&&E.natureChantier)==='M'?'Livraison de b
 function facMentions(nature,cli,E){
   const L=['<b>Nature de l\'opération :</b> '+nature+'.'];
   const siren=cli&&(cli.siren||cli.cSiren);
-  if(siren)L.push('N° SIREN du client : '+siren+'.');
+  if(siren)L.push('N° SIREN du client : '+cpEsc(siren)+'.');
   const livr=cli&&(cli.livrAdr||cli.cLivrAdr), fact=cli&&(cli.factAdr||cli.cAdr||'');
-  if(livr&&String(livr).trim()&&livr!==fact)L.push('Adresse de livraison / de réalisation : '+livr+'.');
+  if(livr&&String(livr).trim()&&livr!==fact)L.push('Adresse de livraison / de réalisation : '+cpEsc(livr)+'.');
   if(E&&E.tvaDebits)L.push('Option pour le paiement de la taxe d\'après les débits.');
   return '<div style="margin-top:10px;font-size:9.5px;color:#666;line-height:1.6;border-top:1px solid #eef1f5;padding-top:7px">'+L.join('<br>')+'</div>';
 }
@@ -2549,17 +2570,17 @@ function printFacture(){
     .concat(c.depl>0?[[c.deplLbl||('Déplacement ('+d.zone+')'),c.depl]]:[])
     .concat(c.consoV>0?[[c.consoLbl||'Consommables mise en service',c.consoV]]:[])
     .concat(c.pieces.map(p=>['Pièce : '+p.nom+' ('+fmtQ(p.qte)+' × '+eur(p.vente)+')',p.vente*p.qte]));
-  const body=rows.map(r=>'<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
+  const body=rows.map(r=>'<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+cpEsc(r[0])+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
    ${docTop(E,OR,IC_SNOW,facD)}
    <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
      <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
        <div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em">Client</div>
-       <b>${d.cNom||'—'}</b><br>${d.cAdr||''}<br>${d.cVille||''}<br>${[d.cTel,d.cMail].filter(Boolean).join(' — ')}</div>
+       <b>${cpEsc(d.cNom||'—')}</b><br>${cpEsc(d.cAdr||'')}<br>${cpEsc(d.cVille||'')}<br>${cpEsc([d.cTel,d.cMail].filter(Boolean).join(' — '))}</div>
    </div>
-   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${d.facNum}</span></div>
-   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">${d.itype==='mes'?'Mise en service climatisation':'Intervention de dépannage'} du ${dInt}${d.desc?'<br><span style="font-size:11px">'+d.desc+'</span>':''}</div>
+   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${cpEsc(d.facNum)}</span></div>
+   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">${d.itype==='mes'?'Mise en service climatisation':'Intervention de dépannage'} du ${dInt}${d.desc?'<br><span style="font-size:11px">'+cpEsc(d.desc)+'</span>':''}</div>
    <table style="width:100%;border-collapse:collapse;font-size:11px">
      <thead><tr style="background:${OR};color:#fff">
        <th style="text-align:left;padding:9px 12px">Désignation</th>
@@ -2611,7 +2632,7 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
      <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
      ${docTop(E,NV,SNOW,today)}${cpDevisBandeauPdf(d)}
      <div style="margin:10px 0 4px"><span style="font-size:20px;font-weight:800;color:${NV}">Estimation indicative</span></div>
-     <div style="font-size:11px;color:#555;margin-bottom:12px"><b>Objet :</b> ${d.type} — ${(d.splits||[]).length} unité(s) intérieure(s), ${(d.machines||[]).length} groupe(s) extérieur(s)${d.cNom?` &nbsp;·&nbsp; Pour : <b>${d.cNom}</b>`:''}</div>
+     <div style="font-size:11px;color:#555;margin-bottom:12px"><b>Objet :</b> ${cpEsc(d.type)} — ${(d.splits||[]).length} unité(s) intérieure(s), ${(d.machines||[]).length} groupe(s) extérieur(s)${d.cNom?` &nbsp;·&nbsp; Pour : <b>${cpEsc(d.cNom)}</b>`:''}</div>
      <div style="background:#fff7e6;border:1px solid #f0dcae;border-radius:8px;padding:10px 13px;font-size:11px;color:#7a5a12;margin-bottom:12px">
        <b>Document non contractuel.</b> Montant donné à titre indicatif pour information — il ne vaut pas devis. Un devis détaillé et définitif sera établi après visite technique.
      </div>
@@ -2664,7 +2685,7 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
       sublines=`<tr><td style="padding:6px 12px;color:#444;font-size:10.5px">Consommables (visserie, colliers, mastic, ruban…)</td><td style="padding:6px 12px;text-align:right;color:#444;font-size:10.5px">${eur(sub)}</td></tr>`;
     } else {
       sublines=ls.map(l=>{const det=subDetail(l);
-        return `<tr><td style="padding:6px 12px;color:#333;font-size:10.5px">${clientLabel(l)}${det?` <span style="color:#8a93a0">— ${det}</span>`:''}${l.absent?` <span data-absent="1" style="color:#b42318;font-weight:700">${CP_ABSENT_TXT}</span>`:''}</td><td style="padding:6px 12px;text-align:right;color:#333;font-size:10.5px">${eur(l.ht)}</td></tr>`;
+        return `<tr><td style="padding:6px 12px;color:#333;font-size:10.5px">${cpEsc(clientLabel(l))}${det?` <span style="color:#8a93a0">— ${cpEsc(det)}</span>`:''}${l.absent?` <span data-absent="1" style="color:#b42318;font-weight:700">${CP_ABSENT_TXT}</span>`:''}</td><td style="padding:6px 12px;text-align:right;color:#333;font-size:10.5px">${eur(l.ht)}</td></tr>`;
       }).join('');
     }
     catHTML+=`<tr style="background:${TINT}"><td style="padding:9px 12px;font-weight:700;color:${NV};border-top:1px solid #dce3ec">${titre}</td><td style="padding:9px 12px;text-align:right;font-weight:700;color:${NV};border-top:1px solid #dce3ec">${eur(sub)}</td></tr>${sublines}`;
@@ -2680,12 +2701,12 @@ function printDevis(){formToDevis();const c=compute(cur);const d=cur;const E=P.e
    ${docTop(E,NV,SNOW,today)}${cpDevisBandeauPdf(d)}
    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;margin:8px 0 14px">
      <div style="font-size:11px;color:#555;line-height:1.5;max-width:330px">
-       <div style="font-size:20px;font-weight:800;color:${NV};letter-spacing:-.01em">Devis N° ${d.num}</div>
-       <div style="margin-top:2px"><b>Objet :</b> ${d.type} — ${(d.splits||[]).length} unité(s) intérieure(s), ${(d.machines||[]).length} groupe(s) extérieur(s)${machineList?`<br><span style="color:#777">Équipements : ${machineList}</span>`:''}</div>
+       <div style="font-size:20px;font-weight:800;color:${NV};letter-spacing:-.01em">Devis N° ${cpEsc(d.num)}</div>
+       <div style="margin-top:2px"><b>Objet :</b> ${cpEsc(d.type)} — ${(d.splits||[]).length} unité(s) intérieure(s), ${(d.machines||[]).length} groupe(s) extérieur(s)${machineList?`<br><span style="color:#777">Équipements : ${cpEsc(machineList)}</span>`:''}</div>
      </div>
      <div style="border:1px solid #cfd6e0;border-radius:6px;padding:10px 14px;font-size:12px;min-width:230px">
        <div style="font-size:10px;color:${NV};text-transform:uppercase;letter-spacing:.05em;font-weight:700">Client</div>
-       <b>${d.cNom||'—'}</b><br>${d.cAdr||''}<br>${[d.cVille].filter(Boolean).join(' ')}<br>${[d.cTel,d.cMail].filter(Boolean).join(' — ')}</div>
+       <b>${cpEsc(d.cNom||'—')}</b><br>${cpEsc(d.cAdr||'')}<br>${cpEsc([d.cVille].filter(Boolean).join(' '))}<br>${cpEsc([d.cTel,d.cMail].filter(Boolean).join(' — '))}</div>
    </div>
    <table style="width:100%;border-collapse:collapse;font-size:11px;border:1px solid #dce3ec;border-radius:6px;overflow:hidden">
      <thead><tr style="background:${NV};color:#fff">
@@ -2745,7 +2766,7 @@ let toastT;function toast(m){const t=document.getElementById('toast');t.textCont
 function exportCSV(){
   const a=calcAll();if(!a.length){toast('Aucun devis à exporter');return;}
   const nf=n=>String((Math.round((Number(n)||0)*100)/100)).replace('.',','); // décimales FR pour Excel
-  const esc2=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
+  const esc2=s=>'"'+cpCsvTexte(s).replace(/"/g,'""')+'"';
   const head=['Numéro','Date','Client','Ville','Type client','Type chantier','Statut','Heures prévues','Total HT','TVA','Total TTC','Coût matériel (achat)','Coût MO interne','Déboursé sec','Bénéfice brut','Marge %','Cotisations ('+nf(cotisPct())+'%)','Reste net','Gain brut €/h','Gain net €/h','Acompte','Notes / SAV'];
   const rows=a.map(d=>[d.num,new Date(d.created||0).toLocaleDateString('fr-FR'),d.cNom,d.cVille,d.cType,d.type,d.statut,nf(d.heures),
     nf(d._c.totalHT),nf(d._c.tva),nf(d._c.totalTTC),nf(d._c.matAchat),nf(d._c.moAchat),nf(d._c.coutReel),
@@ -2776,7 +2797,7 @@ function exportJSON(){
   save(LS.lastbk,Date.now());checkBackup();
   toast('Sauvegarde complète téléchargée : '+DEVIS.length+' devis, '+CLIENTS.length+' clients, '+CTR.length+' contrats, '+FLU.length+' fiches fluides');}
 function importJSON(input){const f=input.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{let o;
-  try{o=JSON.parse(r.result);}catch(e){alert('Fichier illisible : ce n\'est pas une sauvegarde ClimPilot.');input.value='';return;}
+  try{o=cpSainDeep(JSON.parse(r.result));}catch(e){alert('Fichier illisible : ce n\'est pas une sauvegarde ClimPilot.');input.value='';return;} /* S : caractères de contrôle retirés de toute la sauvegarde */
   /* « Export complet » (19/10/2026) : la partie « etat » est la sauvegarde de l'appareil ; les tables du serveur restent dans le fichier */
   if(o&&o.format==='climpilot-export-complet-1'&&o.etat&&typeof o.etat==='object')o=o.etat;
   if(!o||typeof o!=='object'||!(o.all||o.devis||o.clients||o.prix)){alert('Ce fichier ne contient pas de données ClimPilot.');input.value='';return;}
@@ -2876,7 +2897,7 @@ function calcAdia(){
   else{hh.textContent='prévoir extraction / portes ouvertes (à écrire au devis)';hh.className='h';}
   document.getElementById('ad_deb').innerHTML=fmtQ(Math.round(debit/100)*100)+' <small>m³/h</small>';
   document.getElementById('ad_debH').textContent=fmtQ(vol)+' m³ × '+ach+' vol/h';
-  document.getElementById('ad_n').innerHTML=n+' <small>× '+m.name+'</small>';
+  document.getElementById('ad_n').innerHTML=n+' <small>× '+cpEsc(m.name)+'</small>';
   document.getElementById('ad_nH').textContent=m.base+' — zone unitaire ≈ '+m.zone;
   document.getElementById('ad_q').innerHTML=fmtQ(Math.round(q))+' <small>kW</small>';
   document.getElementById('ad_cout').innerHTML=eur0(coutElec+coutEau);
@@ -2892,7 +2913,7 @@ function renderAdiaCat(){
   el.innerHTML='<table><thead><tr><th></th><th>Machine</th><th>Débit m³/h</th><th>kW</th><th>Pose h/u</th><th>Achat € HT</th><th>Loc €/sem</th><th></th></tr></thead><tbody>'+
    ADIACAT.map(m=>'<tr class="'+(m.id===adiaSel?'on':'')+'">'+
     '<td><span class="seldot" onclick="adiaSelect(\''+m.id+'\')"></span></td>'+
-    '<td><input type="text" class="wide" value="'+String(m.name).replace(/"/g,'&quot;')+'" onchange="adiaEdit(\''+m.id+'\',\'name\',this.value)"><div class="sub" style="font-size:10.5px">'+(m.fixe?'🔩 fixe (vente seule) · ':'')+m.base+'</div></td>'+
+    '<td><input type="text" class="wide" value="'+cpEsc(m.name)+'" onchange="adiaEdit(\''+m.id+'\',\'name\',this.value)"><div class="sub" style="font-size:10.5px">'+(m.fixe?'🔩 fixe (vente seule) · ':'')+cpEsc(m.base)+'</div></td>'+
     '<td><input type="number" value="'+m.debit+'" onchange="adiaEdit(\''+m.id+'\',\'debit\',this.value)"></td>'+
     '<td><input type="number" step="0.05" value="'+m.kw+'" onchange="adiaEdit(\''+m.id+'\',\'kw\',this.value)"></td>'+
     '<td><input type="number" step="0.5" value="'+m.pose+'" onchange="adiaEdit(\''+m.id+'\',\'pose\',this.value)"></td>'+
@@ -3010,7 +3031,7 @@ function renderLocItems(){
   const mobiles=ADIACAT.filter(m=>!m.fixe);
   document.getElementById('locItems').innerHTML=(curLoc.items||[]).map((x,i)=>
    '<div class="frm" style="align-items:end;margin-bottom:6px">'+
-   '<label>Machine<select onchange="locItemRef('+i+',this.value)">'+mobiles.map(m=>'<option'+(m.name===x.ref?' selected':'')+'>'+m.name+'</option>').join('')+'</select></label>'+
+   '<label>Machine<select onchange="locItemRef('+i+',this.value)">'+mobiles.map(m=>'<option'+(m.name===x.ref?' selected':'')+'>'+cpEsc(m.name)+'</option>').join('')+'</select></label>'+
    '<label>Quantité<input type="number" min="1" value="'+(x.qte||1)+'" onchange="locItemN('+i+',\'qte\',this.value)"></label>'+
    '<label>Tarif €/sem/u<input type="number" min="0" value="'+(x.tarif||0)+'" onchange="locItemN('+i+',\'tarif\',this.value)"></label>'+
    '<label><button class="btn-ghost btn-sm" onclick="locDelItem('+i+')">🗑 Retirer</button></label></div>').join('')||'<div class="empty">Aucune machine — ajoute-en une.</div>';
@@ -3079,9 +3100,9 @@ function renderLoc(){
   if(!LOC.length){el.innerHTML='<div class="empty">Aucune location. Passe par l\'onglet 💨 Adiabatique pour dimensionner puis « Créer la location », ou bouton + Nouvelle location.</div>';return;}
   const a=[...LOC].map(l=>({...l,_c:computeLoc(l)})).sort((x,y)=>(y.created||0)-(x.created||0));
   el.innerHTML='<div class="scroll"><table><thead><tr><th class="l">N°</th><th class="l">Client</th><th class="l">Machines</th><th>Du → au</th><th>Sem.</th><th>Total HT</th><th>Statut</th><th></th></tr></thead><tbody>'+
-   a.map(l=>'<tr><td class="l"><b>'+(l.num||'—')+'</b>'+(l.fac?'<div class="sub" style="font-size:10px">'+l.fac.num+(l.fac.payeLe?' ✔ payée':' ⌛ à encaisser')+'</div>':'')+'</td>'+
-    '<td class="l">'+(l.cNom||'—')+((l.cAdr||l.cVille)?' '+mapsBtn([l.cAdr,l.cVille].filter(Boolean).join(', ')):'')+'<div class="sub" style="font-size:10.5px">'+(l.cVille||'')+'</div></td>'+
-    '<td class="l">'+(l.items||[]).map(x=>x.qte+'× '+x.ref).join('<br>')+'</td>'+
+   a.map(l=>'<tr><td class="l"><b>'+cpEsc(l.num||'—')+'</b>'+(l.fac?'<div class="sub" style="font-size:10px">'+cpEsc(l.fac.num)+(l.fac.payeLe?' ✔ payée':' ⌛ à encaisser')+'</div>':'')+'</td>'+
+    '<td class="l">'+cpEsc(l.cNom||'—')+((l.cAdr||l.cVille)?' '+mapsBtn([l.cAdr,l.cVille].filter(Boolean).join(', ')):'')+'<div class="sub" style="font-size:10.5px">'+cpEsc(l.cVille||'')+'</div></td>'+
+    '<td class="l">'+(l.items||[]).map(x=>x.qte+'× '+cpEsc(x.ref)).join('<br>')+'</td>'+
     '<td>'+(l.dateDebut||'—')+'<br>→ '+(l.dateFin||'—')+'</td>'+
     '<td>'+l._c.sem+'</td><td><b>'+eur0(l._c.totalHT)+'</b></td>'+
     '<td>'+locTag(l.statut)+'</td>'+
@@ -3101,21 +3122,21 @@ function printContrat(id){
   const TE='#121417';
   const fdate=s=>s?new Date(s+'T00:00:00').toLocaleDateString('fr-FR'):'—';
   const TD='padding:10px 12px;border:1px solid #eee;text-align:',TR='padding:8px 12px;border:1px solid #eee;text-align:right';
-  const rows=c.items.map(x=>'<tr><td style="'+TD+'left">'+x.ref+' — rafraîchisseur adiabatique mobile</td><td style="'+TD+'center">'+x.qte+'</td><td style="'+TD+'right">'+eur(x.tarif)+'/sem</td><td style="'+TD+'right;font-weight:600">'+eur(x.qte*x.tarif*c.sem)+'</td></tr>').join('');
+  const rows=c.items.map(x=>'<tr><td style="'+TD+'left">'+cpEsc(x.ref)+' — rafraîchisseur adiabatique mobile</td><td style="'+TD+'center">'+x.qte+'</td><td style="'+TD+'right">'+eur(x.tarif)+'/sem</td><td style="'+TD+'right;font-weight:600">'+eur(x.qte*x.tarif*c.sem)+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px;font-size:11.5px">
    ${docTop(E,TE,IC_WIND,new Date().toLocaleDateString('fr-FR'),' — rafraîchissement adiabatique')}
-   <div style="text-align:center;margin:10px 0 4px"><span style="font-size:17px;font-weight:800">CONTRAT DE LOCATION N° ${l.num}</span></div>
+   <div style="text-align:center;margin:10px 0 4px"><span style="font-size:17px;font-weight:800">CONTRAT DE LOCATION N° ${cpEsc(l.num)}</span></div>
    <div style="text-align:center;font-size:11px;color:#555;margin-bottom:12px">Matériel de rafraîchissement adiabatique — entretien inclus</div>
    <table style="width:100%;border-collapse:collapse;margin-bottom:10px"><tr>
-     <td style="width:50%;border:1px solid #ddd;border-radius:4px;padding:9px 12px;vertical-align:top"><div style="font-size:9.5px;color:#999;text-transform:uppercase">Le bailleur</div><b>${E.nom||'—'}</b><br>${[E.adresse,E.cp,E.ville].filter(Boolean).join(' ')||''}<br>${E.siret?'SIRET : '+E.siret:''}</td>
-     <td style="width:50%;border:1px solid #ddd;padding:9px 12px;vertical-align:top"><div style="font-size:9.5px;color:#999;text-transform:uppercase">Le locataire</div><b>${l.cNom||''}</b>${l.cType?' ('+l.cType+')':''}<br>${l.cAdr||''} ${l.cVille||''}<br>${[l.cTel,l.cMail].filter(Boolean).join(' — ')}</td>
+     <td style="width:50%;border:1px solid #ddd;border-radius:4px;padding:9px 12px;vertical-align:top"><div style="font-size:9.5px;color:#999;text-transform:uppercase">Le bailleur</div><b>${cpEsc(E.nom||'—')}</b><br>${cpEsc([E.adresse,E.cp,E.ville].filter(Boolean).join(' ')||'')}<br>${E.siret?'SIRET : '+cpEsc(E.siret):''}</td>
+     <td style="width:50%;border:1px solid #ddd;padding:9px 12px;vertical-align:top"><div style="font-size:9.5px;color:#999;text-transform:uppercase">Le locataire</div><b>${cpEsc(l.cNom||'')}</b>${l.cType?' ('+cpEsc(l.cType)+')':''}<br>${cpEsc(l.cAdr||'')} ${cpEsc(l.cVille||'')}<br>${cpEsc([l.cTel,l.cMail].filter(Boolean).join(' — '))}</td>
    </tr></table>
-   <div style="font-size:11.5px;margin-bottom:8px"><b>Durée :</b> du <b>${fdate(l.dateDebut)}</b> au <b>${fdate(l.dateFin)}</b> inclus, soit <b>${c.sem} semaine${c.sem>1?'s':''}</b>. Site d'utilisation : ${[l.cAdr,l.cVille].filter(Boolean).join(', ')||'adresse du locataire'}.</div>
+   <div style="font-size:11.5px;margin-bottom:8px"><b>Durée :</b> du <b>${fdate(l.dateDebut)}</b> au <b>${fdate(l.dateFin)}</b> inclus, soit <b>${c.sem} semaine${c.sem>1?'s':''}</b>. Site d'utilisation : ${cpEsc([l.cAdr,l.cVille].filter(Boolean).join(', ')||'adresse du locataire')}.</div>
    <table style="width:100%;border-collapse:collapse;font-size:11px">
      <thead><tr style="background:${TE};color:#fff"><th style="text-align:left;padding:8px 12px">Matériel loué</th><th style="padding:8px 12px">Qté</th><th style="padding:8px 12px;text-align:right">Tarif</th><th style="padding:8px 12px;text-align:right">Total</th></tr></thead>
      <tbody>${rows}
-     <tr><td colspan="3" style="${TR}">Livraison, mise en service et formation${l.zone?' — zone '+l.zone:''}</td><td style="${TR};font-weight:600">${eur(c.liv)}</td></tr>
+     <tr><td colspan="3" style="${TR}">Livraison, mise en service et formation${l.zone?' — zone '+cpEsc(l.zone):''}</td><td style="${TR};font-weight:600">${eur(c.liv)}</td></tr>
      <tr><td colspan="3" style="${TR}">Reprise du matériel en fin de location</td><td style="${TR};font-weight:600">${eur(c.rep)}</td></tr>
      ${c.net>0?'<tr><td colspan="3" style="'+TR+'">Nettoyage &amp; désinfection au retour</td><td style="'+TR+';font-weight:600">'+eur(c.net)+'</td></tr>':''}
      <tr style="background:#e8f6f8"><td colspan="3" style="text-align:right;padding:9px 12px;font-weight:800">TOTAL HT — net à payer</td><td style="text-align:right;padding:9px 12px;font-weight:800">${eur(c.totalHT)}</td></tr></tbody>
@@ -3253,7 +3274,7 @@ function renderFBloc(){
   const el=document.getElementById('fBloc');if(!el)return;
   if(!cur||(cur.statut!=='accepte'&&!cur.facAcompte&&!cur.facSolde)){el.innerHTML='';return;}
   const c=compute(cur);
-  const row=(f,lbl,which)=>'<div class="recap-line"><div><b>'+lbl+' — '+f.num+'</b><div class="sub2">émise le '+f.date+' · '+eur(f.montant)+(f.payeLe?' · ✔ payée le '+f.payeLe+' ('+(f.mode||'—')+')':' · ⌛ en attente de paiement')+'</div></div><div class="row-actions">'
+  const row=(f,lbl,which)=>'<div class="recap-line"><div><b>'+lbl+' — '+cpEsc(f.num)+'</b><div class="sub2">émise le '+cpEsc(f.date)+' · '+eur(f.montant)+(f.payeLe?' · ✔ payée le '+cpEsc(f.payeLe)+' ('+cpEsc(f.mode||'—')+')':' · ⌛ en attente de paiement')+'</div></div><div class="row-actions">'
     +(f.payeLe?'<button class="iconbtn" title="Annuler l\'encaissement (enregistré par erreur)" onclick="annulerEncaissement(\'devis\',cur.id,\''+which+'\')">↺</button>':'<button class="btn-pri btn-sm" onclick="payerFacture(\'devis\',cur.id,\''+which+'\')">💶 Payée</button>')
     +'<button class="iconbtn" title="PDF" onclick="printFactureDevis(cur,\''+which+'\')">🖨️</button></div></div>';
   let h='<div class="card" style="border-top:3px solid var(--green);margin-top:14px"><h2>💰 Facturation du chantier</h2>'
@@ -3299,17 +3320,17 @@ function printFactureDevis(d,which){
   else if(d.facAcompte){const tt=f.total!=null?f.total:Math.round(((Number(f.montant)||0)+(Number(d.facAcompte.montant)||0))*100)/100;
     rows.push(['Travaux réalisés selon devis '+d.num+' — '+tp,tt]);rows.push(['Acompte déjà facturé ('+d.facAcompte.num+')',-d.facAcompte.montant]);}
   else rows.push(['Travaux réalisés selon devis '+d.num+' — '+tp,f.montant]);
-  const body=rows.map(r=>'<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
+  const body=rows.map(r=>'<tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">'+cpEsc(r[0])+'</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
    ${docTop(E,OR,IC_SNOW,new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR'))}
    <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
      <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
        <div style="font-size:10px;color:#999;text-transform:uppercase;letter-spacing:.05em">Client</div>
-       <b>${d.cNom||'—'}</b><br>${d.cAdr||''}<br>${d.cVille||''}<br>${[d.cTel,d.cMail].filter(Boolean).join(' — ')}</div>
+       <b>${cpEsc(d.cNom||'—')}</b><br>${cpEsc(d.cAdr||'')}<br>${cpEsc(d.cVille||'')}<br>${cpEsc([d.cTel,d.cMail].filter(Boolean).join(' — '))}</div>
    </div>
-   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${f.num}</span></div>
-   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">${which==='acompte'?'Facture d\'acompte':'Facture'} — référence devis ${d.num} accepté</div>
+   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${cpEsc(f.num)}</span></div>
+   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">${which==='acompte'?'Facture d\'acompte':'Facture'} — référence devis ${cpEsc(d.num)} accepté</div>
    <table style="width:100%;border-collapse:collapse;font-size:11px">
      <thead><tr style="background:${OR};color:#fff"><th style="text-align:left;padding:9px 12px">Désignation</th><th style="padding:9px 12px;text-align:right">Montant</th></tr></thead>
      <tbody>${body}</tbody></table>
@@ -3332,17 +3353,17 @@ function printFactureLoc(l){
   const rows=(l.items||[]).map(x=>['Location '+x.qte+' × '+x.ref+' — '+c.sem+' sem. × '+eur(x.tarif)+'/sem',x.qte*x.tarif*c.sem])
     .concat([['Livraison, mise en service et formation'+(l.zone?' ('+l.zone+')':''),c.liv],['Reprise du matériel',c.rep]])
     .concat(c.net>0?[['Nettoyage & désinfection au retour',c.net]]:[]);
-  const body=rows.map(r=>'<tr><td style="text-align:left;padding:10px 12px;border:1px solid #eee">'+r[0]+'</td><td style="text-align:right;padding:10px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
+  const body=rows.map(r=>'<tr><td style="text-align:left;padding:10px 12px;border:1px solid #eee">'+cpEsc(r[0])+'</td><td style="text-align:right;padding:10px 12px;border:1px solid #eee;font-weight:600">'+eur(r[1])+'</td></tr>').join('');
   document.getElementById('devisDoc').innerHTML=`
    <div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">
    ${docTop(E,TE,IC_WIND,new Date(l.fac.date+'T00:00:00').toLocaleDateString('fr-FR'),' — rafraîchissement adiabatique')}
    <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
      <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
        <div style="font-size:10px;color:#999;text-transform:uppercase">Client</div>
-       <b>${l.cNom||'—'}</b><br>${l.cAdr||''}<br>${l.cVille||''}<br>${[l.cTel,l.cMail].filter(Boolean).join(' — ')}</div>
+       <b>${cpEsc(l.cNom||'—')}</b><br>${cpEsc(l.cAdr||'')}<br>${cpEsc(l.cVille||'')}<br>${cpEsc([l.cTel,l.cMail].filter(Boolean).join(' — '))}</div>
    </div>
-   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${l.fac.num}</span></div>
-   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">Location ${l.num||''} — du ${l.dateDebut||'—'} au ${l.dateFin||'—'}</div>
+   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${cpEsc(l.fac.num)}</span></div>
+   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">Location ${cpEsc(l.num||'')} — du ${cpEsc(l.dateDebut||'—')} au ${cpEsc(l.dateFin||'—')}</div>
    <table style="width:100%;border-collapse:collapse;font-size:11px">
      <thead><tr style="background:${TE};color:#fff"><th style="text-align:left;padding:9px 12px">Désignation</th><th style="padding:9px 12px;text-align:right">Montant</th></tr></thead>
      <tbody>${body}</tbody></table>
@@ -3404,7 +3425,7 @@ function renderRecettes(){
    +'<div class="kpi blue"><div class="lab">Encaissements<span>🧾</span></div><div class="val">'+rows.length+'</div></div>'
    +'<div class="kpi warn"><div class="lab">Factures en attente<span>⌛</span></div><div class="val">'+eur0(allImpayes().reduce((s,f)=>s+f.montant,0))+'</div></div>';
   document.getElementById('recTable').innerHTML=rows.length?'<div class="scroll"><table><thead><tr><th class="l">Date</th><th class="l">Client</th><th class="l">Nature</th><th class="l">N° facture</th><th class="l">Règlement</th><th>Montant</th></tr></thead><tbody>'
-   +rows.map(r=>'<tr><td class="l">'+new Date(r.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td class="l"><b>'+r.client+'</b></td><td class="l">'+r.nature+'</td><td class="l">'+r.num+'</td><td class="l">'+r.mode+'</td><td><b>'+eur(r.montant)+'</b></td></tr>').join('')
+   +rows.map(r=>'<tr><td class="l">'+new Date(r.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td class="l"><b>'+cpEsc(r.client)+'</b></td><td class="l">'+cpEsc(r.nature)+'</td><td class="l">'+cpEsc(r.num)+'</td><td class="l">'+cpEsc(r.mode)+'</td><td><b>'+eur(r.montant)+'</b></td></tr>').join('')
    +'<tr style="background:var(--green-soft)"><td colspan="5" class="l" style="font-weight:800">TOTAL '+y+'</td><td style="font-weight:800">'+eur(tot)+'</td></tr></tbody></table></div>'
    :'<div class="empty">Aucun encaissement en '+y+' — marque tes factures « 💶 Payée » et elles apparaissent ici.</div>';
 }
@@ -3413,7 +3434,7 @@ function exportCSVRecettes(){
   const rows=allRecettes().filter(r=>(r.date||'').slice(0,4)===y);
   if(!rows.length){toast('Aucun encaissement à exporter');return;}
   const nf=n=>String((Math.round((Number(n)||0)*100)/100)).replace('.',',');
-  const esc2=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
+  const esc2=s=>'"'+cpCsvTexte(s).replace(/"/g,'""')+'"';
   const csv='﻿'+[['Date','Client','Nature','N° facture','Mode de règlement','Montant HT']].concat(rows.map(r=>[r.date,r.client,r.nature,r.num,r.mode,nf(r.montant)])).map(r=>r.map(esc2).join(';')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
   const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='ClimPilot_livre_recettes_'+y+'.csv';a.click();
@@ -3425,9 +3446,9 @@ function printRecettes(){
   const tot=rows.reduce((s,r)=>s+r.montant,0);const E=P.entreprise||{};
   document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,sans-serif;color:#222;max-width:780px;font-size:11px">'
    +'<div style="text-align:center;margin-bottom:4px"><b style="font-size:17px">LIVRE DES RECETTES — '+y+'</b></div>'
-   +'<div style="text-align:center;font-size:11px;color:#555;margin-bottom:14px">'+(E.nom||'')+(E.siret?' — SIRET '+E.siret:'')+' — micro-entreprise, recettes encaissées</div>'
+   +'<div style="text-align:center;font-size:11px;color:#555;margin-bottom:14px">'+cpEsc(E.nom||'')+(E.siret?' — SIRET '+cpEsc(E.siret):'')+' — micro-entreprise, recettes encaissées</div>'
    +'<table style="width:100%;border-collapse:collapse"><thead><tr style="background:#eee"><th style="text-align:left;padding:7px;border:1px solid #ccc">Date</th><th style="text-align:left;padding:7px;border:1px solid #ccc">Client</th><th style="text-align:left;padding:7px;border:1px solid #ccc">Nature</th><th style="text-align:left;padding:7px;border:1px solid #ccc">Référence</th><th style="text-align:left;padding:7px;border:1px solid #ccc">Règlement</th><th style="text-align:right;padding:7px;border:1px solid #ccc">Montant</th></tr></thead><tbody>'
-   +rows.map(r=>'<tr><td style="padding:6px;border:1px solid #ddd">'+new Date(r.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td style="padding:6px;border:1px solid #ddd">'+r.client+'</td><td style="padding:6px;border:1px solid #ddd">'+r.nature+'</td><td style="padding:6px;border:1px solid #ddd">'+r.num+'</td><td style="padding:6px;border:1px solid #ddd">'+r.mode+'</td><td style="padding:6px;border:1px solid #ddd;text-align:right">'+eur(r.montant)+'</td></tr>').join('')
+   +rows.map(r=>'<tr><td style="padding:6px;border:1px solid #ddd">'+new Date(r.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td style="padding:6px;border:1px solid #ddd">'+cpEsc(r.client)+'</td><td style="padding:6px;border:1px solid #ddd">'+cpEsc(r.nature)+'</td><td style="padding:6px;border:1px solid #ddd">'+cpEsc(r.num)+'</td><td style="padding:6px;border:1px solid #ddd">'+cpEsc(r.mode)+'</td><td style="padding:6px;border:1px solid #ddd;text-align:right">'+eur(r.montant)+'</td></tr>').join('')
    +'<tr><td colspan="5" style="padding:8px;border:1px solid #ccc;font-weight:800;text-align:right">TOTAL</td><td style="padding:8px;border:1px solid #ccc;font-weight:800;text-align:right">'+eur(tot)+'</td></tr></tbody></table>'
    +'<div style="margin-top:10px;font-size:9.5px;color:#777">Registre généré par ClimPilot le '+new Date().toLocaleDateString('fr-FR')+' — TVA non applicable, art. 293 B du CGI.</div></div>';
   window.print();
@@ -3546,13 +3567,13 @@ function printFactureCtr(c,f){
    <div style="display:flex;justify-content:flex-end;margin:6px 0 14px">
      <div style="border:1px solid #ccc;border-radius:4px;padding:10px 14px;font-size:12px;min-width:240px">
        <div style="font-size:10px;color:#999;text-transform:uppercase">Client</div>
-       <b>${c.clientNom}</b><br>${cl.adr||''}<br>${cl.ville||''}<br>${[cl.tel,cl.mail].filter(Boolean).join(' — ')}</div>
+       <b>${cpEsc(c.clientNom)}</b><br>${cpEsc(cl.adr||'')}<br>${cpEsc(cl.ville||'')}<br>${cpEsc([cl.tel,cl.mail].filter(Boolean).join(' — '))}</div>
    </div>
-   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${f.num}</span></div>
-   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">Contrat d'entretien ${c.type||''} — ${ctrPeriodLbl(f)}</div>
+   <div style="text-align:center;margin-bottom:4px"><span style="font-size:18px;font-weight:800">FACTURE N° ${cpEsc(f.num)}</span></div>
+   <div style="text-align:center;font-size:12px;color:#555;margin-bottom:14px">Contrat d'entretien ${cpEsc(c.type||'')} — ${ctrPeriodLbl(f)}</div>
    <table style="width:100%;border-collapse:collapse;font-size:11px">
      <thead><tr style="background:${OR};color:#fff"><th style="text-align:left;padding:9px 12px">Désignation</th><th style="padding:9px 12px;text-align:right">Montant</th></tr></thead>
-     <tbody><tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">Contrat d'entretien ${c.type||''} — ${c.visites||1} visite${(c.visites||1)>1?'s':''}/an${c.notes?'<div style="font-size:9.5px;color:#777">'+c.notes+'</div>':''}</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">${eur(f.montant)}</td></tr></tbody></table>
+     <tbody><tr><td style="text-align:left;padding:11px 12px;border:1px solid #eee">Contrat d'entretien ${cpEsc(c.type||'')} — ${c.visites||1} visite${(c.visites||1)>1?'s':''}/an${c.notes?'<div style="font-size:9.5px;color:#777">'+cpEsc(c.notes)+'</div>':''}</td><td style="text-align:right;padding:11px 12px;border:1px solid #eee;font-weight:600">${eur(f.montant)}</td></tr></tbody></table>
    <div style="margin-top:10px;font-size:11px;font-weight:700;color:#333">TVA non applicable — article 293 B du CGI</div>
    <div style="display:flex;justify-content:flex-end;margin-top:14px">
      <table style="border-collapse:collapse;font-size:12px;min-width:270px">
@@ -3582,10 +3603,10 @@ function renderContrats(){
      const f=(c.facs||[]).find(x=>x.annee===pk);
      const late=c.actif!==false&&c.prochaineVisite&&c.prochaineVisite<today;
      return '<tr style="'+(c.actif===false?'opacity:.45':'')+'">'
-      +'<td class="l" style="cursor:pointer" onclick="openClient360FromName(\''+String(c.clientNom).replace(/'/g,"\\'")+'\')"><b>'+c.clientNom+'</b></td>'
-      +'<td class="l">'+(c.type||'')+'</td><td>'+eur0(c.prix||0)+'</td><td>'+(c.visites||1)+'/an</td>'
+      +'<td class="l" style="cursor:pointer" data-nom="'+cpEsc(c.clientNom)+'" onclick="openClient360FromName(this.dataset.nom)"><b>'+cpEsc(c.clientNom)+'</b></td>'
+      +'<td class="l">'+cpEsc(c.type||'')+'</td><td>'+eur0(c.prix||0)+'</td><td>'+(c.visites||1)+'/an</td>'
       +'<td'+(late?' style="color:var(--red);font-weight:700"':'')+'>'+(c.prochaineVisite?new Date(c.prochaineVisite+'T00:00:00').toLocaleDateString('fr-FR'):'—')+(late?' ⚠ en retard':'')+'</td>'
-      +'<td class="l">'+(f?(f.num+(f.payeLe?' ✔ payée':' ⌛'))+'':'<span class="sub2">à émettre</span>')+'</td>'
+      +'<td class="l">'+(f?(cpEsc(f.num)+(f.payeLe?' ✔ payée':' ⌛'))+'':'<span class="sub2">à émettre</span>')+'</td>'
       +'<td style="white-space:nowrap">'
       +'<button class="iconbtn" title="Visite faite" onclick="visiteFaite(\''+c.id+'\')">✅</button>'
       +'<button class="iconbtn" title="Mail au client" onclick="mailEntretien(\''+c.id+'\')">✉️</button>'
@@ -3599,8 +3620,8 @@ function renderContrats(){
    :'<div class="empty">Aucun contrat. Crée-en depuis un client (fiche 360°) ou avec + Nouveau contrat — l\'adia et la clim en méritent tous les deux.</div>';
   const gt=document.getElementById('garTable');
   const gar=EQUIP.map(e=>({e,g:garInfo(e)})).filter(x=>(x.g.soon||x.g.over)&&!hasCtrActif(x.e.client));
-  gt.innerHTML=gar.length?gar.map(x=>'<div class="recap-line"><div><b>'+x.e.client+'</b> — '+(x.e.type||'')+' '+(x.e.marque||'')+' '+(x.e.modele||'')+'<div class="sub2">'+x.g.txt+' · posé le '+(x.e.datePose?new Date(x.e.datePose+'T00:00:00').toLocaleDateString('fr-FR'):'—')+'</div></div>'
-    +'<div class="row-actions"><button class="btn-pri btn-sm" onclick="openCtr(null,\''+String(x.e.client).replace(/'/g,"\\'")+'\')">🤝 Proposer un contrat</button><button class="iconbtn" title="Mail de proposition" onclick="mailProposeCtr(\''+x.e.id+'\')">✉️</button></div></div>').join('')
+  gt.innerHTML=gar.length?gar.map(x=>'<div class="recap-line"><div><b>'+cpEsc(x.e.client)+'</b> — '+cpEsc((x.e.type||'')+' '+(x.e.marque||'')+' '+(x.e.modele||''))+'<div class="sub2">'+x.g.txt+' · posé le '+(x.e.datePose?new Date(x.e.datePose+'T00:00:00').toLocaleDateString('fr-FR'):'—')+'</div></div>'
+    +'<div class="row-actions"><button class="btn-pri btn-sm" data-nom="'+cpEsc(x.e.client)+'" onclick="openCtr(null,this.dataset.nom)">🤝 Proposer un contrat</button><button class="iconbtn" title="Mail de proposition" onclick="mailProposeCtr(\''+x.e.id+'\')">✉️</button></div></div>').join('')
    :'<div class="empty">Rien à signaler — aucun équipement sans contrat n\'arrive en fin de garantie.</div>';
 }
 /* ============ REGISTRE FLUIDES (modèle Cerfa 15497*04, forme électronique — R.543-83) ============ */
@@ -3611,7 +3632,7 @@ const FLU_CTRL={na:'Non requis',ok:'Réalisé — pas de fuite détectée',fuite
 function fluEquipList(){
   const nom=(document.getElementById('fl_client').value||'').trim().toLowerCase();
   const sel=document.getElementById('fl_equip');
-  sel.innerHTML='<option value="">— saisie libre —</option>'+EQUIP.filter(e=>(e.client||'').toLowerCase()===nom).map(e=>'<option value="'+e.id+'">'+[e.type,e.marque,e.modele].filter(Boolean).join(' ')+'</option>').join('');
+  sel.innerHTML='<option value="">— saisie libre —</option>'+EQUIP.filter(e=>(e.client||'').toLowerCase()===nom).map(e=>'<option value="'+cpEsc(e.id)+'">'+cpEsc([e.type,e.marque,e.modele].filter(Boolean).join(' '))+'</option>').join('');
 }
 function fluEquipPick(){
   const id=document.getElementById('fl_equip').value;const e=EQUIP.find(x=>x.id===id);if(!e)return;
@@ -3642,7 +3663,7 @@ function cpFluVerrouForm(){const m=document.getElementById('mFlu');if(!m)return;
   m.querySelectorAll('.bd input,.bd select,.bd textarea,.bd button').forEach(el=>{if(el.type==='hidden')return;
     if(vr){if(!el.disabled){el.disabled=true;el.setAttribute('data-cp-verrou','');}}else if(el.hasAttribute('data-cp-verrou')){el.disabled=false;el.removeAttribute('data-cp-verrou');}});
   m.querySelectorAll('.navbtns .row-actions button').forEach(b=>{b.style.display=vr?'none':'';});
-  if(!vr)return;const h=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  if(!vr)return;const h=cpEsc;
   const b=document.createElement('div');b.id='cpFluVerrou';b.className='warnbox';b.style.margin='0 0 10px';
   b.innerHTML='🔒 <b>Fiche '+h(f.num)+' '+h(vr)+'</b> : elle est en lecture seule. Pour corriger : nouvelle fiche'+(f.annulee?'':' (ou « Annuler la fiche » avec un motif : elle reste au registre)')+'.';
   const bd=m.querySelector('.bd');bd.insertBefore(b,bd.firstChild);}
@@ -3708,27 +3729,27 @@ function printFicheFlu(id){
   const sec=t=>'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">'+t+'</div>';
   const chTot=f.qv+f.qrec+f.qreg,reTot=f.qrt+f.qru;
   document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px;font-size:11px">'
-   +'<div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:15px">FICHE D\'INTERVENTION — FLUIDES FRIGORIGÈNES</b><span style="font-family:monospace;font-weight:700">'+f.num+'</span></div>'
+   +'<div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:15px">FICHE D\'INTERVENTION — FLUIDES FRIGORIGÈNES</b><span style="font-family:monospace;font-weight:700">'+cpEsc(f.num)+'</span></div>'
    +'<div style="font-size:9.5px;color:#555;margin-bottom:6px">Établie conformément au modèle Cerfa n° 15497*04 (art. R.543-82 et R.543-83 du code de l\'environnement) — à conserver 5 ans par l\'opérateur ET le détenteur.</div>'
-   +(f.annulee?'<div style="border:2px solid #b03a2e;color:#b03a2e;font-weight:700;padding:6px 10px;margin:6px 0">FICHE ANNULÉE le '+new Date(f.annulee.at).toLocaleDateString('fr-FR')+' — motif : '+String(f.annulee.motif||'').replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]))+' (conservée au registre)</div>':'')
+   +(f.annulee?'<div style="border:2px solid #b03a2e;color:#b03a2e;font-weight:700;padding:6px 10px;margin:6px 0">FICHE ANNULÉE le '+new Date(f.annulee.at).toLocaleDateString('fr-FR')+' — motif : '+cpEsc(f.annulee.motif||'')+' (conservée au registre)</div>':'')
    +sec('1 — Opérateur')
-   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>'+(E.nom||'—')+'</b><br>'+[E.adresse,E.cp,E.ville].filter(Boolean).join(' ')+'<br>SIRET : '+(E.siret||'—')+'</td>'
-   +'<td style="'+cell+'">Attestation de capacité n° : <b>'+(E.attFluides||'⚠ À RENSEIGNER (Paramètres)')+'</b><br>Délivrée par : '+(E.attOrganisme||'—')+'</td></tr></table>'
+   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>'+cpEsc(E.nom||'—')+'</b><br>'+cpEsc([E.adresse,E.cp,E.ville].filter(Boolean).join(' '))+'<br>SIRET : '+cpEsc(E.siret||'—')+'</td>'
+   +'<td style="'+cell+'">Attestation de capacité n° : <b>'+cpEsc(E.attFluides||'⚠ À RENSEIGNER (Paramètres)')+'</b><br>Délivrée par : '+cpEsc(E.attOrganisme||'—')+'</td></tr></table>'
    +sec('2 — Détenteur de l\'équipement')
-   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>'+f.client+'</b><br>'+[f.detAdr||cl.adr,f.detVille||cl.ville].filter(Boolean).join(', ')+(f.detSiret||cl.siren?'<br>SIRET : '+(f.detSiret||cl.siren):'')+'</td><td style="'+cell+'">'+[cl.tel,cl.mail].filter(Boolean).join(' — ')+'</td></tr></table>'
+   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>'+cpEsc(f.client)+'</b><br>'+cpEsc([f.detAdr||cl.adr,f.detVille||cl.ville].filter(Boolean).join(', '))+(f.detSiret||cl.siren?'<br>SIRET : '+cpEsc(f.detSiret||cl.siren):'')+'</td><td style="'+cell+'">'+cpEsc([cl.tel,cl.mail].filter(Boolean).join(' — '))+'</td></tr></table>'
    +sec('3 — Équipement')
-   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'">'+f.desc+'</td><td style="'+cell+';width:130px">Fluide : <b>'+f.fluide+'</b></td><td style="'+cell+';width:150px">Charge nominale : <b>'+fmtQ(f.charge)+' kg</b></td></tr></table>'
+   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'">'+cpEsc(f.desc)+'</td><td style="'+cell+';width:130px">Fluide : <b>'+cpEsc(f.fluide)+'</b></td><td style="'+cell+';width:150px">Charge nominale : <b>'+fmtQ(f.charge)+' kg</b></td></tr></table>'
    +sec('4 — Intervention du '+new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR'))
    +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'">Nature : <b>'+(FLU_NAT[f.nature]||f.nature)+'</b></td><td style="'+cell+'">Contrôle d\'étanchéité : <b>'+(FLU_CTRL[f.ctrl]||'—')+'</b></td></tr></table>'
    +sec('5 — Fluide manipulé (kg)')
    +'<table style="width:100%;border-collapse:collapse"><tr>'
    +'<td style="'+cell+'">Chargé — vierge : <b>'+fmtQ(f.qv)+'</b></td><td style="'+cell+'">recyclé : <b>'+fmtQ(f.qrec)+'</b></td><td style="'+cell+'">régénéré : <b>'+fmtQ(f.qreg)+'</b></td><td style="'+cell+'">TOTAL chargé : <b>'+fmtQ(chTot)+'</b></td></tr>'
-   +'<tr><td style="'+cell+'">Récupéré — pour traitement : <b>'+fmtQ(f.qrt)+'</b></td><td style="'+cell+'">pour réutilisation : <b>'+fmtQ(f.qru)+'</b></td><td style="'+cell+'">TOTAL récupéré : <b>'+fmtQ(reTot)+'</b></td><td style="'+cell+'">Contenants : '+(f.bout||'—')+'</td></tr></table>'
+   +'<tr><td style="'+cell+'">Récupéré — pour traitement : <b>'+fmtQ(f.qrt)+'</b></td><td style="'+cell+'">pour réutilisation : <b>'+fmtQ(f.qru)+'</b></td><td style="'+cell+'">TOTAL récupéré : <b>'+fmtQ(reTot)+'</b></td><td style="'+cell+'">Contenants : '+cpEsc(f.bout||'—')+'</td></tr></table>'
    +(f.qrt>0?'<div style="font-size:9.5px;color:#a35a00;margin-top:4px">⚠ Fluide destiné au traitement : remise à un point de collecte avec bordereau de suivi de déchets (Trackdéchets).</div>':'')
-   +(f.obs?sec('Observations')+'<div style="'+cell+';border:1px solid #bbb">'+f.obs+'</div>':'')
+   +(f.obs?sec('Observations')+'<div style="'+cell+';border:1px solid #bbb">'+cpEsc(f.obs)+'</div>':'')
    +'<table style="width:100%;border-collapse:collapse;margin-top:16px"><tr>'
-   +'<td style="width:50%;border:1px solid #bbb;padding:8px;height:80px;vertical-align:top;font-size:10px">L\'opérateur — nom, date, signature<br><b>'+(E.nom||'')+'</b></td>'
-   +'<td style="width:50%;border:1px solid #bbb;padding:8px;vertical-align:top;font-size:10px">Le détenteur — nom, date, signature<br><b>'+f.client+'</b></td></tr></table>'
+   +'<td style="width:50%;border:1px solid #bbb;padding:8px;height:80px;vertical-align:top;font-size:10px">L\'opérateur — nom, date, signature<br><b>'+cpEsc(E.nom||'')+'</b></td>'
+   +'<td style="width:50%;border:1px solid #bbb;padding:8px;vertical-align:top;font-size:10px">Le détenteur — nom, date, signature<br><b>'+cpEsc(f.client)+'</b></td></tr></table>'
    +'</div>';
   window.print();
 }
@@ -3746,7 +3767,7 @@ function renderFluides(){
    +Object.entries(byF).map(([k,v])=>'<div class="kpi"><div class="lab">'+k+' chargé / récupéré<span>⚖️</span></div><div class="val" style="font-size:17px">'+fmtQ(Math.round(v.ch*100)/100)+' / '+fmtQ(Math.round(v.re*100)/100)+' kg</div></div>').join('')
    +((P.entreprise||{}).attFluides?'':'<div class="kpi warn"><div class="lab">Attestation de capacité<span>⚠</span></div><div class="val" style="font-size:14px">à renseigner (Paramètres)</div></div>');
   el.innerHTML=rows.length?'<div class="scroll"><table><thead><tr><th class="l">N°</th><th class="l">Date</th><th class="l">Client</th><th class="l">Équipement</th><th class="l">Nature</th><th>Chargé</th><th>Récupéré</th><th class="l">Étanchéité</th><th></th></tr></thead><tbody>'
-   +rows.map(f=>'<tr'+(f.ctrl==='fuite_nonrep'?' style="background:var(--red-soft)"':f.annulee?' style="opacity:.6"':'')+'><td class="l"><b>'+f.num+'</b>'+(f.annulee?' <span class="tag" style="background:#fde8eb;color:#7a1020" title="'+String(f.annulee.motif||'').replace(/"/g,'&quot;')+'">ANNULÉE</span>':'')+'</td><td class="l">'+new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td class="l">'+f.client+'</td><td class="l">'+f.desc+'</td><td class="l">'+(FLU_NAT[f.nature]||'')+'</td>'
+   +rows.map(f=>'<tr'+(f.ctrl==='fuite_nonrep'?' style="background:var(--red-soft)"':f.annulee?' style="opacity:.6"':'')+'><td class="l"><b>'+cpEsc(f.num)+'</b>'+(f.annulee?' <span class="tag" style="background:#fde8eb;color:#7a1020" title="'+cpEsc(f.annulee.motif||'')+'">ANNULÉE</span>':'')+'</td><td class="l">'+new Date(f.date+'T00:00:00').toLocaleDateString('fr-FR')+'</td><td class="l">'+cpEsc(f.client)+'</td><td class="l">'+cpEsc(f.desc)+'</td><td class="l">'+(FLU_NAT[f.nature]||'')+'</td>'
     +'<td>'+fmtQ(Math.round((f.qv+f.qrec+f.qreg)*100)/100)+' kg</td><td>'+fmtQ(Math.round((f.qrt+f.qru)*100)/100)+' kg</td><td class="l">'+(FLU_CTRL[f.ctrl]||'')+'</td>'
     +'<td style="white-space:nowrap"><button class="iconbtn" title="Fiche PDF" onclick="printFicheFlu(\''+f.id+'\')">🖨️</button><button class="iconbtn" title="'+(cpFluVerrou(f)?'Consulter (lecture seule)':'Modifier')+'" onclick="openFlu(\''+f.id+'\')">'+(cpFluVerrou(f)?'🔒':'✏️')+'</button>'
     +(f.annulee?'':'<button class="iconbtn" title="Annuler la fiche (motif) : elle reste au registre avec la mention ANNULÉE" onclick="annulerFlu(\''+f.id+'\')">⛔</button>')
@@ -3759,7 +3780,7 @@ function exportCSVFlu(){
   const rows=FLU.filter(f=>(f.date||'').slice(0,4)===y);
   if(!rows.length){toast('Aucune fiche à exporter');return;}
   const nf=n=>String((Math.round((Number(n)||0)*100)/100)).replace('.',',');
-  const esc2=s=>'"'+String(s??'').replace(/"/g,'""')+'"';
+  const esc2=s=>'"'+cpCsvTexte(s).replace(/"/g,'""')+'"';
   const csv='﻿'+[['N° fiche','Date','Client','Équipement','Fluide','Charge nominale kg','Nature','Étanchéité','Vierge kg','Recyclé kg','Régénéré kg','Récup. traitement kg','Récup. réutilisation kg','Contenants','Observations','Adresse du détenteur','Annulée (motif)']]
    .concat(rows.map(f=>[f.num,f.date,f.client,f.desc,f.fluide,nf(f.charge),FLU_NAT[f.nature]||'',FLU_CTRL[f.ctrl]||'',nf(f.qv),nf(f.qrec),nf(f.qreg),nf(f.qrt),nf(f.qru),f.bout||'',f.obs||'',[f.detAdr,f.detVille].filter(Boolean).join(' '),f.annulee?'ANNULÉE le '+f.annulee.date+' : '+(f.annulee.motif||''):''])).map(r=>r.map(esc2).join(';')).join('\r\n');
   const blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
@@ -3784,10 +3805,10 @@ function printPV(){
   const blank='<span style="display:inline-block;border-bottom:1px dotted #999;min-width:110px">&nbsp;</span>';
   document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px;font-size:11px">'
    +docTop(E,B,IC_CUBE,new Date().toLocaleDateString('fr-FR'))
-   +'<div style="text-align:center;margin:6px 0 12px"><b style="font-size:16px">PROCÈS-VERBAL DE MISE EN SERVICE</b><div style="font-size:11px;color:#555">Intervention du '+(d.date?new Date(d.date+'T00:00:00').toLocaleDateString('fr-FR'):'—')+(d.facNum?' — réf. '+d.facNum:'')+'</div></div>'
-   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>Client :</b> '+(d.cNom||'—')+'<br>'+[d.cAdr,d.cVille].filter(Boolean).join(', ')+'</td><td style="'+cell+'"><b>Installation :</b> '+(d.desc||'—')+'</td></tr></table>'
+   +'<div style="text-align:center;margin:6px 0 12px"><b style="font-size:16px">PROCÈS-VERBAL DE MISE EN SERVICE</b><div style="font-size:11px;color:#555">Intervention du '+(d.date?new Date(d.date+'T00:00:00').toLocaleDateString('fr-FR'):'—')+(d.facNum?' — réf. '+cpEsc(d.facNum):'')+'</div></div>'
+   +'<table style="width:100%;border-collapse:collapse"><tr><td style="'+cell+'"><b>Client :</b> '+cpEsc(d.cNom||'—')+'<br>'+cpEsc([d.cAdr,d.cVille].filter(Boolean).join(', '))+'</td><td style="'+cell+'"><b>Installation :</b> '+cpEsc(d.desc||'—')+'</td></tr></table>'
    +'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">Opérations réalisées</div>'
-   +'<div style="border:1px solid #bbb;padding:8px 12px">'+(done.length?done.map(x=>'☑ '+x).join('<br>'):'—')+'</div>'
+   +'<div style="border:1px solid #bbb;padding:8px 12px">'+(done.length?done.map(x=>'☑ '+cpEsc(x)).join('<br>'):'—')+'</div>'
    +'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">Mesures relevées à la mise en service</div>'
    +'<table style="width:100%;border-collapse:collapse"><tr>'
    +'<td style="'+cell+'">Pression / t° condensation : '+blank+'</td><td style="'+cell+'">Pression / t° évaporation : '+blank+'</td></tr>'
@@ -3795,8 +3816,8 @@ function printPV(){
    +'<tr><td style="'+cell+'">Intensité absorbée : '+blank+'</td><td style="'+cell+'">Surchauffe / sous-refroidissement : '+blank+'</td></tr></table>'
    +'<div style="margin-top:10px;font-size:10px;color:#555;line-height:1.5">L\'installation fonctionne conformément aux prescriptions du constructeur à la date de mise en service. Le client a été informé du fonctionnement, des consignes d\'entretien courant (nettoyage des filtres) et de l\'intérêt d\'un entretien annuel.</div>'
    +'<table style="width:100%;border-collapse:collapse;margin-top:14px"><tr>'
-   +'<td style="width:50%;border:1px solid #bbb;padding:8px;height:80px;vertical-align:top;font-size:10px">L\'installateur — date et signature<br><b>'+(E.nom||'')+'</b></td>'
-   +'<td style="width:50%;border:1px solid #bbb;padding:8px;vertical-align:top;font-size:10px">Le client — « bon pour réception », date et signature<br><b>'+(d.cNom||'')+'</b></td></tr></table>'
+   +'<td style="width:50%;border:1px solid #bbb;padding:8px;height:80px;vertical-align:top;font-size:10px">L\'installateur — date et signature<br><b>'+cpEsc(E.nom||'')+'</b></td>'
+   +'<td style="width:50%;border:1px solid #bbb;padding:8px;vertical-align:top;font-size:10px">Le client — « bon pour réception », date et signature<br><b>'+cpEsc(d.cNom||'')+'</b></td></tr></table>'
    +docLegal(E,B)+'</div>';
   window.print();
 }
@@ -3836,11 +3857,11 @@ function printChecklist(){
   const box=x=>'<div style="padding:4px 0;font-size:11px">☐ '+x+'</div>';
   const sec=t=>'<div style="background:'+B+';color:#fff;font-weight:700;font-size:11px;padding:6px 10px;margin-top:12px">'+t+'</div>';
   document.getElementById('devisDoc').innerHTML='<div style="font-family:Arial,Helvetica,sans-serif;color:#222;max-width:780px">'
-   +'<div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:16px">📋 CHECKLIST DÉPART CHANTIER</b><span style="font-family:monospace">'+d.num+'</span></div>'
-   +'<div style="font-size:11px;color:#555;margin-bottom:4px"><b>'+devisName(d)+'</b> — '+[d.cAdr,d.cVille].filter(Boolean).join(', ')+(d.cTel?' · '+d.cTel:'')+(d.datePlanif?' · prévu le '+new Date(d.datePlanif+'T00:00:00').toLocaleDateString('fr-FR'):'')+' · '+fmtQ(d.heures||0)+' h prévues</div>'
+   +'<div style="display:flex;justify-content:space-between;align-items:baseline"><b style="font-size:16px">📋 CHECKLIST DÉPART CHANTIER</b><span style="font-family:monospace">'+cpEsc(d.num)+'</span></div>'
+   +'<div style="font-size:11px;color:#555;margin-bottom:4px"><b>'+cpEsc(devisName(d))+'</b> — '+cpEsc([d.cAdr,d.cVille].filter(Boolean).join(', '))+(d.cTel?' · '+cpEsc(d.cTel):'')+(d.datePlanif?' · prévu le '+new Date(d.datePlanif+'T00:00:00').toLocaleDateString('fr-FR'):'')+' · '+fmtQ(d.heures||0)+' h prévues</div>'
    +sec('1 — Matériel à charger (du devis)')
-   +'<div style="columns:2;column-gap:24px">'+(c.mat.length?c.mat.map(m=>box(fmtQ(m.qte)+' '+m.unite+' — '+m.nom)).join(''):box('(aucun matériel chiffré)'))+'</div>'
-   +sec('2 — Outillage ('+d.type+')')
+   +'<div style="columns:2;column-gap:24px">'+(c.mat.length?c.mat.map(m=>box(cpEsc(fmtQ(m.qte)+' '+m.unite+' — '+m.nom))).join(''):box('(aucun matériel chiffré)'))+'</div>'
+   +sec('2 — Outillage ('+cpEsc(d.type)+')')
    +'<div style="columns:2;column-gap:24px">'+toolkitFor(d.type).concat(TOOLKIT_BASE).map(box).join('')+'</div>'
    +sec('3 — Documents & fin de chantier')
    +box('Devis signé / bon pour accord')+box('Facture d\'acompte réglée (si acompte)')
@@ -3869,26 +3890,26 @@ function renderClient360(){
   const marge=devis.filter(d=>d.statut==='accepte').reduce((s,d)=>s+d._c.benefice,0);
   const st=s=>({brouillon:'Brouillon',verifier:'À vérifier',pret:'Prêt',envoye:'Envoyé',accepte:'✅ Accepté',refuse:'Refusé'})[s]||s;
   el.innerHTML=
-   '<div class="flexhead"><div><h2 style="font-size:22px">'+c.nom+' <span class="tag '+(c.type==='Professionnel'?'pro':'part')+'">'+(c.type||'Particulier')+'</span></h2>'
-   +'<div class="sub">'+[c.adr,c.ville].filter(Boolean).join(', ')+((c.adr||c.ville)?' '+mapsBtn([c.adr,c.ville].filter(Boolean).join(', ')):'')+(c.tel?' · 📞 '+c.tel:'')+(c.mail?' · ✉️ '+c.mail:'')+(c.lastZone?' · zone '+c.lastZone:'')+'</div></div>'
+   '<div class="flexhead"><div><h2 style="font-size:22px">'+cpEsc(c.nom)+' <span class="tag '+(c.type==='Professionnel'?'pro':'part')+'">'+cpEsc(c.type||'Particulier')+'</span></h2>'
+   +'<div class="sub">'+cpEsc([c.adr,c.ville].filter(Boolean).join(', '))+((c.adr||c.ville)?' '+mapsBtn([c.adr,c.ville].filter(Boolean).join(', ')):'')+(c.tel?' · 📞 '+cpEsc(c.tel):'')+(c.mail?' · ✉️ '+cpEsc(c.mail):'')+(c.lastZone?' · zone '+cpEsc(c.lastZone):'')+'</div></div>'
    +'<div class="row-actions"><button class="btn-ghost btn-sm" onclick="go(\'clients\')">‹ Clients</button><button class="btn-ghost btn-sm" onclick="editClient(\''+c.id+'\')">✏️ Modifier</button>'
-   +'<button class="btn-pri btn-sm" onclick="go(\'wizard\');newDevis();document.getElementById(\'f_cNom\').value=\''+String(c.nom).replace(/'/g,"\\'")+'\';autofillClient();updateWizName();">📝 Nouveau devis</button></div></div>'
+   +'<button class="btn-pri btn-sm" data-nom="'+cpEsc(c.nom)+'" onclick="go(\'wizard\');newDevis();document.getElementById(\'f_cNom\').value=this.dataset.nom;autofillClient();updateWizName();">📝 Nouveau devis</button></div></div>'
    +'<div class="kpis">'
    +'<div class="kpi good"><div class="lab">Encaissé (total)<span>💶</span></div><div class="val">'+eur0(enc)+'</div></div>'
    +'<div class="kpi warn"><div class="lab">En attente de paiement<span>⌛</span></div><div class="val">'+eur0(imp)+'</div></div>'
    +'<div class="kpi blue"><div class="lab">Marge brute cumulée<span>📈</span></div><div class="val">'+eur0(marge)+'</div></div>'
    +'<div class="kpi purple"><div class="lab">Devis / Interv. / Loc.<span>🗂️</span></div><div class="val">'+devis.length+' / '+deps.length+' / '+locs.length+'</div></div></div>'
-   +'<div class="grid2"><div class="card"><h2>📝 Devis</h2>'+(devis.length?devis.map(d=>'<div class="recap-line" style="cursor:pointer" onclick="openDevis(\''+d.id+'\')"><div><b>'+d.type+'</b><div class="sub2">'+d.num+' · '+st(d.statut)+(d.facSolde?' · '+d.facSolde.num+(d.facSolde.payeLe?' ✔':' ⌛'):'')+'</div></div><b>'+eur0(d._c.totalHT)+'</b></div>').join(''):'<div class="empty">Aucun devis.</div>')+'</div>'
-   +'<div class="card"><h2>🔧 Interventions</h2>'+(deps.length?deps.map(x=>'<div class="recap-line" style="cursor:pointer" onclick="openDep(\''+x.id+'\')"><div><b>'+(x.itype==='mes'?'Mise en service':'Dépannage')+'</b><div class="sub2">'+(x.date||'')+' · '+(x.facNum||'non facturée')+(x.statut==='payee'?' ✔':'')+'</div></div><b>'+eur0(x._c.totalHT)+'</b></div>').join(''):'<div class="empty">Aucune intervention.</div>')+'</div></div>'
-   +'<div class="grid2"><div class="card"><h2>💨 Locations</h2>'+(locs.length?locs.map(l=>'<div class="recap-line" style="cursor:pointer" onclick="go(\'loc\');openLoc(\''+l.id+'\')"><div><b>'+(l.num||'—')+'</b><div class="sub2">'+(l.dateDebut||'')+' → '+(l.dateFin||'')+' · '+locTag(l.statut).replace(/<[^>]*>/g,'')+'</div></div><b>'+eur0(l._c.totalHT)+'</b></div>').join(''):'<div class="empty">Aucune location.</div>')+'</div>'
-   +'<div class="card"><h2>🤝 Contrats d\'entretien</h2>'+(ctrs.length?ctrs.map(x=>'<div class="recap-line"><div><b>'+(x.type||'')+' — '+eur0(x.prix||0)+'/an</b><div class="sub2">prochaine visite : '+(x.prochaineVisite?new Date(x.prochaineVisite+'T00:00:00').toLocaleDateString('fr-FR'):'—')+(x.actif===false?' · inactif':'')+'</div></div><button class="iconbtn" onclick="openCtr(\''+x.id+'\')">✏️</button></div>').join(''):'<div class="empty">Aucun contrat — c\'est le moment d\'en proposer un.</div>')
-   +'<div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" onclick="openCtr(null,\''+String(c.nom).replace(/'/g,"\\'")+'\')">+ Contrat</button></div></div></div>'
+   +'<div class="grid2"><div class="card"><h2>📝 Devis</h2>'+(devis.length?devis.map(d=>'<div class="recap-line" style="cursor:pointer" onclick="openDevis(\''+d.id+'\')"><div><b>'+cpEsc(d.type)+'</b><div class="sub2">'+cpEsc(d.num)+' · '+st(d.statut)+(d.facSolde?' · '+cpEsc(d.facSolde.num)+(d.facSolde.payeLe?' ✔':' ⌛'):'')+'</div></div><b>'+eur0(d._c.totalHT)+'</b></div>').join(''):'<div class="empty">Aucun devis.</div>')+'</div>'
+   +'<div class="card"><h2>🔧 Interventions</h2>'+(deps.length?deps.map(x=>'<div class="recap-line" style="cursor:pointer" onclick="openDep(\''+x.id+'\')"><div><b>'+(x.itype==='mes'?'Mise en service':'Dépannage')+'</b><div class="sub2">'+cpEsc(x.date||'')+' · '+cpEsc(x.facNum||'non facturée')+(x.statut==='payee'?' ✔':'')+'</div></div><b>'+eur0(x._c.totalHT)+'</b></div>').join(''):'<div class="empty">Aucune intervention.</div>')+'</div></div>'
+   +'<div class="grid2"><div class="card"><h2>💨 Locations</h2>'+(locs.length?locs.map(l=>'<div class="recap-line" style="cursor:pointer" onclick="go(\'loc\');openLoc(\''+l.id+'\')"><div><b>'+cpEsc(l.num||'—')+'</b><div class="sub2">'+cpEsc(l.dateDebut||'')+' → '+cpEsc(l.dateFin||'')+' · '+locTag(l.statut).replace(/<[^>]*>/g,'')+'</div></div><b>'+eur0(l._c.totalHT)+'</b></div>').join(''):'<div class="empty">Aucune location.</div>')+'</div>'
+   +'<div class="card"><h2>🤝 Contrats d\'entretien</h2>'+(ctrs.length?ctrs.map(x=>'<div class="recap-line"><div><b>'+cpEsc(x.type||'')+' — '+eur0(x.prix||0)+'/an</b><div class="sub2">prochaine visite : '+(x.prochaineVisite?new Date(x.prochaineVisite+'T00:00:00').toLocaleDateString('fr-FR'):'—')+(x.actif===false?' · inactif':'')+'</div></div><button class="iconbtn" onclick="openCtr(\''+x.id+'\')">✏️</button></div>').join(''):'<div class="empty">Aucun contrat — c\'est le moment d\'en proposer un.</div>')
+   +'<div class="row-actions" style="margin-top:8px"><button class="btn-pri btn-sm" data-nom="'+cpEsc(c.nom)+'" onclick="openCtr(null,this.dataset.nom)">+ Contrat</button></div></div></div>'
    +'<div class="card"><h2>🏷️ Équipements installés (parc SAV)</h2>'
    +(eqs.length?'<div class="scroll"><table><thead><tr><th class="l">Type</th><th class="l">Marque / modèle</th><th class="l">N° série</th><th class="l">Fluide</th><th class="l">Posé le</th><th class="l">Garantie</th><th></th></tr></thead><tbody>'
-     +eqs.map(e=>{const g=garInfo(e);return '<tr><td class="l"><b>'+(e.type||'')+'</b></td><td class="l">'+[e.marque,e.modele].filter(Boolean).join(' ')+'</td><td class="l">'+(e.serie||'—')+'</td><td class="l">'+(e.fluide||'')+(e.charge?' · '+e.charge+' kg':'')+'</td><td class="l">'+(e.datePose?new Date(e.datePose+'T00:00:00').toLocaleDateString('fr-FR'):'—')+'</td><td class="l'+(g.soon?'" style="color:var(--orange);font-weight:700':'')+'">'+g.txt+'</td>'
+     +eqs.map(e=>{const g=garInfo(e);return '<tr><td class="l"><b>'+cpEsc(e.type||'')+'</b></td><td class="l">'+cpEsc([e.marque,e.modele].filter(Boolean).join(' '))+'</td><td class="l">'+cpEsc(e.serie||'—')+'</td><td class="l">'+cpEsc(e.fluide||'')+(e.charge?' · '+cpEsc(e.charge)+' kg':'')+'</td><td class="l">'+(e.datePose?new Date(e.datePose+'T00:00:00').toLocaleDateString('fr-FR'):'—')+'</td><td class="l'+(g.soon?'" style="color:var(--orange);font-weight:700':'')+'">'+g.txt+'</td>'
        +'<td><button class="iconbtn" onclick="openEquip(\''+e.id+'\')">✏️</button><button class="iconbtn d" onclick="delEquip(\''+e.id+'\')">🗑</button></td></tr>';}).join('')+'</tbody></table></div>':'<div class="empty">Aucun équipement enregistré — utilise « 🏷️ Enregistrer l\'équipement posé » depuis un devis accepté, ou :</div>')
-   +'<div class="row-actions" style="margin-top:8px"><button class="btn-ghost btn-sm" onclick="openEquip(null,\''+String(c.nom).replace(/'/g,"\\'")+'\')">+ Équipement</button></div></div>'
-   +'<div class="card"><h2>🗒️ Notes client</h2><textarea id="c360notes" style="width:100%;min-height:70px">'+(c.notes||'')+'</textarea>'
+   +'<div class="row-actions" style="margin-top:8px"><button class="btn-ghost btn-sm" data-nom="'+cpEsc(c.nom)+'" onclick="openEquip(null,this.dataset.nom)">+ Équipement</button></div></div>'
+   +'<div class="card"><h2>🗒️ Notes client</h2><textarea id="c360notes" style="width:100%;min-height:70px">'+cpEsc(c.notes||'')+'</textarea>'
    +'<div class="row-actions" style="margin-top:8px"><button class="btn-dark btn-sm" onclick="saveC360Notes(\''+c.id+'\')">💾 Enregistrer les notes</button></div></div>';
 }
 function saveC360Notes(id){const c=CLIENTS.find(x=>x.id===id);if(!c)return;
@@ -3932,11 +3953,11 @@ function renderPlanning(){
     const evs=ev.filter(e=>e.i===i);
     return '<div style="border:1px solid var(--line);border-radius:10px;padding:8px;background:'+(iso===today?'var(--blue-soft)':'var(--bg)')+';min-height:92px">'
       +'<div style="font-size:11px;font-weight:700;color:'+(iso===today?'var(--blue)':'var(--muted)')+'">'+nm+' '+day.getDate()+'</div>'
-      +(evs.length?evs.map(e=>'<div data-k="'+(e.k||'')+'" onclick="'+e.click+'" style="cursor:pointer;background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:6px 7px;margin-top:6px;font-size:11.5px;line-height:1.3"><b>'+e.ic+' '+e.lbl+'</b>'+(e.adr?' '+mapsBtn(e.adr,'float:right'):'')+'<div class="sub2" style="font-size:10px">'+e.sub+'</div></div>').join(''):'<div class="sub2" style="margin-top:8px;font-size:10.5px">—</div>')
+      +(evs.length?evs.map(e=>'<div data-k="'+cpEsc(e.k||'')+'" onclick="'+e.click+'" style="cursor:pointer;background:var(--panel);border:1px solid var(--line2);border-radius:8px;padding:6px 7px;margin-top:6px;font-size:11.5px;line-height:1.3"><b>'+e.ic+' '+cpEsc(e.lbl)+'</b>'+(e.adr?' '+mapsBtn(e.adr,'float:right'):'')+'<div class="sub2" style="font-size:10px">'+cpEsc(e.sub)+'</div></div>').join(''):'<div class="sub2" style="margin-top:8px;font-size:10.5px">—</div>')
       +'</div>';}).join('')+'</div>';
   const todo=DEVIS.filter(d=>d.statut==='accepte'&&!d.datePlanif);
   document.getElementById('planTodo').innerHTML=todo.length?todo.map(d=>{const c=compute(d);
-    return '<div class="recap-line"><div><b>'+devisName(d)+'</b><div class="sub2">'+d.num+' · '+fmtQ(d.heures||0)+' h prévues · '+eur0(c.totalHT)+' · '+(d.cVille||'')+'</div></div>'
+    return '<div class="recap-line"><div><b>'+cpEsc(devisName(d))+'</b><div class="sub2">'+cpEsc(d.num)+' · '+fmtQ(d.heures||0)+' h prévues · '+eur0(c.totalHT)+' · '+cpEsc(d.cVille||'')+'</div></div>'
      +'<div class="row-actions"><input type="date" onchange="planifDevis(\''+d.id+'\',this.value)" style="max-width:170px"><button class="iconbtn" title="Ouvrir" onclick="openDevis(\''+d.id+'\')">✏️</button></div></div>';}).join('')
    :'<div class="empty">Rien à planifier — tous tes chantiers signés ont une date (ou aucun signé pour l\'instant).</div>';
 }

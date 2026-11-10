@@ -21,7 +21,7 @@
   var isoD=function(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); };
   var plus=function(iso,n){ var d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return isoD(d); };
   var auj=function(){ return isoD(new Date()); };
-  var esc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  var esc=function(s){ return window.cpEsc(s); }; /* S : une seule fonction d'échappement, celle du cœur */
   var norm=function(s){ return String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,' ').trim().slice(0,80); };
   function say(m,t){ try{ if(window.nxToast) return nxToast(m,t); }catch(e){} try{ toast(m); }catch(e){} }
   function ent(){ try{ return (P&&P.entreprise)||{}; }catch(e){ return {}; } }
@@ -114,7 +114,7 @@
       '<div class="nxm-txt">'+esc(x.txt)+'</div>'+
       (x.deja?'':'<div class="nxm-act">'+(x.tel?'<button class="nx-sbtn acc" onclick="nxmsgSmsEnvoyer(\''+esc(x.id)+'\')">💬 SMS</button>':'')+(x.mail?'<button class="nx-sbtn" onclick="nxmsgMailEnvoyer(\''+esc(x.id)+'\')">✉️ Mail</button>':'')+
       '<button class="nx-sbtn" onclick="nxmsgCopier(\''+esc(x.id)+'\')">Copier</button><button class="nx-sbtn" onclick="nxmsgFait(\''+esc(x.id)+'\')" title="Déjà prévenu autrement">Fait</button>'+
-      '<button class="nx-sbtn ref" onclick="nxmsgExclure(\''+esc(x.nom).replace(/'/g,'\\\'')+'\')" title="Ce client ne veut plus de messages">✕ Plus de messages</button> '+info+(x.tel||x.mail?'':' <span class="nxm-warn">ni téléphone ni e-mail connu</span>')+'</div>')+'</div>';
+      '<button class="nx-sbtn ref" data-nom="'+esc(x.nom)+'" onclick="nxmsgExclure(this.dataset.nom)" title="Ce client ne veut plus de messages">✕ Plus de messages</button> '+info+(x.tel||x.mail?'':' <span class="nxm-warn">ni téléphone ni e-mail connu</span>')+'</div>')+'</div>';
   }
   function carte(r,mode){
     var C=window.nxmsgCandidats(), L=[];

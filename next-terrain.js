@@ -19,7 +19,7 @@
   var isoD=function(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); };
   var plus=function(iso,n){ var d=new Date(iso+'T12:00:00'); d.setDate(d.getDate()+n); return isoD(d); };
   var auj=function(){ return isoD(new Date()); };
-  var esc=function(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); };
+  var esc=function(s){ return window.cpEsc(s); }; /* S : une seule fonction d'échappement, celle du cœur */
   function say(m,t){ try{ if(window.nxToast) return nxToast(m,t); }catch(e){} try{ toast(m); }catch(e){} }
   function lsGet(k,d){ try{ var v=JSON.parse(localStorage.getItem(k)); return v==null?d:v; }catch(e){ return d; } }
   function lsSet(k,v){ try{ localStorage.setItem(k,JSON.stringify(v)); }catch(e){} }
@@ -85,18 +85,27 @@
   function nombre(s){ var m=/(\d+(?:[.,]\d+)?)/.exec(String(s||'')); return m?Number(m[1].replace(',','.')):0; }
   window.nxtrPlanifierSite=function(inboxId){
     var x=null; try{ x=window.nxaSiteLigne?nxaSiteLigne(inboxId):null; }catch(e){} if(!x){ say('Demande introuvable','warn'); return null; }
-    var p=(x.payload&&typeof x.payload==='object')?x.payload:{}, ch=(p.champs&&typeof p.champs==='object')?p.champs:{}, txt=function(k){ var v=ch[k]; return (v==null||typeof v==='object')?'':String(v).slice(0,300); };
+    var p=(x.payload&&typeof x.payload==='object')?x.payload:{}, ch=(p.champs&&typeof p.champs==='object')?p.champs:{}, txt=function(k){ var v=ch[k]; return (v==null||typeof v==='object')?'':cpTexteSain(v,300); }; /* S3 : caractères de contrôle retirés, 300 caractères au plus */
     var jour=/^\d{4}-\d{2}-\d{2}$/.test(txt('jour'))?txt('jour'):'', m=/apr/i.test(txt('moment'))?'apresmidi':/matin/i.test(txt('moment'))?'matin':'journee';
     if(!jour){ say('Pas de jour dans cette demande','warn'); return null; }
     var c=[]; try{ c=nxplConflits(jour,m,''); }catch(e){} if(c.length&&!confirm('Le '+dateFR(jour)+' ('+(window.nxplLabel?nxplLabel(m).toLowerCase():m)+') est déjà pris : '+c.map(function(e){ return e.lbl; }).join(', ')+'.\n\nPlanifier quand même ?')) return null;
-    var pro=/pro/i.test(txt('profil')), o;
+    var pro=/^pro/i.test(txt('profil').trim()), o; /* S7 : « pro » ou « professionnel », pas « propriétaire » */
     try{ o={id:uid(),created:Date.now(),date:jour,statut:'brouillon',facNum:'',facDate:null,payeLe:null,itype:'dep',cNom:txt('nom'),cTel:txt('telephone'),cMail:txt('email'),cType:pro?'Professionnel':'Particulier',cAdr:txt('adresse'),cVille:txt('commune'),
       desc:(txt('prestation')||'Intervention demandée sur le site')+(txt('equipement')?' — '+txt('equipement'):'')+(txt('marque')?' ('+txt('marque')+')':''),notes:[txt('message'),txt('dernier')?'Dernier entretien : '+txt('dernier'):'',txt('connu')?'Nous a connu par : '+txt('connu'):''].filter(Boolean).join('\n'),
       mode:'forfaitH',panne:'',heures:1,rateChoice:String((P&&P.dep&&P.dep.taux)||75),rateCustom:(P&&P.dep&&P.dep.taux)||75,zone:'0-10 km',maj:'0',pieces:[],mesMode:'forfait',mesType:'Monosplit',heuresSup:0,nbRaccords:4,
       moment:m,site:{inbox:String(x.id||''),rid:String((p.meta&&p.meta.rid)||''),prestation:txt('prestation'),recu:(p.meta&&p.meta.recu)||x.created_at||''},acompte:{montant:nombre(txt('acompte')),recu:null}}; }catch(e){ say('Création impossible : '+(e&&e.message||e),'warn'); return null; }
     if(/visite/i.test(txt('prestation'))&&!o.acompte.montant) o.acompte=null; /* visite gratuite : pas d'acompte */
     DEP.push(o); save(LS.dep,DEP);
-    try{ if(o.cNom){ var i=CLIENTS.findIndex(function(cl){ return (cl.nom||'').toLowerCase()===o.cNom.toLowerCase(); }); var fiche={nom:o.cNom,type:o.cType,tel:o.cTel,mail:o.cMail,adr:o.cAdr,ville:o.cVille}; if(i>=0) CLIENTS[i]=Object.assign({},CLIENTS[i],fiche); else CLIENTS.push(Object.assign({id:uid(),notes:''},fiche)); save(LS.clients,CLIENTS); } }catch(e){}
+    /* S7 (10/11/2026) : une demande du site ne REMPLACE jamais une fiche existante. Rapprochement par nom sans tenir compte des majuscules ni des espaces en trop ;
+       seuls les champs vides de la fiche sont complétés ; une valeur différente est NOTÉE dans la fiche (« le site indique…, ta fiche indique… »), jamais appliquée. */
+    try{ if(o.cNom){ var nk=function(s){ return String(s||'').toLowerCase().replace(/\s+/g,' ').trim(); }, i=CLIENTS.findIndex(function(cl){ return nk(cl.nom)===nk(o.cNom); });
+      if(i>=0){ var cl=CLIENTS[i], diffs=[], champs=[['tel',o.cTel,'téléphone'],['mail',o.cMail,'e-mail'],['adr',o.cAdr,'adresse'],['ville',o.cVille,'commune']];
+        champs.forEach(function(c){ var v=String(c[1]||'').trim(), a=String(cl[c[0]]||'').trim(); if(!v) return; if(!a) cl[c[0]]=v; else if(nk(a)!==nk(v)) diffs.push(c[2]+' : le site indique « '+v+' », ta fiche indique « '+a+' »'); });
+        if(!cl.type&&o.cType) cl.type=o.cType; else if(cl.type&&o.cType&&cl.type!==o.cType&&txt('profil')) diffs.push('type : le site indique « '+o.cType+' », ta fiche indique « '+cl.type+' »');
+        if(diffs.length){ var note='Réservation du site ('+dateFR(jour)+') — différences à vérifier : '+diffs.join(' ; '); cl.notes=(cl.notes?cl.notes+'\n':'')+note; }
+        CLIENTS[i]=cl; }
+      else CLIENTS.push({id:uid(),notes:'',nom:o.cNom,type:o.cType,tel:o.cTel,mail:o.cMail,adr:o.cAdr,ville:o.cVille});
+      save(LS.clients,CLIENTS); } }catch(e){ console.warn('ClimPilot (réservation) : fiche client non mise à jour',e); say('Fiche client non mise à jour : '+(e&&e.message||e),'warn'); }
     try{ if(window.nxaSiteTraite) nxaSiteTraite(inboxId); }catch(e){}
     try{ if(window.nxplEnvoyer) setTimeout(function(){ nxplEnvoyer(false); },500); }catch(e){}
     say('📅 Créneau planifié le '+dateFR(jour)+(o.acompte&&o.acompte.montant?' — acompte de '+o.acompte.montant+' € attendu':'')+'. Le message de confirmation est prêt dans Ma journée.','ok');

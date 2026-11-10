@@ -844,7 +844,9 @@
       var isNav=el.matches('#nav a[data-v="wizard"]');
       if(isNav&&cur&&cur.v!==2) return;   /* un devis de l'ancien formulaire est en cours : le lien y ramène, comme avant */
       var m=RX_CLI.exec(oc); if(m) client=m[1].replace(/\\(.)/g,'$1');
-      if(!(isNav||RX_NEW.test(oc)||m)) return;
+      /* S (10/11/2026) : le bouton « Nouveau devis » de la fiche client porte le nom dans data-nom, plus dans son code */
+      var dn=(el.dataset&&el.dataset.nom!=null&&/newDevis\(\)/.test(oc))?el.dataset.nom:null; if(dn!=null) client=dn;
+      if(!(isNav||RX_NEW.test(oc)||m||dn!=null)) return;
       e.preventDefault(); e.stopImmediatePropagation();
       try{ if(typeof nxCloseNav==='function') nxCloseNav(); }catch(_){}
       chooser({client:client});

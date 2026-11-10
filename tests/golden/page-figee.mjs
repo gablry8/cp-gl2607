@@ -14,7 +14,7 @@ export async function pageFigee({ horloge, mobile = false, assujetti = false, in
   p.on('console', (m) => { if (m.type() === 'error' && !/Failed to load resource|ERR_|net::|integrity/.test(m.text())) errs.push('CONSOLE ' + m.text().slice(0, 200)); });
   p.on('dialog', (d) => d.accept().catch(() => {}));
   await p.route(/supabase/, (r) => r.abort());
-  await p.route(/cdnjs|tesseract|unpkg|cdn\.jsdelivr|data\.geopf\.fr|fonts\.googleapis/, (r) => r.abort());
+  await p.route(/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|tessdata\.projectnaptha\.com|data\.geopf\.fr|fonts\.googleapis/, (r) => r.abort());
   for (const re of routes404) await p.route(re, (r) => r.fulfill({ status: 404, body: 'absent (test)' }));
   if (horloge) await p.clock.setFixedTime(new Date(horloge));
   if (assujetti) await p.addInitScript(() => { try { localStorage.setItem('cp2_params_over', JSON.stringify({ regimeTVA: 'assujetti', tva: 20 })); } catch (e) {} });

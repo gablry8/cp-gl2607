@@ -28,7 +28,7 @@
   var LBL = {note:'Note',tache:'Tâche',rdv:'Rendez-vous',devis:'Devis',intervention:'Intervention',message:'Message client',machine:'Machine',client:'Client',article:'Article',autre:'Autre'};
   var DONE_LBL = {note:'ajouté à « À faire »',tache:'ajouté à « À faire »',machine:'ajoutée à la bibliothèque',client:'ajouté aux clients',article:'ajouté à la base de prix'};
 
-  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];}); }
+  function esc(s){ return window.cpEsc(s); } /* S : une seule fonction d'échappement, celle du cœur */
   function toastX(m,t){ try{ if(window.nxToast) return window.nxToast(m,t); }catch(e){} try{ toast(m); }catch(e){} }
   function pad(n){ return (n<10?'0':'')+n; }
   function dISO(d){ return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate()); }
@@ -186,7 +186,7 @@
 
   /* Texte venant de l'IA ou d'un e-mail : on retire tout balisage HTML avant de l'injecter dans l'appli */
   function cleanDeep(v){
-    if(typeof v==='string') return v.replace(/[<>]/g,'').replace(/javascript:/gi,'').slice(0,5000);
+    if(typeof v==='string') return cpTexteSain(v.replace(/[<>]/g,'').replace(/javascript:/gi,''),5000); /* S3 : caractères de contrôle retirés aussi */
     if(Array.isArray(v)) return v.slice(0,50).map(cleanDeep);
     if(v&&typeof v==='object'){ var o={}; Object.keys(v).slice(0,60).forEach(function(k){ o[k]=cleanDeep(v[k]); }); return o; }
     return v;

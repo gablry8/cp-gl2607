@@ -15,7 +15,7 @@ NOM="ClimPilot-ESSAI-$CACHE"; D="$SORTIE/$NOM"
 HOTE_REEL=$(sed -n "s/^var SUPA_URL='https:\/\/\([^.']*\)\.supabase\.co';$/\1/p" "$RACINE/index.html"); [ -n "$HOTE_REEL" ] || { echo "SUPA_URL introuvable dans index.html"; exit 1; }
 rm -rf "$D"; mkdir -p "$D/fonts" "$D/vendor"
 cp "$RACINE"/index.html "$RACINE"/signer.html "$RACINE"/sw.js "$RACINE"/manifest.json "$RACINE"/next-*.js "$RACINE"/next-*.css "$RACINE"/icon-192.png "$RACINE"/icon-512.png "$D/"
-cp "$RACINE"/fonts/*.woff2 "$D/fonts/"; cp "$RACINE"/vendor/*.js "$RACINE"/vendor/LISEZMOI.md "$D/vendor/"
+cp "$RACINE"/fonts/*.woff2 "$D/fonts/"; cp -r "$RACINE"/vendor/. "$D/vendor/"   # S (10/11/2026) : sous-dossiers compris (moteur et langues de la lecture de plaque)
 
 # 1) index.html : adresse + clé lues dans essai-config.js (chargé en tout premier) ; le script de config pose aussi le bandeau
 python3 - "$D" "$HOTE_REEL" <<'EOF'
@@ -81,5 +81,7 @@ if grep -r "$HOTE_REEL" "$D" | grep -v "essai-config.js:.*pointe vers le projet 
 [ "$(grep -c "$HOTE_REEL" "$D/essai-config.js")" = 1 ] || { echo "ÉCHEC : verrou de essai-config.js"; exit 1; }
 node --check "$D/sw.js" && node --check "$D/essai-config.js"
 for f in $(grep -o -E 'src="[^"]+\.js"' "$D/index.html" | sed 's/src="//;s/"//' | sort -u); do grep -q "'./$f'" "$D/sw.js" || { echo "ÉCHEC : $f absent de sw.js"; exit 1; }; done
+# S (10/11/2026) : chaque fichier mis en cache par sw.js existe dans la copie (sinon le cache hors ligne ne s'installerait pas)
+for f in $(grep -o -E "'\./[^']+'" "$D/sw.js" | tr -d "'" | sed 's#^\./##' | grep -v '^$'); do [ -e "$D/$f" ] || { echo "ÉCHEC : $f listé dans sw.js mais absent de la copie"; exit 1; }; done
 ( cd "$SORTIE" && rm -f "$NOM.zip" && zip -qr "$NOM.zip" "$NOM" )
 echo "OK : $SORTIE/$NOM.zip ($(du -h "$SORTIE/$NOM.zip" | cut -f1)) — hôte réel retiré, $(ls "$D" | wc -l) entrées, cache climpilot-essai-$CACHE"

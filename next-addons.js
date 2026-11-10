@@ -19,7 +19,7 @@
   const nxLoad=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v==null?d:v;}catch(e){return d;}};
   const nxSave=(k,v)=>{localStorage.setItem(k,JSON.stringify(v));try{markDirty();}catch(e){localStorage.setItem('cp2_dirty','1');}};
   const nxId=()=>('NX'+Date.now().toString(36)+Math.random().toString(36).slice(2,7)).toUpperCase();
-  const nxEsc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const nxEsc=s=>window.cpEsc(s); /* S : une seule fonction d'échappement, celle du cœur */
   const nxDate=s=>{if(!s)return '—';const d=new Date(String(s).length===10?s+'T00:00:00':s);return isNaN(d)?'—':d.toLocaleDateString('fr-FR');};
   const nxDays=(a,b)=>Math.ceil((new Date(b)-new Date(a))/86400000);
   const nxToday=()=>todayISO();
@@ -205,7 +205,7 @@
   function nxExportDocsCSV(){
     const docs=nxAllDocs();if(!docs.length){nxToast('Aucun document');return;}
     const nf=n=>n==null?'':String(Math.round(n*100)/100).replace('.',',');
-    const esc2=s=>'"'+String(s==null?'':s).replace(/"/g,'""')+'"';
+    const esc2=s=>'"'+cpCsvTexte(s).replace(/"/g,'""')+'"'; /* S : formule neutralisée, nombres intacts */
     const csv='﻿'+[['N°','Type','Date','Client','Montant HT','Statut']].concat(
       docs.sort((a,b)=>String(a.num).localeCompare(String(b.num),undefined,{numeric:true}))
         .map(d=>[d.num,d.stype||d.type,d.date,d.client,nf(d.montant),d.statut])).map(r=>r.map(esc2).join(';')).join('\r\n');
@@ -531,7 +531,7 @@
   }
   function nxPatchContracts(){
     const oldRender=renderContrats;window.renderContrats=function(){oldRender();const v=document.getElementById('v-contrats'),anchor=v&&v.querySelector('.warnbox');if(v&&!document.getElementById('nxCtrStart')){const html='<div class="next-card" id="nxCtrStart" style="margin-bottom:14px;border-left:4px solid var(--next-mint);display:flex;align-items:center;gap:12px;flex-wrap:wrap"><div style="font-size:25px">🤝</div><div style="flex:1"><b>Créer un revenu récurrent</b><div class="sub">Clim : 1 visite/an par défaut · Adiabatique : 2 visites/an (mise en route + hivernage).</div></div><button class="btn-next-accent" onclick="nxOpenContractWizard()">＋ Créer un contrat guidé</button></div>';if(anchor)anchor.insertAdjacentHTML('afterend',html);else v.insertAdjacentHTML('afterbegin',html);}};
-    const oldC360=renderClient360;window.renderClient360=function(){oldC360();const box=document.getElementById('c360');if(box&&window._cliId){const c=CLIENTS.find(x=>x.id===window._cliId);if(c&&!box.querySelector('.nx-ctr-client')){const actions=box.querySelector('.row-actions');if(actions)actions.insertAdjacentHTML('beforeend',`<button class="btn-next-accent nx-ctr-client" onclick="nxOpenContractWizard('${nxEsc(c.nom)}')">🤝 Nouveau contrat</button>`);}}};
+    const oldC360=renderClient360;window.renderClient360=function(){oldC360();const box=document.getElementById('c360');if(box&&window._cliId){const c=CLIENTS.find(x=>x.id===window._cliId);if(c&&!box.querySelector('.nx-ctr-client')){const actions=box.querySelector('.row-actions');if(actions)actions.insertAdjacentHTML('beforeend',`<button class="btn-next-accent nx-ctr-client" data-nom="${nxEsc(c.nom)}" onclick="nxOpenContractWizard(this.dataset.nom)">🤝 Nouveau contrat</button>`);}}};
   }
   Object.assign(window,{nxOpenContractWizard});
 
@@ -544,7 +544,12 @@
     input.onchange=()=>{nxOcrFile=input.files&&input.files[0];if(nxOcrFile){const img=document.getElementById('nxOcrPreview');img.src=URL.createObjectURL(nxOcrFile);img.style.display='block';}};
     drop.ondragover=e=>{e.preventDefault();drop.classList.add('drag');};drop.ondragleave=()=>drop.classList.remove('drag');drop.ondrop=e=>{e.preventDefault();drop.classList.remove('drag');nxOcrFile=e.dataTransfer.files[0];if(nxOcrFile){const img=document.getElementById('nxOcrPreview');img.src=URL.createObjectURL(nxOcrFile);img.style.display='block';}};
   }
-  function nxLoadTesseract(){return new Promise((resolve,reject)=>{if(window.Tesseract)return resolve(window.Tesseract);const s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';s.onload=()=>resolve(window.Tesseract);s.onerror=()=>reject(new Error('Module OCR indisponible'));document.head.appendChild(s);});}
+  /* S (10/11/2026) : lecture de plaque entièrement locale. Le script, le worker, le moteur WASM (variante SIMD ou non, choisie par le worker)
+     et les langues fra+eng sont embarqués dans vendor/ (empreintes dans vendor/LISEZMOI.md) : plus aucune requête vers un CDN, et ça marche hors ligne.
+     Les chemins du worker doivent être absolus : le worker est créé à partir d'un blob, qui ne sait pas résoudre un chemin relatif. */
+  const NX_OCR_SRI='sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
+  function nxOcrChemins(){const b=new URL('vendor/',location.href).href;return {workerPath:b+'tesseract-worker-5.1.1.min.js',corePath:b+'tesseract-core',langPath:b+'tessdata'};}
+  function nxLoadTesseract(){return new Promise((resolve,reject)=>{if(window.Tesseract)return resolve(window.Tesseract);const s=document.createElement('script');s.src='vendor/tesseract-5.1.1.min.js';s.integrity=NX_OCR_SRI;s.onload=()=>resolve(window.Tesseract);s.onerror=()=>reject(new Error('Module OCR indisponible (fichier vendor/tesseract-5.1.1.min.js absent ou abîmé : recharge l\'appli)'));document.head.appendChild(s);});}
   function nxParseOCR(text,type){
     const clean=String(text||'').replace(/\r/g,' '),one=clean.replace(/\s+/g,' ').trim(),out={raw:clean};
     const fluid=one.match(/\b(R(?:32|410A|407C|404A|134A|290|600A|448A|449A|452A|1234YF))\b/i);if(fluid)out.fluide=fluid[1].toUpperCase();
@@ -565,7 +570,7 @@
   }
   async function nxRunOCR(){
     if(!nxOcrFile){nxToast('Prends ou choisis une photo','warn');return;}const p=document.getElementById('nxOcrProgress');p.textContent='Chargement du moteur OCR…';
-    try{const T=await nxLoadTesseract();const r=await T.recognize(nxOcrFile,'fra+eng',{logger:m=>{if(m.status==='recognizing text')p.textContent='Lecture : '+Math.round((m.progress||0)*100)+' %';else p.textContent=m.status||'Analyse…';}});const raw=r.data.text||'';document.getElementById('nxOcrRaw').textContent=raw;nxOcrParsed=nxParseOCR(raw,document.getElementById('nxOcrType').value);nxRenderOcrFound();p.textContent='Lecture terminée — vérifie chaque champ.';}catch(e){p.textContent='Échec : '+(e.message||e);nxToast('OCR impossible. Vérifie la connexion et la netteté de la photo.','err');}
+    try{const T=await nxLoadTesseract();const r=await T.recognize(nxOcrFile,'fra+eng',Object.assign(nxOcrChemins(),{logger:m=>{if(m.status==='recognizing text')p.textContent='Lecture : '+Math.round((m.progress||0)*100)+' %';else p.textContent=m.status||'Analyse…';}}));const raw=r.data.text||'';document.getElementById('nxOcrRaw').textContent=raw;nxOcrParsed=nxParseOCR(raw,document.getElementById('nxOcrType').value);nxRenderOcrFound();p.textContent='Lecture terminée — vérifie chaque champ.';}catch(e){p.textContent='Échec : '+(e.message||e);nxToast('OCR impossible. Vérifie la netteté de la photo (la lecture se fait sur cet appareil, sans connexion).','err');}
   }
   function nxRenderOcrFound(){
     const type=document.getElementById('nxOcrType').value,box=document.getElementById('nxOcrFound'),p=nxOcrParsed;
@@ -604,7 +609,7 @@
   }
   async function nxRunContextOCR(){
     const progress=document.getElementById('nxCtxOcrProgress');if(!nxOcrFile){nxToast('Prends ou choisis une photo','warn');return;}if(progress)progress.textContent='Chargement du moteur OCR…';
-    try{const T=await nxLoadTesseract();const r=await T.recognize(nxOcrFile,'fra+eng',{logger:m=>{if(!progress)return;progress.textContent=m.status==='recognizing text'?'Lecture : '+Math.round((m.progress||0)*100)+' %':m.status||'Analyse…';}});nxOcrParsed=nxParseOCR(r.data.text||'','equip');nxRenderContextOcr();if(progress)progress.textContent='Lecture terminée — vérification obligatoire.';}catch(e){if(progress)progress.textContent='Échec : '+(e.message||e);nxToast('OCR impossible. Vérifie la connexion et la netteté de la photo.','err');}
+    try{const T=await nxLoadTesseract();const r=await T.recognize(nxOcrFile,'fra+eng',Object.assign(nxOcrChemins(),{logger:m=>{if(!progress)return;progress.textContent=m.status==='recognizing text'?'Lecture : '+Math.round((m.progress||0)*100)+' %':m.status||'Analyse…';}}));nxOcrParsed=nxParseOCR(r.data.text||'','equip');nxRenderContextOcr();if(progress)progress.textContent='Lecture terminée — vérification obligatoire.';}catch(e){if(progress)progress.textContent='Échec : '+(e.message||e);nxToast('OCR impossible. Vérifie la netteté de la photo (la lecture se fait sur cet appareil, sans connexion).','err');}
   }
   function nxApplyContextOCR(){
     const values={};document.querySelectorAll('#nxCtxOcrFound [data-nx-ocr-field]').forEach(e=>values[e.dataset.nxOcrField]=e.value.trim());
