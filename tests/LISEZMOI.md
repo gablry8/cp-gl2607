@@ -289,8 +289,8 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
     dans `vendor/LISEZMOI.md`, tous dans `sw.js`, plus aucune adresse de CDN dans l'appli, aucune requête CDN ni extérieure pendant la suite ;
   - AB12 golden : empreintes sha256 des 20 fichiers de référence (Y, Z, W, U) figées dans la suite (une régénération se fait en changeant ces valeurs, en
     conscience) ; rendu imprimé de « M. "Jojo" Martin » et « L'Atelier du Froid » à l'identique ;
-  - AB13 lecture de plaque : image de plaque dessinée dans la page (canvas), `#nxOcrFile` rempli, `nxRunOCR()` : champs marque / modèle / série / fluide /
-    charge, requêtes vers `vendor/` seulement, 0 violation de la CSP.
+  - AB13 lecture de plaque : image de plaque **fixe** (`tests/plaque-essai.png`, texte noir sur blanc dessiné une fois : la police du système changeait la lecture
+    d'une machine à l'autre), `#nxOcrFile` rempli, `nxRunOCR()` : champs marque / modèle / série / fluide / charge, requêtes vers `vendor/` seulement, 0 violation de la CSP.
   Rouge sur `main` (`6a89e60`) : 21 / 50 ; vert après : 71 / 0. Journaux rouges hors dépôt (règle 8).
 - `tests/lib.mjs` et `tests/golden/page-figee.mjs` : la route qui coupait tout nom contenant « tesseract » ne coupe plus que les hôtes de CDN
   (`cdnjs.cloudflare.com`, `cdn.jsdelivr.net`, `unpkg.com`, `tessdata.projectnaptha.com`) : les fichiers de `vendor/` se chargent en local.

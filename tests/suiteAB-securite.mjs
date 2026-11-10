@@ -499,12 +499,13 @@ await bloc('AB13', async () => {
   const { p, ctx, errs } = await page({ mobile: false, horloge: REF.horloge, wait: 2500, init: INIT, cspReelle: true }); suivre(ctx);
   const reqs = []; ctx.on('request', (r) => reqs.push(r.url()));
   await p.evaluate(PREP);
-  const TEXTE = 'DAIKIN\nMODEL: FTXM25R\nS/N: E1234567\nR32 CHARGE 0,76 kg';
-  const png = await p.evaluate(async (texte) => { const c = document.createElement('canvas'); c.width = 1100; c.height = 520; const x = c.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height); x.fillStyle = '#000'; x.font = 'bold 72px Arial, Helvetica, sans-serif'; texte.split('\n').forEach((l, i) => x.fillText(l, 60, 110 + i * 110)); const b = await new Promise((r) => c.toBlob(r, 'image/png')); const a = new Uint8Array(await b.arrayBuffer()); let s = ''; for (let i = 0; i < a.length; i += 8192) s += String.fromCharCode.apply(null, a.subarray(i, i + 8192)); return btoa(s); }, TEXTE);
+  /* image de plaque FIXE (tests/plaque-essai.png : « DAIKIN / MODEL: FTXM25R / S/N: E1234567 / R32 CHARGE 0,76 kg », texte noir sur blanc) : dessinée une fois,
+     pas à chaque passage — les polices diffèrent d'une machine à l'autre et changeaient la lecture sur la CI. Mêmes octets partout = même lecture. */
+  const png = fs.readFileSync(path.join(RACINE, 'tests', 'plaque-essai.png'));
   await p.evaluate(() => { AB.ferme(); go('nx_scan'); });
   await p.waitForSelector('#nxOcrFile', { state: 'attached', timeout: 10000 });
   const n0 = reqs.length;
-  await p.setInputFiles('#nxOcrFile', { name: 'plaque.png', mimeType: 'image/png', buffer: Buffer.from(png, 'base64') });
+  await p.setInputFiles('#nxOcrFile', { name: 'plaque.png', mimeType: 'image/png', buffer: png });
   const t0 = Date.now();
   const r = await essai(p, `(async()=>{ nxRunOCR(); const fin=Date.now()+120000; let prog=''; while(Date.now()<fin){ await AB.attendre(500); prog=(document.getElementById('nxOcrProgress')||{}).textContent||''; if(/terminée|Échec/.test(prog)) break; }
     const found=(document.getElementById('nxOcrFound')||{}).innerText||'', raw=(document.getElementById('nxOcrRaw')||{}).textContent||'';

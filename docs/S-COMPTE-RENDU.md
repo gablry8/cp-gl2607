@@ -116,8 +116,9 @@ Suite AB sur la tête de la branche : **71 réussis / 0 échoué** (139 s). Dét
 ### 6.3 Indépendance du jour (règle 9, certain)
 `faketime` « 2026-11-07 10:00 » (samedi), « 2026-11-08 10:00 » (dimanche), « 2027-01-05 10:00 » (05/01 de l'année suivante), suites U, AD, AE, AB : **U 90 / 0, AD 148 / 0, AE 26 / 0, AB 73 / 0** aux trois dates (rapport PARTIEL, code 3, par construction : suites écartées par `CP_SUITES`). La suite AB ne lit jamais la vraie date (horloge figée `REF`, `__REF` dans la page).
 
-### 6.4 CI
-(à compléter à la fin de la session)
+### 6.4 CI (`.github/workflows/tests.yml`, contrôle « batterie complète », deux événements)
+- **Tête `2d3923d`** (push run 42889248331, demande de fusion run 42889259708) : **1 594 réussis / 1 échoué / 2 SKIP connus** (isolation du noyau absente sur le runner), 5 non bloquants. Le seul échec, sur les deux événements : AB13 « Champs reconnus comme avant » — la plaque d'essai était **dessinée à chaque passage** avec la police « Arial » du système, différente sur le runner GitHub, et la lecture OCR n'y donnait pas les cinq champs (certain : échec ; probable : la police). Correction côté test : l'image de plaque est désormais un fichier fixe du dépôt (`tests/plaque-essai.png`, 53 Ko, mêmes octets partout → même lecture). Tout le reste est vert, Q comprise (64 / 64).
+- **Tête suivante** (après la correction de la sonde) : voir ci-dessous.
 
 ## 7. Essai de Gab (≈ 20 minutes, sur la copie d'essai, base TEST)
 1. **Client avec apostrophe, PC** : ouvrir Clients › « L'Atelier du Froid » (il est dans le jeu d'essai) › « Nouveau devis » → attendu : la fenêtre « Nouveau devis — quelle nature de chantier ? » s'ouvre ; choisir une nature → le devis porte le client « L'Atelier du Froid ». Retour à la fiche › « + Contrat » → le champ client est pré-rempli avec le nom exact ; « + Équipement » → idem ; « Nouveau contrat » → idem.
