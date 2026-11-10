@@ -69,7 +69,7 @@ PILOTE A à C (plan contre réel, code en mars 2027, `claude/ClimPilot-MISSION-P
 État lu le 03/11/2026 (`gh api repos/gablry8/cp-gl2607/pulls?state=all`), complété le 04/11 (AF1-ter, AF1-quater, AF1-5), le 06/11 (P3), le 09/11 (P3-bis : #13, #14, #15 fusionnées) et le 10/11 (S : #16, #17, #18 fusionnées ; #19 et #20 ouvertes).
 | # | Branche → `main` | État | Note |
 |---|---|---|---|
-| 20 | `correctif/s-securite` | **ouverte, brouillon** (10/11) | S : sécurité de l'appli ; `main` (`6457329`) fusionnée dans la branche le 10/11 ; CI de `b678d65` **verte sur les deux événements** (runs 42894871219 et 42894879594, tentative 2 : 1 595 / 0 / 2 SKIP connus ; suite X plantée une fois sur la tentative 1, relancée) ; `docs/S-COMPTE-RENDU.md` § 6.4 |
+| 20 | `correctif/s-securite` | **ouverte, brouillon** (10/11) | S : sécurité de l'appli ; `main` (`6457329`) fusionnée dans la branche le 10/11 ; CI de `b5b1fe5` **verte sur les deux événements, première tentative** (runs 42908929178 et 42908940538 : 1 595 / 0 / 2 SKIP connus ; avant, la suite X — test seul — avait planté deux fois sur l'événement « demande de fusion », durcie depuis) ; `docs/S-COMPTE-RENDU.md` § 6.4 |
 | 19 | `docs/mission-af2-af5` | ouverte, brouillon | dossiers AF2 et AF5 (documents seulement) |
 | 18 | `docs/mission-af1b` | fusionnée le 10/11 (`6457329`) | dossier AF1-B (documents seulement) |
 | 17 | `docs/mission-compte` | fusionnée le 10/11 (`5299656`) | dossier COMPTE (documents seulement) |
