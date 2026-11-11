@@ -134,7 +134,7 @@ Lu par un sous-agent, puis vérifié ici sur les lignes clés (certain, lu).
 | BT-157 | identifiant standard (EAN / GTIN) | `ram:GlobalID` (+ `schemeID`) | `cac:StandardItemIdentification` |
 | BT-129 / BT-130 | quantité facturée / code d'unité | `ram:BilledQuantity` + `unitCode` | `cbc:InvoicedQuantity` + `unitCode` (probable) |
 | BT-146 | **prix net** | `ram:NetPriceProductTradePrice/ram:ChargeAmount` | `cac:Price/cbc:PriceAmount` |
-| BT-148 | prix brut | `ram:GrossPriceProductTradePrice/ram:ChargeAmount` | — (non relu) |
+| BT-148 | prix brut | `ram:ChargeAmount` (dans `ram:GrossPriceProductTradePrice`, probable) | — (non relu) |
 | BT-149 / BT-150 | **quantité de base du prix** (ex. prix pour 100 m) / son unité | — (non relu) | `cbc:BaseQuantity` + `unitCode` |
 | BT-131 | montant net de la ligne | `ram:LineTotalAmount` | `cbc:LineExtensionAmount` |
 | BT-151 / BT-152 | catégorie et taux de TVA de la ligne | `ram:CategoryCode` / `ram:RateApplicablePercent` | — (non relu) |
