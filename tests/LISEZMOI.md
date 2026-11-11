@@ -310,4 +310,7 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
     identifiants réparés en mémoire et dans le stockage, journalisés (`id_repare`), identifiant valide gardé, 7 écrans ouverts, survolés et cliqués, la ligne du
     client ouvre toujours sa fiche.
   Rouge sur `c99dc00` : 75 / 11 (les 73 contrôles de S verts, 11 des 13 nouveaux rouges, 2 témoins verts) ; vert après : 86 / 0. Journal rouge hors dépôt.
+- **suiteX-mise-a-jour.mjs** (diagnostic seul) : sur la CI, le rechargement hors ligne de l'étape 3 n'atteint parfois jamais « load » (plantage au bout de 90 s ; jamais reproduit en local,
+  même sans isolation du noyau ni sur un seul cœur occupé). Dans ce cas la suite écrit une ligne `DIAGNOSTIC rechargement hors ligne — …` (état de la page, service workers,
+  requêtes sans réponse) avant de planter comme avant : `run-all.sh` la recopie dans le rapport. Rien d'autre ne change ; la cause reste à trouver (mission OUTILLAGE).
 - `tests/suiteX-mise-a-jour.mjs` : la copie « version N » crée les sous-dossiers listés par `sw.js` (`vendor/tesseract-core/`, `vendor/tessdata/`) avant de copier ; 8 / 8 comme avant.

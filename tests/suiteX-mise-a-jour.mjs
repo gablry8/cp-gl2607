@@ -83,7 +83,15 @@ rec(G, 'Après mise à jour : données conservées (12 devis, 3 clients), servic
 /* hors ligne POUR DE VRAI : le serveur est arrêté (le service worker a son propre accès réseau, que setOffline ne coupe pas) */
 await new Promise((r) => srv.close(r)); await ctx.setOffline(true); journal.length = 0;
 const echecs = []; p.on('response', (r) => { if (r.url().startsWith(URL) && r.status() >= 400) echecs.push(r.status() + ' ' + r.url().slice(URL.length)); });
-await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(3000);
+/* S-bis (11/11/2026) : sur la CI, ce rechargement hors ligne n'atteint parfois jamais « load » (plantage au bout du délai, jamais reproduit en local).
+   Le test plante toujours dans ce cas, mais il écrit d'abord ce qui était en attente, pour que le rapport de la CI dise la cause. */
+const enCours = new Map(); p.on('request', (r) => enCours.set(r, r.url())); const finie = (r) => enCours.delete(r); p.on('requestfinished', finie); p.on('requestfailed', finie);
+try { await p.reload({ waitUntil: 'load' }); } catch (e) {
+  const etat = await Promise.race([p.evaluate(() => ({ etat: document.readyState, devis: typeof DEVIS !== 'undefined' ? DEVIS.length : 'ABSENT', sw: !!navigator.serviceWorker.controller, scripts: document.scripts.length, vue: (document.querySelector('.view.active') || {}).id || null })).catch((x) => ({ erreur: String(x).slice(0, 120) })), new Promise((r) => setTimeout(() => r({ erreur: 'page muette (5 s)' }), 5000))]);
+  console.log('DIAGNOSTIC rechargement hors ligne — ' + String(e.message).split('\n')[0] + ' | page : ' + j(etat) + ' | service workers : ' + ctx.serviceWorkers().length + ' | erreurs : ' + j(errs.slice(0, 3)) + ' | réponses en erreur : ' + j(echecs.slice(0, 5)) + ' | requêtes sans réponse (' + enCours.size + ') : ' + [...enCours.values()].slice(0, 15).map((u) => u.replace(URL, '')).join(', '));
+  throw e;
+}
+await p.waitForTimeout(3000);
 const d2 = await p.evaluate(() => ({ devis: typeof DEVIS !== 'undefined' ? DEVIS.length : 'ABSENT', horsLigne: !navigator.onLine, couches: document.querySelectorAll('script[src^="next-"]').length, store: !!(window.nxStore && nxStore.ready), supabase: typeof window.supabase, vue: (document.querySelector('.view.active') || {}).id || null })).catch((e) => ({ erreur: String(e) }));
 rec(G, 'Hors ligne après mise à jour (serveur arrêté) : l\'appli s\'ouvre depuis le cache, données là, bibliothèques embarquées chargées, aucune réponse en erreur', d2.devis === 12 && d2.store && d2.horsLigne && echecs.length === 0 && d2.couches >= 44, j({ d2, echecs: echecs.slice(0, 5) }));
 const nav = await p.evaluate(async () => { try { go('plan'); await new Promise((r) => setTimeout(r, 300)); const a = (document.querySelector('.view.active') || {}).id; go('dash'); await new Promise((r) => setTimeout(r, 300)); return a + ' → ' + (document.querySelector('.view.active') || {}).id; } catch (e) { return 'ERREUR ' + e; } });
