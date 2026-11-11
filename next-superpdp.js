@@ -180,12 +180,13 @@
   }
   function assurer(num){ return (window.nxEmisAssurerFichiers?nxEmisAssurerFichiers(num):Promise.resolve()).then(function(){ return null; },function(){ return null; }); }
   var SITU={'1':'facture normale','2':'déjà payée','4':'définitive après acompte'};
+  /* S-bis (11/11/2026) : le numéro du document voyage dans data-num (échappé), jamais dans le code d'un bouton ou d'une liste (nature, « Copie déposée », « Détail », « Envoyer ») */
   function natureSel(num,cadre){
     var n=cadre.charAt(0), s=cadre.charAt(1), T=window.nxEinvNatureTxt||{B:'livraison de biens',S:'prestation de services',M:'livraison de biens et prestation de services'};
     if(window.nxEmisModele&&nxEmisModele(num)) return '<div class="sub2" style="margin-top:8px">Nature de l\'opération : <b>'+esc(T[n]||n)+'</b> (cadre de facturation <b>'+esc(cadre)+'</b> — '+esc(SITU[s]||'')+'). '+
       'Elle est <b>figée à l\'émission</b> : elle fait partie de la facture (PDF et XML) et ne se change plus à l\'envoi. En cas d\'erreur : avoir, puis nouvelle facture.</div>';
     return '<div class="frm" style="margin-top:8px"><label class="full">Nature de l\'opération (cadre de facturation <b>'+esc(cadre)+'</b> — '+esc(SITU[s]||'')+')'+
-      '<select onchange="nxPdpSend(\''+esc(num)+'\',this.value)">'+['M','S','B'].map(function(k){ return '<option value="'+k+'"'+(k===n?' selected':'')+'>'+k+' — '+T[k]+'</option>'; }).join('')+'</select></label></div>'+
+      '<select data-num="'+esc(num)+'" onchange="nxPdpSend(this.dataset.num,this.value)">'+['M','S','B'].map(function(k){ return '<option value="'+k+'"'+(k===n?' selected':'')+'>'+k+' — '+T[k]+'</option>'; }).join('')+'</select></label></div>'+
       '<div class="sub2">Par défaut, la même nature que sur ta facture PDF. Si tu la changes, le fichier est recontrôlé.</div>';
   }
   window.nxPdpLastStatus=function(num){ var d=M().docs[num]; if(!d||!d.envois||!d.envois.length) return null; return d.envois[d.envois.length-1]; };
@@ -203,7 +204,7 @@
     var d=M().docs[num]; if(!d) return;
     modal('Historique — '+num,(d.envois||[]).slice().reverse().map(function(e){ return '<div class="card" style="margin:0 0 8px"><div><b>'+(e.env==='sandbox'?'TEST — ':'')+esc(e.ref||num)+'</b> · envoyé le '+fr(e.at)+'</div>'+
       ((e.events&&e.events.length)?'<ul class="nxpdp-list">'+e.events.map(function(v){ return '<li><span class="nxpdp-st '+cls(v.code)+'">'+esc(lab(v.code,v.texte))+'</span> <span class="sub2">'+fr(v.at)+'</span></li>'; }).join('')+'</ul>':'<div class="sub2">Statut : '+esc(lab(e.code,e.texte))+'</div>')+
-      '<button class="btn-ghost btn-sm" onclick="nxPdpDownload('+Number(e.id)+',\''+esc(e.ref||num)+'\')">Copie déposée</button></div>'; }).join(''));
+      '<button class="btn-ghost btn-sm" data-num="'+esc(e.ref||num)+'" onclick="nxPdpDownload('+Number(e.id)+',this.dataset.num)">Copie déposée</button></div>'; }).join(''));
   };
   window.nxPdpDownload=function(id,name){
     say('Téléchargement…');
@@ -288,7 +289,7 @@
         (sandbox?'<div class="nxd2-hint" style="margin-top:6px">Bac à sable : tes envois partent entre sociétés fictives (« '+esc(co.nom||'')+' » → l\'autre société de test). Idéal pour t\'entraîner.</div>':'')+
         (!sandbox&&st.env!=='production'?'<div class="nxd2-warn" style="margin-top:6px">Type de compte annoncé par la plateforme : « '+esc(st.env==null?'(absent)':String(st.env))+' » (ni « production » ni « sandbox ») : traité comme compte <b>réel</b>, avec tous les contrôles.</div>':'')+'</div>';
       h+='<div class="card"><div class="nxpdp-head"><h2 style="margin:0">📤 Envoyés</h2><button class="btn-ghost btn-sm" id="nxpdpRefBtn" onclick="nxPdpRefresh()">Actualiser les statuts</button></div>'+
-        (rows.length?'<div class="scroll"><table><thead><tr><th class="l">Document</th><th class="l">Envoyé</th><th class="l">Statut</th><th></th></tr></thead><tbody>'+rows.map(function(r){ return '<tr><td class="l"><b>'+esc(r.num)+'</b>'+(r.e.env==='sandbox'?' <span class="sub2">test</span>':'')+'</td><td class="l">'+fr(r.e.at)+'</td><td class="l"><span class="nxpdp-st '+cls(r.e.code)+'">'+esc(lab(r.e.code,r.e.texte))+'</span></td><td><button class="btn-ghost btn-sm" onclick="nxPdpHistory(\''+esc(r.num)+'\')">Détail</button></td></tr>'; }).join('')+'</tbody></table></div>'
+        (rows.length?'<div class="scroll"><table><thead><tr><th class="l">Document</th><th class="l">Envoyé</th><th class="l">Statut</th><th></th></tr></thead><tbody>'+rows.map(function(r){ return '<tr><td class="l"><b>'+esc(r.num)+'</b>'+(r.e.env==='sandbox'?' <span class="sub2">test</span>':'')+'</td><td class="l">'+fr(r.e.at)+'</td><td class="l"><span class="nxpdp-st '+cls(r.e.code)+'">'+esc(lab(r.e.code,r.e.texte))+'</span></td><td><button class="btn-ghost btn-sm" data-num="'+esc(r.num)+'" onclick="nxPdpHistory(this.dataset.num)">Détail</button></td></tr>'; }).join('')+'</tbody></table></div>'
           :'<div class="empty">Rien d\'envoyé pour l\'instant. Bouton « Envoyer » sur une facture (écran Avoirs, ou bloc facturation du devis).</div>')+'</div>';
       h+='<div class="card"><h2>📤 Envoyer une facture</h2>'+pickList()+'</div>';
       h+='<div class="card"><h2>📥 Factures reçues</h2><div id="nxpdpRecu"></div></div>';
@@ -303,7 +304,7 @@
     var inv=(window.nxInvoices?nxInvoices():[]).filter(function(i){ return !i.annulee; }).slice(0,15), av=(window.nxAvoirs?nxAvoirs():[]).slice(-5).reverse();
     var all=inv.map(function(i){ return {num:i.num,cli:i.cli,m:i.montant,l:i.label}; }).concat(av.map(function(a){ return {num:a.num,cli:a.cli||{},m:a.montant,l:'Avoir sur '+a.facNum}; }));
     if(!all.length) return '<div class="empty">Aucune facture émise.</div>';
-    return '<div class="scroll"><table><tbody>'+all.map(function(x){ var s=window.nxPdpLastStatus(x.num); return '<tr><td class="l"><b>'+esc(x.num)+'</b><div class="sub2">'+esc((x.cli.nom||'—')+' · '+x.l)+'</div></td><td>'+money(x.m)+'</td><td class="l">'+(s?'<span class="nxpdp-st '+cls(s.code)+'">'+esc(lab(s.code,s.texte))+'</span>':'')+'</td><td><button class="btn-pri btn-sm" onclick="nxPdpSend(\''+esc(x.num)+'\')">Envoyer</button></td></tr>'; }).join('')+'</tbody></table></div>';
+    return '<div class="scroll"><table><tbody>'+all.map(function(x){ var s=window.nxPdpLastStatus(x.num); return '<tr><td class="l"><b>'+esc(x.num)+'</b><div class="sub2">'+esc((x.cli.nom||'—')+' · '+x.l)+'</div></td><td>'+money(x.m)+'</td><td class="l">'+(s?'<span class="nxpdp-st '+cls(s.code)+'">'+esc(lab(s.code,s.texte))+'</span>':'')+'</td><td><button class="btn-pri btn-sm" data-num="'+esc(x.num)+'" onclick="nxPdpSend(this.dataset.num)">Envoyer</button></td></tr>'; }).join('')+'</tbody></table></div>';
   }
   function hero(){ return '<div class="next-hero"><h2>⚡ Facture électronique — plateforme agréée</h2><p>ClimPilot fabrique le fichier officiel, la plateforme SUPER PDP le contrôle et le transmet. Obligatoire pour tes factures aux professionnels à partir du 01/09/2027.</p></div>'; }
   window.nxPdpRender=function(force){ if(force) STATUS=null; renderView(); };
@@ -316,7 +317,7 @@
       var s=window.nxPdpLastStatus(t), td=tr.lastElementChild;
       td.insertAdjacentHTML('beforeend',' <button class="btn-ghost btn-sm nxpdp-x" onclick="nxPdpSend(\''+t+'\')">'+(s?'Renvoyer':'Envoyer')+'</button>'+(s?' <span class="nxpdp-st '+cls(s.code)+'">'+esc(lab(s.code,s.texte))+'</span>':'')); });
     /* bloc facturation du devis */
-    var bl=document.querySelector('#fBloc .nxav-inbloc'); if(bl&&!bl.querySelector('.nxpdp-x')){ var d=typeof cur!=='undefined'?cur:null; if(d){ var fs=[d.facAcompte,d.facSolde].filter(Boolean); if(fs.length) bl.insertAdjacentHTML('beforeend','<div style="margin-top:6px"><b>Plateforme</b> : '+fs.map(function(f){ var s=window.nxPdpLastStatus(f.num); return '<button type="button" class="btn-ghost btn-sm nxpdp-x" onclick="nxPdpSend(\''+esc(f.num)+'\')">Envoyer '+esc(f.num)+'</button>'+(s?' <span class="nxpdp-st '+cls(s.code)+'">'+esc(lab(s.code,s.texte))+'</span>':''); }).join(' ')+'</div>'); } }
+    var bl=document.querySelector('#fBloc .nxav-inbloc'); if(bl&&!bl.querySelector('.nxpdp-x')){ var d=typeof cur!=='undefined'?cur:null; if(d){ var fs=[d.facAcompte,d.facSolde].filter(Boolean); if(fs.length) bl.insertAdjacentHTML('beforeend','<div style="margin-top:6px"><b>Plateforme</b> : '+fs.map(function(f){ var s=window.nxPdpLastStatus(f.num); return '<button type="button" class="btn-ghost btn-sm nxpdp-x" data-num="'+esc(f.num)+'" onclick="nxPdpSend(this.dataset.num)">Envoyer '+esc(f.num)+'</button>'+(s?' <span class="nxpdp-st '+cls(s.code)+'">'+esc(lab(s.code,s.texte))+'</span>':''); }).join(' ')+'</div>'); } }
   }
 
   var CSS='.nxpdp-busy{padding:14px 4px;font-size:14px}.nxpdp-list{margin:6px 0 0 18px;padding:0;font-size:13px}.nxpdp-list li{margin:4px 0}'+

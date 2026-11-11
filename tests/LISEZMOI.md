@@ -298,4 +298,16 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   (I, J, K, L, N, R, AD). `page()` sert donc `index.html` avec `'unsafe-eval'` en plus dans `script-src` (tout le reste gardé, route de contexte : service worker compris) ;
   `page({cspReelle:true})` sert la page telle quelle (suite AB, qui vérifie que la CSP réelle est bien là et qu'`eval` est refusé). `page-figee.mjs` (Y, Z, W, AC) sert la page telle quelle.
 - `tests/isolation/rapport.mjs` : étape `suiteAB-securite` → `resAB.json`. `tools/apercu/build.sh` retire la balise CSP de l'aperçu (publié dans une autre page).
+
+## Ajouts 11/11/2026 (S-bis — conditions C1 et C2 de la relecture P10 de S, même branche, `docs/S-COMPTE-RENDU.md` § 10)
+- **suiteAB-securite.mjs** : 13 contrôles de plus (86 au total), chacun dans sa propre page.
+  - AB5 bis : huit numéros de facture et huit numéros d'avoir d'essai (apostrophe, guillemet, barre oblique inverse, textes préparés pour s'exécuter, un numéro
+    régulier en témoin) posés sur 8 devis facturés, 8 avoirs (`cp2_avoirs`, `nxavReload`) et 8 envois (`cpnext_pdp`), plateforme simulée comme en AB5. Chaque bouton
+    qui porte un numéro est cliqué avec sa fonction remplacée par un espion : « Faire un avoir », « XML », « Avoir sur … » et « Envoyer … » (bloc facturation du devis),
+    « Détail », « Envoyer » (écran Facture électronique), « Copie déposée » (historique), choix de la nature (fenêtre d'envoi, XML simulé). Attendu : la fonction reçoit
+    le numéro exact, rien ne s'exécute à l'ouverture, au survol ni au clic.
+  - AB6 bis : sauvegarde à l'**ancien format** (sans clé `all`, appliquée sans rechargement) avec des identifiants hors règle dans les sept listes et un article :
+    identifiants réparés en mémoire et dans le stockage, journalisés (`id_repare`), identifiant valide gardé, 7 écrans ouverts, survolés et cliqués, la ligne du
+    client ouvre toujours sa fiche.
+  Rouge sur `c99dc00` : 75 / 11 (les 73 contrôles de S verts, 11 des 13 nouveaux rouges, 2 témoins verts) ; vert après : 86 / 0. Journal rouge hors dépôt.
 - `tests/suiteX-mise-a-jour.mjs` : la copie « version N » crée les sous-dossiers listés par `sw.js` (`vendor/tesseract-core/`, `vendor/tessdata/`) avant de copier ; 8 / 8 comme avant.

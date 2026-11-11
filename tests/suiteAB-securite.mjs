@@ -5,6 +5,9 @@ import { ecrireResultats, RACINE, URL_LOCALE, out } from './env.mjs';
 //  AB3  idem pour une réservation venue du site ;  AB4  idem pour un client, une machine, un article créés par l'assistant.
 //  AB5  facture reçue (plateforme simulée) : le bouton « Fichier » reçoit le numéro tel quel.
 //  AB6  sauvegarde restaurée : textes affichés sans exécution, identifiants invalides réparés et journalisés.
+//  AB5 bis (S-bis, 11/11/2026) numéros de facture et d'avoir portés par les boutons (Avoirs, bloc facturation, Facture électronique, historique, fenêtre d'envoi) :
+//       la fonction du bouton reçoit le numéro exact, rien ne s'exécute.
+//  AB6 bis (S-bis) sauvegarde à l'ancien format (sans rechargement) : identifiants invalides réparés dès l'import, la ligne du client ouvre toujours sa fiche.
 //  AB7  réservation au nom d'un client existant : aucun champ effacé, différence notée dans la fiche, rapprochement sans tenir compte des espaces.
 //  AB8  exemplaire signé téléchargé : aucun script ne s'exécute ; image de signature acceptée seulement en PNG embarqué.
 //  AB9  exports CSV : une cellule de texte qui ressemble à une formule est neutralisée ; un montant négatif reste un nombre.
@@ -330,6 +333,86 @@ await bloc('AB9', async () => {
 });
 await ctx.close();
 
+/* ============================ AB5 bis — numéros de facture et d'avoir portés par les boutons (S-bis, relecture P10 du 11/11/2026) ============================ */
+/* Un numéro vient d'une sauvegarde restaurée ou de la synchro : c'est un texte comme un autre. Les boutons qui le portent (écran Avoirs, bloc facturation
+   du devis, écran « Facture électronique », historique d'un envoi, fenêtre d'envoi) doivent appeler leur fonction avec le numéro EXACT, et rien d'autre. */
+await bloc('AB5 bis', async () => {
+  const g = G('AB5 bis numéros dans les boutons');
+  const { p, ctx, errs } = await pageAppli();
+  const NUMS = ['F-' + REF.an + "-001'A", 'F-' + REF.an + '-002"B', 'F-' + REF.an + '-003\\', "x');window.__xss=1;//", 'x" onmouseover="window.__xss=1', '<img src=x onerror="window.__xss=1">', '&#39;);window.__xss=1;//', 'TEST-F-' + REF.an + '-008'];
+  const AVNUMS = NUMS.map((n) => (/F-/.test(n) ? n.replace('F-', 'AV-') : 'A' + n));
+  const r = await essai(p, `(async()=>{
+    const nums=${j(NUMS)}, avn=${j(AVNUMS)}, an=__REF.an, t=__REF.jour, out={};
+    nums.forEach((n,i)=>DEVIS.push({id:'abn'+i,num:'DV-'+an+'1020-TST-ABN'+i,cNom:'Client numéro '+i,cTel:'',cMail:'',cType:'Professionnel',cAdr:'1 rue du Test',cVille:'60000 Beauvais',type:'Monosplit',statut:'accepte',date:t,created:Date.parse(__REF.horloge)-i*1000,
+      nbMach:1,nbSplit:1,machines:[{marque:'D',ref:'X',achat:1000,marge:35}],splits:[{long:5,liaison:'Liaison 1/4 - 3/8',puiss:2.5,cableInter:'Câble 5G1,5'}],groupCable:'Câble 3G2,5',groupLong:6,goulottes:[],condLong:3,support:'Support sol',pompeType:'Aucune',pompeQte:1,
+      taille:'auto',extras:[],heures:3,moMode:'heures',rateChoice:'45',rateCustom:45,acces:'0',zone:'0-10 km',mes:'Monosplit',brasure:'Brasure simple',supp:0,tests:'vide',tvaRate:10,acompteOn:false,acomptePct:30,notes:'',
+      facSolde:{num:n,date:t,montant:1200+i,payeLe:null,mode:''}}));
+    save(LS.devis,DEVIS);
+    const F=nums.map((_,i)=>DEVIS.find(d=>d.id==='abn'+i).facSolde.num);   /* tels que l'appli les garde (nettoyage des balises au stockage) */
+    localStorage.setItem('cp2_avoirs',JSON.stringify(avn.map((n,i)=>({id:'abv'+i,num:n,date:t,facNum:F[i],cli:{nom:'Client numéro '+i},montant:40,total:false,motif:'Geste commercial',factPayee:false}))));
+    nxavReload(); const A=avn.map((_,i)=>nxAvoirs().find(a=>a.id==='abv'+i).num);
+    const docs={}; F.forEach((n,i)=>{ docs[n]={envois:[{id:500+i,env:'sandbox',at:__REF.horloge,code:'fr:205',texte:'',events:[]}]}; if(i%2===0) docs[n].envois[0].ref=n+'-TEST1'; });
+    localStorage.setItem('cpnext_pdp',JSON.stringify({docs}));
+    const chain=()=>{ const f=function(){ return P; }; const P=new Proxy(f,{get(t,k){ if(k==='then') return (res)=>Promise.resolve({data:[],error:null}).then(res); return chain(); },apply(){ return P; }}); return P; };
+    window.sb={rpc:async()=>({data:null}),from:()=>chain(),channel:()=>({on(){return this;},subscribe(){return this;}}),removeChannel(){},auth:{getSession:async()=>({data:{session:null}}),onAuthStateChange(){return {data:{subscription:{unsubscribe(){}}}};},signOut:async()=>({})},
+      functions:{invoke:async(name,{body})=>{ switch(body.action){
+        case 'status': return {data:{connecte:true,env:'sandbox',company:{id:7,nom:'Tricatel',siren:'000000001'},client_id:'abc123…'}};
+        case 'validate': return {data:{rapport:{is_valid:true,profil:'EN 16931',erreurs:[],avertissements:[]}}};
+        case 'list': return {data:{items:[],has_after:false}};
+        case 'invoice': return {data:{events:[]}};
+        case 'download': return {data:{type:'application/xml',base64:btoa('<x/>')}}; }
+        return {data:{erreur:'action'}}; }}};
+    window.SESS={user:{id:'99999999-9999-4999-8999-999999999999',email:'g@x.fr'}};
+    /* espions : chaque bouton doit appeler SA fonction avec le numéro exact ; « reel » remet les vraies fonctions (pour afficher l'historique et la fenêtre d'envoi) */
+    const vrai={a:window.nxavOpen,x:window.nxEinvDownload,s:window.nxPdpSend,h:window.nxPdpHistory,d:window.nxPdpDownload,xml:window.nxEinvXML}; let appels=[];
+    const espion=()=>{ window.nxavOpen=n=>{ appels.push(['avoir',n]); }; window.nxEinvDownload=n=>{ appels.push(['xml',n]); }; window.nxPdpSend=(n,v)=>{ appels.push(v===undefined?['envoi',n]:['envoi',n,v]); }; window.nxPdpHistory=n=>{ appels.push(['detail',n]); }; window.nxPdpDownload=(id,n)=>{ appels.push(['copie',id,n]); }; };
+    const reel=()=>{ window.nxavOpen=vrai.a; window.nxEinvDownload=vrai.x; window.nxPdpSend=vrai.s; window.nxPdpHistory=vrai.h; window.nxPdpDownload=vrai.d; };
+    const ko=[], n={avoir:0,xml:0,envoi:0,detail:0,copie:0,nature:0,blocAvoir:0,blocEnvoi:0}, exec=[];
+    const clic=(b,attendu,cle,ou)=>{ appels=[]; try{ b.click(); }catch(e){ ko.push(ou+' : '+e.message); return; } if(JSON.stringify(appels)===JSON.stringify([attendu])) n[cle]++; else ko.push(ou+' « '+String(attendu[attendu.length>2?2:1]).slice(0,24)+' » → '+JSON.stringify(appels).slice(0,60)); };
+    const vu=ou=>{ if(AB.xss()!==undefined){ exec.push(ou); AB.reset(); } };
+    /* 1. écran Avoirs : « Faire un avoir » (factures), « XML » (avoirs), « Envoyer » (lignes au numéro régulier) */
+    AB.ferme(); AB.reset(); go('nx_avoirs'); await AB.attendre(400); AB.hover(); await AB.attendre(200); vu('écran Avoirs (ouverture, survol)'); out.texteAvoirs=AB.texte(); espion();
+    document.querySelectorAll('#nxav table tr').forEach(tr=>{ const b=tr.querySelector('td b'); if(!b) return; const num=b.textContent;
+      [...tr.querySelectorAll('button')].forEach(bt=>{ const lib=bt.textContent.trim(); if(lib==='Faire un avoir') clic(bt,['avoir',num],'avoir','Avoirs'); else if(lib==='XML') clic(bt,['xml',num],'xml','Avoirs'); else if(/^(Envoyer|Renvoyer)$/.test(lib)) clic(bt,['envoi',num],'envoi','Avoirs'); }); });
+    await AB.attendre(60); vu('écran Avoirs (clics)');
+    /* 2. bloc facturation du devis : « Avoir sur N », « Envoyer N » */
+    for(let i=0;i<F.length;i++){ reel(); AB.ferme(); openDevis('abn'+i); await AB.attendre(250); AB.hover(); await AB.attendre(80); vu('bloc facturation (ouverture, survol) '+i); espion();
+      const bs=[...document.querySelectorAll('#fBloc .nxav-inbloc button')]; const ba=bs.find(x=>x.textContent==='Avoir sur '+F[i]), be=bs.find(x=>x.textContent==='Envoyer '+F[i]);
+      if(ba) clic(ba,['avoir',F[i]],'blocAvoir','bloc facturation'); else ko.push('bloc facturation '+i+' : bouton « Avoir sur » introuvable');
+      if(be) clic(be,['envoi',F[i]],'blocEnvoi','bloc facturation'); else ko.push('bloc facturation '+i+' : bouton « Envoyer » introuvable');
+      await AB.attendre(40); vu('bloc facturation (clics) '+i); }
+    /* 3. écran « Facture électronique » : « Détail » (envoyés), « Envoyer » (liste des factures et des avoirs) */
+    reel(); AB.ferme(); go('nx_pdp'); await AB.attendre(600); AB.hover(); await AB.attendre(200); vu('écran Facture électronique (ouverture, survol)'); out.textePdp=AB.texte(); espion();
+    document.querySelectorAll('#nxpdp table tr').forEach(tr=>{ const b=tr.querySelector('td b'); if(!b) return; const num=b.textContent;
+      [...tr.querySelectorAll('button')].forEach(bt=>{ const lib=bt.textContent.trim(); if(lib==='Détail') clic(bt,['detail',num],'detail','Facture électronique'); else if(lib==='Envoyer') clic(bt,['envoi',num],'envoi','Facture électronique'); }); });
+    await AB.attendre(60); vu('écran Facture électronique (clics)');
+    /* 4. historique d'un envoi : « Copie déposée » */
+    for(let i=0;i<F.length;i++){ reel(); AB.ferme(); nxPdpHistory(F[i]); await AB.attendre(80); AB.hover(); await AB.attendre(60); vu('historique (ouverture, survol) '+i); espion();
+      const b=[...document.querySelectorAll('#mPdp button')].find(x=>/Copie déposée/.test(x.textContent));
+      if(b) clic(b,['copie',500+i,i%2===0?F[i]+'-TEST1':F[i]],'copie','historique'); else ko.push('historique '+i+' : bouton introuvable');
+      await AB.attendre(40); vu('historique (clic) '+i); }
+    /* 5. fenêtre d'envoi : le choix de la nature rappelle l'envoi avec le numéro exact (le fichier XML est simulé : seul le bouton est contrôlé ici) */
+    window.nxEinvXML=()=>'<x><ram:BusinessProcessSpecifiedDocumentContextParameter><ram:ID>S1</ram:ID></ram:BusinessProcessSpecifiedDocumentContextParameter></x>';
+    for(let i=0;i<F.length;i++){ reel(); AB.ferme(); nxPdpSend(F[i]); let sel=null; for(let k=0;k<60&&!sel;k++){ await AB.attendre(50); sel=document.querySelector('#mPdp select'); }
+      AB.hover(); await AB.attendre(40); vu('fenêtre d\\'envoi (ouverture, survol) '+i); espion();
+      if(sel){ sel.value='B'; appels=[]; sel.dispatchEvent(new Event('change',{bubbles:true})); if(JSON.stringify(appels)===JSON.stringify([['envoi',F[i],'B']])) n.nature++; else ko.push('nature « '+F[i].slice(0,24)+' » → '+JSON.stringify(appels).slice(0,60)); }
+      else ko.push('fenêtre d\\'envoi '+i+' : pas de choix de nature ('+((document.getElementById('mPdpBd')||{}).innerText||'').slice(0,60)+')');
+      await AB.attendre(40); vu('fenêtre d\\'envoi (choix) '+i); }
+    window.nxEinvXML=vrai.xml; reel(); AB.ferme();
+    return {F,A,n,ko,exec,texteAvoirs:out.texteAvoirs,textePdp:out.textePdp};
+  })()`);
+  const n = r.n || {}, ko = r.ko || ['?'], koDe = (re) => ko.filter((x) => re.test(x));
+  rec(g, 'Écrans Avoirs et Facture électronique : les 8 numéros de facture et les 8 numéros d\'avoir affichés à l\'identique', !r.erreur && texteOk(r.texteAvoirs || '', [...r.F, ...r.A]).length === 0 && texteOk(r.textePdp || '', r.F).length === 0, r.erreur || j({ avoirs: texteOk(r.texteAvoirs || '', [...r.F, ...r.A]), pdp: texteOk(r.textePdp || '', r.F) }).slice(0, 300));
+  rec(g, 'Aucun numéro ne s\'exécute : ni à l\'ouverture, ni au survol, ni au clic (écran Avoirs, bloc facturation, Facture électronique, historique, fenêtre d\'envoi)', !r.erreur && r.exec.length === 0, j(r.exec || r.erreur).slice(0, 400));
+  rec(g, 'Écran Avoirs : « Faire un avoir » appelle la fonction avec le numéro exact (8 factures), « XML » aussi (8 avoirs)', !r.erreur && n.avoir === 8 && n.xml >= 8 && koDe(/^Avoirs/).length === 0, j({ avoir: n.avoir, xml: n.xml, ko: koDe(/^Avoirs/) }).slice(0, 400));
+  rec(g, 'Bloc facturation du devis : « Avoir sur … » et « Envoyer … » appellent leur fonction avec le numéro exact (8 devis)', !r.erreur && n.blocAvoir === 8 && n.blocEnvoi === 8 && koDe(/^bloc/).length === 0, j({ avoir: n.blocAvoir, envoi: n.blocEnvoi, ko: koDe(/^bloc/) }).slice(0, 400));
+  rec(g, 'Écran Facture électronique : « Détail » (8 envois) et « Envoyer » (8 factures, 5 avoirs) appellent leur fonction avec le numéro exact', !r.erreur && n.detail === 8 && n.envoi >= 13 && koDe(/^Facture/).length === 0, j({ detail: n.detail, envoi: n.envoi, ko: koDe(/^Facture/) }).slice(0, 400));
+  rec(g, 'Historique d\'un envoi : « Copie déposée » demande le fichier avec la référence exacte (8 envois)', !r.erreur && n.copie === 8 && koDe(/^historique/).length === 0, j({ copie: n.copie, ko: koDe(/^historique/) }).slice(0, 400));
+  rec(g, 'Fenêtre d\'envoi : le choix de la nature rappelle l\'envoi avec le numéro exact et la nature choisie (8 factures)', !r.erreur && n.nature === 8 && koDe(/^(nature|fenêtre)/).length === 0, j({ nature: n.nature, ko: koDe(/^(nature|fenêtre)/) }).slice(0, 400));
+  rec(g, 'Aucune erreur JavaScript pendant AB5 bis', errs.length === 0, [...new Set(errs)].slice(0, 6).join(' | '));
+  await ctx.close();
+});
+
 /* ============================ AB6 — sauvegarde restaurée ============================ */
 await bloc('AB6', async () => {
   const g = G('AB6 sauvegarde restaurée');
@@ -360,6 +443,51 @@ await bloc('AB6', async () => {
   rec(g, 'Identifiants invalides de la sauvegarde réparés au chargement (clients, devis, articles) et journalisés', !v.erreur && v.bad.length === 0 && v.journal >= 3, j({ bad: v.bad, journal: v.journal }).slice(0, 300));
   rec(g, 'Textes restaurés affichés à l\'identique (clients, devis), aucune exécution à l\'ouverture, au survol ni au clic (' + (v.clics || 0) + ' clics)', !v.erreur && v.xss === undefined && texteOk(v.t1 || '', v.noms || []).length === 0 && (v.t2 || '').includes((v.noms || [])[0] || '§') && v.e.length === 0, j({ xss: v.xss, manque: texteOk(v.t1 || '', v.noms || []), e: v.e }).slice(0, 300));
   rec(g, 'Aucune erreur JavaScript pendant AB6', errs.length === 0, [...new Set(errs)].slice(0, 6).join(' | '));
+  await ctx.close();
+});
+
+/* ============================ AB6 bis — sauvegarde à l'ancien format (S-bis, relecture P10 du 11/11/2026) ============================ */
+/* Une sauvegarde sans la clé « all » (ancien format) est appliquée sans recharger la page : ses identifiants doivent passer par la même règle qu'au chargement. */
+await bloc('AB6 bis', async () => {
+  const g = G('AB6 bis sauvegarde à l\'ancien format');
+  const { p, ctx, errs } = await pageAppli();
+  const IDS = ["x');window.__xss=1;//", '<img src=x onerror=window.__xss=1>', 'a" onmouseover="window.__xss=1', 'ok-123_ABC'];
+  const r = await essai(p, `(async()=>{
+    const ids=${j(IDS)}; const an=__REF.an, t=__REF.jour; const id=i=>ids[i%ids.length]+(i<ids.length?'':i);
+    const clients=AB.TEXTES.map((n,i)=>({id:id(i),nom:n,tel:'03 44 00 00 0'+i,mail:'',type:'Particulier',adr:'',ville:'',notes:''}));
+    const devis=[{id:ids[0],num:'DV-'+an+'1020-TST-ANCIEN',cNom:AB.TEXTES[0],cTel:'',cMail:'',cType:'Professionnel',cAdr:'',cVille:'',type:'Monosplit',statut:'accepte',date:t,created:Date.parse(__REF.horloge),nbMach:1,nbSplit:1,machines:[{marque:'D',ref:'X',achat:1000,marge:35}],splits:[{long:5,liaison:'Liaison 1/4 - 3/8',puiss:2.5,cableInter:'Câble 5G1,5'}],groupCable:'Câble 3G2,5',groupLong:6,goulottes:[],condLong:3,support:'Support sol',pompeType:'Aucune',pompeQte:1,taille:'auto',extras:[],heures:3,moMode:'heures',rateChoice:'45',rateCustom:45,acces:'0',zone:'0-10 km',mes:'Monosplit',brasure:'Brasure simple',supp:0,tests:'vide',tvaRate:10,acompteOn:false,acomptePct:30,notes:''}];
+    const dep=[{id:ids[2],created:Date.parse(__REF.horloge),date:t,statut:'brouillon',itype:'dep',cNom:AB.TEXTES[0],cTel:'',cMail:'',cType:'Professionnel',cAdr:'',cVille:'',desc:'Dépannage ancien',notes:'',mode:'forfaitH',panne:'',heures:1,rateChoice:'75',rateCustom:75,zone:'0-10 km',maj:'0',pieces:[],mesMode:'forfait',mesType:'Monosplit',heuresSup:0,nbRaccords:4}];
+    const loc=[{id:ids[0],num:'LOC-'+an+'-91',created:Date.parse(__REF.horloge),cNom:AB.TEXTES[0],cTel:'',cAdr:'',cVille:'',dateDebut:t,dateFin:AB.plus(t,2),items:[{ref:'Adia essai',qte:1,tarif:100}],livraison:50,reprise:0,nettoyage:0,caution:0,statut:'reserve'}];
+    const equip=[{id:ids[1],client:AB.TEXTES[0],type:'Monosplit',marque:'Daikin',modele:'FTXM',serie:'SN91',datePose:t,garantie:24,fluide:'R32',charge:0.8}];
+    const contrats=[{id:ids[2],clientNom:AB.TEXTES[0],type:'Climatisation',prix:150,visites:1,prochaineVisite:t,actif:true,facs:[]}];
+    const fluides=[{id:ids[0],num:'FF-'+an+'-191',date:t,client:AB.TEXTES[0],desc:'Clim ancienne',fluide:'R32',nature:'entretien',qv:0.5,qrec:0,qreg:0,qrt:0,qru:0,ctrl:'ok'}];
+    const custom=[{id:ids[1],nom:'Article ancien',cat:'Divers',unite:'u',achat:3,marge:35,src:'local'}];
+    const o={exported:__REF.horloge,devis,clients,dep,loc,equip,contrats,fluides,custom};   /* ancien format : pas de clé « all » */
+    window.__memePage=1; __msgs.length=0;
+    importJSON({files:[new File([JSON.stringify(o)],'sauvegarde-ancienne.json',{type:'application/json'})],value:''});
+    for(let k=0;k<50&&!__msgs.some(m=>/import/i.test(m));k++) await AB.attendre(100);
+    await AB.attendre(300); const importe=__msgs.filter(m=>/import/i.test(m));
+    const re=/^[A-Za-z0-9_-]{1,64}$/; const bad=[]; const cles=['cp2_clients','cp2_devis','cp2_dep','cp2_loc','cp2_equip','cp2_contrats','cp2_fluides'];
+    [CLIENTS,DEVIS,DEP,LOC,EQUIP,CTR,FLU].forEach((a,i)=>a.forEach(x=>{ if(!re.test(String(x.id))) bad.push('mémoire '+cles[i]+' : '+String(x.id).slice(0,24)); }));
+    PRIX.filter(x=>x.src==='local').forEach(x=>{ if(!re.test(String(x.id))) bad.push('mémoire articles : '+String(x.id).slice(0,24)); });
+    cles.concat([LS.custom]).forEach(k=>{ (load(k,[])||[]).forEach(x=>{ if(!re.test(String(x.id))) bad.push('stockage '+k+' : '+String(x.id).slice(0,24)); }); });
+    const journal=load('cpnext_journal',[]).filter(e=>e&&e.type==='id_repare').length;
+    const compte=[CLIENTS,DEVIS,DEP,LOC,EQUIP,CTR,FLU].map(a=>a.length).join('/');
+    const garde=CLIENTS.filter(c=>c.id==='ok-123_ABC').length;
+    const noms=CLIENTS.map(c=>c.nom), ecrans=['clients','tous','prix','contrats','loc','dep','fluides'], exec=[], e=[]; let t1='', clics=0;
+    for(const v of ecrans){ const er=await AB.ouvrir(v); if(er) e.push(v+' : '+er); if(AB.xss()!==undefined) exec.push(v+' (ouverture, survol)'); if(v==='clients') t1=AB.texte(); const c=await AB.clics(v); clics+=c.faits; if(c.xss!==undefined) exec.push(v+' (clics)'); }
+    /* le bouton fait toujours son travail : la ligne du client dont l'identifiant a été réparé ouvre SA fiche */
+    AB.ferme(); AB.reset(); go('clients'); await AB.attendre(150);
+    const c0=CLIENTS.find(c=>c.nom===AB.TEXTES[0]); const td=[...document.querySelectorAll('.view.active td[onclick]')].find(x=>x.querySelector('b')&&x.querySelector('b').textContent===c0.nom);
+    let fiche='cellule introuvable'; if(td){ td.click(); await AB.attendre(200); fiche=(window._curView==='client360'&&window._cliId===c0.id&&AB.texte().includes(c0.nom))||('vue '+window._curView+', fiche '+String(window._cliId).slice(0,24)); }
+    if(AB.xss()!==undefined) exec.push('fiche du client (clic)');
+    return {bad,journal,compte,garde,noms,t1,clics,exec,e,fiche,memePage:window.__memePage===1,msgs:importe,idClient:c0&&c0.id};
+  })()`);
+  rec(g, 'Sauvegarde à l\'ancien format appliquée sans rechargement : 8 clients, 1 devis, 1 intervention, 1 location, 1 équipement, 1 contrat, 1 fiche fluide', !r.erreur && r.memePage === true && r.compte === '8/1/1/1/1/1/1' && (r.msgs || []).some((m) => /import/i.test(m)), r.erreur || j({ memePage: r.memePage, compte: r.compte, msgs: r.msgs }).slice(0, 300));
+  rec(g, 'Identifiants invalides réparés dès l\'import, en mémoire et dans le stockage (7 listes + articles), journalisés ; un identifiant valide est gardé tel quel', !r.erreur && r.bad.length === 0 && r.journal >= 13 && r.garde === 1, j({ bad: (r.bad || []).slice(0, 6), journal: r.journal, garde: r.garde }).slice(0, 400));
+  rec(g, 'Textes affichés à l\'identique, aucune exécution à l\'ouverture, au survol ni au clic (7 écrans, ' + (r.clics || 0) + ' clics)', !r.erreur && r.exec.length === 0 && r.e.length === 0 && texteOk(r.t1 || '', r.noms || ['§']).length === 0, j({ exec: r.exec, e: r.e, manque: texteOk(r.t1 || '', r.noms || []) }).slice(0, 400));
+  rec(g, 'Écran Clients : la ligne du client à l\'identifiant réparé ouvre toujours sa fiche', !r.erreur && r.fiche === true && /^[A-Za-z0-9_-]{1,64}$/.test(String(r.idClient)), j({ fiche: r.fiche, id: String(r.idClient).slice(0, 30) }));
+  rec(g, 'Aucune erreur JavaScript pendant AB6 bis', errs.length === 0, [...new Set(errs)].slice(0, 6).join(' | '));
   await ctx.close();
 });
 

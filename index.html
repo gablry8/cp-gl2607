@@ -2813,6 +2813,8 @@ function importJSON(input){const f=input.files[0];if(!f)return;const r=new FileR
       const mG=cpFusionJournal(garde.arbitrages,'import');if(mG)toast(mG);
       toast('Sauvegarde complète restaurée — rechargement…');setTimeout(()=>(window.nxStoreReload?nxStoreReload():location.reload()),700);return;
     }
+    /* S-bis (11/11/2026) : l'ancien format s'applique sans recharger la page, donc sans repasser par loadArr : même règle d'identifiants, mêmes clés, avant toute écriture */
+    [['devis',LS.devis],['clients',LS.clients],['dep',LS.dep],['loc',LS.loc],['equip','cp2_equip'],['contrats','cp2_contrats'],['fluides','cp2_fluides']].forEach(([c,k])=>cpIdsValider(o[c],k));
     /* ancien format : même garde sur les devis, les fiches fluides et les interventions */
     const vieux={};if(o.devis)vieux.cp2_devis=o.devis;if(o.fluides)vieux.cp2_fluides=o.fluides;if(o.dep)vieux.cp2_dep=o.dep;
     const gardeV=cpGardeImport(vieux);if(gardeV.all.cp2_devis)o.devis=gardeV.all.cp2_devis;if(gardeV.all.cp2_fluides)o.fluides=gardeV.all.cp2_fluides;if(gardeV.all.cp2_dep)o.dep=gardeV.all.cp2_dep;
