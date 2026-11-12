@@ -443,12 +443,15 @@ await essai('AH20', async () => {
   await ctx.close();
 });
 
-/* ================= Partie 7 — test du test : QR code fabriqué dans l'appli, comparé à une bibliothèque indépendante (segno 1.6.6, Python, niveau M, octets) ================= */
+/* ================= Partie 7 — test du test : QR code fabriqué dans l'appli, comparé à une bibliothèque indépendante ================= */
+/* Référence : qrcode 8.2 (Python, niveau M, mode octets, masque imposé), empreintes sha256 (16 premiers caractères) des lignes de modules jointes par « \n ».
+   segno 1.6.6 a été essayée d'abord : elle ajoute toujours un octet nul de plus en mode octets (les deux QR codes sont valides : zxing-cpp les décode).
+   Pendant la mission, les QR codes de l'appli (masque choisi par l'appli) ont aussi été décodés par zxing-cpp : texte identique pour les 3 textes. */
 await essai('QR', async () => {
   const REFQR = [
-    ['otpauth://totp/ClimPilot:essai%40exemple.invalid?algorithm=SHA1&digits=6&issuer=ClimPilot&period=30&secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', 8, 49, ['c0de5417277b35d6', '96947633d621b85a', '5c1b4bccbbb5161f', '6067849996deaa15', '911abcad3ecf6619', 'cb42a3cd2fb067f9', '17579c95fdd9466d', 'a1b38bf5f8c5b88b']],
-    ['otpauth://totp/X?secret=ABC', 3, 29, ['4df6299897e5977a', '6dccfcda3e1dab07', '79a7dc8af68b0e26', '4a1f2c2fa43f58ae', '7f9635b459519f73', 'c209b8a3742761a0', '84e049ec461d8d71', '73779b3ff350cbc5']],
-    ['otpauth://totp/ClimPilot:un.nom.de.compte.vraiment.tres.long.pour.essayer.le.qr%40un-domaine-d-essai-assez-long.invalid?algorithm=SHA1&digits=6&issuer=ClimPilot&period=30&secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', 11, 61, ['f0545afd45f00d41', '49acba3532616e4e', '42a386c0e74e1a54', 'd7e0f22e0496e5f8', '26cba6f936ac069c', 'f23283c9784f1335', '0a1731739bd6e4bf', '34c4826ca642820c']],
+    ['otpauth://totp/ClimPilot:essai%40exemple.invalid?algorithm=SHA1&digits=6&issuer=ClimPilot&period=30&secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', 8, 49, ['251480c9c6b2fbbd', 'c12f1ffa12300e88', 'cd7420b1e4abf213', 'ccfd6d56ee4076d5', '8c78b51197751247', '52c950d555b4a5d2', '33d4bad35022e3aa', 'e117ce1b1e5c1529']],
+    ['otpauth://totp/X?secret=ABC', 3, 29, ['d3a2da61c114b8d1', '7e15f7c37e90bd19', '853cf963e8751b10', 'b8f7af4605acfe42', '8d86ab927fa7a983', 'cdad3de4064facf2', 'bee465be96759f36', '6379f428048d15cc']],
+    ['otpauth://totp/ClimPilot:un.nom.de.compte.vraiment.tres.long.pour.essayer.le.qr%40un-domaine-d-essai-assez-long.invalid?algorithm=SHA1&digits=6&issuer=ClimPilot&period=30&secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ', 11, 61, ['3a75e6563db5f68f', '38ff199e5d969862', 'c58a2ff10d7177ce', '221d119a2ebbdb1b', '6a3919421c31913e', '14be02b001da5d95', '95549581bc95f72d', '5b09818e01ed4bf3']],
   ];
   const { p, ctx } = await page({ mobile: false, horloge: H, cspReelle: true });
   const crypto = await import('crypto');
@@ -458,7 +461,7 @@ await essai('QR', async () => {
     const h = q && q.lignes ? crypto.createHash('sha256').update(q.lignes.join('\n')).digest('hex').slice(0, 16) : null;
     if (!q || q.version !== v || q.taille !== n || h !== hs[m]) ecarts.push({ t: t.slice(0, 30), m, v: q && q.version, n: q && q.taille, h, attendu: hs[m], erreur: q && q.erreur });
   }
-  r('Test du test — QR code de l\'appli (cpQr) identique module par module à segno 1.6.6 pour 3 textes (versions 3, 8 et 11) et les 8 masques', ecarts.length === 0, j(ecarts.slice(0, 4).concat([{ ecarts: ecarts.length }])));
+  r('Test du test — QR code de l\'appli (cpQr) identique module par module à qrcode 8.2 (Python) pour 3 textes (versions 3, 8 et 11) et les 8 masques', ecarts.length === 0, j(ecarts.slice(0, 4).concat([{ ecarts: ecarts.length }])));
   await ctx.close();
 });
 
@@ -475,6 +478,7 @@ await essai('AH18', async () => {
     if (!ouvert) return x.abort('internetdisconnected');
     if (/\/auth\/v1\/token/.test(u)) { const exp = t0 + 7200; return x.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ access_token: jeton({ sub: COMPTE.id, aal: 'aal1', exp, session_id: 'sv' }), token_type: 'bearer', expires_in: 7200, expires_at: exp, refresh_token: 'rafraichi-essai', user }) }); }
     if (/\/auth\/v1\/user/.test(u)) return x.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(user) });
+    if (/\/rpc\/cp_state_push/.test(u)) return x.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ ok: true, updated_at: '2026-10-20T08:00:01.000Z' }) });
     return x.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '[]' }); });
   const perime = { access_token: jeton({ sub: COMPTE.id, aal: 'aal1', exp: t0 - 3600, session_id: 'sv' }), token_type: 'bearer', expires_in: 3600, expires_at: t0 - 3600, refresh_token: 'perime-essai', user };
   await p.addInitScript((s) => { if (!sessionStorage.getItem('__ah18')) { sessionStorage.setItem('__ah18', '1'); localStorage.setItem('sb-onnmomydxfoozcmmtsnz-auth-token', JSON.stringify(s)); } }, perime);
@@ -482,7 +486,7 @@ await essai('AH18', async () => {
   const debut = Date.now();
   await p.goto(URL_LOCALE + 'index.html');
   let etat = null;
-  for (let i = 0; i < 120; i++) { await p.waitForTimeout(500); etat = await p.evaluate(() => ({ login: getComputedStyle(document.getElementById('loginScreen')).display !== 'none', lbl: document.getElementById('cloudLbl').textContent }));
+  for (let i = 0; i < 120; i++) { await p.waitForTimeout(500); etat = await p.evaluate(() => ({ login: getComputedStyle(document.getElementById('loginScreen')).display !== 'none', lbl: (document.getElementById('cloudLbl') || {}).textContent || '' })).catch(() => ({ login: false, lbl: '' }));
     if (etat.login || /hors ligne|injoignable|non connecté/.test(etat.lbl)) break; }
   const duree = Math.round((Date.now() - debut) / 1000);
   const stockee = await p.evaluate(() => !!localStorage.getItem('sb-onnmomydxfoozcmmtsnz-auth-token'));
@@ -491,7 +495,7 @@ await essai('AH18', async () => {
   ouvert = true; const v0 = vus.length;
   await p.evaluate(() => window.dispatchEvent(new Event('online')));
   let fin = null;
-  for (let i = 0; i < 200; i++) { await p.waitForTimeout(500); fin = await p.evaluate(() => ({ sess: !!window.SESS, lbl: document.getElementById('cloudLbl').textContent, user: document.getElementById('cloudUser').textContent, login: getComputedStyle(document.getElementById('loginScreen')).display !== 'none' })); if (fin.sess) break; }
+  for (let i = 0; i < 200; i++) { await p.waitForTimeout(500); fin = await p.evaluate(() => ({ sess: !!window.SESS, lbl: (document.getElementById('cloudLbl') || {}).textContent || '', user: (document.getElementById('cloudUser') || {}).textContent || '', login: !!document.getElementById('loginScreen') && getComputedStyle(document.getElementById('loginScreen')).display !== 'none' })).catch(() => ({ sess: false })); if (fin.sess) break; }
   r('AH18 — réseau revenu (événement online, puis renouvellement de la bibliothèque) : nouvel essai, session reprise sans rien taper, synchro relancée', fin.sess && !fin.login && fin.user === COMPTE.email && vus.length > v0 && errs.length === 0, j({ fin, requetesApres: vus.slice(v0, v0 + 4), errs: errs.slice(0, 2) }));
   await ctx.close();
 });

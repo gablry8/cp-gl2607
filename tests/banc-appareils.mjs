@@ -188,7 +188,7 @@ export async function appareil(S, dev, opts = {}) {
   p.on('framenavigated', (f) => { if (f === p.mainFrame()) A.derniereNav = Date.now(); });
   try { await ctx.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: URL_LOCALE.replace(/\/$/, '') }); } catch (e) {}
   /* dialogues : réponse prévue (file d'attente) sinon OK / valeur proposée — comme un utilisateur qui valide */
-  p.on('dialog', (d) => { const r = A.reponses.length ? A.reponses.shift() : null; A.dialogues.push({ type: d.type(), msg: d.message().slice(0, 300) });
+  p.on('dialog', (d) => { const r = A.reponses.length ? A.reponses.shift() : null; A.dialogues.push({ type: d.type(), msg: d.message().slice(0, 600) });
     if (r === false) d.dismiss().catch(() => {}); else d.accept(d.type() === 'prompt' ? (r == null ? d.defaultValue() : String(r)) : undefined).catch(() => {}); });
   await p.route(/supabase/, (r) => r.abort());
   await p.route(/cdn\.jsdelivr\.net\/npm\/chart|\/vendor\/chart-/, (r) => r.fulfill({ status: 200, contentType: 'application/javascript', body: 'window.Chart=function(){return{destroy(){},update(){}}};' }));
