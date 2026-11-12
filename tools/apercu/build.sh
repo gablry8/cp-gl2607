@@ -20,6 +20,9 @@ s = s.replace('<!DOCTYPE html>\n', '', 1)
 s = re.sub(r'^<html[^>]*>\n', '', s, count=1, flags=re.M)
 s = s.replace('</head>\n<body>\n', '', 1).replace('</body>\n</html>', '', 1)
 s = re.sub(r'<title>[^<]*</title>', '<title>Aperçu ClimPilot 1.10</title>', s, count=1)
+# S (10/11/2026) : la politique de sécurité (CSP) de l'appli n'a pas sa place dans l'aperçu publié dans une autre page (sans cloud, polices Google) : retirée avec son commentaire
+s = re.sub(r'<!-- S \(10/11/2026\) : politique de sécurité.*?-->\n', '', s, count=1, flags=re.S)
+s = re.sub(r'<meta http-equiv="Content-Security-Policy"[^>]*>\n', '', s, count=1)
 # en-tête fourni par la page publiée : pas de <head> ni de meta charset / viewport en double
 s = s.replace('<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1">\n', '', 1)
 s = s.replace('<link rel="stylesheet" href="next-theme.css">', '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">\n<link rel="stylesheet" href="next-theme.css">', 1)

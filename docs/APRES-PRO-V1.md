@@ -61,6 +61,20 @@
 | 03/11 | **Écran du journal** : les refus (enregistrement ou suppression d'un devis verrouillé) sont notés dans `cpnext_journal` (200 lignes) mais aucun écran ne les montre ; une carte « Journal » dans Gestion suffirait | AF1 D0 |
 | 03/11 | **Fiche fluide signée à corriger** : aujourd'hui « Annuler la fiche » (motif) + nouvelle fiche ; une vraie « fiche rectificative » liée à l'ancienne (numéro, renvoi croisé) serait plus lisible pour le détenteur et l'organisme | AF1 D2 / D6, décision 2 |
 
+### Ajouts du 10/11/2026 (mission S, hors de sa liste — rien n'est codé)
+| Date | Idée | État réel | Prérequis | Quand (proposition) |
+|---|---|---|---|---|
+| 10/11 | **Une seule fonction d'échappement partout** : 20 couches non touchées par S gardent leur copie complète de `esc` (cinq caractères) ; les remplacer par `window.cpEsc` et retirer `'unsafe-inline'` de la CSP avec les `onclick` | partiel (cœur + 12 couches en S) | P4 (retrait des attributs `on*`) | P4 |
+| 10/11 | **Empreinte des fichiers de la lecture de plaque vérifiée dans l'appli** (worker, moteurs WASM, langues : le navigateur ne vérifie `integrity` que sur les balises `<script>`) : lecture, SHA-384, comparaison à `vendor/LISEZMOI.md` avant de lancer le moteur | non (empreintes contrôlées par la batterie seulement) | décision de Gab (`docs/S-COMPTE-RENDU.md` § 0 ligne 6) | petite mission à part |
+| 10/11 | **Textes libres des Paramètres** (pied de page des factures, note de bas de devis) affichés tels que tapés : les échapper changerait le rendu si Gab y a mis de la mise en forme | non | décider s'ils doivent rester du texte brut | avec P4 |
+
+### Ajouts du 11/11/2026 (S-bis, relecture P10 de S — hors périmètre, pour P4 ; rien n'est codé)
+| Date | Idée | État réel | Prérequis | Quand (proposition) |
+|---|---|---|---|---|
+| 11/11 | **Identifiants encore recopiés dans le code de boutons**, dans des endroits que S et S-bis n'ont pas touchés (numéros de ligne relevés par la relecture sur `c99dc00`) : `next-addons.js` (l. 500), `index.html` (l. 2915-2922), `next-journee.js` (l. 64, 66), `next-objectifs.js` (l. 485, 505, 529, 530, 535), `next-flubilan.js` (l. 147, 227), `next-rentab.js` (l. 193), `next-mobile.js` (l. 246), `next-adresse.js` (l. 290), `next-signature.js` (l. 278) ; même méthode que S (`data-*` lu par `this.dataset`) | non (S et S-bis valident les identifiants des sept listes principales et des articles, au chargement et à l'import ; pas ceux des autres données) | P4 (retrait des attributs `on*`) | P4 |
+| 11/11 | **CSV de la déclaration annuelle des fluides** (`next-flubilan.js`, l. 116) : seul export qui ne passe pas par `cpCsvTexte` (cellules de texte commençant comme une formule) | non | aucun | P4, ou petite mission à part |
+| 11/11 | **Lecteur Excel embarqué `xlsx` 0.18.5** : version visée par l'avis public CVE-2023-30533 (relevé par la relecture ; la version corrigée et sa source sont à vérifier avant de décider) ; garder, remplacer ou changer de source | non | **décision de Gab** | à décider |
+
 ## 3. Module « Aides » (étude P9 du 25/10, § 6 — rien à coder avant PRO v1)
 
 1. Référentiel daté des aides (une ligne par version de fiche CEE, date d'effet, date de fin, source et date de consultation ; test par date de bascule).

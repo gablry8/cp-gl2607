@@ -15,6 +15,16 @@ export async function sansBibliothequesCloud(ctx){
   await ctx.route(/\/vendor\/supabase-js-/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'/* supabase-js désactivé pendant les tests */'}));
   await ctx.route(/\/vendor\/chart-/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.Chart=function(){return{destroy(){},update(){}}};'}));
 }
+/* S (10/11/2026) : la politique de sécurité (CSP) de l'appli interdit eval ; l'appli n'en a pas besoin, mais les suites écrites avant S exécutent
+   leur code de fin de scénario DANS la page par eval(c) (I, J, K, L, N, R, AD…). Pour les tests seulement, index.html est servi avec 'unsafe-eval'
+   en plus dans script-src — tout le reste de la politique est gardé, et la route est posée au niveau du CONTEXTE (service worker compris, 2e chargement).
+   page({cspReelle:true}) sert la page telle quelle : c'est ce que fait la suite AB, qui vérifie la CSP réelle. */
+const CSP_TESTS=["script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval';","script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' 'unsafe-eval';"];
+export async function cspPourLesTests(ctx){
+  await ctx.route(/\/index\.html(\?.*)?$/, async r=>{ let res; try{ res=await r.fetch(); }catch(e){ return r.continue(); }
+    const h=(await res.text()).replace(CSP_TESTS[0],CSP_TESTS[1]);
+    return r.fulfill({response:res,body:h,headers:{...res.headers(),'content-type':'text/html; charset=utf-8'}}); });
+}
 export function rec(group,name,ok,detail){ RES.push({group,name,ok:ok===true?'PASS':ok===false?'FAIL':ok,detail:detail==null?'':String(detail).slice(0,400)}); }
 let browser=null;
 export async function getBrowser(){ if(!browser) browser=await lancerNavigateur(); return browser; }
@@ -23,7 +33,7 @@ export async function closeBrowser(){ if(browser) await browser.close(); browser
 export async function page(opts={}){
   const b=await getBrowser();
   const ctxOpts=opts.mobile===false?{viewport:{width:1300,height:900},locale:'fr-FR',timezoneId:opts.tz||'Europe/Paris'}:{...devices['iPhone 13'],locale:'fr-FR',timezoneId:opts.tz||'Europe/Paris'};
-  const ctx=await b.newContext(ctxOpts); await sansBibliothequesCloud(ctx);
+  const ctx=await b.newContext(ctxOpts); await sansBibliothequesCloud(ctx); if(!opts.cspReelle) await cspPourLesTests(ctx);
   const p=await ctx.newPage();
   const errs=[];
   p.on('pageerror',e=>errs.push('PAGEERR '+e.message));
@@ -31,7 +41,8 @@ export async function page(opts={}){
   p.on('dialog',d=>d.dismiss().catch(()=>{}));
   await p.route(/supabase/, r=>r.abort());
   await p.route(/cdn\.jsdelivr\.net\/npm\/chart|\/vendor\/chart-/, r=>r.fulfill({status:200,contentType:'application/javascript',body:'window.Chart=function(){return{destroy(){},update(){}}};'}));
-  await p.route(/cdnjs|tesseract|unpkg/, r=>r.abort());
+  /* S (10/11/2026) : seuls les CDN sont coupés ; les bibliothèques embarquées (vendor/, dont Tesseract) se chargent en local */
+  await p.route(/cdnjs\.cloudflare\.com|cdn\.jsdelivr\.net|unpkg\.com|tessdata\.projectnaptha\.com/, r=>r.abort());
   if(opts.offline){ await p.route(/data\.geopf\.fr/, r=>r.abort()); }
   else if(opts.routeFail){ await p.route(/data\.geopf\.fr\/navigation/, r=>r.fulfill({status:503,body:'down'})); geoMock(p,true); }
   else geoMock(p,false);

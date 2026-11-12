@@ -17,9 +17,10 @@
 (function(){
   'use strict';
   var DBN='climpilot-catalogue', ST='art', IMP='imports', db=null, CAT=null, SUG={}, MAXROWS=60000;
-  var XLSX_URL='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  /* S (10/11/2026) : lecteur Excel embarqué (vendor/, empreinte vérifiée par le navigateur) : plus aucun chargement depuis un CDN */
+  var XLSX_URL='vendor/xlsx-0.18.5.full.min.js', XLSX_SRI='sha384-vtjasyidUo0kW94K5MXDXntzOJpQgBKXmE7e2Ga4LG0skTTLeBi97eFAXsqewJjw';
   var LISTS={pieceDL:1,extraDL:1,nxdpPieceDL:1,nxd2PrixDL:1};
-  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function esc(s){ return window.cpEsc(s); } /* S : une seule fonction d'échappement, celle du cœur */
   function norm(s){ return String(s==null?'':s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(); }
   function r2(n){ return Math.round((Number(n)||0)*100)/100; }
   function money(n){ try{ return eur(n); }catch(e){ return r2(n).toFixed(2)+' €'; } }
@@ -149,7 +150,7 @@
   }
   function loadXLSX(){
     if(window.XLSX) return Promise.resolve(window.XLSX);
-    return new Promise(function(res,rej){ var s=document.createElement('script'); s.src=XLSX_URL; s.onload=function(){ window.XLSX?res(window.XLSX):rej(new Error('lecteur Excel indisponible')); }; s.onerror=function(){ rej(new Error('lecteur Excel non chargé (connexion internet nécessaire pour un fichier Excel ; un CSV marche hors ligne)')); }; document.head.appendChild(s); });
+    return new Promise(function(res,rej){ var s=document.createElement('script'); s.src=XLSX_URL; s.integrity=XLSX_SRI; s.onload=function(){ window.XLSX?res(window.XLSX):rej(new Error('lecteur Excel indisponible')); }; s.onerror=function(){ rej(new Error('lecteur Excel non chargé (fichier '+XLSX_URL+' absent ou abîmé : recharge l\'appli ; un CSV marche toujours)')); }; document.head.appendChild(s); });
   }
   function readFile(file){
     return file.arrayBuffer().then(function(buf){
@@ -194,14 +195,14 @@
     var m=det.map, out=[], skipped=0, seen={}, pubOnly=m.net==null&&m.rem==null&&!(gRem>0), dt=today();
     rows.slice(det.h+1).forEach(function(r){
       var g=function(k){ return m[k]==null?'':r[m[k]]; };
-      var ref=String(g('ref')).trim(), lib=String(g('lib')).trim();
+      var ref=cpTexteSain(g('ref'),120).trim(), lib=cpTexteSain(g('lib'),300).trim(); /* S3 */
       if(!ref&&!lib){ skipped++; return; }
       var net=numFr(g('net')), pub=numFr(g('pub')), rem=numFr(g('rem')), prix=NaN, po=false;
       if(isFinite(net)&&net>0) prix=net;
       else if(isFinite(pub)&&pub>0){ var rr=isFinite(rem)&&rem>0?(rem>1?rem:rem*100):(gRem>0?gRem:0); prix=pub*(1-rr/100); po=!(rr>0); }
       if(!(prix>0)){ skipped++; return; }
       var k=four+'|'+(ref||lib); if(seen[k]){ skipped++; return; } seen[k]=1;
-      out.push({k:k,four:four,ref:ref,lib:lib||ref,prix:r2(prix),pub:isFinite(pub)&&pub>0?r2(pub):null,unite:String(g('unite')).trim()||'unité',ean:String(g('ean')).trim(),fam:String(g('fam')).trim(),marque:String(g('marque')).trim(),date:dt,pubOnly:po,s:norm([lib,ref,g('marque'),g('fam'),g('ean')].join(' '))});
+      out.push({k:k,four:four,ref:ref,lib:lib||ref,prix:r2(prix),pub:isFinite(pub)&&pub>0?r2(pub):null,unite:cpTexteSain(g('unite'),40).trim()||'unité',ean:cpTexteSain(g('ean'),40).trim(),fam:cpTexteSain(g('fam'),120).trim(),marque:cpTexteSain(g('marque'),120).trim(),date:dt,pubOnly:po,s:norm([lib,ref,g('marque'),g('fam'),g('ean')].join(' '))});
     });
     pubOnly=out.length>0&&out.every(function(x){ return x.pubOnly; });
     return {rows:out.slice(0,MAXROWS),skipped:skipped,trunc:out.length>MAXROWS,pubOnly:pubOnly};
@@ -280,7 +281,7 @@
   function renderStats(){
     var el=document.getElementById('nxCatStats'); if(!el) return;
     imports().then(function(a){
-      el.innerHTML=a.length?a.sort(function(x,y){ return String(x.four).localeCompare(String(y.four)); }).map(function(i){ return '<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line,#e3e8ef);padding:5px 0"><span><b>'+esc(i.four)+'</b> — '+(i.n||0).toLocaleString('fr-FR')+' références · tarif importé le '+fmtD(i.date)+(i.pubOnly?' · <span style="color:var(--orange,#d97706)">prix publics, pas tes prix nets</span>':'')+(i.fichier?' · '+esc(i.fichier):'')+(i.upd?' · ☁️ synchronisé':(cloud()?' · <span style="color:var(--orange,#d97706)">pas encore envoyé</span>':''))+'</span><button class="iconbtn d" type="button" title="Retirer ce tarif" onclick="nxcatRemove(\''+esc(String(i.four).replace(/'/g,"\\'"))+'\')">🗑</button></div>'; }).join('')
+      el.innerHTML=a.length?a.sort(function(x,y){ return String(x.four).localeCompare(String(y.four)); }).map(function(i){ return '<div style="display:flex;gap:8px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line,#e3e8ef);padding:5px 0"><span><b>'+esc(i.four)+'</b> — '+(i.n||0).toLocaleString('fr-FR')+' références · tarif importé le '+fmtD(i.date)+(i.pubOnly?' · <span style="color:var(--orange,#d97706)">prix publics, pas tes prix nets</span>':'')+(i.fichier?' · '+esc(i.fichier):'')+(i.upd?' · ☁️ synchronisé':(cloud()?' · <span style="color:var(--orange,#d97706)">pas encore envoyé</span>':''))+'</span><button class="iconbtn d" type="button" title="Retirer ce tarif" data-four="'+esc(i.four)+'" onclick="nxcatRemove(this.dataset.four)">🗑</button></div>'; }).join('')
         :'Aucun tarif importé pour l\'instant.';
     }).catch(function(e){ el.textContent='Catalogue indisponible sur ce navigateur ('+(e.message||e)+').'; });
   }
@@ -434,7 +435,7 @@
     Array.prototype.slice.call(document.querySelectorAll('[data-nxcf]')).forEach(function(cb){
       if(!cb.checked) return; var i=Number(cb.getAttribute('data-nxcf')), l=L[i]; if(!l) return;
       var pu=numFr((document.querySelector('[data-nxcfpu="'+i+'"]')||{}).value); if(!(pu>0)) return;
-      var e={four:four,ref:String(l.ref||'').trim(),lib:String(l.designation||l.ref||'').trim(),prix:r2(pu),pub:null,unite:l.unite||'unité',ean:'',fam:'',marque:'',pubOnly:false,date:dt};
+      var e={four:four,ref:cpTexteSain(l.ref||'',120).trim(),lib:cpTexteSain(l.designation||l.ref||'',300).trim(),prix:r2(pu),pub:null,unite:cpTexteSain(l.unite||'unité',40),ean:'',fam:'',marque:'',pubOnly:false,date:dt}; /* S3 */
       if(!e.lib&&!e.ref) return;
       e.k=four+'|'+(e.ref||e.lib); e.s=norm([e.lib,e.ref].join(' ')); rows.push(e);
       var m=baseMatch(four,l);

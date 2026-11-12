@@ -267,3 +267,50 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   rien et n'affiche aucun message « états remis » ; revu en **P3-ter** : chaque écriture serveur est attribuée à l'appareil qui la fait en enveloppant `S.appel`, et chaque écriture du téléphone
   ne change que `figEnv` dans `cp2_devis` ou `cpnext_objsuivi`, ou rien — comme sur `main` (1 à 3 écritures du téléphone, borne large 4) ; plus de borne sur le total, qui varie avec la charge).
   Rouges sur `a2e15a8` : U 82 / 8, AD 141 / 7, AE 24 / 1 ; verts après.
+
+## Ajouts 10/11/2026 (mission S — sécurité de l'appli, branche `correctif/s-securite`, compte rendu `docs/S-COMPTE-RENDU.md`)
+- **suiteAB-securite.mjs** (71 contrôles, horloge figée REF, cloud coupé) : un jeu de huit textes d'essai (noms avec apostrophe, guillemet, et textes
+  préparés pour s'exécuter : ni secret ni donnée personnelle) passe par chaque porte d'entrée d'un texte tiers, et rien ne doit s'exécuter.
+  - AB1 noms de clients : 13 écrans + 8 fiches 360 + éditeur ouverts et survolés, ≈ 490 clics, texte affiché à l'identique, sept boutons qui portent le
+    nom (cellule des contrats, « Proposer un contrat », « Nouveau devis » = choix de la nature avec ce client, « + Contrat », « + Équipement », « Nouveau contrat »,
+    « Plus de messages ») vérifiés pour un nom avec apostrophe et un nom avec guillemet ;
+  - AB2 articles : import de tarif simulé (`nxcatParseCSV` + `nxcatImportRows` + `nxcatPromote`), catégories créées par l'assistant, base de prix, filtres
+    de catégorie, devis (articles et récapitulatif), à commander (stock enregistré pour le bon article), bon de commande PDF ;
+  - AB3 réservation du site (8 demandes, `nxtrPlanifierSite` avec `nxaSiteLigne` simulé) ; AB4 assistant (`nxaApply.client/machine/article`) ;
+  - AB5 facture reçue (plateforme simulée comme en suite H, 8 numéros) : « Fichier » appelé avec le numéro exact ; AB6 sauvegarde restaurée (`importJSON`,
+    rechargement) : identifiants invalides réparés et journalisés (`cpnext_journal`, `id_repare`), textes affichés sans exécution ;
+  - AB7 réservation au nom d'un client existant (nom écrit autrement : espaces, majuscules) : aucune fiche en double, rien d'effacé, différences notées ;
+  - AB8 page de signature (`signer.html`, serveur simulé par une route) : exemplaire téléchargé capturé, rouvert dans une page : aucun script exécuté, CSP du
+    fichier, signature PNG embarquée seulement, 0 violation de la CSP sur la page ;
+  - AB9 six exports CSV (recettes, livre, facturier, registre des documents, devis, dépannages) : cellule « formule » neutralisée, montant négatif intact ;
+  - AB10 CSP : balises de `index.html` et `signer.html`, copie d'essai construite (`tools/essai`) avec la CSP, 33 écrans × 2 appareils avec écoute de
+    `securitypolicyviolation` (0), fonctions sous la CSP (adresses, SIREN, PDF, signature, ZIP, import Excel avec un classeur construit par le vendor xlsx) ;
+  - AB11 bibliothèques : xlsx, jszip, tesseract chargés depuis `vendor/` avec une empreinte sha384 juste, les six fichiers Tesseract listés avec leur empreinte
+    dans `vendor/LISEZMOI.md`, tous dans `sw.js`, plus aucune adresse de CDN dans l'appli, aucune requête CDN ni extérieure pendant la suite ;
+  - AB12 golden : empreintes sha256 des 20 fichiers de référence (Y, Z, W, U) figées dans la suite (une régénération se fait en changeant ces valeurs, en
+    conscience) ; rendu imprimé de « M. "Jojo" Martin » et « L'Atelier du Froid » à l'identique ;
+  - AB13 lecture de plaque : image de plaque **fixe** (`tests/plaque-essai.png`, texte noir sur blanc dessiné une fois : la police du système changeait la lecture
+    d'une machine à l'autre), `#nxOcrFile` rempli, `nxRunOCR()` : champs marque / modèle / série / fluide / charge, requêtes vers `vendor/` seulement, 0 violation de la CSP.
+  Rouge sur `main` (`6a89e60`) : 21 / 50 ; vert après : 71 / 0. Journaux rouges hors dépôt (règle 8).
+- `tests/lib.mjs` et `tests/golden/page-figee.mjs` : la route qui coupait tout nom contenant « tesseract » ne coupe plus que les hôtes de CDN
+  (`cdnjs.cloudflare.com`, `cdn.jsdelivr.net`, `unpkg.com`, `tessdata.projectnaptha.com`) : les fichiers de `vendor/` se chargent en local.
+- `tests/lib.mjs`, `cspPourLesTests` : la CSP de l'appli interdit `eval` ; les suites écrites avant S exécutent leur code de fin de scénario dans la page par `eval(c)`
+  (I, J, K, L, N, R, AD). `page()` sert donc `index.html` avec `'unsafe-eval'` en plus dans `script-src` (tout le reste gardé, route de contexte : service worker compris) ;
+  `page({cspReelle:true})` sert la page telle quelle (suite AB, qui vérifie que la CSP réelle est bien là et qu'`eval` est refusé). `page-figee.mjs` (Y, Z, W, AC) sert la page telle quelle.
+- `tests/isolation/rapport.mjs` : étape `suiteAB-securite` → `resAB.json`. `tools/apercu/build.sh` retire la balise CSP de l'aperçu (publié dans une autre page).
+
+## Ajouts 11/11/2026 (S-bis — conditions C1 et C2 de la relecture P10 de S, même branche, `docs/S-COMPTE-RENDU.md` § 10)
+- **suiteAB-securite.mjs** : 13 contrôles de plus (86 au total), chacun dans sa propre page.
+  - AB5 bis : huit numéros de facture et huit numéros d'avoir d'essai (apostrophe, guillemet, barre oblique inverse, textes préparés pour s'exécuter, un numéro
+    régulier en témoin) posés sur 8 devis facturés, 8 avoirs (`cp2_avoirs`, `nxavReload`) et 8 envois (`cpnext_pdp`), plateforme simulée comme en AB5. Chaque bouton
+    qui porte un numéro est cliqué avec sa fonction remplacée par un espion : « Faire un avoir », « XML », « Avoir sur … » et « Envoyer … » (bloc facturation du devis),
+    « Détail », « Envoyer » (écran Facture électronique), « Copie déposée » (historique), choix de la nature (fenêtre d'envoi, XML simulé). Attendu : la fonction reçoit
+    le numéro exact, rien ne s'exécute à l'ouverture, au survol ni au clic.
+  - AB6 bis : sauvegarde à l'**ancien format** (sans clé `all`, appliquée sans rechargement) avec des identifiants hors règle dans les sept listes et un article :
+    identifiants réparés en mémoire et dans le stockage, journalisés (`id_repare`), identifiant valide gardé, 7 écrans ouverts, survolés et cliqués, la ligne du
+    client ouvre toujours sa fiche.
+  Rouge sur `c99dc00` : 75 / 11 (les 73 contrôles de S verts, 11 des 13 nouveaux rouges, 2 témoins verts) ; vert après : 86 / 0. Journal rouge hors dépôt.
+- **suiteX-mise-a-jour.mjs** (diagnostic seul) : sur la CI, le rechargement hors ligne de l'étape 3 n'atteint parfois jamais « load » (plantage au bout de 90 s ; jamais reproduit en local,
+  même sans isolation du noyau ni sur un seul cœur occupé). Dans ce cas la suite écrit une ligne `DIAGNOSTIC rechargement hors ligne — …` (état de la page, service workers,
+  requêtes sans réponse) avant de planter comme avant : `run-all.sh` la recopie dans le rapport. Rien d'autre ne change ; la cause reste à trouver (mission OUTILLAGE).
+- `tests/suiteX-mise-a-jour.mjs` : la copie « version N » crée les sous-dossiers listés par `sw.js` (`vendor/tesseract-core/`, `vendor/tessdata/`) avant de copier ; 8 / 8 comme avant.

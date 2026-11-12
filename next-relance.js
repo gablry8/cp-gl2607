@@ -63,7 +63,7 @@
             + (d.cTel ? ' · ' + d.cTel : '');
     return '<div class="recap-line">' +
       '<div style="cursor:pointer;min-width:0" onclick="openDevis(\''+d.id+'\')">' +
-        '<b>'+nm+'</b><div class="sub2">'+d.num+' · '+sub+'</div></div>' +
+        '<b>'+cpEsc(nm)+'</b><div class="sub2">'+cpEsc(d.num)+' · '+cpEsc(sub)+'</div></div>' + /* S : échappement du cœur */
       '<div class="row-actions" style="flex-wrap:wrap;justify-content:flex-end">' +
         '<b>'+eur0(c.totalHT)+'</b>' +
         '<button class="nx-sbtn mar" onclick="nxRelancer(\''+d.id+'\')">✉ Relancer</button>' +

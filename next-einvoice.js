@@ -22,7 +22,7 @@
   'use strict';
   var CIBS_DATE='2027-01-01';
   function x(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;'); }
-  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function esc(s){ return window.cpEsc(s); } /* S : une seule fonction d'échappement, celle du cœur (x() reste l'échappement XML) */
   function num(v){ var n=Number(String(v==null?'':v).replace(',','.')); return isFinite(n)?n:0; }
   function r2(n){ return Math.round((Number(n)||0)*100)/100; }
   function a2(n){ return r2(n).toFixed(2); }
@@ -204,8 +204,9 @@
     try{ toast(w.length?'⚠ XML '+n+' téléchargé — à compléter : '+w[0]+(w.length>1?' (+'+(w.length-1)+')':''):'📄 Facture électronique '+n+'.xml téléchargée'); }catch(e){}
   };
   /* export groupé (ZIP) des factures et avoirs d'une année */
-  var ZIP='https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-  function loadZip(){ return new Promise(function(res,rej){ if(window.JSZip) return res(window.JSZip); var s=document.createElement('script'); s.src=ZIP; s.onload=function(){ window.JSZip?res(window.JSZip):rej(new Error('zip')); }; s.onerror=function(){ rej(new Error('Pas de connexion pour préparer le ZIP')); }; document.head.appendChild(s); }); }
+  /* S (10/11/2026) : bibliothèque ZIP embarquée (vendor/, empreinte vérifiée par le navigateur) : plus aucun chargement depuis un CDN */
+  var ZIP='vendor/jszip-3.10.1.min.js', ZIP_SRI='sha384-+mbV2IY1Zk/X1p/nWllGySJSUN8uMs+gUAN10Or95UBH0fpj6GfKgPmgC5EXieXG';
+  function loadZip(){ return new Promise(function(res,rej){ if(window.JSZip) return res(window.JSZip); var s=document.createElement('script'); s.src=ZIP; s.integrity=ZIP_SRI; s.onload=function(){ window.JSZip?res(window.JSZip):rej(new Error('zip')); }; s.onerror=function(){ rej(new Error('Bibliothèque ZIP indisponible (fichier '+ZIP+' absent ou abîmé : recharge l\'appli)')); }; document.head.appendChild(s); }); }
   window.nxEinvExportYear=function(y){
     y=String(y||new Date().getFullYear());
     var nums=(window.nxInvoices?nxInvoices():[]).filter(function(i){ return String(i.date||'').slice(0,4)===y; }).map(function(i){ return i.num; })

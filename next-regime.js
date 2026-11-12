@@ -494,7 +494,7 @@
   function nxrgDemo(){ try{ var m=window.nxEmisMode&&window.nxEmisMode(); return !!(m&&!m.demarre); }catch(e){ return false; } }
 
   function nxrgCsv(rows,header){
-    var esc=function(v){v=String(v==null?'':v);return '"'+v.replace(/"/g,'""')+'"';};
+    var esc=function(v){v=cpCsvTexte(v);return '"'+v.replace(/"/g,'""')+'"';}; /* S8 : une cellule de texte qui commence comme une formule est neutralisée ; les montants (num) restent des nombres */
     var num=function(v){return esc((Math.round(v*100)/100).toFixed(2).replace('.',','));};
     var lines=[header.map(esc).join(';')];
     rows.forEach(function(r){lines.push(r.map(function(v,i){return typeof v==='number'?num(v):esc(v);}).join(';'));});
