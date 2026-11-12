@@ -12,6 +12,7 @@
 import fs from 'fs';
 import { lancerNavigateur, devices, URL_LOCALE, out } from './env.mjs';
 import { sansBibliothequesCloud } from './lib.mjs';
+import { serveurAuth, FAUX_AUTH_PAGE } from './faux-auth.mjs';
 
 const c = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 /* comme une colonne jsonb de PostgreSQL : l'ordre des clés d'un objet n'est pas gardé (clés triées par longueur, puis
@@ -45,7 +46,7 @@ export function regleSource(docs, p) {
 }
 
 /* ---------------- serveur commun ---------------- */
-export function serveurCommun(debutISO) {
+export function serveurCommun(debutISO, opts = {}) {
   const S = { etat: null, etatBloque: {}, n: 0, docs: [], seq: {}, events: [], coupe: {}, latence: {}, journal: [], enCours: {}, ecritures: 0, conflits: 0, historique: [] };
   const t0 = Date.parse(debutISO || '2027-09-15T06:30:00Z');
   const horodatage = () => new Date(t0 + ++S.n * 1000).toISOString();
@@ -101,8 +102,11 @@ export function serveurCommun(debutISO) {
     }
     return { data: un ? null : [] };
   }
-  /* point d'entrée appelé par les pages (exposeFunction) */
-  S.appel = async (dev, sorte, a, b) => {
+  /* COMPTE (12/11/2026) : authentification simulée (tests/faux-auth.mjs), seulement si la suite la demande (serveurCommun(…, { auth: … })) ;
+     sans elle, l'ancien faux client (getSession / signInWithPassword / signOut) reste celui des suites Q, AA et AE */
+  if (opts.auth) S.auth = serveurAuth(Object.assign({ id: COMPTE.id, email: COMPTE.email, mdp: COMPTE.mdp }, opts.auth));
+  /* point d'entrée appelé par les pages (exposeFunction) ; jt = jeton de la session de la page (faux-auth) */
+  S.appel = async (dev, sorte, a, b, jt) => {
     S.enCours[dev] = (S.enCours[dev] || 0) + 1;
     try {
       await new Promise((r) => setTimeout(r, S.latence[dev] == null ? 40 : S.latence[dev])); // un appel réseau n'est jamais instantané
@@ -117,6 +121,9 @@ export function serveurCommun(debutISO) {
         while (S.registrePendu && S.registrePendu[dev]) await new Promise((r) => setTimeout(r, 50));
       }
       if (sorte === 'login') return a && a.email === COMPTE.email && a.password === COMPTE.mdp ? { ok: true } : { ok: false };
+      if (sorte === 'auth') return S.auth ? S.auth.appel(dev, a, b || {}, jt) : { error: { name: 'AuthApiError', status: 404, code: 'not_found', message: 'auth non simulée' } };
+      /* sans session (jeton absent), les données sont refusées comme pour un visiteur non connecté (droits retirés par P6) */
+      if (S.auth && S.auth.exigerJeton && (sorte === 'rpc' || sorte === 'from') && !jt) return { data: null, error: { message: 'permission denied (visiteur non connecté)', code: '42501' } };
       return sorte === 'rpc' ? rpc(dev, a, b || {}) : from(a || {});
     } finally { S.enCours[dev]--; }
   };
@@ -128,7 +135,7 @@ function FAUX_CLIENT(arg) {
   const [DEV, U] = arg;
   const CLE = '__essai_session';
   const session = () => { try { return JSON.parse(localStorage.getItem(CLE) || 'null'); } catch (e) { return null; } };
-  const appel = (s, a, b) => window.__srvCommun(DEV, s, a, b).then((r) => { if (r && r.rejet) throw new TypeError(r.rejet); return r; });
+  const appel = (s, a, b) => window.__srvCommun(DEV, s, a, b, window.__fauxAuthJeton ? window.__fauxAuthJeton() : null).then((r) => { if (r && r.rejet) throw new TypeError(r.rejet); return r; });
   function Q(t) { this.q = { t, eq: [], lim: null, sel: '*' }; }
   Q.prototype.select = function (x) { if (typeof x === 'string') this.q.sel = x; return this; };
   ['order', 'or', 'in', 'gte', 'lte', 'lt', 'gt', 'is', 'neq', 'range', 'update', 'insert', 'upsert', 'delete', 'match', 'filter', 'not', 'like', 'ilike'].forEach((m) => { Q.prototype[m] = function () { return this; }; });
@@ -139,7 +146,7 @@ function FAUX_CLIENT(arg) {
   Q.prototype.then = function (ok, ko) { return appel('from', Object.assign({}, this.q, { mode: 'list' })).then(ok, ko); };
   const client = {
     rpc: (n, p) => appel('rpc', n, p), from: (t) => new Q(t),
-    auth: {
+    auth: window.__fauxAuth || {
       getSession: () => Promise.resolve({ data: { session: session() } }),
       signInWithPassword: ({ email, password }) => appel('login', { email, password }).then((r) => {
         if (!r.ok) return { data: {}, error: { message: 'Invalid login credentials', status: 400 } };
@@ -189,9 +196,10 @@ export async function appareil(S, dev, opts = {}) {
   await p.route(/data\.geopf\.fr/, (r) => r.abort());
   /* modules lents (téléphone au premier chargement, réseau mobile) : chaque next-*.js arrive après un délai */
   if (opts.modulesLents) await p.route(/\/next-[a-z0-9-]+\.(js|css)(\?|$)/, async (r) => { await new Promise((x) => setTimeout(x, opts.modulesLents)); await r.continue(); });
-  await p.exposeFunction('__srvCommun', (d, s, a, b2) => S.appel(d, s, a, b2));
+  await p.exposeFunction('__srvCommun', (d, s, a, b2, jt) => S.appel(d, s, a, b2, jt));
+  if (S.auth) await p.addInitScript(FAUX_AUTH_PAGE, { dev });
   await p.addInitScript(FAUX_CLIENT, [dev, { id: COMPTE.id, email: COMPTE.email }]);
-  if (opts.connecte) await p.addInitScript((u) => { if (!sessionStorage.getItem('__essai_deja')) { sessionStorage.setItem('__essai_deja', '1'); localStorage.setItem('__essai_session', JSON.stringify({ access_token: 'jeton-essai', user: u })); } }, { id: COMPTE.id, email: COMPTE.email });
+  if (opts.connecte) await p.addInitScript((u) => { if (!sessionStorage.getItem('__essai_deja')) { sessionStorage.setItem('__essai_deja', '1'); localStorage.setItem('__essai_session', JSON.stringify(u.session || { access_token: 'jeton-essai', user: u })); } }, S.auth ? { session: S.auth.ouvrirSession(dev, opts.aal) } : { id: COMPTE.id, email: COMPTE.email });
   /* vérification de chaque minute (appareil resté ouvert) : coupée par défaut pour que les rechargements tombent aux moments
      voulus par l'essai ; { verifMinute: true } pour l'essayer (suite Q, parties 9 et 10) */
   if (!opts.verifMinute) await p.addInitScript(() => { window.__cpSansVerifMinute = true; });
