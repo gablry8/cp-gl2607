@@ -47,6 +47,7 @@ export function serveurAuth(o = {}) {
     appels: [],             // {dev, m, a} : le test lit les corps envoyés (données d'essai uniquement)
     decalage: 0,            // ms ajoutées à l'heure du serveur simulé
     exigerJeton: false,     // vrai : les données (état, registre) sont refusées sans jeton, comme pour un visiteur non connecté (P6)
+    retards: {},            // méthode -> ms : le serveur simulé agit tout de suite, sa RÉPONSE arrive après ce délai (COMPTE-bis : enroll retardé)
     n: 0,
   };
   AU.maintenant = () => t0 + AU.decalage;
@@ -70,6 +71,10 @@ export function serveurAuth(o = {}) {
   AU.codeOk = (f, code) => { const t = AU.maintenant(); return [-30000, 0, 30000].some((d) => totp(f.secret, t + d) === String(code)); };
 
   AU.appel = (dev, m, a = {}, jt) => {
+    const res = appelBrut(dev, m, a, jt), ms = AU.retards[m];
+    return ms ? new Promise((ok) => setTimeout(() => ok(res), ms)) : res;
+  };
+  function appelBrut(dev, m, a, jt) {
     AU.appels.push({ dev, m, a: copie(a) });
     const inj = AU.erreurs[m] && AU.erreurs[m].shift(); if (inj) return { error: inj };
     const s = sessionDe(jt);
@@ -145,7 +150,7 @@ export function serveurAuth(o = {}) {
       }
       default: return { error: err(404, 'not_found', 'méthode inconnue du faux serveur : ' + m) };
     }
-  };
+  }
   return AU;
 }
 
@@ -169,6 +174,7 @@ export function FAUX_AUTH_PAGE(arg) {
     ecrire(r.session); notifier('TOKEN_REFRESHED', r.session); return { session: r.session };
   }
   const auth = {
+    storageKey: CLE, // comme la bibliothèque (sb.auth.storageKey) : clé de la session dans le stockage de la page
     async getSession() {
       const s = lire(); if (!s) return { data: { session: null }, error: null };
       if (!expiree(s)) return { data: { session: s }, error: null };
@@ -180,8 +186,12 @@ export function FAUX_AUTH_PAGE(arg) {
       if (r.error) return { data: { user: null, session: null }, error: r.error };
       ecrire(r.session); notifier('SIGNED_IN', r.session); return { data: { user: r.session.user, session: r.session }, error: null };
     },
+    /* comme _signOut de la bibliothèque (vendor/) : la session est d'abord chargée (renouvelée si le jeton a expiré) ; un échec de ce chargement
+       est rendu tel quel (réseau : session laissée dans le stockage ; refus du serveur : renouveler() l'a déjà effacée) ;
+       chargement réussi : local / global effacent la session de cet appareil même si le serveur ne répond pas */
     async signOut(o) {
-      const scope = (o && o.scope) || 'global'; const s = lire();
+      const scope = (o && o.scope) || 'global'; let s = lire();
+      if (s && expiree(s)) { const r = await renouveler(s); if (r.error) return { error: r.error }; s = r.session; } /* refus du serveur : renouveler() a déjà effacé la session */
       let e = null; if (s) { const r = await srv('signOut', { scope }); e = r.error || null; }
       if (scope !== 'others') retirer();
       return { error: e };
@@ -219,6 +229,10 @@ export function FAUX_AUTH_PAGE(arg) {
       /* LOCAL, comme la bibliothèque sans argument : jeton + session.user.factors, aucun appel au serveur */
       async getAuthenticatorAssuranceLevel() {
         window.__fauxAalLocal = (window.__fauxAalLocal || 0) + 1;
+        /* COMPTE-bis : niveau illisible, réglé par le test (stockage de la page, pour qu'il vaille aussi au lancement suivant) */
+        let panne = null; try { panne = localStorage.getItem('__essai_aal_panne'); } catch (e) { console.warn('faux-auth : lecture de la panne', e); }
+        if (panne === 'exception') throw new TypeError('panne simulée du niveau de session');
+        if (panne === 'erreur') return { data: null, error: reseau };
         const s = lire(); if (!s) return { data: { currentLevel: null, nextLevel: null, currentAuthenticationMethods: [] }, error: null };
         const c = charge(s), cur = c.aal || null; const nx = ((s.user && s.user.factors) || []).some((f) => f.status === 'verified') ? 'aal2' : cur;
         return { data: { currentLevel: cur, nextLevel: nx, currentAuthenticationMethods: c.amr || [] }, error: null };
