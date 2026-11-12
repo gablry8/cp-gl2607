@@ -813,9 +813,10 @@ tbody tr:hover{background:#f7f9fd}
         <div class="card"><h2>🧊 Mise en service — options facturables (HT)</h2>
           <div class="warnbox">⚠️ Le prix par raccord (15 €) est une proposition à valider avec ta réalité terrain — un dudgeon propre + serrage au couple prend 5-10 min par raccord.</div>
           <div class="frm" id="paramMesOpt"></div></div>
-        <!-- COMPTE (12/11/2026) : mot de passe, appareils, double authentification (docs/MISSION-COMPTE.md § 3). Rien de ce qui est tapé ici n'est gardé ni synchronisé :
-             data-cp-filtre = pas une « saisie en cours » ; préfixe acc_ = hors de la garde des Paramètres. -->
-        <div class="card" id="acc_carte" data-cp-filtre style="border-top:3px solid #2f6bff"><h2>👤 Mon compte</h2>
+        <!-- COMPTE (12/11/2026) : mot de passe, appareils, double authentification (docs/MISSION-COMPTE.md § 3). Rien de ce qui est tapé ici n'est gardé ni synchronisé ;
+             préfixe acc_ = hors de la garde des Paramètres. Un mot de passe en cours de frappe est une « saisie en cours » : une mise à jour reçue attend le changement d'écran
+             au lieu de recharger la page et d'effacer ce qui est tapé (pas de data-cp-filtre, contrairement à la proposition du dossier § 1.7). -->
+        <div class="card" id="acc_carte" style="border-top:3px solid #2f6bff"><h2>👤 Mon compte</h2>
           <div class="sub" id="acc_etat" style="margin-bottom:12px">—</div>
           <div class="subcard"><h3>Mot de passe</h3>
             <div class="frm">
@@ -4356,7 +4357,7 @@ function cpSaisieEnCours(){for(const t of Array.from(_cpChamps)){if(!t.isConnect
   if(t.type==='checkbox'||t.type==='radio'){if(t.checked!==t.defaultChecked)return true;continue;}
   if(t.value!==t.defaultValue)return true;}
   return false;}
-function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform'||cpSaisieEnCours();}
+function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform'||cpSaisieEnCours()||cpCompteOccupe();}
 function cpMsgAttente(){const v=window._curView;return v==='wizard'||v==='depform'?'☁ mise à jour reçue — appliquée en sortant du formulaire':'☁ mise à jour reçue — appliquée au prochain changement d\'écran';}
 let _cpPushing=false,_cpAgain=false,_cpPendingReload=false,_cpPulling=false;
 async function pullState(){
@@ -4496,10 +4497,10 @@ async function initCloud(){
    Rien de ce qui est tapé (mot de passe, code) n'est gardé : ni stockage, ni journal, ni message, ni console (seuls le nom, le statut HTTP et le code
    d'une erreur sont journalisés). Aucune clé nouvelle dans SYNC_KEYS ni dans le stockage. Les réponses de supabase-js sont RENDUES ({data, error}),
    jamais rejetées : une coupure réseau = erreur « réessayable », status 0 (CLAUDE.md § 6). Q1 = non : aucun contrôle aal2 côté serveur. */
-var _cpCloud='demarrage',_cpReprise=false,_cpAttenteT=null,_cpAttenteEcoute=false,_cpDeconnexionVoulue=false,_cpMdpAttente=null,_cpMfa=null,_cpCodeSuite=null;
+var _cpCloud='demarrage',_cpReprise=false,_cpAttenteT=null,_cpAttenteEcoute=false,_cpDeconnexionVoulue=false,_cpMdpAttente=null,_cpMfa=null,_cpCodeSuite=null,_cpCompteMsgT=0;
 function cpErreurReseau(e){return !!e&&(e.status===0||e.name==='AuthRetryableFetchError'||(!e.status&&/fetch|network/i.test(String(e.message||''))));}
 function cpAuthJournal(quoi,e){console.warn('ClimPilot (COMPTE) '+quoi+' :',(e&&e.name)||'',e&&e.status!=null?e.status:'',(e&&e.code)||'');}
-function cpCompteMsg(id,t,genre){const e=document.getElementById(id);if(!e)return;e.textContent=t||'';e.style.color=genre==='ok'?'var(--green)':genre==='info'?'var(--muted)':'var(--red)';}
+function cpCompteMsg(id,t,genre){const e=document.getElementById(id);if(!e)return;e.textContent=t||'';if(t&&genre!=='info')_cpCompteMsgT=Date.now(); /* résultat d'une demande (pas « Envoi… ») */e.style.color=genre==='ok'?'var(--green)':genre==='info'?'var(--muted)':'var(--red)';}
 function cpCompteCo(id){if(!sb||!SESS){cpCompteMsg(id,'Connecte-toi au cloud d\'abord.');return false;}
   if(navigator.onLine===false){cpCompteMsg(id,'Pas de réseau : rien n\'a changé. Réessaie quand le réseau revient.');return false;}return true;}
 function cpCompteErr(e){const c=String((e&&e.code)||''),st=e&&e.status;
@@ -4541,6 +4542,9 @@ function cpCompteAfficher(){const carte=document.getElementById('acc_carte');if(
   if(li)li.innerHTML=F.map(f=>'<div class="row-actions" style="margin-top:4px"><span style="font-size:13px">📱 '+cpEsc(f.friendly_name||'sans nom')+'</span><button class="btn-ghost btn-sm" data-fid="'+cpEsc(f.id)+'" data-nom="'+cpEsc(f.friendly_name||'sans nom')+'" onclick="cpMfaRetirer(this.dataset.fid,this.dataset.nom)"'+(enLigne?'':' disabled')+'>Retirer</button></div>').join('');
   const ac=document.getElementById('acc_mfa_activer'),se=document.getElementById('acc_mfa_secours'),ins=document.getElementById('acc_mfa_ins'),ouvert=!!(ins&&ins.style.display!=='none');
   if(ac)ac.style.display=(F.length||ouvert)?'none':'';if(se)se.style.display=(F.length&&!ouvert)?'':'none';}
+/* parcours « Mon compte » en cours (activation, code attendu, résultat affiché depuis moins de 20 s) : une mise à jour reçue d'un autre appareil attend
+   le changement d'écran (cpBusyForm), comme pour un formulaire, au lieu de recharger la page au milieu du parcours */
+function cpCompteOccupe(){return window._curView==='params'&&(!!_cpMfa||!!_cpMdpAttente||!!_cpCodeSuite||Date.now()-_cpCompteMsgT<20000);}
 /* quitter les Paramètres : activation en cours annulée (facteur non vérifié retiré), mots de passe en attente oubliés, champs vidés */
 function cpCompteQuitter(){try{if(_cpMfa)cpMfaAnnuler(true);_cpMdpAttente=null;cpCompteMdpCodeBloc(false);cpCodeFermer();cpCompteMdpVider();}catch(e){console.warn('ClimPilot (COMPTE) sortie des Paramètres :',e);}}
 window.addEventListener('online',()=>cpCompteAfficher());window.addEventListener('offline',()=>cpCompteAfficher());
@@ -4698,6 +4702,8 @@ function cpBandeauSession(montrer){let b=document.getElementById('cpBandeauSessi
     const r=document.createElement('button');r.dataset.action='reconnecter';r.className='btn-sm';r.style.cssText='background:#fff;color:#7c2d12';r.textContent='Se reconnecter';r.addEventListener('click',()=>showLogin());b.appendChild(r);
     const f=document.createElement('button');f.dataset.action='fermer';f.className='btn-sm';f.style.cssText='background:transparent;color:#fff;border:1px solid rgba(255,255,255,.55)';f.textContent='Plus tard';f.addEventListener('click',()=>cpBandeauSession(false));b.appendChild(f);
     document.body.appendChild(b);}
+  /* sous la barre d'état de l'iPhone (appli posée sur l'écran d'accueil : contenu sous la barre) et sous la bande rouge de la copie d'essai si elle existe */
+  const bandeEssai=document.getElementById('cpEssaiBandeau');b.style.top=bandeEssai?(Math.round(bandeEssai.getBoundingClientRect().bottom)+8)+'px':'calc(env(safe-area-inset-top, 0px) + 10px)';
   /* pas de nombre : le compteur des écritures est en mémoire et repart à zéro à chaque lancement (le compteur fiable viendra avec AF1-B) */
   let d=false;try{d=!!localStorage.getItem('cp2_dirty');}catch(e){console.warn('ClimPilot (COMPTE) lecture de « à envoyer » :',e);}
   b.firstChild.textContent='Ta connexion au cloud a été fermée (mot de passe changé, appareils déconnectés, ou double authentification activée ailleurs). Tes données sont sur cet appareil ; '

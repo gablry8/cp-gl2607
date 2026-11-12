@@ -7,7 +7,7 @@
 // Compte, mots de passe et clients fictifs. Aucun réseau. Q1 = non (11/11/2026) : aucun contrôle aal2 côté serveur, donc pas d'AH19.
 import { rec, RES, REF, getBrowser, closeBrowser, sansBibliothequesCloud, page } from './lib.mjs';
 import { ecrireResultats, devices, URL_LOCALE } from './env.mjs';
-import { serveurCommun, appareil, seConnecter, calme, pret, lire, couper, retablir, rouvrir, fermerNavigateur, COMPTE } from './banc-appareils.mjs';
+import { serveurCommun, appareil, seConnecter, calme, pret, lire, couper, retablir, rouvrir, revenir, fermerNavigateur, COMPTE } from './banc-appareils.mjs';
 import { totp, VECTEURS_RFC, SECRET_RFC, jeton } from './faux-auth.mjs';
 const G = 'COMPTE';
 const j = (o) => JSON.stringify(o);
@@ -359,6 +359,8 @@ const clientSrv = (S, nom) => ((((S.etat || {}).data || {}).cp2_clients) || []).
     S.coupe.tel = false; const rr = await TEL.p.evaluate(() => window.__fauxAuthRenouveler()); await TEL.p.waitForTimeout(300);
     await TEL.ctx.setOffline(false); await TEL.p.waitForTimeout(400); await calme(S, TEL);
     const v = { rr, bandeau: await present(TEL, '#cpBandeauSession'), login: await loginVisible(TEL), garde: await lire(S, TEL, () => CLIENTS.some((c) => c.nom === 'Client du téléphone hors ligne')), dirty: await lire(S, TEL, () => localStorage.getItem('cp2_dirty')), srv: clientSrv(S, 'Client du téléphone hors ligne') };
+    /* AH21 : tant que le résultat est affiché dans Mon compte, une fusion reçue attend le changement d'écran ; Gab quitte les Paramètres pour travailler */
+    await lire(S, PC, () => { go('dash'); }); await PC.p.waitForTimeout(300); await calme(S, PC);
     const e0 = S.ecritures; await ajouterClient(S, PC, 'Client du PC après'); await pret(S, PC);
     r('AHB1 — PC : « Déconnecter mes autres appareils » ; PC toujours connecté et synchronisé', (await sess(S, PC)).connecte && S.ecritures > e0 && clientSrv(S, 'Client du PC après'), j({ pc: await sess(S, PC) }));
     r('AHB1 — téléphone revenu en ligne, renouvellement refusé : bandeau (pas d\'écran plein), modification hors ligne gardée et pas envoyée sans session', v.rr === 'refus' && v.bandeau && !v.login && v.garde && v.dirty === '1' && !v.srv, j(v));
@@ -401,6 +403,23 @@ const clientSrv = (S, nom) => ((((S.etat || {}).data || {}).cp2_clients) || []).
     r('AHB4 — au retour du réseau : session refusée → bandeau « connexion fermée » (pas d\'écran plein), rien envoyé sans session', !retour.login && retour.bandeau && !retour.srv, j(retour));
     await cliquer(TEL, '#cpBandeauSession button[data-action="reconnecter"]'); await seConnecterCode(S, TEL, mdp, codeJuste(S)); await pret(S, TEL);
     r('AHB4 — reconnexion (mot de passe + code) : la modification faite hors ligne arrive, rien de perdu', clientSrv(S, 'Client AHB4 hors ligne') && clientSrv(S, 'Client après double authentification') && (await sess(S, TEL)).connecte, j({ srv: clientSrv(S, 'Client AHB4 hors ligne') }));
+  });
+  await essai('AH21', async () => {
+    /* trouvé par l'essai automatisé de la copie d'essai (12/11) : une mise à jour reçue de l'autre appareil rechargeait la page au milieu d'un parcours « Mon compte » */
+    await pret(S, PC); await vueParams(S, PC);
+    await PC.p.fill('#acc_mdp_nouv', 'Saisie-en-cours-pas-finie');
+    const ch0 = PC.chargements; await ajouterClient(S, TEL, 'Client pendant la frappe'); await pret(S, TEL);
+    await revenir(S, PC); await PC.p.waitForTimeout(400);
+    const v1 = { recharges: PC.chargements - ch0, valeur: (await valeurs(PC, ['#acc_mdp_nouv']))[0], lbl: await texte(PC, '#cloudLbl') };
+    await PC.p.fill('#acc_mdp_nouv', '');
+    const a = await activerMfa(S, PC, null, '#acc_mfa_secours'); const ch1 = PC.chargements;
+    await ajouterClient(S, TEL, 'Client pendant l\'activation'); await pret(S, TEL);
+    await revenir(S, PC); await PC.p.waitForTimeout(400);
+    const v2 = { activation: a.ok, recharges: PC.chargements - ch1, scan: await present(PC, '#acc_mfa_scan') };
+    await cliquer(PC, '#acc_mfa_annuler'); await PC.p.waitForTimeout(200);
+    await lire(S, PC, () => { go('dash'); }); await PC.p.waitForTimeout(600); await calme(S, PC);
+    const recu = await lire(S, PC, () => CLIENTS.some((c) => c.nom === 'Client pendant l\'activation') && CLIENTS.some((c) => c.nom === 'Client pendant la frappe'));
+    r('AH21 — mise à jour reçue de l\'autre appareil pendant un parcours « Mon compte » (mot de passe en cours de frappe, puis activation en cours) : pas de rechargement, rien d\'effacé, « appliquée au prochain changement d\'écran » ; appliquée en quittant les Paramètres', v1.recharges === 0 && v1.valeur === 'Saisie-en-cours-pas-finie' && /prochain changement d'écran/.test(v1.lbl) && v2.activation && v2.recharges === 0 && v2.scan && recu, j({ v1, v2, recu }));
   });
   r('Aucune erreur JavaScript (banc deux appareils)', PC.errs.length + TEL.errs.length === 0, PC.errs.concat(TEL.errs).join(' | ').slice(0, 400));
   await PC.ctx.close(); await TEL.ctx.close();
