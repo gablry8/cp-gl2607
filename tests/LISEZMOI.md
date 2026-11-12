@@ -314,3 +314,22 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   même sans isolation du noyau ni sur un seul cœur occupé). Dans ce cas la suite écrit une ligne `DIAGNOSTIC rechargement hors ligne — …` (état de la page, service workers,
   requêtes sans réponse) avant de planter comme avant : `run-all.sh` la recopie dans le rapport. Rien d'autre ne change ; la cause reste à trouver (mission OUTILLAGE).
 - `tests/suiteX-mise-a-jour.mjs` : la copie « version N » crée les sous-dossiers listés par `sw.js` (`vendor/tesseract-core/`, `vendor/tessdata/`) avant de copier ; 8 / 8 comme avant.
+
+## Ajouts 12/11/2026 (mission COMPTE — mot de passe, double authentification, appareils, branche `correctif/compte`, compte rendu `docs/COMPTE-COMPTE-RENDU.md`)
+- **faux-auth.mjs** (nouveau) : faux serveur d'authentification Supabase, réponses aux formes de supabase-js 2.117.3 embarqué (relues dans `vendor/`) : `updateUser`, `reauthenticate`,
+  `signOut` et ses portées (`local`, `global`, `others`), `mfa.enroll / challenge / verify / challengeAndVerify / unenroll / listFactors`, `getAuthenticatorAssuranceLevel` **local**,
+  `refreshSession`, `onAuthStateChange` (INITIAL_SESSION, SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED, USER_UPDATED, MFA_CHALLENGE_VERIFIED). Chaque appel REND `{data, error}` ;
+  coupure = `AuthRetryableFetchError`, status 0. Sessions par appareil (révocation : autres appareils, activation de la double authentification), facteurs TOTP, défis,
+  code de ré-authentification « envoyé » lisible par le test, erreurs injectables (`S.auth.injecter`). Code TOTP **calculé par le test** (RFC 6238) depuis la graine
+  publique de l'annexe B de la RFC 6238 ; heure du serveur simulé = `REF.horloge` (+ décalage réglé par le test), jamais la vraie date.
+- **banc-appareils.mjs** : `serveurCommun(debut, { auth: {…} })` active l'authentification simulée (sinon l'ancien faux client, inchangé pour Q, AA et AE) ;
+  `S.auth.exigerJeton = true` : sans session, l'état et le registre sont refusés comme pour un visiteur non connecté ; message de dialogue gardé sur 600 caractères.
+- **suiteAH-compte.mjs** (64 contrôles, ≈ 210 s, sous la CSP réelle) : test du test TOTP ; carte « Mon compte » : AH1 (12 caractères comptés par caractère), AH2, AH3 (corps
+  `{current_password, password}`, champs vidés, mot de passe absent du stockage, du journal, des messages, de l'écran et de la console), AH4 (code par e-mail), AH5 (réponses du
+  serveur), AH6 (hors ligne), AH7 (« Déconnecter mes autres appareils » : portée `others`, une fois), AH8 (« Déconnexion » : portée `local`), AH9 (PC : QR code fabriqué dans
+  l'appli ; iPhone : lien `otpauth://`), AH10 à AH12 (code faux, juste, facteur fantôme), AH11 bis (appareil de secours), AH13 (2e étape de connexion, aucune lecture de l'état
+  avant le code), AH14 (démarrage), AH15 (retrait), Q8 (« Continuer sans connexion »), AH16 (code PIN : témoin + texte), AH17 (session fermée pendant l'usage : bandeau sans
+  nombre, formulaire gardé), AH18 (**vrai** supabase-js, jeton expiré, Supabase injoignable : pas d'écran de connexion, reprise au retour du réseau, ≈ 90 s), AH20 (sans cloud) ;
+  banc deux appareils AHB1 à AHB4 et AH21 (mise à jour reçue pendant un parcours « Mon compte » : pas de rechargement, rien d'effacé) ; test du test du QR code (`cpQr`) : identique module par module à qrcode 8.2 (Python) pour 3 textes × 8 masques (segno 1.6.6 ajoute
+  toujours un octet nul de plus en mode octets : écartée comme référence). Inscrite dans `run-all.sh` et `isolation/rapport.mjs` (`resAH.json`).
+  Rouge sur `main` (`99ddd50`) : 15 / 48 sur les 63 premiers contrôles (témoins verts : TOTP, PIN, CSP, démarrage aal2…) ; AH21 rouge sur `1eeae01` ; vert après : 64 / 0. Journaux rouges hors dépôt.
