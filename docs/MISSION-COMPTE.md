@@ -134,7 +134,7 @@ Forme commune (certain, lu) : chaque appel **rend** `{data, error}` et ne rejett
 - **Inscription** : « Upon verifying a factor, all other sessions are logged out and the current session's authenticator level is promoted to `aal2`. » → **activer la double authentification déconnecte tes autres appareils.** Certain (doc).
 - **Retrait** : un facteur ne se retire qu'avec une session `aal2` ; le niveau ne redescend qu'au renouvellement suivant, ou tout de suite avec `refreshSession()`. Certain (doc).
 - **Niveaux** : `aal1` = mot de passe seul ; `aal2` = mot de passe + code. Inscrit dans le jeton (`aal`) ; un jeton sans `aal` vaut `aal1`. `currentLevel aal1` + `nextLevel aal2` = un facteur existe mais le code n'a pas été donné dans cette session. Certain (doc).
-- **Côté serveur** : « Adding MFA to your app's UI does not in-and-of-itself offer a higher level of security to your users. You also need to enforce the MFA rules in your application's database, APIs […] » (§ 4). Certain (doc).
+- **Côté serveur** : la documentation recommande d'appliquer aussi les règles de double authentification dans la base et les API (§ 4). Contrôle côté serveur : mission FACT (décision Q1 du 11/11/2026). Certain (doc).
 - **Nombre de facteurs** : jusqu'à 10 par compte (« users can enroll multiple factors, with an upper limit of 10 »). Certain (doc).
 - **Changement de mot de passe** (page « Password security ») :
   - option « Require reauthentication when changing password » : sans connexion récente (session créée il y a moins de 24 h), un code (`nonce`) est envoyé et doit accompagner le nouveau mot de passe ; il se demande par `reauthenticate()` ;
@@ -303,13 +303,13 @@ La ligne « État : … · verrouillage auto après 10 min d'inactivité » rest
 
 ### 4.1 Le point de départ
 
-Sans règle côté serveur, la double authentification ne protège que **les écrans de l'appli** : le serveur accepte une session ouverte avec le mot de passe seul (`aal1`), et la documentation le dit (§ 2.3). Une règle serveur rend le code nécessaire pour les actions choisies, quel que soit le chemin utilisé. Certain (doc).
+Une règle serveur rend le code nécessaire pour les actions choisies, quel que soit le chemin utilisé (documentation, § 2.3). Contrôle côté serveur : mission FACT (décision Q1 du 11/11/2026). Certain (doc).
 
 ### 4.2 Les variantes
 
 | Variante | Ce que le serveur exige | À l'usage | Avantages | Inconvénients |
 |---|---|---|---|---|
-| A — rien | rien de plus | code à chaque **nouvelle connexion**, demandé par l'appli | aucune migration ; aucun risque de blocage côté serveur | le mot de passe seul suffit au serveur pour tout |
+| A — rien | rien de plus | code à chaque **nouvelle connexion**, demandé par l'appli | aucune migration ; aucun risque de blocage côté serveur | contrôle côté serveur : mission FACT |
 | B — `aal2` pour l'émission et Super PDP, **seulement si un facteur vérifié existe** (modèle « opted-in » de la doc) | `aal2` dans `cp_emettre_document`, `cp_importer_ancien`, `cp_document_fichiers`, et dans la fonction `superpdp` | comme A dans la pratique : l'appli demande le code à la connexion, la session reste `aal2` à chaque renouvellement (probable), donc une facture émise sur le téléphone **ne redemande pas** le code ; seule une session restée en `aal1` le redemande | factures et envois à la plateforme hors d'atteinte du mot de passe seul ; facteur retiré (procédure § 3.7) → la règle se relâche d'elle-même | migration sur une fonction déjà longue (copie de la version C1) ; une nouvelle erreur à reconnaître dans l'appli ; déploiement de `superpdp` (geste de Gab) |
 | C — code **récent** pour chaque émission | `aal2` **et** un code donné il y a moins de N minutes (horodatage `amr` du jeton, doc) | le code est redemandé avant une facture si le dernier date de plus de N minutes | le plus strict pour les factures | sur le chantier : téléphone sorti à chaque facture ; N à choisir ; plus de cas à tester |
 | D — `aal2` pour **tout** | règles « restrictives » sur toutes les tables ClimPilot + contrôle dans `cp_state_push` et les autres fonctions | un appareil resté en `aal1` ne synchronise plus | le mot de passe seul ne donne plus rien | la plus grosse migration ; risque de « échec synchro » à expliquer ; hors des 4 points (actions sensibles seulement) |
@@ -482,7 +482,7 @@ Sur la copie d'essai (TEST), PC + iPhone, ≈ 30 min.
 
 ## 7. Tes questions (oui / non)
 
-1. **Code exigé par le serveur pour les factures et Super PDP** (variante B du § 4, seulement quand la double authentification est active) ? Ta décision : ce dossier ne tranche pas. Oui = factures et plateforme hors d'atteinte du mot de passe seul, +1 à 1,5 jour, une migration et un déploiement. Non = la double authentification protège les écrans de l'appli seulement (variante A) ; tu pourras ajouter B plus tard.
+1. **Code exigé par le serveur pour les factures et Super PDP** (variante B du § 4, seulement quand la double authentification est active) ? Ta décision : ce dossier ne tranche pas. Oui = variante B dans COMPTE, +1 à 1,5 jour, une migration et un déploiement. Non = variante A ; contrôle côté serveur : mission FACT.
 2. **2e moyen de secours** (2e appareil inscrit, ou clé rangée à part) ? Recommandé : oui (la documentation le recommande ; pas de codes de récupération).
 3. **Durée de session** : garder la durée par défaut (jeton de 1 h, sessions sans limite, seul choix possible sur le plan gratuit) et décider d'une limite au passage au plan Pro (juin 2027) ? Recommandé : oui.
 4. **Mot de passe actuel demandé** pour le changer (réglage « Require current password »), **sans** code par e-mail (« Require reauthentication ») ? Recommandé : oui. L'appli gère quand même le code par e-mail si le serveur le demande.

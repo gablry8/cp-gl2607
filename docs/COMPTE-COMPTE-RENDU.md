@@ -1,18 +1,98 @@
-# COMPTE — mot de passe, double authentification, appareils — compte rendu (12/11/2026)
+# COMPTE — mot de passe, double authentification, appareils — compte rendu (12/11/2026, complété par COMPTE-bis le 12/11)
+
+## COMPTE-bis — conditions C1 à C7 de la relecture P10 (12/11/2026)
+
+> Relecture P10 de COMPTE (ChatGPT GPT-6 Pro, triée par Opus 5.5, 12/11/2026) sur la demande de fusion [gablry8/cp-gl2607#24](https://github.com/gablry8/cp-gl2607/pull/24) (tête `e017bfa`, base `main` = `99ddd50`) : sept conditions, traitées sur la **même branche** `correctif/compte` (ni rebase, ni push forcé, ni fusion). Exécutant : Opus 5.5 (session Claude Code).
+> **Outil Projects absent de cette session** (aucun outil `project_read` / `project_write`) : le compte rendu privé détaillé `claude/ClimPilot-COMPTE-BIS-compte-rendu.md` **n'a pas été écrit** ; la consigne de la mission (résumé de la relecture) a servi de référence.
+> **Rien de fusionné, rien de déployé, aucune base Supabase lue ni écrite, aucun réglage du tableau de bord, rien dans `supabase/`** (Q1 = non).
+> Certitude : **certain** (lu ou exécuté ici), **probable** (déduit), **hypothèse**.
+
+### Ce que Gab décide / fait (10 lignes, à jour)
+1. **Rien à fusionner aujourd'hui** : #24 reste en **brouillon**, branche `correctif/compte` (tête : § B.6). Relecture courte de COMPTE-bis par l'autre modèle si tu la veux (règle 12).
+2. **Sur TEST** (≈ 10 min) : les réglages du tableau de bord du § 7 ; note les valeurs d'avant.
+3. **Ton essai** (§ 8.2, copie d'essai sur TEST, PC + iPhone) : l'**étape 2** (mot de passe actuel faux → « Mot de passe actuel incorrect. ») est **obligatoire avant la fusion** ; nouvelle **étape 16** : « Déconnexion » en mode avion après plus d'une heure, puis réseau revenu → l'iPhone **reste déconnecté**.
+4. **Puis** les mêmes réglages sur le **réel** (§ 7), la fusion, et **le même jour** sur chaque appareil : « ✓ synchronisé », puis F5 (cache **`climpilot-next-1139-production`** ; `VERSION` et `NX_VERSION` inchangés, Q10).
+5. **Ce que COMPTE-bis change pour toi** : « Déconnexion » efface la session de cet appareil, **même hors ligne** ; si l'appli ne peut pas lire le niveau de ta session, elle décide d'après tes appareils de double authentification (code demandé, ou « Vérification impossible : réessaie. ») ; « Annuler » sur le code oublie le nouveau mot de passe en attente ; une activation annulée ou réussie ne laisse **ni QR code ni clé** dans la page ; un retrait qui échoue est **dit à l'écran**.
+6. **Rien ne change dans les montants, mentions et calculs** : golden Y, Z et W identiques ; aucune enveloppe nouvelle.
+7. Contrôle côté serveur : mission FACT.
+8. **Défaut connu, toujours laissé à AF1-B** : « Continuer sans connexion » met l'émission en mode démonstration (§ 3.9) — sans danger tant que la facturation réelle n'a pas démarré.
+9. **Comptes** : suite AH **73 / 22** sur `e017bfa` (les 22 échecs = exactement les nouveaux contrôles C1 à C5), **95 / 0** après ; batterie complète **1 707 / 0 / 0 SKIP** (COMPLET, RÉUSSI) ; `faketime` samedi, dimanche, 05/01/2027 : **95 / 0** aux trois dates ; CI de `a870e4e` (code) **verte sur les deux événements, première tentative** (1 703 / 0 / 2 SKIP connus) ; CI de la tête finale : § B.6.
+10. **Tes gestes hors code** (inchangés) : copier ce compte rendu dans le Project ; supprimer l'ancienne branche `claude/login-password-issue-f7cidd` (Q11).
+
+### B.1 Les sept conditions, ce que l'appli fait maintenant (certain : lu et exécuté)
+| # | Condition | Ce que l'appli fait maintenant |
+|---|---|---|
+| C1 | Niveau de session illisible : jamais d'entrée sans code | `cpNiveau` / `cpCodeNecessaire` (chemins `doLogin` et `cpCloudReprendre`) : si `getAuthenticatorAssuranceLevel` rend une erreur, lève une exception ou ne rend pas de niveau, la décision se prend sur `session.user.factors` : un facteur TOTP vérifié → 2e étape (`cpLoginEtape2`) ; aucun facteur (liste vide ou absente, comme la bibliothèque) → comme avant ; impossible de savoir → « Vérification impossible : réessaie. », ni `SESS` ni `afterLogin`. Bibliothèque sans `sb.auth.mfa` : comme avant. `cpAal2` (actions de « Mon compte ») demande le code quand le niveau est illisible. |
+| C2 | « Déconnexion » efface la session de cet appareil dans tous les cas | `cloudLogout` et `cpLoginRecommencer` passent par `cpSessionFermerIci` : `signOut({ scope: 'local' })` ; si une erreur est rendue et qu'une session reste dans le stockage de la page (clé `sb.auth.storageKey`, et sa variante « -user »), elle est retirée ici, journalisée (`cpAuthJournal`), puis la page se recharge. |
+| C3 | Abandonner le code oublie les mots de passe | « Annuler » du bloc du code (`cpCodeFermer(true)`), la sortie des Paramètres, une nouvelle activation et l'événement `SIGNED_OUT` (`cpAuthEvenement`, sans appel à Supabase dans ce rappel) vident `_cpMdpAttente` et ferment le parcours ; `cpCompteOccupe()` redevient faux. Après un bon code, seul le bloc se ferme et l'action reprend (comme avant). |
+| C4 | Inscription de la double authentification : annulation et nettoyage | (a) numéro de tentative : une réponse d'`enroll` arrivée après « Annuler », la sortie des Paramètres ou une session fermée retire le facteur créé (`unenroll`) et n'affiche rien ; « Continuer » grisé pendant « Préparation… » ; (b) le nettoyage ne retire que les facteurs non vérifiés créés il y a plus de 15 minutes (`created_at`), plus ceux de cet appareil dont le retrait avait échoué ; une inscription en cours sur l'autre appareil est laissée ; (c) retrait en échec à l'annulation : « Le retrait n'a pas abouti : il sera refait au prochain essai. » à l'écran (et en message bref hors des Paramètres), refait au prochain essai. |
+| C5 | Clé TOTP effacée de la page | `cpMfaValider` (réussite) et `cpMfaAnnuler` font le même nettoyage, `cpMfaEffacer` : source de l'image du QR code, texte de la clé, `href` du lien `otpauth://`, champ du code. |
+| C6 | Tests plus stricts | `appelsEtat` compte à part les lectures (`climpilot_state`) et les envois (`cp_state_push`) ; AH13 exige 0 lecture **et** 0 envoi avant le bon code, avec `cp2_dirty` présent et une reprise déclenchée (`online`, `focus`, retour sur l'appli, 65 s d'horloge) ; AH13 bis : « Continuer sans connexion » depuis la 2e étape → 0 lecture, 0 envoi pendant l'usage, retour à la 2e étape au lancement suivant ; les deux `catch (e) {}` de la suite gardent leur erreur dans le diagnostic. |
+| C7 | Documents publics neutres | `docs/COMPTE-COMPTE-RENDU.md`, `docs/MISSION-COMPTE.md`, `docs/FILE-DES-MISSIONS.md`, l'en-tête de la suite AH et le commentaire du bloc COMPTE d'`index.html` : « contrôle côté serveur : mission FACT ». |
+
+### B.2 Tests d'abord : rouge sur `e017bfa`, puis vert (certain : exécutés le 12/11)
+Méthode : tests écrits d'abord (commit « tests d'abord »), joués sur le code d'`e017bfa` dans un arbre de travail séparé (hors dépôt), journal rouge gardé dans le bloc-notes de la session ; puis correction ; puis vert. Rouge final : suite AH **73 réussis / 22 échoués** sur 95 contrôles ; les 22 échecs sont exactement les nouveaux contrôles de C1 à C5 ; les contrôles d'avant restent verts.
+| Condition (contrôles) | Sur `e017bfa` (code d'avant, tests définitifs) | Après (`a870e4e`) |
+|---|---|---|
+| C1 — AH23 (9) | **6 échoués**, 3 réussis (témoin sans facteur, 2 « aucune erreur JavaScript ») | 9 / 0 |
+| C2 — AH22 (6) | **5 échoués**, 1 réussi (« aucune erreur JavaScript ») | 6 / 0 |
+| C3 — AH24 (4) | **4 échoués** | 4 / 0 |
+| C4 — AH25 (7) | **5 échoués**, 2 réussis (retrait refait au prochain essai, aucun facteur restant) | 7 / 0 |
+| C5 — AH26 (2) | **2 échoués** | 2 / 0 |
+| C6 — AH13, AH13 bis (7) | 7 réussis (contrôles plus stricts : ce code ne lisait ni n'envoyait déjà rien avant le bon code — témoins) | 7 / 0 |
+| Contrôles de COMPTE déjà présents (60) | 60 réussis | 60 / 0 |
+| **Total suite AH** | **73 réussis / 22 échoués** (95 contrôles) | **95 / 0** |
+
+### B.3 Correction — `index.html` et `sw.js` seulement
+Fonctions modifiées **sur place** : `doLogin`, `cloudLogout`, `cpNiveau`, `cpCodeNecessaire`, `cpCompteAfficher` (une condition), `cpCompteOccupe`, `cpCompteQuitter`, `cpMfaDebut`, `cpMfaInscrire`, `cpMfaValider`, `cpMfaAnnuler`, `cpCodeFermer`, `cpAuthEvenement`, `cpCloudReprendre`, `cpLoginRecommencer` ; trois aides nouvelles dans le bloc COMPTE (`cpSessionFermerIci`, `cpMfaEffacer`, `cpMfaRetirerNonVerifie`) ; le bouton « Annuler » du bloc du code appelle `cpCodeFermer(true)`. **Aucune enveloppe nouvelle** (golden W inchangé), **aucun `catch` vide**, aucune clé nouvelle dans le stockage ni dans `SYNC_KEYS` (les facteurs à retirer sont gardés en mémoire seulement). `sw.js` : `C` passe de `1138` à **`1139`** (une fois). `VERSION` / `NX_VERSION` inchangés.
+Tests : `tests/faux-auth.mjs` (réponse retardée d'une méthode ; niveau de session en panne ; déconnexion qui charge d'abord la session comme la bibliothèque ; clé `storageKey` exposée) et `tests/suiteAH-compte.mjs` (AH22 à AH26, AH13 et AH13 bis plus stricts).
+
+### B.4 Batterie et horloges (certain)
+- **Suites visées** (`CP_SUITES`, code de `a870e4e`, 12/11) : A 14 / 0 (les boutons répondent sans cloud), AB **86 / 0** (règles de S), C 17 / 0 (`cp2_pin` hors des sauvegardes), Q **64 / 64**, X 8 / 0, W **64 / 0 (golden `enveloppes.json` inchangé : aucune enveloppe nouvelle)**, Y **21 / 0 (golden identiques, les 5 « À TRANCHER » inchangés)**, Z **55 / 0 (identiques)**, AA 16 / 0, AE 26 / 0 : **371 réussis / 0 échoué**, rapport PARTIEL (code 3) par construction.
+- **Batterie complète** (`bash tests/run-all.sh`, un seul passage, arbre propre à `a870e4e`, 12/11) : **COMPLET, RÉUSSI — 1 707 réussis / 0 échoué / 0 SKIP**, 5 non bloquants « À TRANCHER » (suite Y, les mêmes que sur `main`). C'est le compte de COMPTE (1 676) plus les 31 contrôles ajoutés à la suite AH. AH 95 / 0 (326 s), Q 64 / 0 (461 s), X 8 / 0, SQL et fonctions verts.
+- **Indépendance du jour** (règle 9) : suite AH sous `faketime` « 2026-11-14 10:00 » (samedi), « 2026-11-15 10:00 » (dimanche), « 2027-01-05 10:00 » : suite AH **95 / 0 aux trois dates** (rapport PARTIEL, code 3, par construction ; arbre propre à `a870e4e`). La suite ne lit jamais la vraie date (`REF.horloge` pour les pages et le serveur simulé ; les nouveaux contrôles avancent l'horloge de la page, jamais celle de la machine).
+
+### B.5 Ce qui n'a pas pu être vérifié
+- **Le vrai Supabase et de vrais appareils** : comme pour COMPTE (§ 12). En particulier, la déconnexion en mode avion sur un vrai iPhone (étape 16 de ton essai) ; ici, le réseau coupé est simulé (vraie bibliothèque supabase-js 2.117.3 embarquée, requêtes refusées) et l'heure de la page avancée pour couvrir le délai de la bibliothèque.
+- **C1, niveau « impossible de savoir »** : provoqué par le test (session sans utilisateur) ; la bibliothèque réelle ne le rend pas dans les cas observés (probable).
+- **Relecture de COMPTE-bis** par l'autre modèle : pas faite ici (règle 12).
+- **Compte rendu privé** dans le Project : pas écrit (outil absent).
+
+### B.6 Clôture
+- **`git diff --stat e017bfa` → tête de la branche** (hors ce compte rendu) :
+  ```
+  docs/FILE-DES-MISSIONS.md |  10 +-
+  docs/MISSION-COMPTE.md    |   8 +-
+  index.html                | 116 ++++++++++++++------
+  sw.js                     |   2 +-
+  tests/LISEZMOI.md         |  11 +-
+  tests/faux-auth.mjs       |  18 +++-
+  tests/suiteAH-compte.mjs  | 267 +++++++++++++++++++++++++++++++++++++++++++---
+  ```
+  plus `docs/COMPTE-COMPTE-RENDU.md` (cette section, § 7 inchangé, § 8.2 : étape 2 obligatoire et étape 16, deux phrases neutralisées, cache 1139). **Aucun fichier dans `supabase/`, `vendor/`, ni dans une couche `next-*.js`.**
+- **Commits** (adresse `noreply`, en français), poussés **sur `correctif/compte` seulement** : `922fb56` « tests d'abord » ; `a870e4e` « code » ; puis le commit « documents » (tête finale). Le commit « tests d'abord » a été complété **avant tout push** (horloge avancée de 95 s dans AH22 avec la vraie bibliothèque) ; aucun historique publié n'a été réécrit.
+- **CI** (`.github/workflows/tests.yml`, contrôle « batterie complète ») : `a870e4e` (code) — push (run 43322001351) et demande de fusion (run 43322011099) **verts, première tentative** ; rapport lu : COMPLET, RÉUSSI, **1 703 réussis / 0 échoué / 2 SKIP connus** (isolation du noyau absente sur le runner), 5 non bloquants ; suite X 8 / 0 (pas de plantage, aucune relance). Tête finale (« documents ») : résultat dans la description de la demande de fusion #24 et dans le message de fin de session.
+- **Contrôle des secrets** : `bash tools/claude/verif-secrets.sh` avant chaque commit, `--branche` avant chaque push : **rien signalé**, aucune dérogation `CP_SECRETS_OK`. Données des tests : compte `essai@exemple.invalid`, graine TOTP **publique** de la RFC 6238, clients fictifs.
+- **Écarts à connaître** : (1) AH22 avec la vraie bibliothèque : l'horloge de la page est avancée de 95 s après le retour du réseau (ajouté après le premier passage rouge, pour couvrir les délais de reprise de la bibliothèque et de l'appli dans la fenêtre d'observation) ; preuve rouge refaite avec la suite définitive : mêmes 73 / 22 ; (2) C1 couvre aussi une réponse **sans niveau** (jeton sans `aal`) : décision par les facteurs, comme pour une erreur ; (3) C3 vaut aussi à la sortie des Paramètres et au début d'une nouvelle activation ; message « Changement du mot de passe abandonné : rien n'a changé. » ; (4) C4 (b) : les facteurs de cet appareil dont le retrait a échoué sont gardés **en mémoire** (pas dans le stockage) et retirés au prochain essai, même s'ils ont moins de 15 minutes — c'est ce qui rend vrai le message « il sera refait au prochain essai » ; après un rechargement, la règle des 15 minutes prend le relais ; (5) C5 vide aussi le champ du code et masque le lien ; (6) les preuves rouges ont tourné dans un arbre de travail séparé, hors dépôt (code d'`e017bfa` + tests définitifs), et la batterie dans un arbre propre à `a870e4e`, pour pouvoir écrire les documents pendant ce temps.
+- **Jamais** : push sur `main`, fusion, push forcé, réécriture d'historique publié, suppression de branche, déploiement, écriture Supabase, réglage du tableau de bord.
+
+---
+
+# COMPTE (12/11/2026, avant la relecture P10)
 
 > Branche `correctif/compte`, partie de `main` = `99ddd50` (S fusionnée : `cpIdsValider` présent, cache `climpilot-next-1137-production`). Exécutant : Opus 5.5 (session Claude Code). Dossier : `docs/MISSION-COMPTE.md` ; accord écrit de Gab du 11/11/2026 (Q1 = non ; Q2 à Q11 = oui ; variantes C et D écartées) ; points de la relecture du dossier par Fable 5.1 (10/11) appliqués.
 > **Outil Projects absent de cette session** : rien n'a été lu ni écrit dans le Project ; la copie `claude/ClimPilot-COMPTE-compte-rendu.md` reste à faire (Gab ou la prochaine session qui a l'outil).
 > **Rien de fusionné, rien de déployé, aucune base Supabase lue ni écrite (RÉEL ou TEST), aucun réglage du tableau de bord touché, rien dans `supabase/`** (Q1 = non). Seule lecture extérieure : la documentation publique de Supabase (outil officiel de recherche), le 12/11.
 > Certitude : **certain** (lu ou exécuté ici), **probable** (déduit), **hypothèse**.
 
-## Ce que Gab décide / fait (10 lignes)
+## Ce que Gab décide / fait (10 lignes, état du 12/11 avant COMPTE-bis : la liste à jour est en tête de la section « COMPTE-bis » ci-dessus)
 1. **Fais relire COMPTE par Fable 5.1** (relecture P10, après le 15/11) : demande de fusion **[gablry8/cp-gl2607#24](https://github.com/gablry8/cp-gl2607/pull/24)** en brouillon. Rien n'est fusionné ni déployé.
 2. **Sur TEST** (≈ 10 min) : les réglages du tableau de bord du § 7 (12 caractères, mot de passe actuel demandé, pas de code par e-mail, TOTP activé, e-mails de sécurité). Note les valeurs d'avant.
 3. **Ton essai** (≈ 30 min, § 8.2, copie d'essai, iPhone + PC) : surtout l'étape 2 (un mot de passe actuel faux doit être refusé : la documentation Supabase se contredit sur le nom du champ, § 3.2) et l'étape 9 (le lien « Ouvrir dans l'application » sur l'iPhone : hypothèse). Renvoie-moi les résultats listés en fin de § 8.2.
 4. **Puis** les mêmes réglages sur le **réel**, la fusion, et **le même jour** sur chaque appareil : « ✓ synchronisé », puis F5 (cache `climpilot-next-1138-production` ; `VERSION` et `NX_VERSION` inchangés, Q10).
 5. **Ensuite, un jour sans chantier** : active la double authentification **depuis le PC** (elle déconnecte tes autres appareils : règle de Supabase), reconnecte le téléphone avec le code, ajoute un appareil de secours (Q2). Garde la procédure « téléphone perdu » (§ 10).
 6. **À savoir dès la fusion** : « Déconnexion » ne ferme plus que l'appareil où tu cliques ; un téléphone ouvert sans réseau ne bloque plus sur l'écran de connexion ; une session fermée ailleurs donne un bandeau, jamais un écran plein.
-7. **Rien ne change dans les montants, mentions et calculs** : golden Y et Z identiques, suite W sans enveloppe nouvelle ; aucune ligne dans `supabase/` (Q1 = non : le contrôle `aal2` côté serveur viendra avec la mission FACT, avant la première vraie facture).
+7. **Rien ne change dans les montants, mentions et calculs** : golden Y et Z identiques, suite W sans enveloppe nouvelle ; aucune ligne dans `supabase/` (Q1 = non ; contrôle côté serveur : mission FACT).
 8. **Défaut connu, laissé à AF1-B** : « Continuer sans connexion » met l'émission en mode démonstration (C-N3, § 3.9) — sans danger aujourd'hui, la facturation réelle n'a pas démarré.
 9. **Comptes** : suite AH rouge sur `main` 15 / 48, verte 64 / 0 ; batterie complète 1 676 / 0 / 0 SKIP (COMPLET, RÉUSSI) ; CI verte sur les deux événements (`df7f9ff` : 1 672 / 0 / 2 SKIP connus, première tentative ; `bff78cb` : push vert, demande de fusion verte à la 2e tentative après un plantage de la seule suite X, § 5.4) ; essai automatisé de la copie d'essai 15 / 15 (il a trouvé deux défauts, corrigés : § 6).
 10. **Tes gestes hors code** : supprimer l'ancienne branche `claude/login-password-issue-f7cidd` (Q11 ; son « mot de passe oublié par e-mail » est noté dans `docs/APRES-PRO-V1.md`) ; copier ce compte rendu dans le Project (`claude/ClimPilot-COMPTE-compte-rendu.md`). Mission suivante d'après la file : P11.
@@ -153,7 +233,7 @@ Mot de passe trop court, changement réussi, proposition « autres appareils »,
 ### 8.2 À faire par toi, sur l'iPhone et le PC
 Avant de commencer : réglages du § 7 faits sur **TEST** ; copie d'essai construite depuis cette branche (`bash tools/essai/construire-copie-essai.sh`, `essai-config.js` rempli avec TEST, comme d'habitude) et ouverte sur le PC **et** sur l'iPhone, connectée ; une application d'authentification sur l'iPhone (celle de « Mots de passe » suffit). Note l'heure de chaque étape.
 1. **PC** : Paramètres › Mon compte. Attendu : « Connecté au cloud : » suivi de ton adresse.
-2. **PC** : mot de passe actuel **faux**, nouveau de 12 caractères ou plus (deux fois), « Changer le mot de passe ». Attendu : « Mot de passe actuel incorrect. » — **c'est le point que la machine n'a pas pu vérifier** (réglage Q4 et nom du champ, § 3.2). Si tu vois « ✓ Mot de passe changé » : le serveur n'a pas vérifié l'ancien → dis-le moi (réglage pas pris, ou nom du champ). Si tu vois « Erreur du serveur (HTTP …) : … » : recopie le texte exact.
+2. **(Obligatoire avant la fusion — COMPTE-bis.)** **PC** : mot de passe actuel **faux**, nouveau de 12 caractères ou plus (deux fois), « Changer le mot de passe ». Attendu : « Mot de passe actuel incorrect. » — **c'est le point que la machine n'a pas pu vérifier** (réglage Q4 et nom du champ, § 3.2). Si tu vois « ✓ Mot de passe changé » : le serveur n'a pas vérifié l'ancien → dis-le moi (réglage pas pris, ou nom du champ). Si tu vois « Erreur du serveur (HTTP …) : … » : recopie le texte exact.
 3. **PC** : mot de passe actuel juste, nouveau de 12 caractères ou plus. Attendu : « ✓ Mot de passe changé… » et le bouton « Déconnecter aussi mes autres appareils ». Note le nouveau mot de passe dans ton gestionnaire. Attendu par e-mail (si l'étape 4 du § 7 est faite) : « Your password was changed ».
 4. **iPhone**, sans rien toucher pendant 5 minutes : regarde si un bandeau « Ta connexion au cloud a été fermée » apparaît **déjà** (le changement de mot de passe seul ferme-t-il les autres sessions ? la documentation est vague, risque R10). Note oui / non.
 5. **PC** : clique « Déconnecter aussi mes autres appareils » → la confirmation dit « Cet appareil reste connecté » → OK. Attendu : « ✓ Tes autres appareils sont déconnectés (effet complet en 1 heure au plus). » Puis **iPhone** : dans l'heure (ou en rouvrant l'appli plus d'une heure après), bandeau « Ta connexion au cloud a été fermée… » en haut, **pas** d'écran plein ; tes devis et clients toujours là. Note le délai constaté.
@@ -167,17 +247,18 @@ Avant de commencer : réglages du § 7 faits sur **TEST** ; copie d'essai constr
 13. **iPhone** : mode avion, attends **plus d'une heure**, rouvre la copie d'essai. Attendu : l'appli s'ouvre sur tes données, étiquette « ⌛ hors ligne — connexion au retour du réseau » (dans le menu ☰), **pas** d'écran de connexion. Retire le mode avion. Attendu : en une minute environ, l'étiquette repasse à « ✓ synchronisé », sans rien taper.
 14. **PC** : « Déconnexion » → sur l'écran de connexion, « Continuer sans connexion ». Attendu : l'appli s'ouvre, étiquette « ⏸ synchro en pause — non connecté ». Puis Paramètres › Mon compte › « Se connecter ».
 15. *(Recommandé, 10 min de plus)* Procédure « téléphone perdu » sur **TEST** avec un **compte d'essai** (pas le tien) : active la double authentification sur ce compte, puis applique le § 10, étape 2 (a, sinon b). Attendu : reconnexion avec le mot de passe seul.
+16. *(COMPTE-bis)* **iPhone** : connecté, puis mode avion ; attends **plus d'une heure** ; rouvre la copie d'essai (étiquette « ⌛ hors ligne » dans le menu ☰) ; menu ☰ › « Déconnexion » → OK. Attendu : l'appli se recharge sur l'**écran de connexion**. Retire le mode avion et attends 2 minutes sans rien toucher. Attendu : l'iPhone **reste déconnecté** (écran de connexion, aucune synchro) ; le PC, lui, reste connecté. Puis reconnecte l'iPhone normalement.
 
-Ce que j'ai besoin que tu me renvoies : le résultat des étapes **2** (message exact), **4** (oui / non), **5** (délai), **9** (lien ou copie de la clé), **15**, et le texte de tout message « Erreur du serveur ». Tout le reste : « conforme » suffit.
+Ce que j'ai besoin que tu me renvoies : le résultat des étapes **2** (message exact ; obligatoire avant la fusion), **16** (reste déconnecté : oui / non), **4** (oui / non), **5** (délai), **9** (lien ou copie de la clé), **15**, et le texte de tout message « Erreur du serveur ». Tout le reste : « conforme » suffit.
 
 ## 9. Ordre de déploiement (dossier § 6.3, adapté à Q1 = non)
 1. ~~S fusionnée, F5 partout~~ (fait).
 2. Branche `correctif/compte` : tests rouges (journal gardé), code, suite AH, batterie complète, CI verte — **fait** (§ 4 et § 5) ; **relecture P10 par l'autre modèle (Fable 5.1, après le 15/11)** : à venir.
 3. Toi, sur **TEST** : réglages du § 7 ; essai du § 8.2 ; procédure « téléphone perdu » répétée sur TEST avec un compte d'essai (§ 10, étape 2).
 4. Mêmes réglages sur le **réel** (§ 7, étapes 2 à 5).
-5. Fusion de la demande de fusion ; le même jour, sur chaque appareil : attendre « ✓ synchronisé », puis F5 (cache `climpilot-next-1138-production`).
+5. Fusion de la demande de fusion ; le même jour, sur chaque appareil : attendre « ✓ synchronisé », puis F5 (cache `climpilot-next-1139-production` depuis COMPTE-bis).
 6. **Un jour sans chantier** : activer la double authentification **depuis le PC** ; reconnecter le téléphone avec le code ; ajouter le moyen de secours (Q2).
-7. (Q1 = non) Pas de script serveur ni de déploiement de fonction dans COMPTE : le contrôle `aal2` côté serveur arrivera avec la mission FACT, avant la première vraie facture.
+7. (Q1 = non) Pas de script serveur ni de déploiement de fonction dans COMPTE ; contrôle côté serveur : mission FACT.
 
 ## 10. Téléphone perdu : procédure (dossier § 3.7)
 Aussi dans l'appli : lien « Je n'ai plus mon téléphone » (2e étape de connexion) et « Téléphone perdu ? » (Mon compte).

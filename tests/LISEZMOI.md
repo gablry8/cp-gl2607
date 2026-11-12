@@ -324,7 +324,7 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   publique de l'annexe B de la RFC 6238 ; heure du serveur simulé = `REF.horloge` (+ décalage réglé par le test), jamais la vraie date.
 - **banc-appareils.mjs** : `serveurCommun(debut, { auth: {…} })` active l'authentification simulée (sinon l'ancien faux client, inchangé pour Q, AA et AE) ;
   `S.auth.exigerJeton = true` : sans session, l'état et le registre sont refusés comme pour un visiteur non connecté ; message de dialogue gardé sur 600 caractères.
-- **suiteAH-compte.mjs** (64 contrôles, ≈ 210 s, sous la CSP réelle) : test du test TOTP ; carte « Mon compte » : AH1 (12 caractères comptés par caractère), AH2, AH3 (corps
+- **suiteAH-compte.mjs** (64 contrôles à COMPTE, 95 depuis COMPTE-bis ; ≈ 210 puis ≈ 340 s ; sous la CSP réelle) : test du test TOTP ; carte « Mon compte » : AH1 (12 caractères comptés par caractère), AH2, AH3 (corps
   `{current_password, password}`, champs vidés, mot de passe absent du stockage, du journal, des messages, de l'écran et de la console), AH4 (code par e-mail), AH5 (réponses du
   serveur), AH6 (hors ligne), AH7 (« Déconnecter mes autres appareils » : portée `others`, une fois), AH8 (« Déconnexion » : portée `local`), AH9 (PC : QR code fabriqué dans
   l'appli ; iPhone : lien `otpauth://`), AH10 à AH12 (code faux, juste, facteur fantôme), AH11 bis (appareil de secours), AH13 (2e étape de connexion, aucune lecture de l'état
@@ -333,3 +333,12 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   banc deux appareils AHB1 à AHB4 et AH21 (mise à jour reçue pendant un parcours « Mon compte » : pas de rechargement, rien d'effacé) ; test du test du QR code (`cpQr`) : identique module par module à qrcode 8.2 (Python) pour 3 textes × 8 masques (segno 1.6.6 ajoute
   toujours un octet nul de plus en mode octets : écartée comme référence). Inscrite dans `run-all.sh` et `isolation/rapport.mjs` (`resAH.json`).
   Rouge sur `main` (`99ddd50`) : 15 / 48 sur les 63 premiers contrôles (témoins verts : TOTP, PIN, CSP, démarrage aal2…) ; AH21 rouge sur `1eeae01` ; vert après : 64 / 0. Journaux rouges hors dépôt.
+  **COMPTE-bis (12/11/2026, conditions C1 à C7 de la relecture P10)** : AH22 (« Déconnexion » hors ligne au jeton expiré : session de cet appareil effacée, l'appareil
+  reste déconnecté au retour du réseau ; sur le banc ET avec le **vrai** supabase-js, horloge de la page avancée de 95 s), AH23 (niveau de session illisible — erreur ou
+  exception — : décision par `session.user.factors`, 2e étape, 0 lecture et 0 envoi, dans `doLogin` et au démarrage ; témoin sans facteur), AH24 (« Annuler » du code et
+  `SIGNED_OUT` : mot de passe en attente oublié, mise à jour reçue appliquée sans quitter les Paramètres), AH25 (réponse d'`enroll` après « Annuler » ou la sortie des
+  Paramètres : facteur retiré, rien d'affiché ; « Continuer » grisé ; nettoyage limité aux facteurs non vérifiés de plus de 15 minutes ; retrait en échec dit à l'écran),
+  AH26 (clé TOTP absente de `document.documentElement.outerHTML` après une activation réussie ou annulée), AH13 et AH13 bis plus stricts (lectures et envois de l'état
+  comptés à part, reprise déclenchée ; « Continuer sans connexion » depuis la 2e étape). `faux-auth.mjs` : `S.auth.retards[méthode]` (réponse retardée), panne du niveau
+  de session (`localStorage.__essai_aal_panne` = `erreur` | `exception`), `signOut` qui charge d'abord la session comme la bibliothèque, `storageKey`.
+  Rouge sur `e017bfa` : 73 réussis / 22 échoués sur 95 contrôles (les 22 = exactement les nouveaux contrôles de C1 à C5 ; ceux de C6 sont des témoins verts) ; vert après : 95 / 0 (≈ 340 s). Journaux rouges hors dépôt.
