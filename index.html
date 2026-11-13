@@ -813,8 +813,65 @@ tbody tr:hover{background:#f7f9fd}
         <div class="card"><h2>🧊 Mise en service — options facturables (HT)</h2>
           <div class="warnbox">⚠️ Le prix par raccord (15 €) est une proposition à valider avec ta réalité terrain — un dudgeon propre + serrage au couple prend 5-10 min par raccord.</div>
           <div class="frm" id="paramMesOpt"></div></div>
+        <!-- COMPTE (12/11/2026) : mot de passe, appareils, double authentification (docs/MISSION-COMPTE.md § 3). Rien de ce qui est tapé ici n'est gardé ni synchronisé ;
+             préfixe acc_ = hors de la garde des Paramètres. Un mot de passe en cours de frappe est une « saisie en cours » : une mise à jour reçue attend le changement d'écran
+             au lieu de recharger la page et d'effacer ce qui est tapé (pas de data-cp-filtre, contrairement à la proposition du dossier § 1.7). -->
+        <div class="card" id="acc_carte" style="border-top:3px solid #2f6bff"><h2>👤 Mon compte</h2>
+          <div class="sub" id="acc_etat" style="margin-bottom:12px">—</div>
+          <div class="subcard"><h3>Mot de passe</h3>
+            <div class="frm">
+              <label>Mot de passe actuel<input type="password" id="acc_mdp_actuel" autocomplete="current-password"></label>
+              <label>Nouveau (12 caractères au moins)<input type="password" id="acc_mdp_nouv" autocomplete="new-password"></label>
+              <label>Confirme-le<input type="password" id="acc_mdp_conf" autocomplete="new-password"></label>
+              <label id="acc_mdp_code_bloc" style="display:none">Code reçu par e-mail<input id="acc_mdp_code" inputmode="numeric" autocomplete="one-time-code" maxlength="10"></label>
+            </div>
+            <div class="row-actions" style="margin-top:10px">
+              <button class="btn-dark btn-sm" id="acc_mdp_btn" onclick="cpCompteMdp()">🔑 Changer le mot de passe</button>
+              <button class="btn-dark btn-sm" id="acc_mdp_code_btn" style="display:none" onclick="cpCompteMdpCode()">Valider le code</button>
+              <button class="btn-ghost btn-sm" id="acc_mdp_renvoi" style="display:none" onclick="cpCompteMdpRenvoi()">Renvoyer un code</button>
+            </div>
+            <div id="acc_mdp_msg" role="status" style="margin-top:8px;font-size:12.5px;font-weight:600"></div></div>
+          <div class="subcard"><h3>Appareils</h3>
+            <div class="row-actions"><button class="btn-dark btn-sm" id="acc_autres_btn" onclick="cpCompteAutres()">📵 Déconnecter mes autres appareils</button></div>
+            <div class="sub" style="margin-top:8px">Téléphone, autres ordinateurs, autres navigateurs : ils gardent leurs données mais devront se reconnecter. Cela coupe l'accès au serveur, pas les données déjà présentes sur un appareil perdu : pour elles, compte sur le verrouillage du téléphone lui-même. Le lien « Déconnexion » du menu ne déconnecte que cet appareil.</div>
+            <div id="acc_app_msg" role="status" style="margin-top:8px;font-size:12.5px;font-weight:600"></div></div>
+          <div class="subcard"><h3>Double authentification</h3>
+            <div id="acc_mfa_etat" style="font-size:13px">—</div>
+            <div id="acc_mfa_liste" style="margin-top:8px"></div>
+            <div class="row-actions" style="margin-top:10px">
+              <button class="btn-dark btn-sm" id="acc_mfa_activer" onclick="cpMfaDebut('iPhone')">🛡️ Activer la double authentification</button>
+              <button class="btn-ghost btn-sm" id="acc_mfa_secours" style="display:none" onclick="cpMfaDebut('Secours')">➕ Ajouter un appareil de secours</button>
+            </div>
+            <div id="acc_mfa_ins" style="display:none;margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+              <div class="sub" id="acc_mfa_intro" style="margin-bottom:10px"></div>
+              <div class="frm" id="acc_mfa_nom_bloc"><label>Nom de l'appareil<input id="acc_mfa_nom" maxlength="40" autocomplete="off"></label></div>
+              <div id="acc_mfa_scan" style="display:none">
+                <div class="sub" id="acc_mfa_conseil" style="margin-bottom:8px"></div>
+                <img id="acc_mfa_qr" alt="QR code à scanner avec l'application d'authentification" width="220" height="220" style="display:none;background:#fff;border:1px solid var(--line);border-radius:8px;image-rendering:pixelated">
+                <a id="acc_mfa_lien" class="btn-dark btn-sm" style="display:none;text-decoration:none;padding:9px 14px;border-radius:10px;margin:4px 0">📲 Ouvrir dans l'application d'authentification</a>
+                <div class="sub" id="acc_mfa_cle_txt" style="margin-top:8px">Si le scan ne marche pas, tape cette clé dans l'application :</div>
+                <div class="row-actions"><code id="acc_mfa_cle" style="font-size:14px;letter-spacing:.06em;user-select:all"></code><button class="btn-ghost btn-sm" id="acc_mfa_copier" onclick="cpMfaCopier()">Copier</button></div>
+                <div class="frm" style="margin-top:10px"><label>Code à 6 chiffres affiché par l'application<input id="acc_mfa_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" onkeydown="if(event.key==='Enter')cpMfaValider()"></label></div>
+              </div>
+              <div class="row-actions" style="margin-top:10px">
+                <button class="btn-dark btn-sm" id="acc_mfa_go" onclick="cpMfaInscrire()">Continuer</button>
+                <button class="btn-dark btn-sm" id="acc_mfa_valider" style="display:none" onclick="cpMfaValider()">Valider</button>
+                <button class="btn-ghost btn-sm" id="acc_mfa_annuler" onclick="cpMfaAnnuler()">Annuler</button>
+              </div></div>
+            <div id="acc_code_bloc" style="display:none;margin-top:12px;border-top:1px solid var(--line);padding-top:12px">
+              <div class="sub" id="acc_code_txt"></div>
+              <div class="frm" style="margin-top:8px"><select id="acc_code_facteur" style="display:none" aria-label="Appareil qui donne le code"></select><label>Code de double authentification<input id="acc_code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" onkeydown="if(event.key==='Enter')cpCodeValider()"></label></div>
+              <div class="row-actions" style="margin-top:8px"><button class="btn-dark btn-sm" id="acc_code_btn" onclick="cpCodeValider()">Valider</button><button class="btn-ghost btn-sm" id="acc_code_annuler" onclick="cpCodeFermer(true)">Annuler</button></div></div>
+            <div id="acc_mfa_msg" role="status" style="margin-top:8px;font-size:12.5px;font-weight:600"></div>
+            <details style="margin-top:10px;font-size:12.5px"><summary style="cursor:pointer;font-weight:600">Téléphone perdu ?</summary>
+              <ol style="margin:8px 0 0 18px;padding:0;line-height:1.5">
+                <li>Avec ton appareil de secours (ou la clé gardée à part) : connecte-toi, puis ici : retire l'appareil perdu, « Déconnecter mes autres appareils », change le mot de passe.</li>
+                <li>Sans moyen de secours : depuis un ordinateur, tableau de bord Supabase du projet, Authentication › Users › ton compte : retire la double authentification (procédure détaillée dans le compte rendu de la mission COMPTE), puis reconnecte-toi avec le mot de passe seul.</li>
+                <li>Note la perte dans le registre RGPD (violations de données) : le téléphone contenait des données de clients.</li>
+              </ol></details></div>
+        </div>
         <div class="card" style="border-top:3px solid #0d9aaa"><h2>🔐 Sécurité — code d'accès</h2>
-          <div class="warnbox" style="background:var(--blue-soft);border-color:#bcd3ff;color:#1d4fd0">💡 Le code protège l'appli des regards (PC prêté, écran ouvert au dépôt). Sois honnête avec toi-même : ce n'est <b>pas</b> un chiffrement — tes données restent uniquement sur cet ordinateur, la vraie protection c'est la sauvegarde JSON régulière + le verrouillage de ta session Windows.</div>
+          <div class="warnbox" style="background:var(--blue-soft);border-color:#bcd3ff;color:#1d4fd0"><span>🔐 Ce code cache l'appli aux regards : écran resté ouvert, PC prêté, téléphone posé sur le chantier. <b>Il ne protège pas d'un vol</b> : ce n'est pas un chiffrement, il ne vaut que sur cet appareil, et « Code oublié ? » le retire sans autre preuve (tes données ne sont jamais perdues). La connexion au cloud reste ouverte derrière lui. Contre un vol ou une perte : le verrouillage de l'appareil lui-même (code ou Face ID du téléphone, session de l'ordinateur), puis, depuis un autre appareil, « Déconnecter mes autres appareils » et un nouveau mot de passe (Mon compte).</span></div>
           <div class="sub" style="margin-bottom:10px">État : <b id="secuStatus">—</b> · verrouillage auto après 10 min d'inactivité</div>
           <div class="frm">
             <label>Code actuel (si déjà défini)<input type="password" id="pin_cur" inputmode="numeric" maxlength="8" placeholder="••••"></label>
@@ -897,10 +954,25 @@ tbody tr:hover{background:#f7f9fd}
     <div style="font-size:34px">🌬️</div>
     <h3 style="margin:0 0 4px;font-size:18px">ClimPilot</h3>
     <div style="font-size:12px;color:var(--muted);margin-bottom:14px">Connecte-toi pour retrouver tes données sur tous tes appareils</div>
+    <div id="logEtape1">
     <input id="logEmail" type="email" autocomplete="username" placeholder="Email" style="width:100%;padding:11px;border:2px solid var(--line2);border-radius:10px;font-size:14px;margin-bottom:8px">
     <input id="logPass" type="password" autocomplete="current-password" placeholder="Mot de passe" style="width:100%;padding:11px;border:2px solid var(--line2);border-radius:10px;font-size:14px" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <!-- COMPTE (12/11/2026) : 2e étape quand la double authentification est active (le mot de passe est déjà vérifié ; rien n'est lu ni envoyé avant le bon code) -->
+    <div id="logEtape2" style="display:none;text-align:left">
+      <div style="font-size:13px;font-weight:700;margin-bottom:4px">Code de double authentification</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:8px">6 chiffres, dans ton application d'authentification.</div>
+      <select id="logFacteur" style="display:none;margin-bottom:8px" aria-label="Appareil qui donne le code"></select>
+      <input id="logCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="width:100%;padding:11px;border:2px solid var(--line2);border-radius:10px;font-size:18px;letter-spacing:.2em;text-align:center" onkeydown="if(event.key==='Enter')cpLoginCode()">
+    </div>
     <div id="logMsg" style="color:var(--red);font-size:12px;font-weight:700;min-height:16px;margin-top:8px"></div>
-    <button onclick="doLogin()" style="width:100%;margin-top:6px;padding:12px;border:none;border-radius:10px;background:#0d6e7c;color:#fff;font-weight:700;font-size:14px;cursor:pointer">Se connecter</button>
+    <button id="logBtn" onclick="doLogin()" style="width:100%;margin-top:6px;padding:12px;border:none;border-radius:10px;background:#0d6e7c;color:#fff;font-weight:700;font-size:14px;cursor:pointer">Se connecter</button>
+    <button id="logCodeBtn" onclick="cpLoginCode()" style="display:none;width:100%;margin-top:6px;padding:12px;border:none;border-radius:10px;background:#0d6e7c;color:#fff;font-weight:700;font-size:14px;cursor:pointer">Valider le code</button>
+    <div id="logLiens2" style="display:none;margin-top:10px;font-size:12px"><a id="logTelPerdu" onclick="cpTelPerdu()" style="cursor:pointer;color:#0d6e7c;text-decoration:underline">Je n'ai plus mon téléphone</a> · <a onclick="cpLoginRecommencer()" style="cursor:pointer;color:#0d6e7c;text-decoration:underline">Recommencer</a></div>
+    <div id="logTelPerduTxt" style="display:none;text-align:left;margin-top:10px;font-size:11.5px;line-height:1.5;color:var(--ink);background:#f6f8fb;border-radius:10px;padding:10px 12px">
+      <b>Téléphone perdu</b><br>1. Avec ton appareil de secours (ou la clé gardée à part) : donne son code ici, puis Paramètres › Mon compte : retire l'appareil perdu, « Déconnecter mes autres appareils », change le mot de passe.<br>2. Sans moyen de secours : depuis un ordinateur, tableau de bord Supabase du projet, Authentication › Users › ton compte : retire la double authentification (procédure du compte rendu de la mission COMPTE), puis reconnecte-toi avec le mot de passe seul.<br>3. Note la perte dans le registre RGPD (violations de données).</div>
+    <button id="logSansCo" onclick="cpLoginSansConnexion()" style="display:none;width:100%;margin-top:8px;padding:10px;border:1px solid var(--line2);border-radius:10px;background:#fff;color:var(--ink);font-weight:600;font-size:13px;cursor:pointer">Continuer sans connexion</button>
+    <div id="logSansCoTxt" style="display:none;font-size:10.5px;color:var(--muted);margin-top:4px">Tes données de cet appareil, synchro en pause jusqu'à ta connexion.</div>
     <div style="margin-top:12px;font-size:10.5px;color:var(--muted);line-height:1.5">Compte créé dans Supabase (Authentication → Users).<br>Mot de passe oublié : réinitialise-le au même endroit.</div>
   </div>
 </div>
@@ -1292,6 +1364,7 @@ function cpParamsGarde(v){if(window._curView!=='params'||v==='params'||!_cpParam
   _cpParamsDirty=false;}
 function go(v){
   cpParamsGarde(v);
+  if(v!=='params'&&window._curView==='params')cpCompteQuitter(); /* COMPTE : quitter les Paramètres annule une activation de la double authentification en cours (facteur non vérifié retiré) */
   window._curView=v;
   document.querySelectorAll('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.v===v));
   document.querySelectorAll('.view').forEach(s=>s.classList.remove('active'));
@@ -1304,7 +1377,7 @@ function go(v){
   if(v==='commander')renderCommander();
   if(v==='clients')renderClients();
   if(v==='prix')renderPrix();
-  if(v==='params'){cpParamsEcoute();renderParams();}
+  if(v==='params'){cpParamsEcoute();renderParams();cpCompteAfficher();}
   if(v==='dep')renderDep();
   if(v==='dim'){dimClim();dimGain();dimPac();dimBal();dimCF();}
   if(v==='adia')renderAdia();
@@ -4284,7 +4357,7 @@ function cpSaisieEnCours(){for(const t of Array.from(_cpChamps)){if(!t.isConnect
   if(t.type==='checkbox'||t.type==='radio'){if(t.checked!==t.defaultChecked)return true;continue;}
   if(t.value!==t.defaultValue)return true;}
   return false;}
-function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform'||cpSaisieEnCours();}
+function cpBusyForm(){const v=window._curView;return v==='wizard'||v==='depform'||cpSaisieEnCours()||cpCompteOccupe();}
 function cpMsgAttente(){const v=window._curView;return v==='wizard'||v==='depform'?'☁ mise à jour reçue — appliquée en sortant du formulaire':'☁ mise à jour reçue — appliquée au prochain changement d\'écran';}
 let _cpPushing=false,_cpAgain=false,_cpPendingReload=false,_cpPulling=false;
 async function pullState(){
@@ -4355,10 +4428,14 @@ async function pushState(manual,force){
 /* en sortant d'un formulaire : appliquer la mise à jour / fusion en attente */
 (function(){const _g=window.go;if(typeof _g!=='function')return;window.go=function(v){_cpChamps.clear();const r=_g.apply(this,arguments);
   try{if(_cpPendingReload&&v!=='wizard'&&v!=='depform'){_cpPendingReload=false;setTimeout(()=>{if(localStorage.getItem('cp2_dirty'))pushState();else pullState();},30);}}catch(e){}return r;};})();
-function showLogin(){const L=document.getElementById('loginScreen');L.style.display='flex';setTimeout(()=>{try{document.getElementById('logEmail').focus();}catch(e){}},80);}
+function showLogin(){const L=document.getElementById('loginScreen');L.style.display='flex';
+  /* COMPTE : 2e étape gardée si un code est attendu ; « Continuer sans connexion » seulement sur un appareil déjà synchronisé (Q8) */
+  if(_cpCloud!=='code'){cpLoginEtape(1);_cpCloud='login';cpCloudFinAttente();}cpLoginSansCoMaj();
+  setTimeout(()=>{try{document.getElementById(_cpCloud==='code'?'logCode':'logEmail').focus();}catch(e){console.warn('ClimPilot (COMPTE) focus de l\'écran de connexion :',e);}},80);}
 async function doLogin(){
   const em=document.getElementById('logEmail').value.trim(),pw=document.getElementById('logPass').value;
   const msg=document.getElementById('logMsg');if(!em||!pw){msg.textContent='Remplis email et mot de passe';return;}
+  if(!sb){msg.textContent='Cloud non chargé sur cet appareil : recharge l\'appli avec du réseau.';return;}
   msg.textContent='Connexion…';
   try{
     const {data,error}=await sb.auth.signInWithPassword({email:em,password:pw});
@@ -4368,9 +4445,15 @@ async function doLogin(){
       else if(!st||/fetch|network/i.test(m))msg.textContent='Serveur cloud injoignable — projet Supabase en pause ? (supabase.com/dashboard → Restore)';
       else msg.textContent='Erreur cloud ('+st+') : '+m;
       return;}
-    SESS=data.session;document.getElementById('loginScreen').style.display='none';
+    document.getElementById('logPass').value='';
+    /* COMPTE : double authentification active → 2e étape dans le même écran ; SESS n'est posée et l'état n'est lu ni envoyé qu'après le bon code ;
+       COMPTE-bis : niveau de la session illisible → décision par les facteurs de la session ; impossible de savoir → on n'entre pas */
+    const code=await cpCodeNecessaire(data.session);
+    if(code==='inconnu'){msg.textContent='Vérification impossible : réessaie.';return;}
+    if(code){cpLoginEtape2(data.session);return;}
+    SESS=data.session;cpLoginFermer();
     afterLogin();
-  }catch(e){msg.textContent='Serveur cloud injoignable — projet Supabase en pause ? (supabase.com/dashboard → Restore)';}
+  }catch(e){cpAuthJournal('connexion',e);msg.textContent='Serveur cloud injoignable — projet Supabase en pause ? (supabase.com/dashboard → Restore)';}
 }
 /* 1.12 (14/10 au soir) — appareil resté ouvert (PC sur le bureau) : sans sortie de l'appli, il ne voyait pas les changements
    faits sur l'autre appareil. Vérification légère (date de la dernière version seulement, pas les données) quand la fenêtre
@@ -4387,26 +4470,435 @@ async function cpVerifierDistant(){
   }catch(e){}
 }
 function afterLogin(){
+  _cpCloud='connecte';cpCloudFinAttente();cpBandeauSession(false);
   const ue=document.getElementById('cloudUser');if(ue&&SESS&&SESS.user)ue.textContent=SESS.user.email;
   cloudLbl('☁ connexion…');
   pullState();
   if(!window.__cpVerif){window.__cpVerif=1;setInterval(()=>{if(!window.__cpSansVerifMinute)cpVerifierDistant();},60000); /* __cpSansVerifMinute : banc d'essai seulement */
     window.addEventListener('focus',()=>cpVerifierDistant());}
-  window.addEventListener('online',()=>{if(localStorage.getItem('cp2_dirty'))pushState();});
-  document.addEventListener('visibilitychange',()=>{if(!SESS)return;
-    if(document.visibilityState==='hidden'&&localStorage.getItem('cp2_dirty'))pushState();
-    else if(document.visibilityState==='visible')pullState(); /* retour sur l'appli (téléphone) : récupérer les modifs des autres appareils */});
+  /* COMPTE : afterLogin sert aussi après une reconnexion (bandeau, 2e étape, retour du réseau) : ces écouteurs ne sont posés qu'une fois */
+  if(!window.__cpEcouteCloud){window.__cpEcouteCloud=1;
+    window.addEventListener('online',()=>{if(localStorage.getItem('cp2_dirty'))pushState();});
+    document.addEventListener('visibilitychange',()=>{if(!SESS)return;
+      if(document.visibilityState==='hidden'&&localStorage.getItem('cp2_dirty'))pushState();
+      else if(document.visibilityState==='visible')pullState(); /* retour sur l'appli (téléphone) : récupérer les modifs des autres appareils */});}
+  cpCompteAfficher();
 }
-async function cloudLogout(){if(!confirm('Se déconnecter du cloud sur cet appareil ? (les données locales restent)'))return;
-  try{await sb.auth.signOut();}catch(e){}if(window.nxStoreReload)nxStoreReload();else location.reload();}
+/* COMPTE (Q6) : « Déconnexion » ne ferme que CET appareil (portée local), comme son message le dit ; avant, signOut() sans argument les fermait tous (portée global par défaut).
+   COMPTE-bis : la session de cet appareil est effacée dans tous les cas, même hors ligne (cpSessionFermerIci) */
+async function cloudLogout(){if(!confirm('Se déconnecter du cloud sur cet appareil ? (les données locales restent ; tes autres appareils restent connectés)'))return;
+  _cpDeconnexionVoulue=true;
+  await cpSessionFermerIci('déconnexion de cet appareil');
+  if(window.nxStoreReload)nxStoreReload();else location.reload();}
 async function initCloud(){
-  if(!(window.supabase&&window.supabase.createClient)){cloudLbl('⚠ cloud non chargé — mode local','err');return;}
+  if(!(window.supabase&&window.supabase.createClient)){cloudLbl('⚠ cloud non chargé — mode local','err');cpCompteAfficher();return;}
   sb=window.supabase.createClient(SUPA_URL,SUPA_KEY);
-  try{const {data:{session}}=await sb.auth.getSession();
-    if(!session){showLogin();cloudLbl('non connecté');return;}
-    SESS=session;afterLogin();
-  }catch(e){cloudLbl('⚠ cloud injoignable — mode local','err');}
+  /* COMPTE : la session est tenue à jour (jeton renouvelé, session fermée par un autre appareil) ; les 9 couches qui lisent SESS suivent sans changement */
+  try{sb.auth.onAuthStateChange(cpAuthEvenement);}catch(e){cpAuthJournal('écoute de la session',e);}
+  await cpCloudReprendre();
 }
+/* ============ COMPTE (12/11/2026) — mot de passe, appareils, double authentification (docs/MISSION-COMPTE.md § 3) ============
+   Rien de ce qui est tapé (mot de passe, code) n'est gardé : ni stockage, ni journal, ni message, ni console (seuls le nom, le statut HTTP et le code
+   d'une erreur sont journalisés). Aucune clé nouvelle dans SYNC_KEYS ni dans le stockage. Les réponses de supabase-js sont RENDUES ({data, error}),
+   jamais rejetées : une coupure réseau = erreur « réessayable », status 0 (CLAUDE.md § 6). Q1 = non (11/11/2026) ; contrôle côté serveur : mission FACT. */
+var _cpCloud='demarrage',_cpReprise=false,_cpAttenteT=null,_cpAttenteEcoute=false,_cpDeconnexionVoulue=false,_cpMdpAttente=null,_cpMfa=null,_cpCodeSuite=null,_cpCompteMsgT=0;
+/* COMPTE-bis : numéro de la tentative d'inscription (une réponse arrivée après « Annuler », la sortie des Paramètres ou une session fermée est écartée),
+   tentative en « Préparation… » (0 = aucune), facteurs non vérifiés créés ici dont le retrait n'a pas abouti (mémoire seulement : refaits au prochain essai) */
+var _cpMfaTent=0,_cpMfaPrep=0,_cpMfaARetirer=[];
+function cpErreurReseau(e){return !!e&&(e.status===0||e.name==='AuthRetryableFetchError'||(!e.status&&/fetch|network/i.test(String(e.message||''))));}
+function cpAuthJournal(quoi,e){console.warn('ClimPilot (COMPTE) '+quoi+' :',(e&&e.name)||'',e&&e.status!=null?e.status:'',(e&&e.code)||'');}
+function cpCompteMsg(id,t,genre){const e=document.getElementById(id);if(!e)return;e.textContent=t||'';if(t&&genre!=='info')_cpCompteMsgT=Date.now(); /* résultat d'une demande (pas « Envoi… ») */e.style.color=genre==='ok'?'var(--green)':genre==='info'?'var(--muted)':'var(--red)';}
+function cpCompteCo(id){if(!sb||!SESS){cpCompteMsg(id,'Connecte-toi au cloud d\'abord.');return false;}
+  if(navigator.onLine===false){cpCompteMsg(id,'Pas de réseau : rien n\'a changé. Réessaie quand le réseau revient.');return false;}return true;}
+function cpCompteErr(e){const c=String((e&&e.code)||''),st=e&&e.status;
+  if(cpErreurReseau(e))return 'Pas de réponse du serveur : réessaie.';
+  if(st===429||/rate_limit/.test(c))return 'Trop d\'essais : attends quelques minutes.';
+  if(c==='session_not_found'||c==='refresh_token_not_found'||(e&&e.name==='AuthSessionMissingError'))return 'Ta connexion au cloud a été fermée : reconnecte-toi (bouton « Se connecter » ci-dessus).';
+  if(c==='mfa_totp_enroll_not_enabled'||c==='mfa_totp_verify_not_enabled')return 'La double authentification est désactivée dans le tableau de bord Supabase.';
+  if(c==='too_many_enrolled_mfa_factors')return '10 appareils au plus : retires-en un.';
+  if(c==='mfa_factor_name_conflict')return 'Ce nom est déjà pris : choisis-en un autre.';
+  if(c==='mfa_verification_failed')return 'Code refusé. Vérifie que l\'heure du téléphone est réglée automatiquement, puis tape le code affiché maintenant.';
+  if(c==='insufficient_aal')return 'Donne d\'abord ton code de double authentification.';
+  return 'Erreur du serveur (HTTP '+(st||'?')+') : '+String((e&&(e.message||e.code))||'inconnue').slice(0,200);}
+function cpMfaFacteurs(){const u=SESS&&SESS.user;return ((u&&u.factors)||[]).filter(f=>f&&f.status==='verified'&&f.factor_type==='totp');}
+/* niveau de la session lu EN LOCAL (jeton + session.user.factors) : marche hors ligne ; une bibliothèque sans double authentification = null (pas de code).
+   COMPTE-bis : niveau illisible (erreur rendue, exception, réponse sans niveau) → {illisible:true} : l'appelant décide alors par les facteurs de la session */
+async function cpNiveau(){if(!sb||!sb.auth||!sb.auth.mfa||!sb.auth.mfa.getAuthenticatorAssuranceLevel)return null;
+  try{const {data,error}=await sb.auth.mfa.getAuthenticatorAssuranceLevel();if(error){cpAuthJournal('niveau de la session',error);return {illisible:true};}
+    return data&&data.currentLevel?data:{illisible:true};}catch(e){cpAuthJournal('niveau de la session',e);return {illisible:true};}}
+/* code de double authentification à donner avant d'entrer ? true / false, ou 'inconnu' (impossible de savoir : l'appelant n'entre pas, ni SESS ni afterLogin).
+   Niveau illisible : un facteur TOTP vérifié dans session.user.factors → code ; liste absente ou vide → aucun facteur (comme la bibliothèque) */
+async function cpCodeNecessaire(session){const n=await cpNiveau();if(!n)return false;
+  if(!n.illisible)return n.currentLevel==='aal1'&&n.nextLevel==='aal2';
+  try{const u=session&&session.user;if(!u||typeof u!=='object')return 'inconnu';const F=u.factors==null?[]:u.factors;if(!Array.isArray(F))return 'inconnu';
+    return F.some(f=>!!f&&f.status==='verified'&&f.factor_type==='totp');}catch(e){cpAuthJournal('facteurs de la session',e);return 'inconnu';}}
+async function cpAal2(){const n=await cpNiveau();return !!n&&n.currentLevel==='aal2';}
+async function cpSessionRelire(){try{const {data,error}=await sb.auth.getSession();if(error)cpAuthJournal('lecture de la session',error);if(data&&data.session)SESS=data.session;}catch(e){cpAuthJournal('lecture de la session',e);}}
+
+/* ---------- carte « 👤 Mon compte » (Paramètres) ---------- */
+function cpCompteAfficher(){const carte=document.getElementById('acc_carte');if(!carte)return;
+  const enLigne=navigator.onLine!==false,co=!!(sb&&SESS);
+  const etat=document.getElementById('acc_etat');
+  if(etat){etat.textContent='';const s=document.createElement('span');
+    if(!sb)s.textContent='Pas connecté au cloud (cloud non chargé sur cet appareil : mode local).';
+    else if(!SESS)s.textContent='Pas connecté au cloud : ';
+    else{s.textContent='Connecté au cloud : ';const b=document.createElement('b');b.textContent=(SESS.user&&SESS.user.email)||'';s.appendChild(b);}
+    etat.appendChild(s);
+    if(sb&&!SESS){const b=document.createElement('button');b.id='acc_seco';b.className='btn-ghost btn-sm';b.textContent='Se connecter';b.addEventListener('click',()=>showLogin());etat.appendChild(b);}
+    if(!enLigne){const p=document.createElement('div');p.style.cssText='color:var(--orange);font-weight:600;margin-top:4px';p.textContent='Pas de réseau : ces réglages demandent une connexion.';etat.appendChild(p);}}
+  ['acc_mdp_btn','acc_mdp_code_btn','acc_mdp_renvoi','acc_autres_btn','acc_mfa_activer','acc_mfa_secours','acc_mfa_go','acc_mfa_valider','acc_code_btn'].forEach(i=>{const e=document.getElementById(i);if(e)e.disabled=!enLigne||(i==='acc_mfa_go'&&!!_cpMfaPrep);});
+  const F=co?cpMfaFacteurs():[];
+  const me=document.getElementById('acc_mfa_etat');
+  if(me){if(!co)me.textContent='Connecte-toi au cloud pour voir et régler la double authentification.';
+    else if(!F.length)me.textContent='Désactivée : la connexion demande seulement le mot de passe.';
+    else me.textContent='Activée : '+F.length+' appareil'+(F.length>1?'s':'')+' ('+F.map(f=>'« '+(f.friendly_name||'sans nom')+' »').join(', ')+'). Chaque nouvelle connexion demande le mot de passe et le code.'+(enLigne?'':' (dernière information connue)');}
+  const li=document.getElementById('acc_mfa_liste');
+  if(li)li.innerHTML=F.map(f=>'<div class="row-actions" style="margin-top:4px"><span style="font-size:13px">📱 '+cpEsc(f.friendly_name||'sans nom')+'</span><button class="btn-ghost btn-sm" data-fid="'+cpEsc(f.id)+'" data-nom="'+cpEsc(f.friendly_name||'sans nom')+'" onclick="cpMfaRetirer(this.dataset.fid,this.dataset.nom)"'+(enLigne?'':' disabled')+'>Retirer</button></div>').join('');
+  const ac=document.getElementById('acc_mfa_activer'),se=document.getElementById('acc_mfa_secours'),ins=document.getElementById('acc_mfa_ins'),ouvert=!!(ins&&ins.style.display!=='none');
+  if(ac)ac.style.display=(F.length||ouvert)?'none':'';if(se)se.style.display=(F.length&&!ouvert)?'':'none';}
+/* parcours « Mon compte » en cours (activation, code attendu, résultat affiché depuis moins de 20 s) : une mise à jour reçue d'un autre appareil attend
+   le changement d'écran (cpBusyForm), comme pour un formulaire, au lieu de recharger la page au milieu du parcours */
+function cpCompteOccupe(){return window._curView==='params'&&(!!_cpMfa||!!_cpMfaPrep||!!_cpMdpAttente||!!_cpCodeSuite||Date.now()-_cpCompteMsgT<20000);}
+/* quitter les Paramètres : activation en cours annulée (y compris pendant « Préparation… » ; facteur non vérifié retiré), mots de passe en attente oubliés, champs vidés */
+function cpCompteQuitter(){try{if(_cpMfa||_cpMfaPrep)cpMfaAnnuler(true);cpCodeFermer(true);cpCompteMdpVider();}catch(e){console.warn('ClimPilot (COMPTE) sortie des Paramètres :',e);}}
+window.addEventListener('online',()=>cpCompteAfficher());window.addEventListener('offline',()=>cpCompteAfficher());
+
+/* ---------- changer le mot de passe (§ 3.2 ; Q4 : mot de passe actuel demandé ; Q5 : 12 caractères) ---------- */
+function cpCompteMdpVider(){['acc_mdp_actuel','acc_mdp_nouv','acc_mdp_conf','acc_mdp_code'].forEach(i=>{const e=document.getElementById(i);if(e)e.value='';});}
+function cpCompteMdpCodeBloc(v){['acc_mdp_code_bloc','acc_mdp_code_btn','acc_mdp_renvoi'].forEach(i=>{const e=document.getElementById(i);if(e)e.style.display=v?'':'none';});}
+async function cpCompteMdp(){const id='acc_mdp_msg',g=i=>String((document.getElementById(i)||{}).value||'');
+  const cur=g('acc_mdp_actuel'),n1=g('acc_mdp_nouv'),n2=g('acc_mdp_conf');
+  if(!cpCompteCo(id))return;
+  if(!cur){cpCompteMsg(id,'Tape d\'abord ton mot de passe actuel.');return;}
+  const nc=Array.from(n1).length; /* compté par caractère : un emoji ou une lettre accentuée compte pour un */
+  if(nc<12){cpCompteMsg(id,'Trop court : 12 caractères au moins (tu en as tapé '+nc+'). Une phrase de 3 ou 4 mots fait l\'affaire.');return;}
+  if(n1!==n2){cpCompteMsg(id,'Les deux nouveaux mots de passe ne sont pas identiques.');return;}
+  if(n1===cur){cpCompteMsg(id,'C\'est déjà ton mot de passe : choisis-en un autre.');return;}
+  _cpMdpAttente={password:n1,current_password:cur};cpCompteMdpCodeBloc(false);
+  await cpCompteMdpEnvoyer();}
+async function cpCompteMdpEnvoyer(nonce){const id='acc_mdp_msg',a=_cpMdpAttente;if(!a){cpCompteMsg(id,'Recommence : retape les mots de passe.');return;}
+  if(!cpCompteCo(id))return;
+  const btn=document.getElementById('acc_mdp_btn');if(btn)btn.disabled=true;cpCompteMsg(id,'Envoi…','info');
+  let r=null;
+  try{const corps={password:a.password,current_password:a.current_password};if(nonce)corps.nonce=nonce;r=await sb.auth.updateUser(corps);}
+  catch(e){cpAuthJournal('changement du mot de passe',e);r={error:{name:'AuthRetryableFetchError',status:0}};}
+  finally{if(btn)btn.disabled=navigator.onLine===false;}
+  cpCompteMdpVider();
+  const e=r&&r.error,c=String((e&&e.code)||'');
+  if(!e){_cpMdpAttente=null;cpCompteMdpCodeBloc(false);
+    cpCompteMsg(id,'✓ Mot de passe changé. Note-le dans ton gestionnaire de mots de passe.','ok');
+    const m=document.getElementById(id);if(m){const b=document.createElement('button');b.id='acc_mdp_autres';b.className='btn-ghost btn-sm';b.style.marginLeft='8px';b.textContent='Déconnecter aussi mes autres appareils';b.addEventListener('click',()=>cpCompteAutres('acc_mdp_msg'));m.appendChild(document.createTextNode(' '));m.appendChild(b);}
+    return;}
+  cpAuthJournal('changement du mot de passe',e);
+  if(c==='reauthentication_needed'){
+    try{const x=await sb.auth.reauthenticate();if(x&&x.error){cpAuthJournal('demande du code par e-mail',x.error);_cpMdpAttente=null;cpCompteMsg(id,cpCompteErr(x.error));return;}}
+    catch(x){cpAuthJournal('demande du code par e-mail',x);_cpMdpAttente=null;cpCompteMsg(id,'Pas de réponse du serveur : réessaie.');return;}
+    cpCompteMdpCodeBloc(true);cpCompteMsg(id,'Supabase demande une vérification : un code à 6 chiffres vient d\'être envoyé à ton adresse e-mail. Tape-le ci-dessus.','info');return;}
+  if(c==='reauthentication_not_valid'){cpCompteMdpCodeBloc(true);cpCompteMsg(id,'Code faux ou expiré. Tape-le de nouveau, ou « Renvoyer un code ».');return;}
+  if(c==='insufficient_aal'){cpCompteMsg(id,'Donne d\'abord ton code de double authentification (ci-dessous).','info');cpCodeDemander('Pour changer le mot de passe, donne d\'abord le code de ton application d\'authentification.',()=>cpCompteMdpEnvoyer(nonce));return;}
+  _cpMdpAttente=null;cpCompteMdpCodeBloc(false);
+  if(c==='same_password'){cpCompteMsg(id,'C\'est déjà ton mot de passe : choisis-en un autre.');return;}
+  if(c==='weak_password'||e.name==='AuthWeakPasswordError'){const T={length:'trop court',characters:'il manque des caractères exigés (minuscule, majuscule, chiffre ou symbole)',pwned:'déjà divulgué sur internet'};
+    const L=(Array.isArray(e.reasons)?e.reasons:[]).map(x=>T[x]||String(x));cpCompteMsg(id,'Supabase refuse ce mot de passe : '+(L.length?L.join(' ; '):String(e.message||'trop faible'))+'.');return;}
+  /* code exact du serveur pour un mot de passe actuel faux : à relever sur TEST (hypothèse du dossier) */
+  if(/current_password|invalid_credentials/.test(c)){cpCompteMsg(id,'Mot de passe actuel incorrect.');return;}
+  if(cpErreurReseau(e)){cpCompteMsg(id,'Résultat inconnu : le serveur n\'a pas répondu. Si ton ancien mot de passe ne marche plus à la prochaine connexion, c\'est le nouveau qui compte.');return;}
+  cpCompteMsg(id,cpCompteErr(e));}
+function cpCompteMdpCode(){const c=String((document.getElementById('acc_mdp_code')||{}).value||'').trim();
+  if(!c){cpCompteMsg('acc_mdp_msg','Tape le code reçu par e-mail.');return;}cpCompteMdpEnvoyer(c);}
+async function cpCompteMdpRenvoi(){const id='acc_mdp_msg';if(!cpCompteCo(id))return;
+  try{const x=await sb.auth.reauthenticate();if(x&&x.error){cpAuthJournal('nouveau code par e-mail',x.error);cpCompteMsg(id,cpCompteErr(x.error));return;}
+    cpCompteMsg(id,'Nouveau code envoyé à ton adresse e-mail.','info');}catch(e){cpAuthJournal('nouveau code par e-mail',e);cpCompteMsg(id,'Pas de réponse du serveur : réessaie.');}}
+
+/* ---------- « Déconnecter mes autres appareils » (§ 3.3) : portée others, cet appareil reste connecté ---------- */
+async function cpCompteAutres(idMsg){const id=idMsg||'acc_app_msg';if(!cpCompteCo(id))return;
+  if(!confirm('Déconnecter tous tes autres appareils (téléphone, autres ordinateurs, autres navigateurs) ?\n\nIls gardent leurs données, mais devront se reconnecter (mot de passe, et code si la double authentification est active). Ce qu\'ils n\'ont pas encore envoyé partira après leur reconnexion. Effet complet en 1 heure au plus.\n\nCet appareil reste connecté.'))return;
+  cpCompteMsg(id,'Envoi…','info');
+  let r=null;try{r=await sb.auth.signOut({scope:'others'});}catch(e){cpAuthJournal('déconnexion des autres appareils',e);r={error:{name:'AuthRetryableFetchError',status:0}};}
+  const e=r&&r.error;
+  if(!e){cpCompteMsg(id,'✓ Tes autres appareils sont déconnectés (effet complet en 1 heure au plus).','ok');if(id!=='acc_app_msg')cpCompteMsg('acc_app_msg','✓ Tes autres appareils sont déconnectés (effet complet en 1 heure au plus).','ok');return;}
+  cpAuthJournal('déconnexion des autres appareils',e);cpCompteMsg(id,cpErreurReseau(e)?'Pas de réponse du serveur : réessaie.':cpCompteErr(e));}
+
+/* ---------- double authentification : activer, appareil de secours (Q2), retirer (§ 3.4) ---------- */
+function cpMfaPanneau(etat){const d=(i,v)=>{const e=document.getElementById(i);if(e)e.style.display=v?'':'none';};
+  d('acc_mfa_ins',etat!=='ferme');d('acc_mfa_nom_bloc',etat==='nom');d('acc_mfa_go',etat==='nom');d('acc_mfa_scan',etat==='scan');d('acc_mfa_valider',etat==='scan');
+  cpCompteAfficher(); /* boutons « Activer » / « Ajouter » masqués pendant une activation */}
+function cpMfaDebut(nom){const id='acc_mfa_msg';if(!cpCompteCo(id))return;cpCodeFermer(true);
+  if(_cpMfa||_cpMfaPrep)cpMfaAnnuler(true);
+  const F=cpMfaFacteurs(),intro=document.getElementById('acc_mfa_intro');
+  if(intro)intro.textContent=F.length?'Un 2e appareil qui donne aussi le code (vieux téléphone rangé à la maison, gestionnaire de mots de passe du PC…) : si tu perds le premier, celui-ci te laisse entrer. Range-le à part et protège-le comme ton téléphone.'
+    :'Il te faut une application d\'authentification sur ton téléphone (celle intégrée à l\'iPhone dans Mots de passe, Google Authenticator, 1Password…). Une fois activée, chaque nouvelle connexion demandera ton mot de passe ET le code à 6 chiffres de l\'application. En validant, tes autres appareils seront déconnectés (règle de Supabase) : ils devront se reconnecter avec le code. Prévois ensuite un moyen de secours (« Ajouter un appareil de secours »).';
+  const pris=F.map(f=>f.friendly_name);let n=nom,k=2;while(pris.indexOf(n)>=0)n=nom+' '+(k++);
+  const ch=document.getElementById('acc_mfa_nom');if(ch)ch.value=n;
+  cpCompteMsg(id,'');cpMfaPanneau('nom');}
+async function cpMfaInscrire(){const id='acc_mfa_msg';if(!cpCompteCo(id))return;
+  if(_cpMfaPrep)return; /* « Continuer » déjà en cours */
+  const nom=String((document.getElementById('acc_mfa_nom')||{}).value||'').trim().slice(0,40)||'iPhone';
+  /* COMPTE-bis : numéro de tentative ; « Continuer » grisé pendant « Préparation… » ; annulée entre-temps → réponse écartée, facteur créé retiré, rien d'affiché.
+     COMPTE-ter : numéro pris AVANT le premier await (lecture du niveau) : annulée pendant cette lecture → rien n'est fait */
+  const t=++_cpMfaTent,encore=()=>t===_cpMfaTent;_cpMfaPrep=t;cpCompteAfficher();
+  try{
+    if(cpMfaFacteurs().length){const aal2=await cpAal2();if(!encore())return;
+      if(!aal2){cpCodeDemander('Pour ajouter un appareil, donne d\'abord le code de ton application d\'authentification.',cpMfaInscrire);return;}}
+    cpCompteMsg(id,'Préparation…','info');
+    /* facteurs non vérifiés retirés avant d'en créer un (10 au plus par compte) : ceux d'un essai de CET appareil dont le retrait n'a pas abouti,
+       et ceux créés il y a plus de 15 minutes (essai abandonné) ; une inscription en cours sur un autre appareil (moins de 15 minutes) est laissée */
+    const lf=await sb.auth.mfa.listFactors();if(!encore())return;
+    if(lf&&lf.error){cpAuthJournal('liste des facteurs',lf.error);cpCompteMsg(id,cpCompteErr(lf.error));return;}
+    const tous=((lf&&lf.data&&lf.data.all)||[]).filter(f=>!!f),maint=Date.now();
+    _cpMfaARetirer=_cpMfaARetirer.filter(x=>tous.some(f=>f.id===x)); /* déjà retirés ailleurs : oubliés */
+    for(const f of tous.filter(f=>f.status!=='verified'&&(_cpMfaARetirer.indexOf(f.id)>=0||maint-Date.parse(f.created_at)>15*60000))){
+      await cpMfaRetirerNonVerifie(f.id,'retrait d\'un facteur non vérifié',false);if(!encore())return;}
+    const {data,error}=await sb.auth.mfa.enroll({factorType:'totp',friendlyName:nom,issuer:'ClimPilot'});
+    if(!encore()){if(!error&&data&&data.id)await cpMfaRetirerNonVerifie(data.id,'inscription arrivée après l\'annulation',true);return;} /* COMPTE-ter : retrait en échec dit à l'écran, comme à l'annulation */
+    if(error){cpAuthJournal('inscription',error);if(error.code==='insufficient_aal'){cpCodeDemander('Pour ajouter un appareil, donne d\'abord le code de ton application d\'authentification.',cpMfaInscrire);return;}cpCompteMsg(id,cpCompteErr(error));return;}
+    const tt=(data&&data.totp)||{};
+    _cpMfaPrep=0;_cpMfa={fid:data.id,nom:nom,uri:String(tt.uri||''),secret:String(tt.secret||'').replace(/[^A-Za-z2-7]/g,'').toUpperCase()};
+    cpMfaAfficherScan();cpCompteMsg(id,'');
+  }catch(e){cpAuthJournal('inscription',e);if(encore())cpCompteMsg(id,'Pas de réponse du serveur : réessaie.');}
+  finally{if(_cpMfaPrep===t){_cpMfaPrep=0;cpCompteAfficher();}}}
+/* PC : QR code fabriqué ICI (cpQrImage, aucune bibliothèque ni image venue d'ailleurs ; l'image SVG du serveur n'est pas utilisée) ; téléphone : lien otpauth:// (un téléphone ne scanne pas son propre écran) */
+function cpMfaAfficherScan(){const m=_cpMfa;if(!m)return;
+  const tel=!!(window.matchMedia&&matchMedia('(pointer:coarse)').matches),okUri=/^otpauth:\/\/totp\//.test(m.uri);
+  const img=document.getElementById('acc_mfa_qr'),lien=document.getElementById('acc_mfa_lien'),cle=document.getElementById('acc_mfa_cle'),cons=document.getElementById('acc_mfa_conseil');
+  if(img){let src='';if(okUri&&!tel){try{src=cpQrImage(m.uri);}catch(e){console.warn('ClimPilot (COMPTE) QR code :',e);}}
+    if(src){img.src=src;img.style.display='block';}else{img.removeAttribute('src');img.style.display='none';}}
+  if(lien){if(okUri&&tel){lien.href=m.uri;lien.style.display='inline-block';}else{lien.removeAttribute('href');lien.style.display='none';}}
+  if(cle)cle.textContent=(m.secret.match(/.{1,4}/g)||[]).join(' ');
+  const ct=document.getElementById('acc_mfa_cle_txt');if(ct)ct.textContent=tel?'Ou tape cette clé dans l\'application :':'Si le scan ne marche pas, tape cette clé dans l\'application :';
+  if(cons)cons.textContent=tel?'Un téléphone ne peut pas scanner son propre écran : touche le bouton ci-dessous, ou copie la clé dans l\'application. Plus simple : active-la depuis le PC et scanne le QR code avec ce téléphone.'
+    :'Scanne ce QR code avec l\'application d\'authentification de ton téléphone, puis tape le code à 6 chiffres qu\'elle affiche.';
+  const c=document.getElementById('acc_mfa_code');if(c)c.value='';
+  cpMfaPanneau('scan');}
+async function cpMfaValider(){const id='acc_mfa_msg',m=_cpMfa;if(!m){cpCompteMsg(id,'Recommence l\'activation.');return;}if(!cpCompteCo(id))return;
+  const ch=document.getElementById('acc_mfa_code'),code=String((ch||{}).value||'').replace(/\s/g,'');
+  if(!/^\d{6}$/.test(code)){cpCompteMsg(id,'Tape les 6 chiffres affichés par l\'application.');return;}
+  const secours=cpMfaFacteurs().length>0;
+  try{let r=await sb.auth.mfa.challengeAndVerify({factorId:m.fid,code:code});
+    if(r&&r.error&&r.error.code==='mfa_challenge_expired')r=await sb.auth.mfa.challengeAndVerify({factorId:m.fid,code:code}); /* défi périmé : un nouveau, sans message */
+    if(ch)ch.value='';
+    if(r&&r.error){cpAuthJournal('vérification du code',r.error);cpCompteMsg(id,cpCompteErr(r.error));return;}
+    _cpMfa=null;await cpSessionRelire();cpMfaEffacer();cpCompteAfficher(); /* COMPTE-bis : QR code, clé et lien retirés de la page, comme à l'annulation */
+    cpCompteMsg(id,secours?'✓ « '+m.nom+' » ajouté : il donne aussi le code. Range-le à part.':'✓ Double authentification activée. Tes autres appareils devront se reconnecter avec le code. Ajoute maintenant un moyen de secours (« Ajouter un appareil de secours »).','ok');
+  }catch(e){cpAuthJournal('vérification du code',e);cpCompteMsg(id,'Pas de réponse du serveur : réessaie.');}}
+/* « Annuler » ou sortie des Paramètres (silence) : tentative en cours écartée (même pendant « Préparation… »), page nettoyée, facteur non vérifié retiré ;
+   un retrait qui n'aboutit pas est dit à l'écran et refait au prochain essai */
+async function cpMfaAnnuler(silence){const m=_cpMfa;_cpMfa=null;_cpMfaTent++;_cpMfaPrep=0;cpMfaEffacer();
+  cpCompteMsg('acc_mfa_msg',silence?'':'Activation annulée.','info');
+  if(m)await cpMfaRetirerNonVerifie(m.fid,'retrait du facteur non vérifié',true);}
+/* QR code, clé et lien otpauth:// retirés de la page (après une activation réussie comme après une annulation) */
+function cpMfaEffacer(){cpMfaPanneau('ferme');const img=document.getElementById('acc_mfa_qr');if(img){img.removeAttribute('src');img.style.display='none';}
+  const cle=document.getElementById('acc_mfa_cle');if(cle)cle.textContent='';
+  const l=document.getElementById('acc_mfa_lien');if(l){l.removeAttribute('href');l.style.display='none';}
+  const c=document.getElementById('acc_mfa_code');if(c)c.value='';}
+/* retrait d'un facteur NON vérifié créé par cet appareil ; échec : gardé en mémoire (refait au prochain essai) et, si « dire », message visible */
+async function cpMfaRetirerNonVerifie(fid,quoi,dire){let e=null;
+  if(sb&&SESS){try{const r=await sb.auth.mfa.unenroll({factorId:fid});e=(r&&r.error)||null;}catch(x){e=x;}}else e={name:'AuthSessionMissingError'};
+  if(!e){_cpMfaARetirer=_cpMfaARetirer.filter(x=>x!==fid);return true;}
+  cpAuthJournal(quoi,e);if(_cpMfaARetirer.indexOf(fid)<0)_cpMfaARetirer.push(fid);
+  if(dire){const t='Le retrait n\'a pas abouti : il sera refait au prochain essai.';cpCompteMsg('acc_mfa_msg',t);if(window._curView!=='params')toast(t);}
+  return false;}
+function cpMfaCopier(){const m=_cpMfa;if(!m||!m.secret)return;
+  Promise.resolve(window.cpCopier(m.secret)).then(ok=>toast(ok===false?'Copie impossible : sélectionne la clé à la main':'Clé copiée')).catch(e=>console.warn('ClimPilot (COMPTE) copie de la clé :',e));}
+async function cpMfaRetirer(fid,nom){const id='acc_mfa_msg';if(!cpCompteCo(id))return;
+  if(!confirm('Retirer « '+nom+' » ? S\'il est le seul, la connexion ne demandera plus de code.'))return;
+  if(!(await cpAal2())){cpCodeDemander('Pour retirer un appareil, donne d\'abord le code de ton application d\'authentification.',()=>cpMfaRetirerOk(fid,nom));return;}
+  await cpMfaRetirerOk(fid,nom);}
+async function cpMfaRetirerOk(fid,nom){const id='acc_mfa_msg';if(!cpCompteCo(id))return;
+  try{const r=await sb.auth.mfa.unenroll({factorId:fid});
+    if(r&&r.error){cpAuthJournal('retrait d\'un appareil',r.error);if(r.error.code==='insufficient_aal'){cpCodeDemander('Pour retirer un appareil, donne d\'abord le code de ton application d\'authentification.',()=>cpMfaRetirerOk(fid,nom));return;}cpCompteMsg(id,cpCompteErr(r.error));return;}
+    if(SESS&&SESS.user&&Array.isArray(SESS.user.factors))SESS.user.factors=SESS.user.factors.filter(f=>f.id!==fid);
+    /* le niveau de la session redescend tout de suite (documentation Supabase : refreshSession après un retrait) */
+    const x=await sb.auth.refreshSession();if(x&&x.error)cpAuthJournal('renouvellement après retrait',x.error);else if(x&&x.data&&x.data.session)SESS=x.data.session;
+    cpCompteAfficher();cpCompteMsg(id,'✓ « '+nom+' » retiré.'+(cpMfaFacteurs().length?'':' La connexion ne demandera plus de code.'),'ok');
+  }catch(e){cpAuthJournal('retrait d\'un appareil',e);cpCompteMsg(id,'Pas de réponse du serveur : réessaie.');}}
+/* code de double authentification demandé avant une action (session restée sans code) */
+function cpCodeDemander(texte,suite){const b=document.getElementById('acc_code_bloc');if(!b){cpCompteMsg('acc_mfa_msg','Donne d\'abord ton code de double authentification.');return;}
+  _cpCodeSuite=suite;const t=document.getElementById('acc_code_txt');if(t)t.textContent=texte;
+  const F=cpMfaFacteurs(),sel=document.getElementById('acc_code_facteur');
+  if(sel){sel.innerHTML=F.map(f=>'<option value="'+cpEsc(f.id)+'">'+cpEsc(f.friendly_name||'sans nom')+'</option>').join('');sel.style.display=F.length>1?'':'none';}
+  const c=document.getElementById('acc_code');if(c)c.value='';b.style.display='';
+  try{b.scrollIntoView({block:'center'});if(c)c.focus();}catch(e){console.warn('ClimPilot (COMPTE) affichage du code :',e);}}
+/* bloc du code fermé. abandon (« Annuler », sortie des Paramètres, nouvelle activation, session fermée) : le parcours s'arrête et le nouveau mot de passe
+   en attente est oublié ; après un bon code, cpCodeValider ferme seulement le bloc puis reprend l'action */
+function cpCodeFermer(abandon){_cpCodeSuite=null;const b=document.getElementById('acc_code_bloc');if(b)b.style.display='none';
+  if(!abandon)return;const c=document.getElementById('acc_code');if(c)c.value='';cpCompteMdpCodeBloc(false);
+  if(_cpMdpAttente){_cpMdpAttente=null;cpCompteMdpVider();cpCompteMsg('acc_mdp_msg','Changement du mot de passe abandonné : rien n\'a changé.','info');}}
+async function cpCodeValider(){const id='acc_mfa_msg';if(!cpCompteCo(id))return;
+  const ch=document.getElementById('acc_code'),code=String((ch||{}).value||'').replace(/\s/g,'');
+  if(!/^\d{6}$/.test(code)){cpCompteMsg(id,'Tape les 6 chiffres affichés par l\'application.');return;}
+  const sel=document.getElementById('acc_code_facteur'),F=cpMfaFacteurs(),fid=(sel&&sel.value)||(F[0]&&F[0].id);
+  if(!fid){cpCodeFermer();cpCompteMsg(id,'Aucun appareil de double authentification sur ce compte.');return;}
+  try{let r=await sb.auth.mfa.challengeAndVerify({factorId:fid,code:code});
+    if(r&&r.error&&r.error.code==='mfa_challenge_expired')r=await sb.auth.mfa.challengeAndVerify({factorId:fid,code:code});
+    if(ch)ch.value='';
+    if(r&&r.error){cpAuthJournal('code de double authentification',r.error);cpCompteMsg(id,cpCompteErr(r.error));return;}
+    await cpSessionRelire();const s=_cpCodeSuite;cpCodeFermer();cpCompteMsg(id,'✓ Code accepté.','ok');if(typeof s==='function')await s();
+  }catch(e){cpAuthJournal('code de double authentification',e);cpCompteMsg(id,'Pas de réponse du serveur : réessaie.');}}
+
+/* ---------- session fermée pendant l'usage (§ 3.6) : bandeau NON bloquant, jamais d'écran plein au milieu d'un formulaire ---------- */
+function cpBandeauSession(montrer){let b=document.getElementById('cpBandeauSession');
+  if(!montrer){if(b)b.remove();return;}
+  if(!b){b=document.createElement('div');b.id='cpBandeauSession';b.setAttribute('role','alert');
+    b.style.cssText='position:fixed;left:10px;right:10px;top:10px;z-index:9000;max-width:760px;margin:0 auto;background:#7c2d12;color:#fff;border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.45;box-shadow:0 10px 30px rgba(0,0,0,.3);display:flex;gap:10px;align-items:center;flex-wrap:wrap';
+    const t=document.createElement('span');t.style.flex='1 1 260px';b.appendChild(t);
+    const r=document.createElement('button');r.dataset.action='reconnecter';r.className='btn-sm';r.style.cssText='background:#fff;color:#7c2d12';r.textContent='Se reconnecter';r.addEventListener('click',()=>showLogin());b.appendChild(r);
+    const f=document.createElement('button');f.dataset.action='fermer';f.className='btn-sm';f.style.cssText='background:transparent;color:#fff;border:1px solid rgba(255,255,255,.55)';f.textContent='Plus tard';f.addEventListener('click',()=>cpBandeauSession(false));b.appendChild(f);
+    document.body.appendChild(b);}
+  /* sous la barre d'état de l'iPhone (appli posée sur l'écran d'accueil : contenu sous la barre) et sous la bande rouge de la copie d'essai si elle existe */
+  const bandeEssai=document.getElementById('cpEssaiBandeau');b.style.top=bandeEssai?(Math.round(bandeEssai.getBoundingClientRect().bottom)+8)+'px':'calc(env(safe-area-inset-top, 0px) + 10px)';
+  /* pas de nombre : le compteur des écritures est en mémoire et repart à zéro à chaque lancement (le compteur fiable viendra avec AF1-B) */
+  let d=false;try{d=!!localStorage.getItem('cp2_dirty');}catch(e){console.warn('ClimPilot (COMPTE) lecture de « à envoyer » :',e);}
+  b.firstChild.textContent='Ta connexion au cloud a été fermée (mot de passe changé, appareils déconnectés, ou double authentification activée ailleurs). Tes données sont sur cet appareil ; '
+    +(d?'des modifications attendent l\'envoi : elles partiront après ta reconnexion.':'ce que tu modifies maintenant partira après ta reconnexion.');}
+/* la bibliothèque attend la fin de ce rappel : aucun appel d'authentification ici (risque de blocage), seulement l'état de l'appli */
+function cpAuthEvenement(ev,s){
+  try{
+    if(ev==='SIGNED_OUT'){
+      /* COMPTE-bis : parcours « Mon compte » terminé — mot de passe en attente oublié, bloc du code fermé, activation abandonnée ; page seulement,
+         aucun appel ici (un facteur non vérifié resté sur le serveur est retiré au prochain essai) */
+      cpCodeFermer(true);if(_cpMfa||_cpMfaPrep){if(_cpMfa&&_cpMfaARetirer.indexOf(_cpMfa.fid)<0)_cpMfaARetirer.push(_cpMfa.fid);_cpMfa=null;_cpMfaPrep=0;_cpMfaTent++;cpMfaEffacer();}
+      const actif=!!SESS||_cpCloud==='attente'||_cpCloud==='connecte';SESS=null;
+      if(_cpDeconnexionVoulue||!actif){setTimeout(cpCompteAfficher,0);return;}
+      _cpCloud='ferme';cloudLbl('⚠ déconnecté du cloud','err');const ue=document.getElementById('cloudUser');if(ue)ue.textContent='';
+      cpBandeauSession(true);setTimeout(cpCompteAfficher,0);return;}
+    if(!s)return;
+    if(ev==='TOKEN_REFRESHED'||ev==='USER_UPDATED'||ev==='MFA_CHALLENGE_VERIFIED'||ev==='SIGNED_IN'){
+      if(SESS)SESS=s;                                                                          /* jeton renouvelé, utilisateur mis à jour : SESS suit */
+      else if(_cpCloud==='attente'&&ev==='TOKEN_REFRESHED')setTimeout(()=>cpCloudReprendre(),0); /* démarrage hors ligne : le réseau est revenu */
+      setTimeout(cpCompteAfficher,0);}
+  }catch(e){console.warn('ClimPilot (COMPTE) événement de session :',e);}}
+
+/* ---------- démarrage et reprise (§ 3.5 ; Q7 : sans réseau, pas d'écran de connexion bloquant) ---------- */
+function cpCloudFinAttente(){if(_cpAttenteT){clearInterval(_cpAttenteT);_cpAttenteT=null;}}
+function cpCloudAttente(){_cpCloud='attente';cloudLbl('⌛ hors ligne — connexion au retour du réseau');
+  if(!_cpAttenteEcoute){_cpAttenteEcoute=true;window.addEventListener('online',()=>{if(_cpCloud==='attente')cpCloudReprendre();});}
+  /* la bibliothèque garde un échec de renouvellement 60 s : nouvel essai toutes les 30 s tant que l'on attend (et à chaque retour du réseau) */
+  if(!_cpAttenteT)_cpAttenteT=setInterval(()=>{if(_cpCloud!=='attente'){cpCloudFinAttente();return;}if(navigator.onLine!==false)cpCloudReprendre();},30000);
+  cpCompteAfficher();}
+async function cpCloudReprendre(){
+  if(!sb||_cpReprise)return;_cpReprise=true;
+  try{
+    const {data,error}=await sb.auth.getSession();const session=data&&data.session;
+    if(!session){
+      /* jeton expiré et serveur injoignable (cave, mode avion) : la bibliothèque garde la session et rend une erreur réseau → on attend le réseau */
+      if(error&&cpErreurReseau(error)){cpCloudAttente();return;}
+      if(error)cpAuthJournal('reprise de la session',error);
+      cpCloudFinAttente();
+      /* session refusée alors que l'appli sert (démarrage hors ligne puis réseau revenu) : bandeau, pas d'écran plein */
+      if(_cpCloud==='attente'||_cpCloud==='ferme'){_cpCloud='ferme';cloudLbl('⚠ déconnecté du cloud','err');cpBandeauSession(true);cpCompteAfficher();return;}
+      showLogin();cloudLbl('non connecté');return;}
+    cpCloudFinAttente();
+    const code=await cpCodeNecessaire(session);
+    if(code==='inconnu'){showLogin();cloudLbl('non connecté');const m=document.getElementById('logMsg');if(m)m.textContent='Vérification impossible : réessaie.';return;}
+    if(code){cpLoginEtape2(session);return;} /* session restée sans code (appli fermée pendant la saisie) */
+    SESS=session;afterLogin();
+  }catch(e){cpAuthJournal('démarrage du cloud',e);cloudLbl('⚠ cloud injoignable — mode local','err');}
+  finally{_cpReprise=false;}}
+
+/* ---------- écran de connexion : 2e étape, « Continuer sans connexion » (Q8), téléphone perdu ---------- */
+function cpLoginEtape(n){const d=(i,v)=>{const e=document.getElementById(i);if(e)e.style.display=v?'':'none';};
+  d('logEtape1',n===1);d('logBtn',n===1);d('logEtape2',n===2);d('logCodeBtn',n===2);d('logLiens2',n===2);if(n===1)d('logTelPerduTxt',false);}
+/* seulement sur un appareil qui a déjà synchronisé : sur un appareil neuf, un état local fusionné « sans base » gagnerait en bloc (MISSION-P3 § 2.2) */
+function cpLoginSansCoMaj(){let ok=false;try{ok=!!(load('cp2_sync',{})||{}).lastRemote;}catch(e){console.warn('ClimPilot (COMPTE) lecture de cp2_sync :',e);}
+  ['logSansCo','logSansCoTxt'].forEach(i=>{const e=document.getElementById(i);if(e)e.style.display=ok?'':'none';});}
+function cpLoginEtape2(session){_cpCloud='code';const L=document.getElementById('loginScreen');if(L)L.style.display='flex';
+  const F=((session&&session.user&&session.user.factors)||[]).filter(f=>f&&f.status==='verified'&&f.factor_type==='totp');
+  const sel=document.getElementById('logFacteur');
+  if(sel){sel.innerHTML=F.map(f=>'<option value="'+cpEsc(f.id)+'">'+cpEsc(f.friendly_name||'sans nom')+'</option>').join('');sel.style.display=F.length>1?'':'none';}
+  cpLoginEtape(2);cpLoginSansCoMaj();const m=document.getElementById('logMsg');if(m)m.textContent='';const c=document.getElementById('logCode');if(c)c.value='';
+  cloudLbl('🔐 code de double authentification attendu');
+  setTimeout(()=>{try{document.getElementById('logCode').focus();}catch(e){console.warn('ClimPilot (COMPTE) focus du code :',e);}},80);}
+async function cpLoginCode(){const msg=document.getElementById('logMsg'),ch=document.getElementById('logCode');
+  const code=String((ch||{}).value||'').replace(/\s/g,'');
+  if(!/^\d{6}$/.test(code)){msg.textContent='Tape les 6 chiffres affichés par ton application.';return;}
+  if(!sb){msg.textContent='Cloud non chargé sur cet appareil.';return;}
+  const sel=document.getElementById('logFacteur');let fid=sel&&sel.value;
+  if(!fid){try{const {data}=await sb.auth.getSession();const F=((data&&data.session&&data.session.user&&data.session.user.factors)||[]).filter(f=>f.status==='verified'&&f.factor_type==='totp');fid=F[0]&&F[0].id;}catch(e){cpAuthJournal('lecture de la session',e);}}
+  if(!fid){msg.textContent='Aucun appareil de double authentification trouvé : « Recommencer ».';return;}
+  msg.textContent='Vérification…';
+  try{let r=await sb.auth.mfa.challengeAndVerify({factorId:fid,code:code});
+    if(r&&r.error&&r.error.code==='mfa_challenge_expired')r=await sb.auth.mfa.challengeAndVerify({factorId:fid,code:code});
+    if(ch)ch.value='';
+    if(r&&r.error){const e=r.error;cpAuthJournal('code à la connexion',e);
+      msg.textContent=e.code==='mfa_verification_failed'?'Code refusé. Vérifie que l\'heure du téléphone est réglée automatiquement, puis tape le code affiché maintenant.'
+        :(e.status===429||/rate_limit/.test(String(e.code||'')))?'Trop d\'essais : attends quelques minutes.'
+        :cpErreurReseau(e)?'Serveur cloud injoignable : réessaie quand le réseau revient.':'Erreur cloud ('+(e.status||'?')+') : '+String(e.message||e.code||'').slice(0,160);return;}
+    const {data}=await sb.auth.getSession();if(!data||!data.session){msg.textContent='Session introuvable : « Recommencer ».';return;}
+    SESS=data.session;cpLoginFermer();afterLogin();
+  }catch(e){cpAuthJournal('code à la connexion',e);msg.textContent='Serveur cloud injoignable : réessaie quand le réseau revient.';}}
+function cpLoginFermer(){const L=document.getElementById('loginScreen');if(L)L.style.display='none';cpLoginEtape(1);const m=document.getElementById('logMsg');if(m)m.textContent='';_cpCloud='connecte';}
+async function cpLoginRecommencer(){_cpDeconnexionVoulue=true;
+  try{await cpSessionFermerIci('abandon de la 2e étape');}finally{_cpDeconnexionVoulue=false;}
+  _cpCloud='login';cpLoginEtape(1);const m=document.getElementById('logMsg');if(m)m.textContent='';cloudLbl('non connecté');}
+/* COMPTE-bis : fermer la session de CET appareil (portée local) dans tous les cas, même hors ligne : si la bibliothèque rend une erreur et que la
+   session est encore dans le stockage de la page (clé sb.auth.storageKey, et sa variante « -user »), elle est retirée ici. Rien de secret en console. */
+async function cpSessionFermerIci(quoi){let err=null;
+  try{if(sb){const r=await sb.auth.signOut({scope:'local'});err=(r&&r.error)||null;}}catch(e){err=e;}
+  if(!err)return;cpAuthJournal(quoi,err);
+  try{const k=sb&&sb.auth&&sb.auth.storageKey;if(!k)return;
+    [k,k+'-user'].forEach(x=>{if(localStorage.getItem(x)!=null){localStorage.removeItem(x);cpAuthJournal(quoi+' : session retirée du stockage de cet appareil',{name:x===k?'session':'utilisateur'});}});}
+  catch(e){cpAuthJournal(quoi+' : retrait de la session du stockage',e);}}
+function cpTelPerdu(){const t=document.getElementById('logTelPerduTxt');if(t)t.style.display=t.style.display==='none'?'':'none';cpLoginSansCoMaj();}
+/* Q8 : données de l'appareil, synchro en pause (SESS reste vide : l'émission passe alors en mode démonstration — défaut C-N3, traité par AF1-B) */
+function cpLoginSansConnexion(){const L=document.getElementById('loginScreen');if(L)L.style.display='none';_cpCloud='local';SESS=null;cpCloudFinAttente();cpBandeauSession(false);
+  cloudLbl('⏸ synchro en pause — non connecté');cpCompteAfficher();toast('Données de cet appareil — synchro en pause. Connecte-toi depuis Paramètres › Mon compte.');}
+
+/* ---------- QR code fabriqué dans l'appli (norme ISO/IEC 18004 : mode octets, correction M, versions 1 à 40, masque choisi par pénalité) ----------
+   Aucune bibliothèque, aucune image distante : l'image est un SVG en data: (img-src data: déjà permis par la CSP de S, inchangée).
+   Vérifié module par module contre une bibliothèque indépendante (suite AH, test du test). cpQr(texte, masque?) → {version, masque, taille, lignes:['0101…']} */
+window.cpQr=function(texte,masqueForce){
+  const data=Array.from(new TextEncoder().encode(String(texte)));
+  const ECC=[10,16,26,18,24,16,18,22,22,26,30,22,22,24,24,28,28,26,26,26,26,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28,28];
+  const BLK=[1,1,1,2,2,4,4,4,5,5,5,8,9,9,10,10,11,13,14,16,17,17,18,20,21,23,25,26,28,29,31,33,35,37,38,40,43,45,47,49];
+  const brut=v=>{let r=(16*v+128)*v+64;if(v>=2){const n=Math.floor(v/7)+2;r-=(25*n-10)*n-55;if(v>=7)r-=36;}return r;};
+  const capa=v=>Math.floor(brut(v)/8)-ECC[v-1]*BLK[v-1];
+  let ver=0;for(let v=1;v<=40;v++){if(4+(v<10?8:16)+8*data.length<=capa(v)*8){ver=v;break;}}
+  if(!ver)throw new Error('texte trop long pour un QR code');
+  const bits=[],put=(val,n)=>{for(let i=n-1;i>=0;i--)bits.push((val>>>i)&1);};
+  put(4,4);put(data.length,ver<10?8:16);data.forEach(b=>put(b,8));
+  const cap=capa(ver)*8;put(0,Math.min(4,cap-bits.length));put(0,(8-bits.length%8)%8);
+  for(let p=0xEC;bits.length<cap;p^=0xEC^0x11)put(p,8);
+  const oct=[];for(let i=0;i<bits.length;i+=8){let b=0;for(let k=0;k<8;k++)b=(b<<1)|bits[i+k];oct.push(b);}
+  const mul=(x,y)=>{let z=0;for(let i=7;i>=0;i--){z=(z<<1)^((z>>>7)*0x11D);z^=((y>>>i)&1)*x;}return z;};
+  const deg=ECC[ver-1],div=[];for(let i=0;i<deg-1;i++)div.push(0);div.push(1);
+  for(let i=0,root=1;i<deg;i++){for(let j=0;j<div.length;j++){div[j]=mul(div[j],root);if(j+1<div.length)div[j]^=div[j+1];}root=mul(root,2);}
+  const reste=d=>{const r=div.map(()=>0);d.forEach(b=>{const f=b^r.shift();r.push(0);div.forEach((c,i)=>{r[i]^=mul(c,f);});});return r;};
+  const nb=BLK[ver-1],tot=Math.floor(brut(ver)/8),nCourts=nb-tot%nb,lCourt=Math.floor(tot/nb),blocs=[];
+  for(let i=0,k=0;i<nb;i++){const d=oct.slice(k,k+lCourt-deg+(i<nCourts?0:1));k+=d.length;const e=reste(d);if(i<nCourts)d.push(0);blocs.push(d.concat(e));}
+  const flux=[];for(let i=0;i<blocs[0].length;i++)blocs.forEach((b,j)=>{if(i!==lCourt-deg||j>=nCourts)flux.push(b[i]);});
+  const n=ver*4+17,M=[],F=[];for(let y=0;y<n;y++){M.push(new Array(n).fill(false));F.push(new Array(n).fill(false));}
+  const fx=(x,y,v)=>{M[y][x]=v;F[y][x]=true;};
+  for(let i=0;i<n;i++){fx(6,i,i%2===0);fx(i,6,i%2===0);}
+  const reperes=(cx,cy)=>{for(let dy=-4;dy<=4;dy++)for(let dx=-4;dx<=4;dx++){const d=Math.max(Math.abs(dx),Math.abs(dy)),x=cx+dx,y=cy+dy;if(x>=0&&x<n&&y>=0&&y<n)fx(x,y,d!==2&&d!==4);}};
+  reperes(3,3);reperes(n-4,3);reperes(3,n-4);
+  if(ver>1){const na=Math.floor(ver/7)+2,pas=ver===32?26:Math.ceil((ver*4+4)/(na*2-2))*2,pos=[6];for(let p=n-7;pos.length<na;p-=pas)pos.splice(1,0,p);
+    for(let i=0;i<na;i++)for(let j=0;j<na;j++){if((i===0&&j===0)||(i===0&&j===na-1)||(i===na-1&&j===0))continue;
+      for(let dy=-2;dy<=2;dy++)for(let dx=-2;dx<=2;dx++)fx(pos[i]+dx,pos[j]+dy,Math.max(Math.abs(dx),Math.abs(dy))!==1);}}
+  const format=m=>{const d=m;let r=d;for(let i=0;i<10;i++)r=(r<<1)^((r>>>9)*0x537);const b=((d<<10)|r)^0x5412,g=i=>((b>>>i)&1)===1; /* niveau M : bits 00 */
+    for(let i=0;i<=5;i++)fx(8,i,g(i));fx(8,7,g(6));fx(8,8,g(7));fx(7,8,g(8));for(let i=9;i<15;i++)fx(14-i,8,g(i));
+    for(let i=0;i<8;i++)fx(n-1-i,8,g(i));for(let i=8;i<15;i++)fx(8,n-15+i,g(i));fx(8,n-8,true);};
+  format(0);
+  if(ver>=7){let r=ver;for(let i=0;i<12;i++)r=(r<<1)^((r>>>11)*0x1F25);const b=(ver<<12)|r;
+    for(let i=0;i<18;i++){const c=((b>>>i)&1)===1,a=n-11+i%3,z=Math.floor(i/3);fx(a,z,c);fx(z,a,c);}}
+  for(let dr=n-1,k=0;dr>=1;dr-=2){if(dr===6)dr=5;for(let v=0;v<n;v++)for(let j=0;j<2;j++){const x=dr-j,y=((dr+1)&2)===0?n-1-v:v;
+    if(!F[y][x]&&k<flux.length*8){M[y][x]=((flux[k>>>3]>>>(7-(k&7)))&1)===1;k++;}}}
+  const MQ=[(x,y)=>(x+y)%2===0,(x,y)=>y%2===0,(x,y)=>x%3===0,(x,y)=>(x+y)%3===0,(x,y)=>(Math.floor(x/3)+Math.floor(y/2))%2===0,(x,y)=>x*y%2+x*y%3===0,(x,y)=>(x*y%2+x*y%3)%2===0,(x,y)=>((x+y)%2+x*y%3)%2===0];
+  const appliquer=m=>{for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(!F[y][x]&&MQ[m](x,y))M[y][x]=!M[y][x];};
+  const penalite=()=>{let p=0,noirs=0;const lig=(get)=>{for(let a=0;a<n;a++){let run=1;for(let b=1;b<=n;b++){if(b<n&&get(a,b)===get(a,b-1))run++;else{if(run>=5)p+=run-2;run=1;}}
+      const s=[0,0,0,0];for(let b=0;b<n;b++)s.push(get(a,b)?1:0);s.push(0,0,0,0);const t=s.join('');let i=-1;while((i=t.indexOf('10111010000',i+1))>=0)p+=40;i=-1;while((i=t.indexOf('00001011101',i+1))>=0)p+=40;}};
+    lig((a,b)=>M[a][b]);lig((a,b)=>M[b][a]);
+    for(let y=0;y<n-1;y++)for(let x=0;x<n-1;x++){const c=M[y][x];if(c===M[y][x+1]&&c===M[y+1][x]&&c===M[y+1][x+1])p+=3;}
+    for(let y=0;y<n;y++)for(let x=0;x<n;x++)if(M[y][x])noirs++;
+    p+=(Math.ceil(Math.abs(noirs*20-n*n*10)/(n*n))-1)*10;return p;};
+  let masque=masqueForce;
+  if(masque==null){let mieux=Infinity;for(let m=0;m<8;m++){appliquer(m);format(m);const p=penalite();if(p<mieux){mieux=p;masque=m;}appliquer(m);}}
+  appliquer(masque);format(masque);
+  return {version:ver,masque:masque,taille:n,lignes:M.map(l=>l.map(v=>v?'1':'0').join(''))};};
+window.cpQrImage=function(texte){const q=cpQr(texte),n=q.taille,b=4;let d='';
+  q.lignes.forEach((l,y)=>{for(let x=0;x<n;){if(l[x]!=='1'){x++;continue;}let w=0;while(x+w<n&&l[x+w]==='1')w++;d+='M'+(x+b)+' '+(y+b)+'h'+w+'v1h-'+w+'z';x+=w;}});
+  const svg='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+(n+2*b)+' '+(n+2*b)+'" shape-rendering="crispEdges"><rect width="100%" height="100%" fill="#fff"/><path d="'+d+'" fill="#000"/></svg>';
+  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(svg);};
 
 /* ============ INIT ============ */
 window._curView='dash';
