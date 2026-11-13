@@ -263,20 +263,21 @@ const clientSrv = (S, nom) => ((((S.etat || {}).data || {}).cp2_clients) || []).
       const pendant = await etatT4();
       if (cas === 'annuler') await cliquer(PC, '#acc_mfa_annuler');
       if (cas === 'sortie') await lire(S, PC, () => { go('dash'); return true; });
-      await lire(S, PC, () => { window.__aalOuvrir(); return true; }).catch(() => {});
+      const eOuvrir = await lire(S, PC, () => { window.__aalOuvrir(); return null; }).catch((e) => 'ouverture impossible : ' + String(e).slice(0, 120));
       await PC.p.waitForTimeout(600); await calme(S, PC);
       const apres = await etatT4();
-      res[cas] = { porte, go1, pendant, apres, enroll: nb(S, 'enroll') - e0, facteurs: S.auth.facteurs.length - n0 };
+      res[cas] = { porte, go1, pendant, apres, enroll: nb(S, 'enroll') - e0, facteurs: S.auth.facteurs.length - n0, eOuvrir, eRemise: null };
       /* remise en état : niveau rendu à la bibliothèque, activation éventuelle annulée (facteur non vérifié retiré), bloc du code fermé */
-      await lire(S, PC, () => { sb.auth.mfa.getAuthenticatorAssuranceLevel = window.__aalVrai; if (window._cpMfa || window._cpMfaPrep) cpMfaAnnuler(true); cpCodeFermer(true); return true; }).catch(() => {});
+      await lire(S, PC, () => { sb.auth.mfa.getAuthenticatorAssuranceLevel = window.__aalVrai; if (window._cpMfa || window._cpMfaPrep) cpMfaAnnuler(true); cpCodeFermer(true); return true; })
+        .catch((e) => { res[cas].eRemise = 'remise en état impossible : ' + String(e).slice(0, 120); });
       await PC.p.waitForTimeout(300); await calme(S, PC);
     }
-    const rienFait = (v) => v.porte && v.go1 && !v.pendant.erreur && v.pendant.gris && v.pendant.prep && !v.apres.erreur && v.enroll === 0 && v.facteurs === 0
+    const rienFait = (v) => v.porte && v.go1 && !v.eOuvrir && !v.eRemise && !v.pendant.erreur && v.pendant.gris && v.pendant.prep && !v.apres.erreur && v.enroll === 0 && v.facteurs === 0
       && !v.apres.mfa && !v.apres.prep && !v.apres.scan && !v.apres.qrSrc && !v.apres.cle && !v.apres.code;
     r('AH25 — « Annuler » pendant la lecture du niveau de la session (facteur vérifié) : « Continuer » déjà grisé ; ensuite rien n\'est fait (aucun enroll, pas de QR code, pas de clé, pas de bloc du code)', rienFait(res.annuler), j(res.annuler));
     r('AH25 — sortie des Paramètres pendant la lecture du niveau de la session : ensuite rien n\'est fait (aucun enroll, pas de QR code, pas de clé, pas de bloc du code)', rienFait(res.sortie), j(res.sortie));
     const t = res.temoin;
-    r('AH25 — témoin : même lecture retenue puis rendue SANS annulation : l\'inscription se fait (1 enroll, QR code affiché)', t.porte && t.go1 && !t.pendant.erreur && !t.apres.erreur && t.enroll === 1 && t.apres.mfa && t.apres.scan && t.apres.qrSrc && !!t.apres.cle, j(t));
+    r('AH25 — témoin : même lecture retenue puis rendue SANS annulation : l\'inscription se fait (1 enroll, QR code affiché)', t.porte && t.go1 && !t.eOuvrir && !t.eRemise && !t.pendant.erreur && !t.apres.erreur && t.enroll === 1 && t.apres.mfa && t.apres.scan && t.apres.qrSrc && !!t.apres.cle, j(t));
     r('AH25 — fin : facteurs inchangés (seulement les 2 vérifiés)', S.auth.facteurs.length === 2 && S.auth.facteurs.every((f) => f.status === 'verified'), j(S.auth.facteurs.map((f) => f.friendly_name + ':' + f.status)));
   });
 
@@ -346,21 +347,21 @@ const clientSrv = (S, nom) => ((((S.etat || {}).data || {}).cp2_clients) || []).
     const res = {};
     for (const cas of ['annuler', 'sortie']) {
       S.auth.facteurs = []; S.auth.retards.enroll = 1500; const e0 = nb(S, 'enroll'), u0 = nb(S, 'unenroll');
-      await ecouterMsgs(S, PC); await lire(S, PC, () => { window.__msgs = []; return true; }).catch(() => {});
+      await ecouterMsgs(S, PC); const eMsgs = await lire(S, PC, () => { window.__msgs = []; return null; }).catch((e) => 'remise à zéro des messages impossible : ' + String(e).slice(0, 120));
       await ouvrirActivation(); await PC.p.waitForTimeout(250);
       S.auth.injecter('unenroll', S.auth.erreur(500, 'unexpected_failure', 'panne simulée'));
       if (cas === 'annuler') await cliquer(PC, '#acc_mfa_annuler'); else await lire(S, PC, () => { go('dash'); return true; });
       await PC.p.waitForTimeout(2200); await calme(S, PC); S.auth.retards.enroll = 0;
       const apres = await etatMfa(), vu = await present(PC, '#acc_mfa_msg'), msgs = await lire(S, PC, () => (window.__msgs || []).slice()).catch((e) => ['lecture impossible : ' + String(e).slice(0, 80)]);
       const fid = (S.auth.facteurs[0] || {}).id;
-      res[cas] = { apres, vu, msgs, enroll: nb(S, 'enroll') - e0, unenroll: nb(S, 'unenroll') - u0, facteurs: S.auth.facteurs.map((f) => f.id + ':' + f.status) };
+      res[cas] = { eMsgs, apres, vu, msgs, enroll: nb(S, 'enroll') - e0, unenroll: nb(S, 'unenroll') - u0, facteurs: S.auth.facteurs.map((f) => f.id + ':' + f.status) };
       /* prochain essai : le retrait est refait (facteur gardé en mémoire), puis annulation propre */
       await ouvrirActivation(); await PC.p.waitForTimeout(300); await calme(S, PC);
       res[cas].refait = !!fid && !S.auth.facteurs.some((f) => f.id === fid);
       await cliquer(PC, '#acc_mfa_annuler'); await PC.p.waitForTimeout(300); await calme(S, PC);
       res[cas].fin = S.auth.facteurs.length;
     }
-    const base = (v) => !v.apres.erreur && v.enroll === 1 && v.unenroll === 1 && v.facteurs.length === 1 && !v.apres.mfa && !v.apres.qrSrc && !v.apres.cle && v.refait && v.fin === 0;
+    const base = (v) => !v.eMsgs && !v.apres.erreur && v.enroll === 1 && v.unenroll === 1 && v.facteurs.length === 1 && !v.apres.mfa && !v.apres.qrSrc && !v.apres.cle && v.refait && v.fin === 0;
     const a = res.annuler, s = res.sortie;
     r('AH25 — réponse d\'enroll arrivée APRÈS « Annuler » et retrait en échec : message VISIBLE « Le retrait n\'a pas abouti : il sera refait au prochain essai. » (pas le silence) ; rien d\'affiché ; retrait refait au prochain essai', base(a) && a.vu && a.apres.msg === T5, j(a));
     r('AH25 — réponse d\'enroll arrivée APRÈS la sortie des Paramètres et retrait en échec : même message en bandeau ; rien d\'affiché ; retrait refait au prochain essai', base(s) && s.msgs.includes(T5), j(s));
