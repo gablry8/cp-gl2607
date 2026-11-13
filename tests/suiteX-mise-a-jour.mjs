@@ -80,29 +80,42 @@ rec(G, 'Version N installée : service worker actif, cache « 0000-ancienne » r
    Si la mise à jour ne finit pas en 120 s, les contrôles sont ROUGES avec l'état du service worker, sans navigation (elle figerait). */
 racine = RACINE; journal.length = 0;
 await p.reload({ waitUntil: 'load' });
-const maj = await p.evaluate(async ([C, n]) => {
-  const etat = async () => {
-    const r = await navigator.serviceWorker.getRegistration(); const ks = (await caches.keys()).sort();
-    return { caches: ks, fichiers: ks.includes(C) ? (await (await caches.open(C)).keys()).length : 0, active: r && r.active ? r.active.state : null, enAttente: !!(r && r.waiting), enInstallation: !!(r && r.installing) };
-  };
-  const t0 = Date.now(); let e = null;
-  while (Date.now() - t0 < 120000) {
-    e = await etat();
-    if (e.caches.length === 1 && e.caches[0] === C && e.fichiers >= n && e.active === 'activated' && !e.enAttente && !e.enInstallation) return { finie: true, ms: Date.now() - t0, ...e };
-    await new Promise((r) => setTimeout(r, 250));
-  }
-  return { finie: false, ms: Date.now() - t0, ...e };
-}, [cacheActuel, listeSw.length]);
-console.log('INFO mise à jour N+1 ' + (maj.finie ? 'finie' : 'NON FINIE') + ' en ' + maj.ms + ' ms (' + j(maj) + ')');
+/* OUTILLAGE-4 (13/11/2026) : l'attente est aussi bornée CÔTÉ NODE (150 s). La boucle de la page s'arrête d'elle-même à 120 s, mais une page
+   figée ne rendrait jamais la main (p.evaluate n'a pas de délai) et la suite bloquerait jusqu'au délai de la CI (90 min). À expiration : contrôles
+   ROUGES avec le dernier état connu (envoyé par la page à chaque changement), aucune commande de plus à la page, navigateur fermé, suite terminée. */
+const DELAI_NODE_MS = 150000; let dernierEtat = null;
+const suivi = (m) => { const t = m.text(); if (t.startsWith('CPX-MAJ ')) { try { dernierEtat = JSON.parse(t.slice(8)); } catch (e) { dernierEtat = { illisible: t.slice(8, 200) }; } } };
+p.on('console', suivi);
+let minuterie = null;
+const maj = await Promise.race([
+  p.evaluate(async ([C, n]) => {
+    const etat = async () => {
+      const r = await navigator.serviceWorker.getRegistration(); const ks = (await caches.keys()).sort();
+      return { caches: ks, fichiers: ks.includes(C) ? (await (await caches.open(C)).keys()).length : 0, active: r && r.active ? r.active.state : null, enAttente: !!(r && r.waiting), enInstallation: !!(r && r.installing) };
+    };
+    const t0 = Date.now(); let e = null, avant = '';
+    while (Date.now() - t0 < 120000) {
+      e = await etat();
+      const s = JSON.stringify(e); if (s !== avant) { avant = s; console.log('CPX-MAJ ' + JSON.stringify({ ms: Date.now() - t0, ...e })); }
+      if (e.caches.length === 1 && e.caches[0] === C && e.fichiers >= n && e.active === 'activated' && !e.enAttente && !e.enInstallation) return { finie: true, ms: Date.now() - t0, ...e };
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    return { finie: false, ms: Date.now() - t0, ...e };
+  }, [cacheActuel, listeSw.length]),
+  new Promise((r) => { minuterie = setTimeout(() => r({ finie: false, delaiNode: true, ms: DELAI_NODE_MS, dernierEtat, serviceWorkers: ctx.serviceWorkers().length, requetesServeur: journal.length }), DELAI_NODE_MS); }),
+]);
+clearTimeout(minuterie); p.off('console', suivi);
+console.log('INFO mise à jour N+1 ' + (maj.finie ? 'finie' : maj.delaiNode ? 'NON FINIE (page sans réponse, délai Node de ' + DELAI_NODE_MS / 1000 + ' s)' : 'NON FINIE') + ' en ' + maj.ms + ' ms (' + j(maj) + ')');
 if (maj.finie) { await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(2500); }
 const c1 = maj.finie ? await attendreCache(cacheActuel.replace(/[-.]/g, '\\$&'), listeSw.length) : null;
-const ks = await caches();
-const d1 = await p.evaluate(() => ({ devis: DEVIS.length, clients: CLIENTS.length, sw: !!navigator.serviceWorker.controller, planning: typeof window.nxplSource }));
+/* page sans réponse : aucune commande de plus (elle ne rendrait pas la main) */
+const ks = maj.delaiNode ? null : await caches();
+const d1 = maj.delaiNode ? { nonLu: 'page sans réponse (délai Node)' } : await p.evaluate(() => ({ devis: DEVIS.length, clients: CLIENTS.length, sw: !!navigator.serviceWorker.controller, planning: typeof window.nxplSource }));
 rec(G, `Après mise à jour : cache « ${cacheActuel} » installé avec les ${listeSw.length} fichiers, ancien cache supprimé`, maj.finie && !!c1 && c1.fichiers >= listeSw.length && ks.length === 1 && ks[0] === cacheActuel, j({ c1, caches: ks, maj }));
 rec(G, 'Après mise à jour : données conservées (12 devis, 3 clients), service worker au contrôle', d1.devis === 12 && d1.clients === 3 && d1.sw, j(d1));
 
 /* 3. hors ligne : tout vient du cache */
-const NOM_HL = 'Hors ligne après mise à jour (serveur arrêté) : l\'appli s\'ouvre depuis le cache, données là, bibliothèques embarquées chargées, chaque fichier demandé servi par le service worker, aucun en échec ni en erreur';
+const NOM_HL = 'Hors ligne après mise à jour (serveur arrêté) : l\'appli s\'ouvre depuis le cache, données là, bibliothèques embarquées chargées, chaque fichier demandé servi par le service worker, aucun en échec ni en erreur, aucune réponse du réseau, rien vers le cloud';
 const NOM_NAV = 'Hors ligne : changement d\'écran Planning puis Accueil';
 if (!maj.finie) {
   rec(G, NOM_HL, false, 'non exécuté : la mise à jour N+1 ne s\'est pas terminée (contrôle « Après mise à jour » ci-dessus) ; une navigation figerait la page');
@@ -110,13 +123,25 @@ if (!maj.finie) {
 } else {
   /* hors ligne POUR DE VRAI : le serveur est arrêté (le service worker a son propre accès réseau, que setOffline ne coupe pas) */
   await new Promise((r) => srv.close(r)); await ctx.setOffline(true); journal.length = 0;
+  /* OUTILLAGE-4 (13/11/2026) : les deux routes de sansBibliothequesCloud (supabase-js et Chart.js remplacés au niveau du CONTEXTE) sont retirées
+     juste avant le rechargement hors ligne. Elles répondaient aussi aux requêtes réseau du service worker (« réseau d'abord ») : hors ligne, ces deux
+     fichiers étaient donc servis par la route même s'ils manquaient du cache. Sans elles, le service worker doit les servir depuis son cache, et la
+     page reste sans cloud : serveur arrêté, setOffline, requête supabase de la page interrompue (route de la page, gardée), mandataire « refus ».
+     Mêmes motifs que tests/lib.mjs ; le contrôle « aucune réponse du réseau » ci-dessous échoue si une route était encore là. */
+  await ctx.unroute(/\/vendor\/supabase-js-/); await ctx.unroute(/\/vendor\/chart-/);
   /* OUTILLAGE-X : « tous les fichiers servis depuis le cache » est vérifié requête par requête : chaque réponse de l'origine de l'appli vient du
      service worker, aucune n'est en erreur (≥ 400) NI EN ÉCHEC, et chaque script de la page a sa réponse. Avant, un fichier listé dans sw.js mais
      absent du cache au moment du hors ligne échouait sans statut HTTP et la suite passait (mutation b, compte rendu OUTILLAGE-X). */
   const chemin = (u) => u.slice(URL.length).split('?')[0];
-  const echecs = [], horsSW = [], servis = new Set();
+  const echecs = [], horsSW = [], servis = new Set(), reseauSW = [], horsAppli = [];
   p.on('response', (r) => { if (!r.url().startsWith(URL)) return; if (r.status() >= 400) echecs.push(r.status() + ' ' + chemin(r.url())); else if (!r.fromServiceWorker()) horsSW.push(chemin(r.url())); else servis.add(chemin(r.url())); });
   p.on('requestfailed', (r) => { if (r.url().startsWith(URL)) echecs.push('échec (' + ((r.failure() || {}).errorText || '?') + ') ' + chemin(r.url())); });
+  /* OUTILLAGE-4 : hors ligne, aucune requête RÉSEAU du service worker ne doit aboutir (serveur arrêté : si l'une aboutit, une route de test lui a
+     répondu) et aucune requête vers le cloud (Supabase) ne doit partir. Les autres requêtes hors de l'appli (géocodage tenté par l'appli même hors
+     ligne, refusé par le mandataire) sont seulement écrites dans le détail. */
+  ctx.on('requestfinished', (r) => { if (r.serviceWorker()) reseauSW.push(chemin(r.url())); });
+  ctx.on('request', (r) => { const u = r.url(); if (/^(https?|wss?):/i.test(u) && !u.startsWith(URL)) horsAppli.push(u.split('?')[0].slice(0, 80)); });
+  const versLeCloud = () => horsAppli.filter((u) => /supabase/i.test(u));
   /* S-bis (11/11/2026), complété par OUTILLAGE-X : si ce rechargement ne finit pas, la suite écrit l'état de la page, celui de la mise à jour et les requêtes
      en suspens vues par le CONTEXTE (celles du service worker comprises : la page ne voit pas une requête que le service worker n'a pas encore servie). */
   const enCours = new Map(); ctx.on('request', (r) => enCours.set(r, (r.serviceWorker() ? 'SW ' : '') + chemin(r.url()))); const finie = (r) => enCours.delete(r); ctx.on('requestfinished', finie); ctx.on('requestfailed', finie);
@@ -129,13 +154,19 @@ if (!maj.finie) {
   const d2 = await p.evaluate(() => ({ devis: typeof DEVIS !== 'undefined' ? DEVIS.length : 'ABSENT', horsLigne: !navigator.onLine, couches: document.querySelectorAll('script[src^="next-"]').length, store: !!(window.nxStore && nxStore.ready), supabase: typeof window.supabase, vue: (document.querySelector('.view.active') || {}).id || null,
     scripts: [...document.scripts].map((s) => s.src).filter((u) => u && u.startsWith(location.origin + '/')).map((u) => u.slice(location.origin.length + 1).split('?')[0]) })).catch((e) => ({ erreur: String(e) }));
   const sansReponse = (d2.scripts || []).filter((f) => !servis.has(f));
-  rec(G, NOM_HL, d2.devis === 12 && d2.store && d2.horsLigne && d2.couches >= 44 && servis.has('index.html') && echecs.length === 0 && horsSW.length === 0 && sansReponse.length === 0,
-    j({ d2: { ...d2, scripts: (d2.scripts || []).length }, servisParLeServiceWorker: servis.size, echecs: echecs.slice(0, 5), horsServiceWorker: horsSW.slice(0, 5), scriptsSansReponse: sansReponse.slice(0, 5) }));
+  const biblis = ['vendor/supabase-js-', 'vendor/chart-'].filter((f) => ![...servis].some((s) => s.startsWith(f)));
+  rec(G, NOM_HL, d2.devis === 12 && d2.store && d2.horsLigne && d2.couches >= 44 && servis.has('index.html') && echecs.length === 0 && horsSW.length === 0 && sansReponse.length === 0 && biblis.length === 0 && reseauSW.length === 0 && versLeCloud().length === 0,
+    j({ d2: { ...d2, scripts: (d2.scripts || []).length }, servisParLeServiceWorker: servis.size, echecs: echecs.slice(0, 5), horsServiceWorker: horsSW.slice(0, 5), scriptsSansReponse: sansReponse.slice(0, 5), bibliothequesNonServies: biblis, reponsesReseauDuServiceWorker: reseauSW.slice(0, 5), requetesVersLeCloud: versLeCloud().slice(0, 5), autresRequetesHorsAppli: [...new Set(horsAppli)].filter((u) => !/supabase/i.test(u)).slice(0, 5) }));
   const nav = await p.evaluate(async () => { try { go('plan'); await new Promise((r) => setTimeout(r, 300)); const a = (document.querySelector('.view.active') || {}).id; go('dash'); await new Promise((r) => setTimeout(r, 300)); return a + ' → ' + (document.querySelector('.view.active') || {}).id; } catch (e) { return 'ERREUR ' + e; } });
   rec(G, NOM_NAV, nav === 'v-plan → v-dash', nav);
 }
 if (srv.listening) { srv.closeAllConnections(); srv.close(); } /* mise à jour inachevée : le serveur n'a pas été arrêté à l'étape 3 */
 rec(G, 'Aucune erreur JavaScript', errs.length === 0, errs.join(' | '));
-await b.close();
+/* OUTILLAGE-4 : fermeture bornée (page sans réponse : le navigateur est fermé quand même, la suite se termine et écrit ses résultats) */
+let fermeture = null;
+const ferme = await Promise.race([b.close().then(() => true, (e) => 'erreur ' + String(e).slice(0, 120)), new Promise((r) => { fermeture = setTimeout(() => r(false), 20000); })]);
+clearTimeout(fermeture);
+if (ferme !== true) console.log('INFO fermeture du navigateur : ' + (ferme === false ? 'pas finie en 20 s' : ferme));
 ecrireResultats('resX.json', RES);
 RES.forEach((r) => console.log(r.ok.padEnd(5), '[' + r.group + ']', r.name, r.ok !== 'PASS' ? '— ' + r.detail : ''));
+if (ferme !== true) process.exit(1); /* navigateur non fermé : la suite se termine quand même (résultats déjà écrits) */

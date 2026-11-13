@@ -1,6 +1,9 @@
 // Suite P — améliorations 1.12 : rentabilité réelle et SAV (next-rentab.js), demande d'avis (next-avis.js),
 // relevé bancaire (next-banque.js), déclaration annuelle des fluides (next-flubilan.js), liste « Lancer l'entreprise »
 // (next-objectifs.js). Données fictives uniquement.
+// OUTILLAGE-4 (13/11/2026) : un devis du jeu de test se retrouve par le code de sa nature ENTRE TIRETS (/-DPS-/.test(d.num)), jamais par le code
+// seul (/DPS/). Le numéro finit par 6 caractères tirés au hasard (« DV-AAAAMMJJ-PAC-8F8PFG ») : s'ils contiennent un autre code, DEVIS.find
+// renvoyait un autre devis (CI de main 93efedd, run 207 : le devis PAC pris pour DPS, attendu faux 127,57 au lieu de 40,78). docs/OUTILLAGE-4-COMPTE-RENDU.md.
 import {page,rec,RES,closeBrowser,seed} from './lib.mjs';
 import { ecrireResultats, out, URL_LOCALE } from './env.mjs';
 const G='Améliorations 1.12';
@@ -44,8 +47,8 @@ async function preparer(opts,jour){
 /* ================= P2 — taux horaire réel ================= */
 { const {p,ctx,errs}=await preparer();
   const r=await p.evaluate(()=>{
-    const A=DEVIS.filter(d=>d.statut==='accepte'), g=DEVIS.find(d=>/GAI/.test(d.num)), ref=DEVIS.find(d=>d.statut==='refuse'&&compute(d).totalHT>0);
-    const a=A.find(d=>/BAL/.test(d.num)), b=A.find(d=>/DPS/.test(d.num));
+    const A=DEVIS.filter(d=>d.statut==='accepte'), g=DEVIS.find(d=>/-GAI-/.test(d.num)), ref=DEVIS.find(d=>d.statut==='refuse'&&compute(d).totalHT>0);
+    const a=A.find(d=>/-BAL-/.test(d.num)), b=A.find(d=>/-DPS-/.test(d.num));
     g.statut='accepte';
     a.hReel='10'; a.achatReel='150'; a.facSolde={num:'F-2027-101',date:'2027-10-02',montant:604,payeLe:'2027-10-05',mode:'Virement'};
     b.hReel='3'; b.achatReel=''; b.facSolde={num:'F-2027-102',date:'2027-09-15',montant:152};      /* achats non saisis → estimation */
@@ -76,7 +79,7 @@ async function preparer(opts,jour){
   rec(G,'Carte affichée avec la valeur et la ligne du chantier',r.carte&&r.val,j(r));
   /* avoir, facture annulée : chantier pas compté (signalé) ; « sans heures réelles » compté sur 12 mois seulement */
   const r3=await p.evaluate(()=>{ const n0=nxrtSynthese('2027-11-12');
-    const s=DEVIS.find(d=>/SPL/.test(d.num)), m=DEVIS.find(d=>/MES/.test(d.num)), ch=DEVIS.find(d=>/CHF/.test(d.num));
+    const s=DEVIS.find(d=>/-SPL-/.test(d.num)), m=DEVIS.find(d=>/-MES-/.test(d.num)), ch=DEVIS.find(d=>/-CHF-/.test(d.num));
     s.statut='accepte'; s.hReel='5'; s.facSolde={num:'F-2027-103',date:'2027-10-10',montant:779};
     m.statut='accepte'; m.facSolde={num:'F-2026-104',date:'2026-06-01',montant:347};                 /* sans heures, il y a plus de 12 mois */
     ch.statut='accepte'; ch.facSolde={num:'F-2027-105',date:'2027-10-01',montant:5573};              /* sans heures, dans les 12 mois */
@@ -87,7 +90,7 @@ async function preparer(opts,jour){
   rec(G,'« Chantiers facturés sans heures réelles » comptés sur les 12 derniers mois seulement',r3.sansH1===r3.sansH0+1,j(r3));
 
   /* assujetti à la TVA : achats réels (TTC payés) ramenés HT */
-  const r2=await p.evaluate(()=>{ const a=DEVIS.find(d=>/BAL/.test(d.num)), b=DEVIS.find(d=>/DPS/.test(d.num)); const o={reg:P.regimeTVA,at:P.achatTVA};
+  const r2=await p.evaluate(()=>{ const a=DEVIS.find(d=>/-BAL-/.test(d.num)), b=DEVIS.find(d=>/-DPS-/.test(d.num)); const o={reg:P.regimeTVA,at:P.achatTVA};
     P.regimeTVA='assujetti'; P.achatTVA=20; const ca=compute(a), cb=compute(b), S=nxrtSynthese('2027-11-12');
     const att=(ca.totalHT+cb.totalHT-150/1.2-cb.matAchat)/(10+2+3); P.regimeTVA=o.reg; P.achatTVA=o.at; return {parH:S.parH,att}; });
   rec(G,'Si tu factures la TVA : achats réels TTC ramenés HT',proche(r2.parH,r2.att,0.011),j(r2));
@@ -99,7 +102,7 @@ async function preparer(opts,jour){
 { const {p,ctx,errs}=await preparer();
   const r=await p.evaluate(()=>{ window.confirm=()=>true;
     const n0=nxrtSav().length, ko=[nxrtAjouter({date:'2027-11-20',heures:'1'}),nxrtAjouter({date:'2027-11-01'}),nxrtAjouter({date:'2027-11-01',heures:'-1'}),nxrtAjouter({date:'2027-11-01',heures:'30'})];
-    const g=DEVIS.find(d=>/GAI/.test(d.num)); g.statut='accepte'; g.facSolde={num:'F-2027-110',date:'2027-10-10',montant:4861}; save(LS.devis,DEVIS);
+    const g=DEVIS.find(d=>/-GAI-/.test(d.num)); g.statut='accepte'; g.facSolde={num:'F-2027-110',date:'2027-10-10',montant:4861}; save(LS.devis,DEVIS);
     const prov=compute(g).lines.filter(l=>/^Provision SAV/.test(l.label)).reduce((s,l)=>s+l.ht,0);
     nxrtAjouter({date:'2027-10-15',client:'Supérette Test',heures:'1,5',km:'40',pieces:'35',motif:'pose',note:'raccord repris'});
     nxrtAjouter({date:'2027-11-02',client:'Boucherie Test',heures:'0.5',km:'10',motif:'fabricant'});
@@ -130,7 +133,7 @@ async function preparer(opts,jour){
 /* ================= P4 — demander un avis ================= */
 { const {p,ctx,errs}=await preparer();
   const r=await p.evaluate(()=>{
-    const a=DEVIS.find(d=>/BAL/.test(d.num)), b=DEVIS.find(d=>/DPS/.test(d.num)), s=DEVIS.find(d=>/SPL/.test(d.num));
+    const a=DEVIS.find(d=>/-BAL-/.test(d.num)), b=DEVIS.find(d=>/-DPS-/.test(d.num)), s=DEVIS.find(d=>/-SPL-/.test(d.num));
     a.facSolde={num:'F-2027-120',date:'2027-10-20',montant:604,payeLe:'2027-11-01',mode:'Virement'};
     s.statut='accepte'; s.facSolde={num:'F-2027-121',date:'2027-10-25',montant:779,payeLe:'2027-11-03',mode:'Chèque'};       /* même client : une seule demande */
     b.facSolde={num:'F-2027-122',date:'2027-08-01',montant:152,payeLe:'2027-08-10',mode:'Virement'};                         /* plus de 60 jours */
@@ -236,7 +239,7 @@ async function preparer(opts,jour){
 /* ================= P6 — rapprochement et paiements ================= */
 { const {p,ctx,errs}=await preparer();
   const prep=await p.evaluate(()=>{
-    const a=DEVIS.find(d=>/BAL/.test(d.num)), b=DEVIS.find(d=>/DPS/.test(d.num)), jo=DEVIS.find(d=>/DEP-/.test(d.num)), g=DEVIS.find(d=>/GAI/.test(d.num)), pac=DEVIS.find(d=>/PAC/.test(d.num));
+    const a=DEVIS.find(d=>/-BAL-/.test(d.num)), b=DEVIS.find(d=>/-DPS-/.test(d.num)), jo=DEVIS.find(d=>/-DEP-/.test(d.num)), g=DEVIS.find(d=>/-GAI-/.test(d.num)), pac=DEVIS.find(d=>/-PAC-/.test(d.num));
     a.facSolde={num:'F-2027-201',date:'2027-10-20',montant:1500,payeLe:null,mode:''};                       /* Boulangerie Dupré, pro */
     b.facAcompte={num:'F-2027-202',date:'2027-10-25',montant:450,payeLe:null,mode:''};                      /* L'Atelier du Froid, pro */
     jo.conclusion=null; jo.facSolde={num:'F-2027-206',date:'2027-11-01',montant:820,payeLe:null,mode:''};  /* particulier, contrat à préciser */
@@ -289,7 +292,7 @@ async function preparer(opts,jour){
     const bouton=document.getElementById('nxbqOk').innerText;
     window.confirm=()=>false;                                              /* « le client a-t-il déjà payé ? » → non */
     const R=nxbqValider();
-    const a=DEVIS.find(d=>/BAL/.test(d.num)), b=DEVIS.find(d=>/DPS/.test(d.num)), pac=DEVIS.find(d=>/PAC/.test(d.num)), jo=DEVIS.find(d=>/DEP-/.test(d.num));
+    const a=DEVIS.find(d=>/-BAL-/.test(d.num)), b=DEVIS.find(d=>/-DPS-/.test(d.num)), pac=DEVIS.find(d=>/-PAC-/.test(d.num)), jo=DEVIS.find(d=>/-DEP-/.test(d.num));
     const dep=DEP.find(x=>x.id==='p_dep'), ctr=CTR.find(x=>x.id==='p_ctr'), loc=LOC.find(x=>x.id==='p_loc');
     const livre=allRecettes().filter(x=>/^F-2027-20[1-68]$/.test(x.num)).map(x=>x.num+'@'+x.date+'@'+x.mode).sort();
     const o=nxobjEtat();
@@ -313,7 +316,7 @@ async function preparer(opts,jour){
 
   /* « oui, il a déjà payé » : enregistré par le même chemin, marqué irrégulier */
   const irr=await p.evaluate((csv)=>{ window.confirm=()=>true; nxbqOuvrirTexte(csv); nxbqTresoCoche(false);
-    nxbqCoche(+[...document.querySelectorAll('#nxbqM .nxbq-l')].find(x=>/VIR MME PETIT/.test(x.innerText)).dataset.i,true); const R=nxbqValider(); const pac=DEVIS.find(d=>/PAC/.test(d.num));
+    nxbqCoche(+[...document.querySelectorAll('#nxbqM .nxbq-l')].find(x=>/VIR MME PETIT/.test(x.innerText)).dataset.i,true); const R=nxbqValider(); const pac=DEVIS.find(d=>/-PAC-/.test(d.num));
     return {ok:R.ok,payeLe:pac.facSolde.payeLe,irr:pac.facSolde.paiementIrregulier&&pac.facSolde.paiementIrregulier.statut}; },csv);
   rec(G,'Réponse « oui » au contrôle L221-10 : paiement enregistré à la date du crédit et marqué irrégulier (comme le bouton)',irr.ok.indexOf('F-2027-208')>=0&&irr.payeLe==='2027-11-10'&&irr.irr==='irregulier',j(irr));
 
@@ -344,7 +347,7 @@ async function preparer(opts,jour){
     DEP.push({id:'r_d2',cNom:'Plomberie Martin',cType:'Professionnel',date:'2027-11-03',statut:'facturee',facNum:'F-2027-131',facDate:'2027-11-03',itype:'dep',mode:'temps',heures:1,pieces:[]});
     save(LS.dep,DEP);
     /* facture payée fin septembre, alors que le 3e trimestre est déjà déclaré */
-    const s=DEVIS.find(d=>/SPL/.test(d.num)); s.statut='accepte'; s.facSolde={num:'F-2027-140',date:'2027-09-20',montant:779}; save(LS.devis,DEVIS);
+    const s=DEVIS.find(d=>/-SPL-/.test(d.num)); s.statut='accepte'; s.facSolde={num:'F-2027-140',date:'2027-09-20',montant:779}; save(LS.devis,DEVIS);
     nxobjDecl('2027-T3',true);
     const x=Math.round(computeDep(DEP.find(o=>o.id==='r_d2')).totalHT*100)/100;
     return {x:x.toFixed(2).replace('.',',')}; });
@@ -521,14 +524,14 @@ async function preparer(opts,jour){
 
 /* ================= P9 — téléphone ================= */
 { const {p,ctx,errs}=await page({}); await seed(p); await p.evaluate(PREP());
-  await p.evaluate(()=>{ const a=DEVIS.find(d=>/BAL/.test(d.num)); a.hReel='10'; a.achatReel='150'; a.facSolde={num:'F-2027-101',date:'2027-10-02',montant:604}; save(LS.devis,DEVIS);
+  await p.evaluate(()=>{ const a=DEVIS.find(d=>/-BAL-/.test(d.num)); a.hReel='10'; a.achatReel='150'; a.facSolde={num:'F-2027-101',date:'2027-10-02',montant:604}; save(LS.devis,DEVIS);
     nxrtAjouter({date:'2027-10-20',devis:a.num,heures:'2',km:'30',pieces:'12',motif:'pose',note:'une note assez longue pour voir si elle passe à la ligne correctement'}); });
   const r=await p.evaluate(()=>{ go('nx_obj'); const c=document.getElementById('nxrt'); if(c) c.scrollIntoView();
     const sc=[...document.querySelectorAll('#nxrt .nxo-scroll')].map(e=>e.scrollWidth-e.clientWidth);
     return {w:document.documentElement.scrollWidth,iw:innerWidth,carte:!!c,sc}; });
   await p.screenshot({path:out('suiteP-rentabilite-telephone.png')});
   rec(G,'Téléphone : écran Objectifs sans débordement horizontal avec la carte rentabilité',r.carte&&r.w<=r.iw+1,j(r));
-  const m=await p.evaluate(()=>{ const a=DEVIS.find(d=>/DPS/.test(d.num)); a.facAcompte={num:'F-2027-202',date:'2027-10-25',montant:450}; save(LS.devis,DEVIS);
+  const m=await p.evaluate(()=>{ const a=DEVIS.find(d=>/-DPS-/.test(d.num)); a.facAcompte={num:'F-2027-202',date:'2027-10-25',montant:450}; save(LS.devis,DEVIS);
     nxbqOuvrirTexte('Date;Libellé;Crédit;Débit;Solde\n06/11/2027;VIR L ATELIER DU FROID POUR LA FACTURE ACOMPTE CHANTIER;450,00;;1 000,00\n07/11/2027;VIR TRES LONG LIBELLE SANS ESPACE AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA;99,00;;1 099,00\n');
     const pnl=document.querySelector('#nxbqM .nxbq-p'), ok=document.getElementById('nxbqOk'), b=ok?ok.getBoundingClientRect():null;
     return {d:pnl?pnl.scrollWidth-pnl.clientWidth:-1,bouton:!!b&&b.right<=innerWidth}; });
@@ -545,7 +548,7 @@ async function preparer(opts,jour){
 /* ================= P10 — gros volume ================= */
 { const {p,ctx,errs}=await preparer();
   const r=await p.evaluate(()=>{
-    const base=DEVIS.find(d=>/BAL/.test(d.num));
+    const base=DEVIS.find(d=>/-BAL-/.test(d.num));
     for(let i=0;i<600;i++){ const d=JSON.parse(JSON.stringify(base)); d.id='perf'+i; d.num='DV-PERF-'+i; d.statut='accepte'; d.hReel=String(6+i%5); d.achatReel=String(100+i);
       d.facSolde={num:'F-2027-'+String(1000+i),date:'2027-'+String(1+i%10).padStart(2,'0')+'-15',montant:604,payeLe:'2027-'+String(1+i%10).padStart(2,'0')+'-20',mode:'Virement'}; DEVIS.push(d); }
     save(LS.devis,DEVIS);
@@ -585,10 +588,15 @@ async function preparer(opts,jour){
   rec(G,'Ctrl K « relevé » : action « Importer mon relevé bancaire »',s1.indexOf('Importer mon relevé bancaire')>=0,j(s1));
   rec(G,'Ctrl K « fluides » : la déclaration ET l’écran du menu ; le choix ouvre le bon écran',s2.some(x=>/^Déclaration annuelle des fluides\|/.test(x))&&s2.some(x=>/\|Ouvrir l’écran$/.test(x))&&s3.vue==='fluides'&&s3.carte,j({s2,s3}));
   /* ouverture par l'adresse (raccourci de l'icône) */
-  await p.goto(URL_LOCALE+'index.html?ouvrir=adr'); await pause(2600);
+  /* OUTILLAGE-4 (13/11/2026) : on attend l'ÉCRAN, plus un délai fixe. L'écran de démarrage habituel est « Ma journée » : next-journee.js y bascule
+     1,4 s après son démarrage, lui-même retardé jusqu'à 6 s tant que le menu n'est pas prêt ; le raccourci ouvre sa cible 0,9 s après le chargement.
+     Avec 2,3 s fixes, une machine lente lisait l'écran avant la bascule (« dash » contre « nx_journee », 2 fois sur 3 processeur bridé).
+     Plafond 15 s : au-delà, l'écran lu tel quel rend le contrôle rouge. Puis 1,2 s de marge : un raccourci accepté à tort ouvrirait sa cible après. */
+  const ecran=async(v)=>{ await p.waitForFunction(v=>window._curView===v,v,{timeout:15000}).catch(()=>{}); await pause(1200); };
+  await p.goto(URL_LOCALE+'index.html?ouvrir=adr'); await ecran('fluides');
   const u1=await p.evaluate(()=>({vue:window._curView,search:location.search,carte:!!document.getElementById('nxadr')}));
-  await p.goto(URL_LOCALE+'index.html'); await pause(2300); const v0=await p.evaluate(()=>window._curView);
-  await p.goto(URL_LOCALE+'index.html?ouvrir=inconnu'); await pause(2300);
+  await p.goto(URL_LOCALE+'index.html'); await ecran('nx_journee'); const v0=await p.evaluate(()=>window._curView);
+  await p.goto(URL_LOCALE+'index.html?ouvrir=inconnu'); await ecran('nx_journee');
   const u2=await p.evaluate(()=>({vue:window._curView,search:location.search})); u2.normal=v0;
   rec(G,'Adresse « ?ouvrir=adr » : bon écran, paramètre retiré de l’adresse (pas rejoué au rechargement)',u1.vue==='fluides'&&u1.search===''&&u1.carte,j(u1));
   rec(G,'Adresse avec une valeur inconnue : ignorée (écran de démarrage habituel), paramètre retiré',u2.vue===u2.normal&&u2.vue!=='fluides'&&u2.search==='',j(u2));
