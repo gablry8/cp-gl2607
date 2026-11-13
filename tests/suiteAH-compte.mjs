@@ -244,6 +244,42 @@ const clientSrv = (S, nom) => ((((S.etat || {}).data || {}).cp2_clients) || []).
     r('AH11 bis — « Ajouter un appareil de secours » (Q2) : nom proposé « Secours », 2 facteurs vérifiés, état « 2 appareils »', a.ok && d.a.friendlyName === 'Secours' && S.auth.facteurs.filter((f) => f.status === 'verified').length === 2 && /2 appareils/.test(etat) && /Secours/.test(etat), j({ a, corps: d.a, m: m.slice(0, 120), etat }));
   });
 
+  /* COMPTE-ter (T4) : facteur vérifié → cpMfaInscrire lit d'abord le niveau de la session (premier await, cpAal2). Lecture retenue par le test (porte),
+     « Annuler » ou sortie des Paramètres PENDANT cette lecture : la tentative est écartée, rien n'est fait ensuite (ni enroll, ni QR code, ni clé, ni bloc du code).
+     Témoin : même porte sans annulation → l'inscription se fait (la porte ne bloque pas tout). */
+  await essai('AH25 (d) annulé pendant la lecture du niveau', async () => {
+    const etatT4 = () => lire(S, PC, () => ({ mfa: !!window._cpMfa, prep: !!window._cpMfaPrep, gris: !!(document.querySelector('#acc_mfa_go') || {}).disabled,
+      scan: (() => { const e = document.querySelector('#acc_mfa_scan'); return !!(e && e.getBoundingClientRect().width); })(),
+      qrSrc: !!(document.querySelector('#acc_mfa_qr') || { hasAttribute() { return false; } }).hasAttribute('src'), cle: (document.querySelector('#acc_mfa_cle') || {}).textContent || '',
+      code: getComputedStyle(document.getElementById('acc_code_bloc')).display !== 'none' })).catch((e) => ({ erreur: String(e).slice(0, 120) }));
+    const res = {};
+    for (const cas of ['annuler', 'sortie', 'temoin']) {
+      const e0 = nb(S, 'enroll'), n0 = S.auth.facteurs.length;
+      await vueParams(S, PC);
+      const porte = await lire(S, PC, () => { const m = sb.auth.mfa; window.__aalVrai = m.getAuthenticatorAssuranceLevel; window.__aalPorte = new Promise((ok) => { window.__aalOuvrir = ok; });
+        m.getAuthenticatorAssuranceLevel = async function () { await window.__aalPorte; return window.__aalVrai.apply(this, arguments); }; return true; }).catch(() => false);
+      const go1 = (await cliquer(PC, '#acc_mfa_secours')) && (await PC.p.waitForTimeout(150), await cliquer(PC, '#acc_mfa_go'));
+      await PC.p.waitForTimeout(200);
+      const pendant = await etatT4();
+      if (cas === 'annuler') await cliquer(PC, '#acc_mfa_annuler');
+      if (cas === 'sortie') await lire(S, PC, () => { go('dash'); return true; });
+      await lire(S, PC, () => { window.__aalOuvrir(); return true; }).catch(() => {});
+      await PC.p.waitForTimeout(600); await calme(S, PC);
+      const apres = await etatT4();
+      res[cas] = { porte, go1, pendant, apres, enroll: nb(S, 'enroll') - e0, facteurs: S.auth.facteurs.length - n0 };
+      /* remise en état : niveau rendu à la bibliothèque, activation éventuelle annulée (facteur non vérifié retiré), bloc du code fermé */
+      await lire(S, PC, () => { sb.auth.mfa.getAuthenticatorAssuranceLevel = window.__aalVrai; if (window._cpMfa || window._cpMfaPrep) cpMfaAnnuler(true); cpCodeFermer(true); return true; }).catch(() => {});
+      await PC.p.waitForTimeout(300); await calme(S, PC);
+    }
+    const rienFait = (v) => v.porte && v.go1 && !v.pendant.erreur && v.pendant.gris && v.pendant.prep && !v.apres.erreur && v.enroll === 0 && v.facteurs === 0
+      && !v.apres.mfa && !v.apres.prep && !v.apres.scan && !v.apres.qrSrc && !v.apres.cle && !v.apres.code;
+    r('AH25 — « Annuler » pendant la lecture du niveau de la session (facteur vérifié) : « Continuer » déjà grisé ; ensuite rien n\'est fait (aucun enroll, pas de QR code, pas de clé, pas de bloc du code)', rienFait(res.annuler), j(res.annuler));
+    r('AH25 — sortie des Paramètres pendant la lecture du niveau de la session : ensuite rien n\'est fait (aucun enroll, pas de QR code, pas de clé, pas de bloc du code)', rienFait(res.sortie), j(res.sortie));
+    const t = res.temoin;
+    r('AH25 — témoin : même lecture retenue puis rendue SANS annulation : l\'inscription se fait (1 enroll, QR code affiché)', t.porte && t.go1 && !t.pendant.erreur && !t.apres.erreur && t.enroll === 1 && t.apres.mfa && t.apres.scan && t.apres.qrSrc && !!t.apres.cle, j(t));
+    r('AH25 — fin : facteurs inchangés (seulement les 2 vérifiés)', S.auth.facteurs.length === 2 && S.auth.facteurs.every((f) => f.status === 'verified'), j(S.auth.facteurs.map((f) => f.friendly_name + ':' + f.status)));
+  });
+
   await essai('AH15 (PC)', async () => {
     const u0 = nb(S, 'unenroll'), f0 = nb(S, 'refresh'), d0 = PC.dialogues.length;
     await vueParams(S, PC);
@@ -258,24 +294,25 @@ const clientSrv = (S, nom) => ((((S.etat || {}).data || {}).cp2_clients) || []).
 
   /* COMPTE-bis (C4) : inscription de la double authentification — annulation pendant « Préparation… », nettoyage, échec du retrait */
   const ouvrirActivation = async () => { await vueParams(S, PC); await cliquer(PC, '#acc_mfa_activer'); await PC.p.waitForTimeout(150); return cliquer(PC, '#acc_mfa_go'); };
+  /* COMPTE-ter (T1) : etatMfa peut rendre { erreur } (lecture impossible) : chaque contrôle qui l'utilise exige aussi l'absence d'erreur */
   const etatMfa = () => lire(S, PC, () => ({ mfa: !!window._cpMfa, scan: (() => { const e = document.querySelector('#acc_mfa_scan'); return !!(e && e.getBoundingClientRect().width); })(),
     qrSrc: !!(document.querySelector('#acc_mfa_qr') || { hasAttribute() { return false; } }).hasAttribute('src'), cle: (document.querySelector('#acc_mfa_cle') || {}).textContent || '',
-    msg: (document.querySelector('#acc_mfa_msg') || {}).textContent || '' })).catch((e) => ({ erreur: String(e).slice(0, 120) }));
+    msg: (document.querySelector('#acc_mfa_msg') || {}).textContent || '', gris: !!(document.querySelector('#acc_mfa_go') || {}).disabled })).catch((e) => ({ erreur: String(e).slice(0, 120) }));
   await essai('AH25 (a) Annuler', async () => {
     S.auth.facteurs = []; S.auth.retards.enroll = 1500; const e0 = nb(S, 'enroll'), u0 = nb(S, 'unenroll');
     const go1 = await ouvrirActivation(); await PC.p.waitForTimeout(250);
-    const pendant = { gris: await desactive(PC, '#acc_mfa_go'), msg: await texte(PC, '#acc_mfa_msg') };
+    const pendant = await etatMfa();
     await cliquer(PC, '#acc_mfa_annuler'); await PC.p.waitForTimeout(2200); await calme(S, PC);
     const apres = await etatMfa(); S.auth.retards.enroll = 0;
-    r('AH25 — « Continuer » grisé pendant « Préparation… »', go1 && pendant.gris && /Préparation/.test(pendant.msg), j(pendant));
-    r('AH25 — réponse d\'enroll arrivée APRÈS « Annuler » : le facteur créé est retiré (unenroll), rien n\'est affiché (pas de QR code, pas de clé)', nb(S, 'enroll') === e0 + 1 && nb(S, 'unenroll') === u0 + 1 && S.auth.facteurs.length === 0 && !apres.mfa && !apres.scan && !apres.qrSrc && !apres.cle, j({ apres, enroll: nb(S, 'enroll') - e0, unenroll: nb(S, 'unenroll') - u0, facteurs: S.auth.facteurs.map((f) => f.friendly_name + ':' + f.status) }));
+    r('AH25 — « Continuer » grisé pendant « Préparation… »', go1 && !pendant.erreur && pendant.gris && /Préparation/.test(pendant.msg), j(pendant));
+    r('AH25 — réponse d\'enroll arrivée APRÈS « Annuler » : le facteur créé est retiré (unenroll), rien n\'est affiché (pas de QR code, pas de clé)', nb(S, 'enroll') === e0 + 1 && nb(S, 'unenroll') === u0 + 1 && S.auth.facteurs.length === 0 && !apres.erreur && !apres.mfa && !apres.scan && !apres.qrSrc && !apres.cle, j({ apres, enroll: nb(S, 'enroll') - e0, unenroll: nb(S, 'unenroll') - u0, facteurs: S.auth.facteurs.map((f) => f.friendly_name + ':' + f.status) }));
   });
   await essai('AH25 (a) sortie des Paramètres', async () => {
     S.auth.facteurs = []; S.auth.retards.enroll = 1500; const e0 = nb(S, 'enroll'), u0 = nb(S, 'unenroll');
     await ouvrirActivation(); await PC.p.waitForTimeout(250);
     await lire(S, PC, () => { go('dash'); return true; }); await PC.p.waitForTimeout(2200); await calme(S, PC);
     const apres = await etatMfa(); S.auth.retards.enroll = 0;
-    r('AH25 — réponse d\'enroll arrivée APRÈS la sortie des Paramètres : le facteur créé est retiré, rien n\'est affiché', nb(S, 'enroll') === e0 + 1 && nb(S, 'unenroll') === u0 + 1 && S.auth.facteurs.length === 0 && !apres.mfa && !apres.qrSrc && !apres.cle, j({ apres, enroll: nb(S, 'enroll') - e0, unenroll: nb(S, 'unenroll') - u0, facteurs: S.auth.facteurs.map((f) => f.friendly_name + ':' + f.status) }));
+    r('AH25 — réponse d\'enroll arrivée APRÈS la sortie des Paramètres : le facteur créé est retiré, rien n\'est affiché', nb(S, 'enroll') === e0 + 1 && nb(S, 'unenroll') === u0 + 1 && S.auth.facteurs.length === 0 && !apres.erreur && !apres.mfa && !apres.qrSrc && !apres.cle, j({ apres, enroll: nb(S, 'enroll') - e0, unenroll: nb(S, 'unenroll') - u0, facteurs: S.auth.facteurs.map((f) => f.friendly_name + ':' + f.status) }));
   });
   await essai('AH25 (b) nettoyage', async () => {
     const t = await lire(S, PC, () => Date.now());
@@ -300,6 +337,33 @@ const clientSrv = (S, nom) => ((((S.etat || {}).data || {}).cp2_clients) || []).
     r('AH25 — au prochain essai (moins de 15 minutes après), le retrait est refait : l\'ancien facteur a disparu, un seul facteur non vérifié (le nouveau)', fid1 && !ids.includes(fid1) && ids.length === 1 && (await present(PC, '#acc_mfa_scan')), j({ fid1, ids }));
     await cliquer(PC, '#acc_mfa_annuler'); await PC.p.waitForTimeout(300); await calme(S, PC);
     r('AH25 — fin : aucun facteur restant', S.auth.facteurs.length === 0, j(S.auth.facteurs.map((f) => f.id)));
+    S.auth.facteurs = [];
+  });
+  /* COMPTE-ter (T5) : réponse d'enroll arrivée APRÈS l'annulation (« Annuler », ou sortie des Paramètres) et retrait de ce facteur en échec :
+     même message visible qu'à l'annulation (dans la carte, ou en bandeau hors des Paramètres), au lieu du silence ; le retrait est refait au prochain essai */
+  await essai('AH25 (e) réponse tardive et retrait en échec', async () => {
+    const T5 = 'Le retrait n\'a pas abouti : il sera refait au prochain essai.';
+    const res = {};
+    for (const cas of ['annuler', 'sortie']) {
+      S.auth.facteurs = []; S.auth.retards.enroll = 1500; const e0 = nb(S, 'enroll'), u0 = nb(S, 'unenroll');
+      await ecouterMsgs(S, PC); await lire(S, PC, () => { window.__msgs = []; return true; }).catch(() => {});
+      await ouvrirActivation(); await PC.p.waitForTimeout(250);
+      S.auth.injecter('unenroll', S.auth.erreur(500, 'unexpected_failure', 'panne simulée'));
+      if (cas === 'annuler') await cliquer(PC, '#acc_mfa_annuler'); else await lire(S, PC, () => { go('dash'); return true; });
+      await PC.p.waitForTimeout(2200); await calme(S, PC); S.auth.retards.enroll = 0;
+      const apres = await etatMfa(), vu = await present(PC, '#acc_mfa_msg'), msgs = await lire(S, PC, () => (window.__msgs || []).slice()).catch((e) => ['lecture impossible : ' + String(e).slice(0, 80)]);
+      const fid = (S.auth.facteurs[0] || {}).id;
+      res[cas] = { apres, vu, msgs, enroll: nb(S, 'enroll') - e0, unenroll: nb(S, 'unenroll') - u0, facteurs: S.auth.facteurs.map((f) => f.id + ':' + f.status) };
+      /* prochain essai : le retrait est refait (facteur gardé en mémoire), puis annulation propre */
+      await ouvrirActivation(); await PC.p.waitForTimeout(300); await calme(S, PC);
+      res[cas].refait = !!fid && !S.auth.facteurs.some((f) => f.id === fid);
+      await cliquer(PC, '#acc_mfa_annuler'); await PC.p.waitForTimeout(300); await calme(S, PC);
+      res[cas].fin = S.auth.facteurs.length;
+    }
+    const base = (v) => !v.apres.erreur && v.enroll === 1 && v.unenroll === 1 && v.facteurs.length === 1 && !v.apres.mfa && !v.apres.qrSrc && !v.apres.cle && v.refait && v.fin === 0;
+    const a = res.annuler, s = res.sortie;
+    r('AH25 — réponse d\'enroll arrivée APRÈS « Annuler » et retrait en échec : message VISIBLE « Le retrait n\'a pas abouti : il sera refait au prochain essai. » (pas le silence) ; rien d\'affiché ; retrait refait au prochain essai', base(a) && a.vu && a.apres.msg === T5, j(a));
+    r('AH25 — réponse d\'enroll arrivée APRÈS la sortie des Paramètres et retrait en échec : même message en bandeau ; rien d\'affiché ; retrait refait au prochain essai', base(s) && s.msgs.includes(T5), j(s));
     S.auth.facteurs = [];
   });
 
@@ -404,14 +468,17 @@ const clientSrv = (S, nom) => ((((S.etat || {}).data || {}).cp2_clients) || []).
   await essai('AH23 (connexion)', async () => {
     const P4 = await appareil(S, 'pc4', { mobile: false, horloge: H }); espion(P4);
     const res = {};
+    /* COMPTE-ter (T3) : une connexion (doLogin) ou un « Recommencer » (cpLoginRecommencer) qui échoue n'est plus avalé : l'erreur est gardée et exigée absente */
+    const raison = (e) => String((e && e.message) || e || 'erreur').slice(0, 160);
     for (const mode of ['erreur', 'exception']) {
       await panne(S, P4, mode);
-      await lire(S, P4, (m) => { document.getElementById('logEmail').value = m[0]; document.getElementById('logPass').value = m[1]; return doLogin(); }, [COMPTE.email, MDP0]).catch(() => {});
+      let eLogin = null;
+      await lire(S, P4, (m) => { document.getElementById('logEmail').value = m[0]; document.getElementById('logPass').value = m[1]; return doLogin(); }, [COMPTE.email, MDP0]).catch((e) => { eLogin = raison(e); });
       await P4.p.waitForTimeout(400); await avancer(P4, 35000); await P4.p.waitForTimeout(300); await calme(S, P4);
-      res[mode] = { login: await loginVisible(P4), e2: await etape2(P4), sess: (await sess(S, P4)).connecte, etat: appelsEtat(S, 'pc4') };
-      await lire(S, P4, () => cpLoginRecommencer()).catch(() => {}); await P4.p.waitForTimeout(300); await calme(S, P4);
+      res[mode] = { login: await loginVisible(P4), e2: await etape2(P4), sess: (await sess(S, P4)).connecte, etat: appelsEtat(S, 'pc4'), eLogin, eRecommencer: null };
+      await lire(S, P4, () => cpLoginRecommencer()).catch((e) => { res[mode].eRecommencer = raison(e); }); await P4.p.waitForTimeout(300); await calme(S, P4);
     }
-    const ok = (v) => v.login && v.e2 && !v.sess && rien(v.etat);
+    const ok = (v) => !v.eLogin && !v.eRecommencer && v.login && v.e2 && !v.sess && rien(v.etat);
     r('AH23 — connexion (doLogin), facteur vérifié, niveau qui REND UNE ERREUR : 2e étape, SESS vide, 0 lecture, 0 envoi', ok(res.erreur), j(res.erreur));
     r('AH23 — connexion (doLogin), facteur vérifié, niveau qui LÈVE UNE EXCEPTION : 2e étape, SESS vide, 0 lecture, 0 envoi', ok(res.exception), j(res.exception));
     /* impossible de savoir (session sans utilisateur) : message, ni SESS ni afterLogin */
@@ -602,7 +669,8 @@ const clientSrv = (S, nom) => ((((S.etat || {}).data || {}).cp2_clients) || []).
     await revenir(S, PC); await PC.p.waitForTimeout(800); await calme(S, PC);
     const recu1 = await lire(S, PC, () => ({ client: CLIENTS.some((c) => c.nom === 'Client reçu après Annuler'), vue: window._curView, lbl: document.getElementById('cloudLbl').textContent }));
     r('AH24 — changement du mot de passe → « insufficient_aal » → bloc du code → « Annuler » : mots de passe en attente oubliés (_cpMdpAttente === null), bloc fermé ; 20 s plus tard cpCompteOccupe() est faux', /code de double authentification/.test(m1) && ouvert1.attente === 'gardée' && ouvert1.bloc && ferme1.attente === null && !ferme1.bloc && ferme1.occupe === false, j({ m1: m1.slice(0, 100), ouvert1, ferme1 }));
-    r('AH24 — puis une mise à jour reçue de l\'autre appareil est APPLIQUÉE sans quitter les Paramètres (pas de « appliquée au prochain changement d\'écran »)', recu1.client, j(recu1));
+    /* COMPTE-ter (T2) : « sans quitter les Paramètres » vérifié : la vue est toujours les Paramètres quand la mise à jour est lue */
+    r('AH24 — puis une mise à jour reçue de l\'autre appareil est APPLIQUÉE sans quitter les Paramètres (pas de « appliquée au prochain changement d\'écran »)', recu1.client && recu1.vue === 'params', j(recu1));
 
     S.auth.injecter('updateUser', refus());
     const m2 = await changerMdp(S, PC, mdp, 'Phrase-abandonnee-numero-deux');
@@ -616,7 +684,7 @@ const clientSrv = (S, nom) => ((((S.etat || {}).data || {}).cp2_clients) || []).
     await seConnecterCode(S, PC, mdp, codeJuste(S)); await PC.p.waitForTimeout(800); await calme(S, PC);
     const recu2 = await lire(S, PC, () => ({ client: CLIENTS.some((c) => c.nom === 'Client reçu après la fermeture'), vue: window._curView, sess: !!window.SESS, lbl: document.getElementById('cloudLbl').textContent }));
     r('AH24 — même parcours puis SIGNED_OUT (session fermée ailleurs) : mots de passe en attente oubliés, bloc du code fermé ; 20 s plus tard cpCompteOccupe() est faux', /code de double authentification/.test(m2) && ouvert2.attente === 'gardée' && rr === 'refus' && ferme2.attente === null && !ferme2.bloc && ferme2.occupe === false, j({ m2: m2.slice(0, 100), ouvert2, rr, ferme2 }));
-    r('AH24 — après la reconnexion (mot de passe + code), la mise à jour reçue de l\'autre appareil est appliquée sans quitter les Paramètres', recu2.client && recu2.sess, j(recu2));
+    r('AH24 — après la reconnexion (mot de passe + code), la mise à jour reçue de l\'autre appareil est appliquée sans quitter les Paramètres', recu2.client && recu2.sess && recu2.vue === 'params', j(recu2));
   });
   r('Aucune erreur JavaScript (banc deux appareils)', PC.errs.length + TEL.errs.length === 0, PC.errs.concat(TEL.errs).join(' | ').slice(0, 400));
   await PC.ctx.close(); await TEL.ctx.close();
