@@ -1,18 +1,21 @@
 # ClimPilot — Mission OUTILLAGE-X : suite X (mise à jour du cache, puis ouverture hors ligne) fiable sur la CI — compte rendu
 
 > Rédigé le 13/11/2026 par Claude (Opus 5.5), **exécutant** de la mission. Relecture à faire par l'autre modèle (Fable 5.1, skill `relecture-p10`).
-> Branche **`outillage/suite-x`**, partie de `origin/main` = `99ddd50`. Demande de fusion **en brouillon** : voir § 8. **Aucun fichier de l'appli** (ni `index.html`, ni `sw.js`, ni `next-*.js`, ni `vendor/`, ni `supabase/`).
+> Branche **`outillage/suite-x`**, partie de `origin/main` = `99ddd50`. Demande de fusion **#25, en brouillon**. **Aucun fichier de l'appli** (ni `index.html`, ni `sw.js`, ni `next-*.js`, ni `vendor/`, ni `supabase/`).
 > **Pas d'outil Projects dans cette session** : la copie `claude/ClimPilot-OUTILLAGE-X-compte-rendu.md` dans le Project **n'est pas faite** (geste de Gab ou de la prochaine session qui a l'outil). La mission n'en dépendait pas.
 > Certitude : **certain** (lu ou exécuté ici), **probable** (déduit), **hypothèse**. Bancs, copies mutées et journaux **hors dépôt** (dossier de travail de la session, effacé avec elle) ; les lignes utiles sont recopiées ici.
 
 ## Ce que Gab décide / fait (dans l'ordre)
 
-1. **Cause trouvée** (certain, reproduite à coup sûr) : ce n'est ni l'appli ni le mode hors ligne. Le test rouvrait l'appli à heure fixe, parfois **pendant** l'installation de la nouvelle version ; Playwright reste « branché » sur le service worker, et dans ce cas précis Chromium ne termine plus jamais la navigation suivante. Sur un vrai téléphone (rien de branché), la même situation se termine normalement (§ 2.4).
-2. **Ce qui change** (test seul, `tests/suiteX-mise-a-jour.mjs`) : le test attend que la mise à jour soit **finie** avant de rouvrir l'appli ; et le contrôle hors ligne est **plus sévère** (§ 3).
-3. **Rien n'est affaibli** : les 8 contrôles restent ; les deux mutations demandées sont **rouges** (a et b). **La mutation b passait sur la suite actuelle** (8 / 8 avec un fichier absent du cache) : elle est rouge maintenant (§ 4).
-4. Comptes : local **voir § 5** ; CI **voir § 6** (6 passages demandés).
-5. **Ton seul geste** : faire relire par **Fable 5.1** (`relecture-p10`), puis fusionner. Avant ou après COMPTE : **pas de conflit** (vérifié, § 7). Rien à faire sur les appareils (aucun fichier de l'appli, pas de F5).
-6. `git diff --stat` : § 7.
+1. **Cause trouvée** (certain, reproduite à coup sûr) : ni l'appli, ni le mode hors ligne. Le test rouvrait l'appli à heure fixe, parfois **pendant** l'installation de la nouvelle version du service worker ; Playwright reste branché sur le service worker, et alors Chromium ne termine plus jamais la navigation suivante. Même Chromium sans rien de branché (comme ton téléphone) : la page se charge (§ 2.4).
+2. **Ce qui change** (test seul, `tests/suiteX-mise-a-jour.mjs`) : le test attend que la mise à jour soit **finie** avant de rouvrir l'appli ; le contrôle hors ligne est **plus sévère** (§ 3). Aucune relance automatique.
+3. **Rien n'est affaibli** : les 8 contrôles restent ; mutations (a) et (b) **rouges**. **La (b) passait sur la suite actuelle** (8 / 8 avec un fichier absent du cache) : elle est rouge maintenant (§ 5).
+4. **Rouge → vert** : suites non modifiées, même condition : ancienne 1 plantage sur 6 (signature de la CI), nouvelle 0 sur 6 (§ 4).
+5. **Local** : 50 passages de suite (25 sur un cœur occupé) **50 × 8 / 0** ; faketime 3 dates 8 / 0 ; batterie complète **1 612 / 0 / 0 SKIP** (§ 6).
+6. **CI** : toutes vertes, suite X 8 / 0 en 13 à 15 s, voir le tableau § 7 (tête finale : 3 passages complets des deux événements).
+7. **Ton seul geste** : relecture par **Fable 5.1** (`relecture-p10`), puis fusion de **#25**. Avant ou après COMPTE : **pas de conflit** (`git merge-tree`, § 8) ; la nouvelle suite X passe aussi sur l'arbre fusionné avec COMPTE.
+8. Rien à faire sur les appareils (aucun fichier de l'appli, pas de F5). `docs/FILE-DES-MISSIONS.md` non touché (interdit ici) : ligne proposée § 8.1.
+9. `git diff --stat` : 3 fichiers (le test, un paragraphe du LISEZMOI, ce compte rendu), § 8.
 
 ---
 
@@ -23,8 +26,8 @@ Sur la CI, le rechargement hors ligne de l'étape 3 de la suite X n'atteignait p
 
 ### 2.1 Reproduction locale (certain : exécuté)
 - Même machine que la CI pour ce qui compte : Ubuntu 24.04, Node 22, **Playwright 1.56.1 / Chromium 141** (`chromium-1194`), suite lancée **sans** l'isolation du noyau (comme sur le runner, où `unshare -n` est indisponible), avec les variables de `run-all.sh` (`PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS=1`, garde réseau Node).
-- Copie instrumentée de la suite **hors dépôt** (port réglable, journal du protocole Playwright `DEBUG=pw:protocol`, états du service worker lus par le domaine CDP `ServiceWorker`). **Reproduit dès le premier passage** quand le journal du protocole ralentit l'ensemble (3 plantages sur 5), avec **exactement** la signature de la CI : page muette, 1 service worker, 0 requête en attente côté page.
-- Sans journal du protocole, la course est plus rare (0 sur 24 passages, 4 cœurs puis 1 cœur par passage) : c'est un problème de **moment**, qui dépend de la vitesse de la machine.
+- Copie instrumentée de la suite **hors dépôt** (port réglable, journal du protocole Playwright `DEBUG=pw:protocol`, états du service worker lus par le domaine CDP `ServiceWorker`). **Reproduit dès le premier passage** quand le journal du protocole ralentit l'ensemble (2 plantages sur 6 ; plus 1 sur 1 avec la seule lecture des états du service worker), avec **exactement** la signature de la CI : page muette, 1 service worker, 0 requête en attente côté page.
+- Sans journal du protocole, la course ne s'est pas produite en 24 passages (3 boucles de 8 en parallèle, un cœur chacune ; deux de ces boucles étaient des variantes, sans l'interception Playwright du service worker et sans `setOffline`) : c'est un problème de **moment**, qui dépend de la vitesse de la machine.
 
 ### 2.2 Ce que montrent les journaux (certain : lu dans le journal du protocole et les états du service worker)
 Chronologie d'un passage planté (temps en ms depuis l'ouverture de la page) :
@@ -123,8 +126,8 @@ Journaux gardés hors dépôt (`rouge-actuelle-a.log`, `rouge-actuelle-b.log`, `
   - 25 passages **bridés** (un seul cœur, `taskset -c 0`, partagé avec une boucle qui le consomme en continu) : **25 × 8 / 0**, 0 plantage ; suite X en 22 à 27 s ; mise à jour finie en 4,8 à 7,1 s.
   - Code de `run-all.sh` : 3 à chaque fois (passage PARTIEL par construction avec `CP_SUITES`).
 - **faketime** (règle 9 ; mode local par défaut de `run-all.sh`, avec isolation du noyau), suite X : samedi « 2026-11-14 10:00 » **8 / 0** ; dimanche « 2026-11-15 10:00 » **8 / 0** ; « 2027-01-05 10:00 » **8 / 0** (date vue par la machine contrôlée : samedi, dimanche, mardi).
-- Plus haut : 24 + 9 passages instrumentés ou ralentis (§ 4), 0 plantage de la nouvelle suite.
-- **Batterie complète** (`bash tests/run-all.sh`, un passage) : _en cours au moment de ce brouillon, résultat au commit suivant_.
+- Plus haut (§ 4) : 25 passages de la nouvelle suite sous conditions défavorables (installation ralentie 10, processeur ×6 : 9, journal du protocole 6), 0 plantage.
+- **Batterie complète** (`bash tests/run-all.sh`, mode local avec isolation du noyau, un passage, 26 min) : **COMPLET, RÉUSSI — 1 612 réussis / 0 échoué / 0 SKIP**, 5 non bloquants (les 5 « À TRANCHER » de la suite Y, comme sur `main`) ; même total que la batterie de S-bis. Q 64 / 0, W 64 / 0, **X 8 / 0 (15 s, mise à jour finie en 3,8 s)**, Y 21 / 0 (+ 5 non bloquants), Z 55 / 0, AB 86 / 0. Golden Y, Z, W **inchangés** (aucun fichier golden ni de l'appli touché). Le rapport dit « arbre de travail modifié » : seul ce compte rendu changeait pendant le passage (le code des tests est celui de `ddbb3c7`, certain : `git diff --stat ddbb3c7 HEAD` ne liste que ce fichier).
 
 ## 7. CI (`.github/workflows/tests.yml`, contrôle « batterie complète » ; rapports lus avec `gh api …/check-runs`)
 | Tête | Événement | Run | Tentative | Résultat | Total | Suite X |
@@ -133,8 +136,27 @@ Journaux gardés hors dépôt (`rouge-actuelle-a.log`, `rouge-actuelle-b.log`, `
 | `ddbb3c7` | demande de fusion #25 | 194 (43384851736) | 1 | **vert** | 1 608 / 0 / 2 SKIP connus | 8 / 0, 14 s |
 | `ddbb3c7` | push | 193 | 2 (relance complète) | **vert** | 1 608 / 0 / 2 SKIP connus | 8 / 0, 15 s |
 | `ddbb3c7` | demande de fusion #25 | 194 | 2 (relance complète) | **vert** | 1 608 / 0 / 2 SKIP connus | 8 / 0, 14 s |
+| `03d1599` (brouillon du compte rendu) | push | 201 (43391729847) | 1 | **vert** | 1 608 / 0 / 2 SKIP connus | 8 / 0, 14 s |
+| `03d1599` | demande de fusion #25 | 202 (43391737229) | 1 | **vert** | 1 608 / 0 / 2 SKIP connus | 8 / 0, 13 s |
 
-Durée de chaque exécution : ≈ 27 min. Les 5 non bloquants sont les 5 « À TRANCHER » de la suite Y, comme sur `main`. La tentative 3 de `ddbb3c7` n'est pas lancée : un nouveau push annule toute exécution en cours du même groupe (`cancel-in-progress`), et les relances comptées se font sur la tête finale (_à compléter_).
+Durée de chaque exécution : ≈ 27 min. Les 5 non bloquants sont les 5 « À TRANCHER » de la suite Y, comme sur `main` ; les 2 SKIP connus sont ceux de l'isolation du noyau, absente sur le runner. Aucun plantage de la suite X, aucune ligne `DIAGNOSTIC`, **aucune relance pour cause d'échec** : les relances ci-dessus sont des relances complètes volontaires. Pas de 3e tentative sur `ddbb3c7` : un nouveau push annule toute exécution en cours du même groupe (`cancel-in-progress`).
+
+**Tête finale (le commit qui ajoute ce paragraphe)** : trois passages complets des deux événements (tentative 1 au push, puis deux relances complètes). Leur tableau (numéro, durée de X, résultat) est dans la description de la demande de fusion #25 et dans le message de fin de session : il ne peut pas figurer dans le commit qu'il vérifie.
 
 ## 8. Fichiers, conflits, clôture
-_à compléter_
+- **`git diff --stat origin/main...HEAD`** (certain) : `tests/suiteX-mise-a-jour.mjs` (≈ 57 lignes ajoutées, 20 retirées : étapes 2 et 3 seulement), `tests/LISEZMOI.md` (le seul paragraphe « suiteX-mise-a-jour.mjs (diagnostic seul) », réécrit sur place, pas de section ajoutée en fin de fichier), `docs/OUTILLAGE-X-COMPTE-RENDU.md` (nouveau). **Rien d'autre** : ni `index.html`, ni `sw.js`, ni `next-*.js`, ni `vendor/`, ni `supabase/`, ni `tests/run-all.sh`, ni `tests/env.mjs`, ni `.github/workflows/tests.yml`, ni `docs/FILE-DES-MISSIONS.md`. Le compte exact est en tête de la demande de fusion #25 (onglet « Files changed »).
+- **Conflit avec COMPTE** (certain) : `git merge-tree --write-tree origin/correctif/compte HEAD` → code 0, aucun fichier en conflit, contre `7b55a2a` (tête de `correctif/compte` lue le 13/11 à 08 h 15 UTC). Les deux branches touchent `tests/LISEZMOI.md`, à des endroits différents. L'ordre de fusion est donc libre. **Arbre fusionné** (résultat de ce `merge-tree`, COMPTE + OUTILLAGE-X, cache `1140` de COMPTE, extrait hors dépôt) : nouvelle suite X **3 / 3 à 8 / 0** (mise à jour finie en 3,8 à 4,4 s).
+- **Secrets** : `bash tools/claude/verif-secrets.sh` avant chaque commit : rien ; `--branche` avant chaque push : rien (code 0). Aucune dérogation `CP_SECRETS_OK`.
+- Commits signés `Claude <noreply@anthropic.com>`, poussés sur **`outillage/suite-x` seulement**. Aucun push sur `main`, aucune fusion, aucun push forcé, aucune réécriture d'historique, aucune suppression de branche, aucun déploiement, aucune écriture Supabase.
+
+### 8.1 Écarts à connaître
+1. **`docs/FILE-DES-MISSIONS.md` non mis à jour** : il est interdit par le prompt de la mission (conflit avec COMPTE). Ligne proposée pour la section « Outillage », à ajouter après la fusion de COMPTE : `| OUTILLAGE-X : suite X fiable sur la CI (cause : réouverture pendant l'installation du service worker, outils de développement attachés ; test seul) | outillage/suite-x | fait le 13/11 (Opus 5.5), PR #25 en brouillon ; docs/OUTILLAGE-X-COMPTE-RENDU.md | relecture par Fable 5.1 (relecture-p10), fusion | Fable puis Gab |`.
+2. **Brouillon du compte rendu poussé avant la fin de la batterie** (`03d1599`) : le contrôle automatique de la session exigeait que le fichier soit commité et poussé. Aucun fichier de test ni de code dans ce commit.
+3. **Processeur « bridé »** : `cpulimit` n'est pas installé ; bridage fait avec `taskset -c 0` plus une boucle qui occupe le même cœur en continu (la suite n'a donc qu'environ la moitié d'un cœur).
+4. **Nom de branche** : la consigne de la session proposait une autre branche (`claude/…`) ; j'ai suivi le prompt de la mission (`outillage/suite-x`).
+
+### 8.2 Ce qui n'a pas pu être vérifié
+- **Safari / iPhone** : pas testé (moteur différent). La conclusion « l'appli n'est pas en cause » vaut pour Chromium 141 sous Linux (§ 2.4).
+- **Source de Chromium** : lue sur la branche principale du 13/11/2026, pas exactement la 141 ; le comportement, lui, a été **mesuré** avec la 141 (§ 2.3, § 2.4).
+- **Pourquoi** Chromium ne termine pas la navigation dans ce cas précis (au-delà de « activation pendant la navigation, outils de développement attachés ») : non cherché plus loin, ce serait un défaut de Chromium à signaler à ses auteurs, sans effet sur l'appli.
+- **Documentation en ligne de Playwright** (`playwright.dev`) : hôte non autorisé dans cette session ; documentation lue dans le paquet installé (même version).
