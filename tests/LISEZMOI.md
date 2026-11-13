@@ -342,3 +342,7 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   comptés à part, reprise déclenchée ; « Continuer sans connexion » depuis la 2e étape). `faux-auth.mjs` : `S.auth.retards[méthode]` (réponse retardée), panne du niveau
   de session (`localStorage.__essai_aal_panne` = `erreur` | `exception`), `signOut` qui charge d'abord la session comme la bibliothèque, `storageKey`.
   Rouge sur `e017bfa` : 73 réussis / 22 échoués sur 95 contrôles (les 22 = exactement les nouveaux contrôles de C1 à C5 ; ceux de C6 sont des témoins verts) ; vert après : 95 / 0 (≈ 340 s). Journaux rouges hors dépôt.
+  **COMPTE-ter (13/11/2026, points T1 à T5)** : AH25 (d) (« Annuler » ou sortie des Paramètres pendant la lecture du niveau de session, retenue par le test sur
+  `getAuthenticatorAssuranceLevel` ; témoin sans annulation), AH25 (e) (réponse d'`enroll` tardive et retrait en échec : message visible) ; contrôles resserrés : `etatMfa` en
+  erreur (AH25), vue « params » exigée (AH24), erreurs de `doLogin` / `cpLoginRecommencer` gardées et exigées absentes (AH23). Rouge sur `f25406b` : 97 / 4 ; vert après :
+  101 / 0. Mutations hors dépôt des trois contrôles resserrés : 92 / 9 (anciens contrôles sous les mêmes mutations : 95 / 0).

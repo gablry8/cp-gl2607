@@ -1,4 +1,4 @@
-# COMPTE — mot de passe, double authentification, appareils — compte rendu (12/11/2026, complété par COMPTE-bis le 12/11)
+# COMPTE — mot de passe, double authentification, appareils — compte rendu (12/11/2026, complété par COMPTE-bis le 12/11 et COMPTE-ter le 13/11)
 
 ## COMPTE-bis — conditions C1 à C7 de la relecture P10 (12/11/2026)
 
@@ -7,7 +7,7 @@
 > **Rien de fusionné, rien de déployé, aucune base Supabase lue ni écrite, aucun réglage du tableau de bord, rien dans `supabase/`** (Q1 = non).
 > Certitude : **certain** (lu ou exécuté ici), **probable** (déduit), **hypothèse**.
 
-### Ce que Gab décide / fait (10 lignes, à jour)
+### Ce que Gab décide / fait (10 lignes, état de COMPTE-bis ; seul changement depuis : cache 1140, voir « COMPTE-ter » ci-dessus)
 1. **Rien à fusionner aujourd'hui** : #24 reste en **brouillon**, branche `correctif/compte` (tête : § B.6). Relecture courte de COMPTE-bis par l'autre modèle si tu la veux (règle 12).
 2. **Sur TEST** (≈ 10 min) : les réglages du tableau de bord du § 7 ; note les valeurs d'avant.
 3. **Ton essai** (§ 8.2, copie d'essai sur TEST, PC + iPhone) : l'**étape 2** (mot de passe actuel faux → « Mot de passe actuel incorrect. ») est **obligatoire avant la fusion** ; nouvelle **étape 16** : « Déconnexion » en mode avion après plus d'une heure, puis réseau revenu → l'iPhone **reste déconnecté**.
@@ -256,7 +256,7 @@ Ce que j'ai besoin que tu me renvoies : le résultat des étapes **2** (message 
 2. Branche `correctif/compte` : tests rouges (journal gardé), code, suite AH, batterie complète, CI verte — **fait** (§ 4 et § 5) ; **relecture P10 par l'autre modèle (Fable 5.1, après le 15/11)** : à venir.
 3. Toi, sur **TEST** : réglages du § 7 ; essai du § 8.2 ; procédure « téléphone perdu » répétée sur TEST avec un compte d'essai (§ 10, étape 2).
 4. Mêmes réglages sur le **réel** (§ 7, étapes 2 à 5).
-5. Fusion de la demande de fusion ; le même jour, sur chaque appareil : attendre « ✓ synchronisé », puis F5 (cache `climpilot-next-1139-production` depuis COMPTE-bis).
+5. Fusion de la demande de fusion ; le même jour, sur chaque appareil : attendre « ✓ synchronisé », puis F5 (cache `climpilot-next-1140-production` depuis COMPTE-ter).
 6. **Un jour sans chantier** : activer la double authentification **depuis le PC** ; reconnecter le téléphone avec le code ; ajouter le moyen de secours (Q2).
 7. (Q1 = non) Pas de script serveur ni de déploiement de fonction dans COMPTE ; contrôle côté serveur : mission FACT.
 
