@@ -70,32 +70,71 @@ const c0 = await attendreCache('0000-ancienne', listeSw.length);
 const d0 = await p.evaluate(() => ({ devis: DEVIS.length, clients: CLIENTS.length }));
 rec(G, 'Version N installée : service worker actif, cache « 0000-ancienne » rempli, 12 devis en place', !!c0 && c0.fichiers >= listeSw.length && d0.devis === 12, j({ c0, d0 }));
 
-/* 2. le serveur publie N+1 ; l'appareil recharge deux fois (comme un F5 puis une réouverture) */
+/* 2. le serveur publie N+1 ; l'appareil recharge (F5) : le navigateur découvre N+1 et l'installe ; puis l'appli est rouverte.
+   OUTILLAGE-X (13/11/2026) : on attend que la mise à jour soit FINIE (N+1 activée, ancien cache supprimé) AVANT de rouvrir l'appli.
+   Avant, la réouverture partait à heure fixe (2,5 s) et tombait parfois pendant l'installation de N+1 (12,7 Mo) : c'est la cause du
+   rechargement hors ligne figé de la CI (docs/OUTILLAGE-X-COMPTE-RENDU.md). Playwright attache ses outils de développement à chaque
+   service worker ; Chromium ne termine alors plus l'ancienne version de lui-même : N+1 reste « en attente » (plus de 120 s mesurées),
+   puis la navigation suivante déclenche son activation et ne se termine jamais. Sur un appareil réel (rien d'attaché au service worker),
+   la même course se termine normalement (vérifié hors dépôt avec le même Chromium 141).
+   Si la mise à jour ne finit pas en 120 s, les contrôles sont ROUGES avec l'état du service worker, sans navigation (elle figerait). */
 racine = RACINE; journal.length = 0;
-await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(2500); await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(2500);
-const c1 = await attendreCache(cacheActuel.replace(/[-.]/g, '\\$&'), listeSw.length); await p.waitForTimeout(1500);
+await p.reload({ waitUntil: 'load' });
+const maj = await p.evaluate(async ([C, n]) => {
+  const etat = async () => {
+    const r = await navigator.serviceWorker.getRegistration(); const ks = (await caches.keys()).sort();
+    return { caches: ks, fichiers: ks.includes(C) ? (await (await caches.open(C)).keys()).length : 0, active: r && r.active ? r.active.state : null, enAttente: !!(r && r.waiting), enInstallation: !!(r && r.installing) };
+  };
+  const t0 = Date.now(); let e = null;
+  while (Date.now() - t0 < 120000) {
+    e = await etat();
+    if (e.caches.length === 1 && e.caches[0] === C && e.fichiers >= n && e.active === 'activated' && !e.enAttente && !e.enInstallation) return { finie: true, ms: Date.now() - t0, ...e };
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  return { finie: false, ms: Date.now() - t0, ...e };
+}, [cacheActuel, listeSw.length]);
+console.log('INFO mise à jour N+1 ' + (maj.finie ? 'finie' : 'NON FINIE') + ' en ' + maj.ms + ' ms (' + j(maj) + ')');
+if (maj.finie) { await p.reload({ waitUntil: 'load' }); await p.waitForTimeout(2500); }
+const c1 = maj.finie ? await attendreCache(cacheActuel.replace(/[-.]/g, '\\$&'), listeSw.length) : null;
 const ks = await caches();
 const d1 = await p.evaluate(() => ({ devis: DEVIS.length, clients: CLIENTS.length, sw: !!navigator.serviceWorker.controller, planning: typeof window.nxplSource }));
-rec(G, `Après mise à jour : cache « ${cacheActuel} » installé avec les ${listeSw.length} fichiers, ancien cache supprimé`, !!c1 && c1.fichiers >= listeSw.length && ks.length === 1 && ks[0] === cacheActuel, j({ c1, caches: ks }));
+rec(G, `Après mise à jour : cache « ${cacheActuel} » installé avec les ${listeSw.length} fichiers, ancien cache supprimé`, maj.finie && !!c1 && c1.fichiers >= listeSw.length && ks.length === 1 && ks[0] === cacheActuel, j({ c1, caches: ks, maj }));
 rec(G, 'Après mise à jour : données conservées (12 devis, 3 clients), service worker au contrôle', d1.devis === 12 && d1.clients === 3 && d1.sw, j(d1));
 
 /* 3. hors ligne : tout vient du cache */
-/* hors ligne POUR DE VRAI : le serveur est arrêté (le service worker a son propre accès réseau, que setOffline ne coupe pas) */
-await new Promise((r) => srv.close(r)); await ctx.setOffline(true); journal.length = 0;
-const echecs = []; p.on('response', (r) => { if (r.url().startsWith(URL) && r.status() >= 400) echecs.push(r.status() + ' ' + r.url().slice(URL.length)); });
-/* S-bis (11/11/2026) : sur la CI, ce rechargement hors ligne n'atteint parfois jamais « load » (plantage au bout du délai, jamais reproduit en local).
-   Le test plante toujours dans ce cas, mais il écrit d'abord ce qui était en attente, pour que le rapport de la CI dise la cause. */
-const enCours = new Map(); p.on('request', (r) => enCours.set(r, r.url())); const finie = (r) => enCours.delete(r); p.on('requestfinished', finie); p.on('requestfailed', finie);
-try { await p.reload({ waitUntil: 'load' }); } catch (e) {
-  const etat = await Promise.race([p.evaluate(() => ({ etat: document.readyState, devis: typeof DEVIS !== 'undefined' ? DEVIS.length : 'ABSENT', sw: !!navigator.serviceWorker.controller, scripts: document.scripts.length, vue: (document.querySelector('.view.active') || {}).id || null })).catch((x) => ({ erreur: String(x).slice(0, 120) })), new Promise((r) => setTimeout(() => r({ erreur: 'page muette (5 s)' }), 5000))]);
-  console.log('DIAGNOSTIC rechargement hors ligne — ' + String(e.message).split('\n')[0] + ' | page : ' + j(etat) + ' | service workers : ' + ctx.serviceWorkers().length + ' | erreurs : ' + j(errs.slice(0, 3)) + ' | réponses en erreur : ' + j(echecs.slice(0, 5)) + ' | requêtes sans réponse (' + enCours.size + ') : ' + [...enCours.values()].slice(0, 15).map((u) => u.replace(URL, '')).join(', '));
-  throw e;
+const NOM_HL = 'Hors ligne après mise à jour (serveur arrêté) : l\'appli s\'ouvre depuis le cache, données là, bibliothèques embarquées chargées, chaque fichier demandé servi par le service worker, aucun en échec ni en erreur';
+const NOM_NAV = 'Hors ligne : changement d\'écran Planning puis Accueil';
+if (!maj.finie) {
+  rec(G, NOM_HL, false, 'non exécuté : la mise à jour N+1 ne s\'est pas terminée (contrôle « Après mise à jour » ci-dessus) ; une navigation figerait la page');
+  rec(G, NOM_NAV, false, 'non exécuté : même raison');
+} else {
+  /* hors ligne POUR DE VRAI : le serveur est arrêté (le service worker a son propre accès réseau, que setOffline ne coupe pas) */
+  await new Promise((r) => srv.close(r)); await ctx.setOffline(true); journal.length = 0;
+  /* OUTILLAGE-X : « tous les fichiers servis depuis le cache » est vérifié requête par requête : chaque réponse de l'origine de l'appli vient du
+     service worker, aucune n'est en erreur (≥ 400) NI EN ÉCHEC, et chaque script de la page a sa réponse. Avant, un fichier listé dans sw.js mais
+     absent du cache au moment du hors ligne échouait sans statut HTTP et la suite passait (mutation b, compte rendu OUTILLAGE-X). */
+  const chemin = (u) => u.slice(URL.length).split('?')[0];
+  const echecs = [], horsSW = [], servis = new Set();
+  p.on('response', (r) => { if (!r.url().startsWith(URL)) return; if (r.status() >= 400) echecs.push(r.status() + ' ' + chemin(r.url())); else if (!r.fromServiceWorker()) horsSW.push(chemin(r.url())); else servis.add(chemin(r.url())); });
+  p.on('requestfailed', (r) => { if (r.url().startsWith(URL)) echecs.push('échec (' + ((r.failure() || {}).errorText || '?') + ') ' + chemin(r.url())); });
+  /* S-bis (11/11/2026), complété par OUTILLAGE-X : si ce rechargement ne finit pas, la suite écrit l'état de la page, celui de la mise à jour et les requêtes
+     en suspens vues par le CONTEXTE (celles du service worker comprises : la page ne voit pas une requête que le service worker n'a pas encore servie). */
+  const enCours = new Map(); ctx.on('request', (r) => enCours.set(r, (r.serviceWorker() ? 'SW ' : '') + chemin(r.url()))); const finie = (r) => enCours.delete(r); ctx.on('requestfinished', finie); ctx.on('requestfailed', finie);
+  try { await p.reload({ waitUntil: 'load' }); } catch (e) {
+    const etat = await Promise.race([p.evaluate(() => ({ etat: document.readyState, devis: typeof DEVIS !== 'undefined' ? DEVIS.length : 'ABSENT', sw: !!navigator.serviceWorker.controller, scripts: document.scripts.length, vue: (document.querySelector('.view.active') || {}).id || null })).catch((x) => ({ erreur: String(x).slice(0, 120) })), new Promise((r) => setTimeout(() => r({ erreur: 'page muette (5 s)' }), 5000))]);
+    console.log('DIAGNOSTIC rechargement hors ligne — ' + String(e.message).split('\n')[0] + ' | page : ' + j(etat) + ' | mise à jour avant la coupure : ' + j(maj) + ' | service workers : ' + ctx.serviceWorkers().length + ' | erreurs : ' + j(errs.slice(0, 3)) + ' | réponses en erreur ou en échec : ' + j(echecs.slice(0, 5)) + ' | requêtes sans réponse (' + enCours.size + ') : ' + [...enCours.values()].slice(0, 15).join(', '));
+    throw e;
+  }
+  await p.waitForTimeout(3000);
+  const d2 = await p.evaluate(() => ({ devis: typeof DEVIS !== 'undefined' ? DEVIS.length : 'ABSENT', horsLigne: !navigator.onLine, couches: document.querySelectorAll('script[src^="next-"]').length, store: !!(window.nxStore && nxStore.ready), supabase: typeof window.supabase, vue: (document.querySelector('.view.active') || {}).id || null,
+    scripts: [...document.scripts].map((s) => s.src).filter((u) => u && u.startsWith(location.origin + '/')).map((u) => u.slice(location.origin.length + 1).split('?')[0]) })).catch((e) => ({ erreur: String(e) }));
+  const sansReponse = (d2.scripts || []).filter((f) => !servis.has(f));
+  rec(G, NOM_HL, d2.devis === 12 && d2.store && d2.horsLigne && d2.couches >= 44 && servis.has('index.html') && echecs.length === 0 && horsSW.length === 0 && sansReponse.length === 0,
+    j({ d2: { ...d2, scripts: (d2.scripts || []).length }, servisParLeServiceWorker: servis.size, echecs: echecs.slice(0, 5), horsServiceWorker: horsSW.slice(0, 5), scriptsSansReponse: sansReponse.slice(0, 5) }));
+  const nav = await p.evaluate(async () => { try { go('plan'); await new Promise((r) => setTimeout(r, 300)); const a = (document.querySelector('.view.active') || {}).id; go('dash'); await new Promise((r) => setTimeout(r, 300)); return a + ' → ' + (document.querySelector('.view.active') || {}).id; } catch (e) { return 'ERREUR ' + e; } });
+  rec(G, NOM_NAV, nav === 'v-plan → v-dash', nav);
 }
-await p.waitForTimeout(3000);
-const d2 = await p.evaluate(() => ({ devis: typeof DEVIS !== 'undefined' ? DEVIS.length : 'ABSENT', horsLigne: !navigator.onLine, couches: document.querySelectorAll('script[src^="next-"]').length, store: !!(window.nxStore && nxStore.ready), supabase: typeof window.supabase, vue: (document.querySelector('.view.active') || {}).id || null })).catch((e) => ({ erreur: String(e) }));
-rec(G, 'Hors ligne après mise à jour (serveur arrêté) : l\'appli s\'ouvre depuis le cache, données là, bibliothèques embarquées chargées, aucune réponse en erreur', d2.devis === 12 && d2.store && d2.horsLigne && echecs.length === 0 && d2.couches >= 44, j({ d2, echecs: echecs.slice(0, 5) }));
-const nav = await p.evaluate(async () => { try { go('plan'); await new Promise((r) => setTimeout(r, 300)); const a = (document.querySelector('.view.active') || {}).id; go('dash'); await new Promise((r) => setTimeout(r, 300)); return a + ' → ' + (document.querySelector('.view.active') || {}).id; } catch (e) { return 'ERREUR ' + e; } });
-rec(G, 'Hors ligne : changement d\'écran Planning puis Accueil', nav === 'v-plan → v-dash', nav);
+if (srv.listening) { srv.closeAllConnections(); srv.close(); } /* mise à jour inachevée : le serveur n'a pas été arrêté à l'étape 3 */
 rec(G, 'Aucune erreur JavaScript', errs.length === 0, errs.join(' | '));
 await b.close();
 ecrireResultats('resX.json', RES);
