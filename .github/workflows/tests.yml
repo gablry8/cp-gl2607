@@ -32,7 +32,11 @@ jobs:
     env:
       PLAYWRIGHT_VERSION: 1.56.1
     steps:
-      - uses: actions/checkout@v4
+      # OUTILLAGE-4 (13/11/2026) : actions en v7 (runs.using: node24), d'après leurs dépôts officiels github.com/actions/* lus le 13/11/2026 ;
+      # GitHub signalait « Node.js 20 is deprecated » et forçait déjà Node 24. Changements incompatibles sans effet ici : checkout v7 refuse le
+      # code d'une fourche sous pull_request_target / workflow_run (déclencheurs non utilisés) ; setup-node v7 retire le jeton NODE_AUTH_TOKEN
+      # factice (registry-url non utilisé) ; upload-artifact v7 ajoute « archive » (vrai par défaut : même zip). docs/OUTILLAGE-4-COMPTE-RENDU.md.
+      - uses: actions/checkout@v7
         with:
           # M3 C9.2 : le jeton n'est pas laissé dans .git (aucune étape ne pousse ni ne lit le dépôt par git ensuite)
           persist-credentials: false
@@ -40,11 +44,13 @@ jobs:
       - name: Dossier de sortie hors du dépôt (tools/apercu/build.sh refuse une sortie dans le dépôt)
         run: echo "CP_TEST_OUT=$RUNNER_TEMP/climpilot-tests" >> "$GITHUB_ENV"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
+          # aucun cache de paquets (rien à installer par npm ici ; recommandé par la doc de setup-node pour un travail qui a des droits d'écriture)
+          package-manager-cache: false
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
 
@@ -116,7 +122,7 @@ jobs:
 
       - name: Rapport et journaux (artefact)
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rapport-tests-${{ github.run_number }}
           path: |

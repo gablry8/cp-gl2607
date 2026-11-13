@@ -318,4 +318,9 @@ l'adresse de fonction est écrite en dur) : elles sont servies par une simulatio
   supprimé, 120 s au plus, sinon contrôles ROUGES sans navigation) avant de rouvrir l'appli. L'étape 3 compte aussi les requêtes **en échec** et exige que chaque fichier
   demandé soit servi par le service worker (un fichier listé mais absent du cache passait : il est rouge désormais). Le diagnostic `DIAGNOSTIC rechargement hors ligne — …`
   reste, avec l'état de la mise à jour et les requêtes en suspens du service worker.
+  **OUTILLAGE-4 (13/11/2026**, `docs/OUTILLAGE-4-COMPTE-RENDU.md`) : l'attente de la mise à jour est aussi bornée côté Node (150 s ; à expiration, contrôles ROUGES avec
+  le dernier état connu, plus aucune commande à la page, navigateur fermé, suite terminée). Juste avant le rechargement hors ligne, les deux routes de
+  `sansBibliothequesCloud` (supabase-js et Chart.js, au niveau du contexte) sont retirées : elles répondaient aussi aux requêtes réseau du service worker. Le service
+  worker sert alors ces deux fichiers depuis son cache (les remplaçants de test, mis en cache à l'installation à travers ces routes : la page reste sans cloud), et
+  l'étape 3 exige en plus qu'aucune requête réseau du service worker n'aboutisse et qu'aucune requête ne parte vers Supabase.
 - `tests/suiteX-mise-a-jour.mjs` : la copie « version N » crée les sous-dossiers listés par `sw.js` (`vendor/tesseract-core/`, `vendor/tessdata/`) avant de copier ; 8 / 8 comme avant.
