@@ -23,9 +23,10 @@
 ### C.2 Preuves (certain : exécutées le 13/11)
 - **Rouge** (tests de `4632d33` sur le code de `f25406b`) : suite AH **97 / 4** ; les 4 = exactement T4 (2) et T5 (2) ; le témoin de T4 et les contrôles resserrés T1 à T3 passent sur le code d'avant (ils ne changent que le test). Journal gardé hors dépôt (bloc-notes de la session).
 - **Vert** (`7a6cbfb`) : suite AH **101 / 0**.
+- **Tests définitifs** (`f29104c` : trois `catch` vides que j'avais mis dans AH25 (d) et (e) remplacés par une erreur gardée et exigée absente) : rouge rejoué sur le code de `f25406b` (copie hors dépôt) — 1er passage **93 / 8** (les 4 attendus, plus AHB4 « la modification faite hors ligne arrive » et, à sa suite, AH21 et AH24 ×2 : mise à jour jamais arrivée sur le banc deux appareils, qui ne passe pas par le code de T4 et T5) ; 2e passage **97 / 4** (exactement T4 et T5) : instabilité ponctuelle du banc deux appareils, **probable** (vue une fois sur 14 passages de la suite AH dans cette session, dont 3 sur le code d'avant). Vert sur `7b55a2a` : **101 / 0**.
 - **Mutations** (T1 à T3, deux copies du dépôt hors dépôt ; M1 : `etatMfa` rend `{ erreur }` ; M2 : sortie des Paramètres avant la lecture de la mise à jour ; M3 : « Recommencer » absent et 2e connexion non faite) : nouveaux tests **92 / 9**, les 9 échecs = exactement les contrôles resserrés (T1 : 5, T2 : 2, T3 : 2) ; anciens tests de `f25406b` sous les mêmes mutations : **95 / 0** (les trous que T1 à T3 ferment).
-- **Batterie complète** (un passage, arbre propre à `7a6cbfb`) : **COMPLET, RÉUSSI — 1 713 / 0 / 0 SKIP**, 5 « À TRANCHER » inchangés (suite Y). W 64 / 0, X 8 / 0, Y 21 / 0, Z 55 / 0 : **golden Y, Z, W identiques** ; aucune enveloppe ni `catch` vide ajoutés.
-- **`faketime`** (règle 9, suite AH, code de `7a6cbfb` ; le rapport nomme `455eca4`, qui n'ajoute que des documents) : samedi « 2026-11-14 10:00 », dimanche « 2026-11-15 10:00 », « 2027-01-05 10:00 » : **101 / 0 aux trois dates** (rapport PARTIEL, code 3, par construction).
+- **Batterie complète** (un passage, arbre propre à `7a6cbfb`, tests de `4632d33` ; la CI rejoue la batterie sur la tête finale) : **COMPLET, RÉUSSI — 1 713 / 0 / 0 SKIP**, 5 « À TRANCHER » inchangés (suite Y). W 64 / 0, X 8 / 0, Y 21 / 0, Z 55 / 0 : **golden Y, Z, W identiques** ; aucune enveloppe ni `catch` vide ajoutés.
+- **`faketime`** (règle 9, suite AH) : samedi « 2026-11-14 10:00 », dimanche « 2026-11-15 10:00 », « 2027-01-05 10:00 » : **101 / 0 aux trois dates**, deux fois (code de `7a6cbfb` avec les tests de `4632d33`, puis tests définitifs à `7b55a2a`, arbre propre) ; rapport PARTIEL, code 3, par construction.
 - **CI de `7a6cbfb`** (code) : demande de fusion (run 43381340071) **verte** ; push (run 43381333401) : 1 708 / **1** / 2 SKIP connus — suite Q, contrôle « Avoir PARTIEL fait sur le PC : le téléphone pas à jour ne refacture pas le chantier (la facture reste due), il reprend F-2027-001 ». Ce contrôle est vert sur l'autre événement du même commit, vert dans la batterie locale, et il ne passe pas par le code touché (activation de la double authentification) ; la même instabilité de la recette deux appareils a déjà été vue pendant S (`docs/S-COMPTE-RENDU.md`, « Premier passage ») : instabilité, **probable**. Pas relancé (seule une relance de la suite X était permise). `4632d33` (tests d'abord) : runs annulés par le push suivant.
 - **CI de la tête finale** : voir la description de #24 (écrite après la fin des runs).
 
@@ -36,16 +37,16 @@
 ### C.4 Clôture
 - **`git diff --stat f25406b` → tête** :
   ```
-   docs/COMPTE-COMPTE-RENDU.md | 57 ++++++++++++++++++++++++++++++++++++++---
+   docs/COMPTE-COMPTE-RENDU.md | 58 ++++++++++++++++++++++++++++++++++++++---
    docs/FILE-DES-MISSIONS.md   |  6 ++---
    index.html                  | 10 +++++---
    sw.js                       |  2 +-
    tests/LISEZMOI.md           |  4 +++
-   tests/suiteAH-compte.mjs    | 90 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------
-   6 files changed, 147 insertions(+), 22 deletions(-)
+   tests/suiteAH-compte.mjs    | 91 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------
+   6 files changed, 149 insertions(+), 22 deletions(-)
   ```
   Aucun fichier dans `supabase/`, `vendor/`, ni dans une couche `next-*.js`.
-- **Commits** (`noreply`, en français), poussés sur `correctif/compte` seulement : `4632d33` « tests d'abord » ; `7a6cbfb` « code » (cache 1140) ; `455eca4` « documents 1/2 » ; `f29104c` « tests » (trois `catch` vides de mes nouveaux contrôles remplacés, voir C.2) ; puis « documents 2/2 » (cette section, tête finale).
+- **Commits** (`noreply`, en français), poussés sur `correctif/compte` seulement : `4632d33` « tests d'abord » ; `7a6cbfb` « code » (cache 1140) ; `455eca4` « documents 1/3 » ; `f29104c` « tests » (trois `catch` vides de mes nouveaux contrôles remplacés, voir C.2) ; `7b55a2a` « documents 2/3 » (cette section) ; puis « documents 3/3 » (comptes rejoués, tête finale).
 - **Contrôle des secrets** : `verif-secrets.sh` avant chaque commit, `--branche` avant chaque push : rien signalé, aucune dérogation.
 - **Jamais** : push sur `main`, fusion, push forcé, réécriture d'historique, suppression de branche, déploiement, écriture Supabase, réglage du tableau de bord.
 
