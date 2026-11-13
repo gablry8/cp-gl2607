@@ -1,5 +1,56 @@
 # COMPTE — mot de passe, double authentification, appareils — compte rendu (12/11/2026, complété par COMPTE-bis le 12/11 et COMPTE-ter le 13/11)
 
+## COMPTE-ter — dernière petite reprise : points T1 à T5 (13/11/2026)
+
+> Même branche `correctif/compte`, partie de `f25406b` (ni rebase, ni push forcé, ni fusion) ; demande de fusion [gablry8/cp-gl2607#24](https://github.com/gablry8/cp-gl2607/pull/24) **toujours en brouillon**. Exécutant : Opus 5.5 (session Claude Code).
+> **Outil Projects absent de cette session** : rien lu ni écrit dans le Project ; la mission n'en dépendait pas. **Rien dans `supabase/`, aucune base lue ni écrite, aucun réglage du tableau de bord.** Aucune délégation (cinq points courts, chacun demandant un jugement sur le test).
+> Certitude : **certain** (lu ou exécuté ici), **probable** (déduit), **hypothèse**.
+
+### Ce que Gab décide / fait (inchangé, sauf le numéro du cache)
+1. #24 reste en **brouillon**. Tes gestes ne changent pas : réglages TEST (§ 7) ; essai § 8.2 avec les **étapes 2 et 16 obligatoires** ; mêmes réglages sur le réel ; fusion.
+2. Le jour de la fusion, sur chaque appareil : « ✓ synchronisé », puis F5 — cache **`climpilot-next-1140-production`** (était 1139). `VERSION` / `NX_VERSION` inchangés.
+3. Ce que ça change pour toi : « Annuler » (ou quitter les Paramètres) au tout début de l'ajout d'un appareil arrête vraiment tout ; si le retrait d'un essai annulé échoue, tu le lis à l'écran au lieu de rien.
+
+### C.1 Les cinq points (certain : lu et exécuté)
+| # | Où | Ce qui change |
+|---|---|---|
+| T1 | test AH25 | `etatMfa` peut rendre `{ erreur }` : chaque contrôle qui l'utilise exige `!apres.erreur` (et `!pendant.erreur`, `pendant` étant maintenant lu par `etatMfa`, « Continuer » grisé compris). |
+| T2 | test AH24 | `recu1.vue === 'params'` et `recu2.vue === 'params'` exigés : la mise à jour est appliquée **sans quitter** les Paramètres. |
+| T3 | test AH23 (connexion) | Les deux `.catch(() => {})` de `doLogin` et `cpLoginRecommencer` gardent l'erreur (`eLogin`, `eRecommencer`), exigée absente. Les autres `.catch(() => {})` du banc sont inchangés. |
+| T4 | `index.html`, `cpMfaInscrire` | Numéro de tentative (`++_cpMfaTent`, `_cpMfaPrep`, « Continuer » grisé) pris **avant** le premier `await` (`cpAal2`) ; annulée pendant cette lecture → rien (ni code demandé, ni `enroll`). Test AH25 (d) : lecture du niveau retenue par le test, « Annuler » puis sortie des Paramètres, plus un témoin sans annulation. |
+| T5 | `index.html`, `cpMfaInscrire` | Réponse d'`enroll` arrivée après l'annulation et retrait en échec : « Le retrait n'a pas abouti : il sera refait au prochain essai. » (dans la carte, ou en message bref hors des Paramètres), au lieu du silence. Test AH25 (e). |
+
+### C.2 Preuves (certain : exécutées le 13/11)
+- **Rouge** (tests de `4632d33` sur le code de `f25406b`) : suite AH **97 / 4** ; les 4 = exactement T4 (2) et T5 (2) ; le témoin de T4 et les contrôles resserrés T1 à T3 passent sur le code d'avant (ils ne changent que le test). Journal gardé hors dépôt (bloc-notes de la session).
+- **Vert** (`7a6cbfb`) : suite AH **101 / 0**.
+- **Mutations** (T1 à T3, deux copies du dépôt hors dépôt ; M1 : `etatMfa` rend `{ erreur }` ; M2 : sortie des Paramètres avant la lecture de la mise à jour ; M3 : « Recommencer » absent et 2e connexion non faite) : nouveaux tests **92 / 9**, les 9 échecs = exactement les contrôles resserrés (T1 : 5, T2 : 2, T3 : 2) ; anciens tests de `f25406b` sous les mêmes mutations : **95 / 0** (les trous que T1 à T3 ferment).
+- **Batterie complète** (un passage, arbre propre à `7a6cbfb`) : **COMPLET, RÉUSSI — 1 713 / 0 / 0 SKIP**, 5 « À TRANCHER » inchangés (suite Y). W 64 / 0, X 8 / 0, Y 21 / 0, Z 55 / 0 : **golden Y, Z, W identiques** ; aucune enveloppe ni `catch` vide ajoutés.
+- **`faketime`** (règle 9, suite AH, code de `7a6cbfb` ; le rapport nomme `455eca4`, qui n'ajoute que des documents) : samedi « 2026-11-14 10:00 », dimanche « 2026-11-15 10:00 », « 2027-01-05 10:00 » : **101 / 0 aux trois dates** (rapport PARTIEL, code 3, par construction).
+- **CI de `7a6cbfb`** (code) : demande de fusion (run 43381340071) **verte** ; push (run 43381333401) : 1 708 / **1** / 2 SKIP connus — suite Q, contrôle « Avoir PARTIEL fait sur le PC : le téléphone pas à jour ne refacture pas le chantier (la facture reste due), il reprend F-2027-001 ». Ce contrôle est vert sur l'autre événement du même commit, vert dans la batterie locale, et il ne passe pas par le code touché (activation de la double authentification) ; la même instabilité de la recette deux appareils a déjà été vue pendant S (`docs/S-COMPTE-RENDU.md`, « Premier passage ») : instabilité, **probable**. Pas relancé (seule une relance de la suite X était permise). `4632d33` (tests d'abord) : runs annulés par le push suivant.
+- **CI de la tête finale** : voir la description de #24 (écrite après la fin des runs).
+
+### C.3 Ce qui n'a pas pu être vérifié
+- Sur un vrai appareil, la lecture du niveau de T4 est locale et brève (plus longue seulement si la bibliothèque doit d'abord renouveler le jeton) : seul le banc provoque la course, en retenant cette lecture. Rien de neuf à ajouter à ton essai (probable).
+- Le détail du contrôle Q en échec sur un événement de la CI de `7a6cbfb` (C.2) : l'artefact de la CI est sur un hôte que le réseau de cette session refuse.
+
+### C.4 Clôture
+- **`git diff --stat f25406b` → tête** :
+  ```
+   docs/COMPTE-COMPTE-RENDU.md | 57 ++++++++++++++++++++++++++++++++++++++---
+   docs/FILE-DES-MISSIONS.md   |  6 ++---
+   index.html                  | 10 +++++---
+   sw.js                       |  2 +-
+   tests/LISEZMOI.md           |  4 +++
+   tests/suiteAH-compte.mjs    | 90 +++++++++++++++++++++++++++++++++++++++++++++++++++++++++--------
+   6 files changed, 147 insertions(+), 22 deletions(-)
+  ```
+  Aucun fichier dans `supabase/`, `vendor/`, ni dans une couche `next-*.js`.
+- **Commits** (`noreply`, en français), poussés sur `correctif/compte` seulement : `4632d33` « tests d'abord » ; `7a6cbfb` « code » (cache 1140) ; `455eca4` « documents 1/2 » ; `f29104c` « tests » (trois `catch` vides de mes nouveaux contrôles remplacés, voir C.2) ; puis « documents 2/2 » (cette section, tête finale).
+- **Contrôle des secrets** : `verif-secrets.sh` avant chaque commit, `--branche` avant chaque push : rien signalé, aucune dérogation.
+- **Jamais** : push sur `main`, fusion, push forcé, réécriture d'historique, suppression de branche, déploiement, écriture Supabase, réglage du tableau de bord.
+
+---
+
 ## COMPTE-bis — conditions C1 à C7 de la relecture P10 (12/11/2026)
 
 > Relecture P10 de COMPTE (ChatGPT GPT-6 Pro, triée par Opus 5.5, 12/11/2026) sur la demande de fusion [gablry8/cp-gl2607#24](https://github.com/gablry8/cp-gl2607/pull/24) (tête `e017bfa`, base `main` = `99ddd50`) : sept conditions, traitées sur la **même branche** `correctif/compte` (ni rebase, ni push forcé, ni fusion). Exécutant : Opus 5.5 (session Claude Code).
