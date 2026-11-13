@@ -4634,11 +4634,13 @@ function cpMfaDebut(nom){const id='acc_mfa_msg';if(!cpCompteCo(id))return;cpCode
 async function cpMfaInscrire(){const id='acc_mfa_msg';if(!cpCompteCo(id))return;
   if(_cpMfaPrep)return; /* « Continuer » déjà en cours */
   const nom=String((document.getElementById('acc_mfa_nom')||{}).value||'').trim().slice(0,40)||'iPhone';
-  if(cpMfaFacteurs().length&&!(await cpAal2())){cpCodeDemander('Pour ajouter un appareil, donne d\'abord le code de ton application d\'authentification.',cpMfaInscrire);return;}
-  /* COMPTE-bis : numéro de tentative ; « Continuer » grisé pendant « Préparation… » ; annulée entre-temps → réponse écartée, facteur créé retiré, rien d'affiché */
+  /* COMPTE-bis : numéro de tentative ; « Continuer » grisé pendant « Préparation… » ; annulée entre-temps → réponse écartée, facteur créé retiré, rien d'affiché.
+     COMPTE-ter : numéro pris AVANT le premier await (lecture du niveau) : annulée pendant cette lecture → rien n'est fait */
   const t=++_cpMfaTent,encore=()=>t===_cpMfaTent;_cpMfaPrep=t;cpCompteAfficher();
-  cpCompteMsg(id,'Préparation…','info');
   try{
+    if(cpMfaFacteurs().length){const aal2=await cpAal2();if(!encore())return;
+      if(!aal2){cpCodeDemander('Pour ajouter un appareil, donne d\'abord le code de ton application d\'authentification.',cpMfaInscrire);return;}}
+    cpCompteMsg(id,'Préparation…','info');
     /* facteurs non vérifiés retirés avant d'en créer un (10 au plus par compte) : ceux d'un essai de CET appareil dont le retrait n'a pas abouti,
        et ceux créés il y a plus de 15 minutes (essai abandonné) ; une inscription en cours sur un autre appareil (moins de 15 minutes) est laissée */
     const lf=await sb.auth.mfa.listFactors();if(!encore())return;
@@ -4648,7 +4650,7 @@ async function cpMfaInscrire(){const id='acc_mfa_msg';if(!cpCompteCo(id))return;
     for(const f of tous.filter(f=>f.status!=='verified'&&(_cpMfaARetirer.indexOf(f.id)>=0||maint-Date.parse(f.created_at)>15*60000))){
       await cpMfaRetirerNonVerifie(f.id,'retrait d\'un facteur non vérifié',false);if(!encore())return;}
     const {data,error}=await sb.auth.mfa.enroll({factorType:'totp',friendlyName:nom,issuer:'ClimPilot'});
-    if(!encore()){if(!error&&data&&data.id)await cpMfaRetirerNonVerifie(data.id,'inscription arrivée après l\'annulation',false);return;}
+    if(!encore()){if(!error&&data&&data.id)await cpMfaRetirerNonVerifie(data.id,'inscription arrivée après l\'annulation',true);return;} /* COMPTE-ter : retrait en échec dit à l'écran, comme à l'annulation */
     if(error){cpAuthJournal('inscription',error);if(error.code==='insufficient_aal'){cpCodeDemander('Pour ajouter un appareil, donne d\'abord le code de ton application d\'authentification.',cpMfaInscrire);return;}cpCompteMsg(id,cpCompteErr(error));return;}
     const tt=(data&&data.totp)||{};
     _cpMfaPrep=0;_cpMfa={fid:data.id,nom:nom,uri:String(tt.uri||''),secret:String(tt.secret||'').replace(/[^A-Za-z2-7]/g,'').toUpperCase()};
