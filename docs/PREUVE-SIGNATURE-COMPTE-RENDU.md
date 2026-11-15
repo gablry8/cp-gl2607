@@ -49,17 +49,20 @@ Où : supabase.com › projet **réel** (pas ClimPilot-TEST) › SQL Editor › 
 - **Certain** (lu le 15/11) : en-tête exact de la fonction en ligne (réel et TEST) : `LANGUAGE plpgsql SECURITY DEFINER SET search_path TO ''`, propriétaire `postgres`, droits `{postgres=X/postgres,service_role=X/postgres}`, aucun commentaire, déclencheur `BEFORE UPDATE … FOR EACH ROW`. Le texte en ligne a des fins de ligne Windows (`\r\n`) : les empreintes sont calculées sans elles.
 
 ## 5. Test rouge → correction → test vert
-- **Test** : `tests/sql/test_preuve_signature.py` (25 tests, PostgreSQL local, marqueur `climpilot-test`). Les colonnes sont lues dans `information_schema` : une colonne ajoutée plus tard est vérifiée d'office. Chaque colonne est essayée par le compte connecté sur une demande **signée, refusée, annulée et en attente** (chaque essai dans une transaction annulée ; la ligne est comparée avant / après). Les deux cas permis, seuls puis combinés avec chaque autre colonne ; une mise à jour sans changement ; la fonction publique (vu, signer, refuser, copie, et toutes les colonnes avec la clé de service, avec ou sans identifiant dans le jeton) ; le passage sans identifiant ; un autre compte ; la suppression ; la migration rejouée trois fois ; l'empreinte de départ du banc = celle du réel ; le retour arrière ; les scripts (verrous, nombre de lignes, « À REVOIR » sur une base non migrée, arrêt si la fonction en ligne n'est pas celle attendue).
-- **Rouge sur l'ancien code** (`main` `93efedd`, migration et scripts mis de côté par `git stash`) : **15 échecs, 10 réussis** — les 4 états, les deux cas permis combinés, la migration, le retour arrière et les scripts. Journal gardé hors dépôt (il nomme les colonnes).
+- **Test** : `tests/sql/test_preuve_signature.py` (26 tests, PostgreSQL local, marqueur `climpilot-test`). Les colonnes sont lues dans `information_schema` : une colonne ajoutée plus tard est vérifiée d'office. Chaque colonne est essayée par le compte connecté sur une demande **signée, refusée, annulée et en attente** (chaque essai dans une transaction annulée ; la ligne est comparée avant / après), et chaque colonne remplie est essayée « vidée » (test 22). Les deux cas permis, seuls puis combinés avec chaque autre colonne ; une mise à jour sans changement ; la fonction publique (vu, signer, refuser, copie, et toutes les colonnes avec la clé de service, avec ou sans identifiant dans le jeton) ; le passage sans identifiant ; un autre compte ; la suppression ; la migration rejouée trois fois ; l'empreinte de départ du banc = celle du réel ; le retour arrière ; les scripts (verrous, nombre de lignes, « À REVOIR » sur une base non migrée, arrêt si la fonction en ligne n'est pas celle attendue).
+- **Rouge sur l'ancien code** : **16 échecs, 10 réussis** sur 26 — les 4 états, la colonne vidée, les deux cas permis combinés, la migration, le retour arrière et les scripts. Les 10 réussis le sont aussi sur `main` par construction (lecture des colonnes et comportements gardés : fonction publique ×2, passage sans identifiant, autre compte, suppression, mise à jour sans changement, cas permis seuls, empreinte de départ du banc). Journal gardé hors dépôt (il nomme les colonnes). Méthode : 25 tests contre `main` `93efedd` avec la migration et les scripts mis de côté par `git stash` (15 / 10), puis le test 22, ajouté après le premier commit, contre une copie de travail de `main` (`git worktree`) : la suite entière y donne 16 / 10. Une première tentative de preuve du test 22 par `git stash` n'était pas valable (fichiers déjà commités, rien mis de côté) : elle est écartée et notée dans le journal.
 - **Correction** : `supabase/migrations/20261115120000_preuve_signature.sql` remplace seulement le corps de `cp_sig_guard` (même en-tête). Pour le compte connecté : la ligne entière est comparée ; seuls passent (a) `en_attente` → `annule` sans autre changement, (b) `applique` faux → vrai sans autre changement, et une mise à jour qui ne change rien. Clé de service et passage sans identifiant : inchangés. Messages : « modification interdite », « changement de statut interdit » (courts, sans donnée du client).
 - **Pourquoi garder le passage « auth.uid() nul »** : seul un rôle qui contourne la protection par compte (administration du SQL Editor, clé de service) peut atteindre une ligne sans identifiant, puisque la règle `sig_update` exige `auth.uid() = user_id` et que le visiteur non connecté n'a plus aucun droit sur la table depuis P6.
-- **Vert** : 25 / 25. Tous les tests SQL : **91 / 91** (66 existants + 25), dont `test_p6_droits.py` et `test_migration.py`. Sous `faketime` samedi 14/11/2026, dimanche 15/11/2026 et 05/01/2027 : 91 / 91 à chaque fois.
+- **Vert** : 26 / 26. Tous les tests SQL : **92 / 92** (66 existants + 26), dont `test_p6_droits.py` et `test_migration.py`. Sous `faketime` samedi 14/11/2026, dimanche 15/11/2026 et 05/01/2027 : 92 / 92 à chaque fois.
 - **Mutations** (fonction modifiée exprès, puis remise à l'identique) : 7 sur 7 détectées — cas (a) sans contrôle des autres colonnes, cas (b) idem, mise à jour sans changement refusée, passage sans identifiant retiré, passage de la clé de service retiré, (a) permis depuis tout statut, (b) permis dans les deux sens.
 
 ## 6. Batterie et CI
-- Batterie complète (un passage, en session) : _à compléter_.
-- CI de la branche : _à compléter_.
-- Référence `main` (`93efedd`, CI du 13/11, run 43418172493) : 1 608 réussis / 0 échoué / 2 SKIP connus / 5 « À TRANCHER » ; étape `sql` : 66.
+- **Batterie complète** (un passage, en session, contenu de `e133202`, isolation du noyau active) : code 0, **COMPLET, RÉUSSI — 1 638 réussis, 0 échoué, 0 SKIP, 5 « À TRANCHER »** (les 5 mêmes que sur `main`, suite Y, M3 C2, en attente de la comptable).
+- **Comparaison étape par étape** avec la CI de `main` (`93efedd`, run 43418172493 : 1 608 / 0 / 2 SKIP connus / 5 « À TRANCHER ») : 39 étapes de chaque côté, **seules deux diffèrent** — `sql` 66 → 92 (les 26 nouveaux tests) et `autotest-isolation` 16 + 2 SKIP → 20 + 0 SKIP (isolation du noyau présente en session, absente sur la CI : différence de machine, pas de code). `fn-signature` : 10 / 10, inchangé.
+- **CI de la branche** : voir § 6 bis.
+
+## 6 bis. CI de la branche
+La CI (`.github/workflows/tests.yml`, contrôle « batterie complète ») tourne sur la tête finale de la branche, pour les deux événements (push et demande de fusion). Chaque push annule le run en cours de la même branche : le résultat ne peut donc pas être écrit ici sans relancer la CI. Il est noté dans la description de la demande de fusion [gablry8/cp-gl2607#27](https://github.com/gablry8/cp-gl2607/pull/27) et dans le message à Gab. Le dernier commit ne change que des documents : le code et les tests sont ceux de `e133202`, dont la batterie en session est au § 6.
 
 ## 7. Retour arrière
 `tests/supabase-test/7-preuve-signature-retour-arriere.sql` : remet `cp_sig_guard` telle qu'elle a été lue en ligne le 15/11 (même en-tête, même code, sans commentaire ; empreinte `01fa989c…` vérifiée), sans toucher au déclencheur, aux règles, aux droits ni aux données. 3 lignes « OK » attendues. Rejouable. Prouvé sur le banc (test 14 : retour arrière collé deux fois, empreinte du réel retrouvée, puis migration de nouveau appliquée).
@@ -72,12 +75,32 @@ Où : supabase.com › projet **réel** (pas ClimPilot-TEST) › SQL Editor › 
 5. `tests/LISEZMOI.md` (interdit pour cette mission) n'a pas la ligne du nouveau test ; texte proposé au § 10.
 6. Fonction `signature` (P2) : version 4 en ligne sur le réel, **code identique** au fichier du dépôt de l'`import` à la fin (comparaison ligne à ligne le 15/11) ; seul l'en-tête de commentaires disait encore « v3 / non déployé » : corrigé, aucune ligne de code changée, aucun déploiement. Sur TEST : version 1, même logique (lue, comparée à l'œil seulement : **probable**).
 
-## 9. Fichiers (`git diff --stat origin/main`)
-_à compléter_
+## 9. Fichiers (`git diff --stat origin/main...HEAD`)
+```
+ docs/ESSAIS-SUPABASE-TEST.md                       |  11 +
+ docs/PREUVE-SIGNATURE-COMPTE-RENDU.md              | (ce fichier)
+ supabase/functions/signature/index.ts              |  13 +-   (commentaires seulement)
+ .../migrations/20261115120000_preuve_signature.sql |  56 +++
+ tests/sql/test_preuve_signature.py                 | 533 +++++
+ tests/supabase-test/7-REEL-preuve-signature.sql    | 121 +++++
+ tests/supabase-test/7-preuve-signature-TEST.sql    | 127 +++++
+ .../7-preuve-signature-retour-arriere.sql          |  55 +++
+```
+Aucun fichier de l'appli (`index.html`, `sw.js`, `signer.html`, `next-*.js`, `vendor/`), ni `tests/run-all.sh`, `tests/isolation/`, `tests/*.mjs`, `tests/LISEZMOI.md`, `docs/FILE-DES-MISSIONS.md`, `docs/APRES-PRO-V1.md`, `CLAUDE.md`. Cache (`sw.js`) inchangé : aucun fichier mis en cache n'est modifié. Aucun golden ne change.
+**Conflits** : `git merge-tree` contre `origin/correctif/compte` : aucun conflit, aucun fichier en commun. Aucune branche P11-A sur le dépôt distant au 15/11 (`git fetch --prune`).
 
 ## 10. Lignes à ajouter (par Gab ou la mission suivante ; fichiers interdits ici)
-- `docs/FILE-DES-MISSIONS.md`, tableau « Maintenant » : _à compléter_
-- `tests/LISEZMOI.md` : « `tests/sql/test_preuve_signature.py` (25 tests, PostgreSQL local) : signature, verrouillage complet d'une demande (toutes les colonnes lues dans information_schema, quatre états, deux cas permis, fonction publique inchangée, retour arrière, scripts `tests/supabase-test/7-…`). `7-preuve-signature-TEST.sql` (verrou par marqueur, 8 « OK »), `7-REEL-preuve-signature.sql` (refuse le projet TEST, 8 « OK »), `7-preuve-signature-retour-arriere.sql` (3 « OK »). »
+- `docs/FILE-DES-MISSIONS.md`, tableau « Maintenant », nouvelle ligne :
+  `| 9 | **PREUVE-SIGNATURE** : signature, verrouillage complet d'une demande (serveur seulement) | `correctif/preuve-signature` | **fait le 15/11** (Opus 5.5) : migration `20261115120000_preuve_signature.sql`, scripts `tests/supabase-test/7-…` (TEST 8 « OK », RÉEL 8 « OK », retour arrière 3 « OK ») ; SQL 92 / 0 (26 nouveaux ; rouge sur main 16 / 10) ; batterie 1 638 / 0 / 0 SKIP ; demande de fusion #27 en brouillon ; `docs/PREUVE-SIGNATURE-COMPTE-RENDU.md` | relecture par Fable 5.1 (`relecture-p10`) ; Gab colle 7-…-TEST.sql, essai 5 min, 7-REEL-…sql, fusionne ; décision § 8 point 1 | Fable puis Gab |`
+- `tests/LISEZMOI.md` : « `tests/sql/test_preuve_signature.py` (26 tests, PostgreSQL local) : signature, verrouillage complet d'une demande (toutes les colonnes lues dans information_schema, quatre états, deux cas permis, fonction publique inchangée, retour arrière, scripts `tests/supabase-test/7-…`). `7-preuve-signature-TEST.sql` (verrou par marqueur, 8 « OK »), `7-REEL-preuve-signature.sql` (refuse le projet TEST, 8 « OK »), `7-preuve-signature-retour-arriere.sql` (3 « OK »). »
 
 ## 11. Relecture (règle 12)
-_à compléter_
+Relecture par l'autre modèle (Fable 5.1, skill `relecture-p10`), en lecture seule, avant toute fusion. Fichiers à joindre :
+1. `supabase/migrations/20261115120000_preuve_signature.sql`
+2. `tests/sql/test_preuve_signature.py`
+3. `tests/supabase-test/7-preuve-signature-TEST.sql`
+4. `tests/supabase-test/7-REEL-preuve-signature.sql`
+5. `tests/supabase-test/7-preuve-signature-retour-arriere.sql`
+6. `docs/PREUVE-SIGNATURE-COMPTE-RENDU.md` (ce fichier)
+7. pour le contexte : `next-signature.js` (écrits de l'appli), `supabase/functions/signature/index.ts` (fonction publique), `supabase/migrations/20261002120000_documents_emis.sql` § 6 (version précédente de la fonction), `tests/sql/01_base_actuelle.sql`, `tests/sql/00_supabase_emul.sql`
+8. le compte rendu complet privé (Project `claude/ClimPilot-PREUVE-SIGNATURE-compte-rendu.md`), **hors dépôt**.
