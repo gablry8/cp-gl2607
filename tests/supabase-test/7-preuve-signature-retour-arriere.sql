@@ -1,18 +1,19 @@
 -- =====================================================================
--- ClimPilot — PREUVE-SIGNATURE : RETOUR ARRIÈRE de la migration 20261115120000_preuve_signature.sql
+-- ClimPilot — PREUVE-SIGNATURE : RETOUR ARRIÈRE de la migration 20261115120000_preuve_signature.sql (deux fonctions)
 -- Préparé le 15/11/2026. À coller dans le SQL Editor du projet concerné (TEST d'abord ; RÉEL seulement si la
 -- correction doit être annulée), nouvelle requête, Run.
 --
--- Ce qu'il fait : remet la fonction public.cp_sig_guard telle qu'elle a été lue (en lecture seule) sur le projet réel
--- et sur ClimPilot-TEST le 15/11/2026 : même en-tête (security definer, search_path vide), même code, sans commentaire.
--- Seule différence possible : les fins de ligne (le texte en ligne a des fins de ligne Windows, invisibles) ; les
--- vérifications comparent le code sans elles.
--- Ce qu'il ne touche pas : le déclencheur cp_sig_guard, cp_sig_insert, les règles d'accès, les droits, aucune donnée.
+-- Ce qu'il fait : remet les fonctions public.cp_sig_guard et public.cp_sig_insert telles qu'elles ont été lues (en lecture
+-- seule) sur le projet réel et sur ClimPilot-TEST le 15/11/2026 : même en-tête (security definer, search_path vide), même
+-- code, sans commentaire. Seule différence possible : les fins de ligne (le texte en ligne a des fins de ligne Windows,
+-- invisibles) ; les vérifications comparent le code sans elles.
+-- Ce qu'il ne touche pas : les déclencheurs cp_sig_guard et cp_sig_insert, les règles d'accès, les droits, aucune donnée.
 -- Rejouable : collé deux fois, la 2e fois ne change rien.
 -- =====================================================================
 do $$ begin
-  if to_regclass('public.climpilot_signatures') is null or to_regprocedure('public.cp_sig_guard()') is null then
-    raise exception 'STOP : table climpilot_signatures ou fonction cp_sig_guard absente : ce n''est pas la base ClimPilot attendue. Rien n''a été modifié.';
+  if to_regclass('public.climpilot_signatures') is null or to_regprocedure('public.cp_sig_guard()') is null
+     or to_regprocedure('public.cp_sig_insert()') is null then
+    raise exception 'STOP : table climpilot_signatures, fonction cp_sig_guard ou cp_sig_insert absente : ce n''est pas la base ClimPilot attendue. Rien n''a été modifié.';
   end if;
 end $$;
 
@@ -42,7 +43,25 @@ end $function$;
 comment on function public.cp_sig_guard() is null;
 revoke all on function public.cp_sig_guard() from public, anon, authenticated;
 
--- VÉRIFICATION : 3 lignes « OK » attendues
+CREATE OR REPLACE FUNCTION public.cp_sig_insert()
+ RETURNS trigger
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+begin
+  new.doc_hash := encode(sha256(convert_to(new.doc_html, 'UTF8')), 'hex');
+  new.signed_at := null; new.signer_nom := null; new.signature_png := null; new.signer_ip := null;
+  new.signer_ua := null; new.consentement := null; new.vu_at := null; new.applique := false;
+  new.support_durable_accord := null; new.copie_le := null; new.copie_nb := 0;
+  if new.expires_at > now() + interval '120 days' then new.expires_at := now() + interval '90 days'; end if;
+  return new;
+end $function$;
+
+comment on function public.cp_sig_insert() is null;
+revoke all on function public.cp_sig_insert() from public, anon, authenticated;
+
+-- VÉRIFICATION : 5 lignes « OK » attendues
 select 'cp_sig_guard : code lu sur le réel le 15/11/2026 (empreinte 01fa989c…)' as controle,
   case when (select md5(replace(prosrc, E'\r', '')) from pg_proc where oid = 'public.cp_sig_guard()'::regprocedure)
             = '01fa989c59f024f00666b9fb48e2d769' then 'OK' else 'À REVOIR' end as etat
@@ -52,4 +71,13 @@ union all select 'cp_sig_guard : en-tête d''avant (security definer, search_pat
         and obj_description('public.cp_sig_guard()'::regprocedure, 'pg_proc') is null then 'OK' else 'À REVOIR' end
 union all select 'déclencheur cp_sig_guard toujours en place (avant chaque modification, ligne par ligne, actif)',
   case when exists (select 1 from pg_trigger t where t.tgrelid = 'public.climpilot_signatures'::regclass and t.tgname = 'cp_sig_guard'
-                    and t.tgfoid = 'public.cp_sig_guard()'::regprocedure and t.tgtype = 19 and t.tgenabled = 'O') then 'OK' else 'À REVOIR' end;
+                    and t.tgfoid = 'public.cp_sig_guard()'::regprocedure and t.tgtype = 19 and t.tgenabled = 'O') then 'OK' else 'À REVOIR' end
+union all select 'cp_sig_insert : code lu sur le réel le 15/11/2026 (empreinte a761e69f…)',
+  case when (select md5(replace(prosrc, E'\r', '')) from pg_proc where oid = 'public.cp_sig_insert()'::regprocedure)
+            = 'a761e69f5c4d5bc86ac7b1fa64f65bef' then 'OK' else 'À REVOIR' end
+union all select 'cp_sig_insert : en-tête d''avant (security definer, search_path vide, sans commentaire), déclencheur actif',
+  case when exists (select 1 from pg_proc where oid = 'public.cp_sig_insert()'::regprocedure and prosecdef
+                    and proconfig = array['search_path=""'])
+        and obj_description('public.cp_sig_insert()'::regprocedure, 'pg_proc') is null
+        and exists (select 1 from pg_trigger t where t.tgrelid = 'public.climpilot_signatures'::regclass and t.tgname = 'cp_sig_insert'
+                    and t.tgfoid = 'public.cp_sig_insert()'::regprocedure and t.tgtype = 7 and t.tgenabled = 'O') then 'OK' else 'À REVOIR' end;

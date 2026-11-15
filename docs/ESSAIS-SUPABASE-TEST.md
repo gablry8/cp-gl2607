@@ -155,16 +155,17 @@ Chaque correction a d'abord un test qui échoue sur l'ancien code (suite R), pui
 - Tests : suite R (R4, 5 contrôles), 3 échecs sur l'ancien code. Batterie complète : 526 réussis, 0 échec, 0 SKIP.
 
 ## Pas encore essayé
-- **PREUVE-SIGNATURE — signature : verrouillage complet d'une demande (15/11/2026, branche `correctif/preuve-signature`)** :
-  migration `supabase/migrations/20261115120000_preuve_signature.sql` (remplace seulement le code de la fonction de contrôle
-  `cp_sig_guard`). Le compte connecté ne peut plus rien modifier d'une demande de signature, sauf annuler une demande en attente
-  et marquer une signature comme appliquée ; la fonction publique `signature` (clé de service) garde ses droits.
-  Script à coller sur TEST : `tests/supabase-test/7-preuve-signature-TEST.sql` (verrou par marqueur, **8 « OK »**) ; sur le réel :
-  `7-REEL-preuve-signature.sql` (refuse le projet TEST, mêmes 8 « OK ») ; retour arrière : `7-preuve-signature-retour-arriere.sql`
-  (3 « OK », remet la fonction lue en ligne le 15/11). Les deux scripts s'arrêtent si la fonction en ligne n'est plus celle lue le 15/11.
-  Lu en lecture seule le 15/11 : même fonction `cp_sig_guard` sur le réel et sur TEST (même empreinte), fonction `signature`
+- **PREUVE-SIGNATURE — signature : verrouillage complet d'une demande, création comprise (15/11/2026, branche `correctif/preuve-signature`)** :
+  migration `supabase/migrations/20261115120000_preuve_signature.sql` (remplace seulement le code des fonctions de contrôle
+  `cp_sig_guard` et `cp_sig_insert`). Le compte connecté ne peut plus rien modifier d'une demande de signature, sauf annuler une
+  demande en attente et marquer une signature comme appliquée ; à la création, le serveur impose aussi la date de création et un
+  motif de refus vide ; la fonction publique `signature` (clé de service) garde ses droits.
+  Script à coller sur TEST : `tests/supabase-test/7-preuve-signature-TEST.sql` (verrou par marqueur, **9 « OK »**) ; sur le réel :
+  `7-REEL-preuve-signature.sql` (refuse le projet TEST, mêmes 9 « OK ») ; retour arrière : `7-preuve-signature-retour-arriere.sql`
+  (5 « OK », remet les deux fonctions lues en ligne le 15/11). Les deux scripts s'arrêtent si une fonction en ligne n'est plus celle lue le 15/11.
+  Lu en lecture seule le 15/11 : mêmes fonctions `cp_sig_guard` et `cp_sig_insert` sur le réel et sur TEST (mêmes empreintes), fonction `signature`
   version 4 sur le réel (code identique au dépôt), version 1 sur TEST. Vérifié hors ligne seulement : PostgreSQL 16 local
-  (`tests/sql/test_preuve_signature.py`, 26 tests). Essai de bout en bout avec la copie d'essai : à faire par Gabriel
+  (`tests/sql/test_preuve_signature.py`, 27 tests). Essai de bout en bout avec la copie d'essai : à faire par Gabriel
   (`docs/PREUVE-SIGNATURE-COMPTE-RENDU.md`, ligne 2 de l'en-tête).
 - **C1 — une seule facture vivante par source (21/10/2026, branche `correctif/c1-registre-illisible`)** : migration
   `supabase/migrations/20261021180000_une_facture_par_source.sql` (script `tests/supabase-test/4-une-facture-par-source-TEST.sql` à

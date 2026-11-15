@@ -1,26 +1,32 @@
 -- =====================================================================
--- ClimPilot — PREUVE-SIGNATURE : À COLLER SUR LE PROJET RÉEL, APRÈS l'essai sur ClimPilot-TEST (7-preuve-signature-TEST.sql, 8 « OK »)
+-- ClimPilot — PREUVE-SIGNATURE : À COLLER SUR LE PROJET RÉEL, APRÈS l'essai sur ClimPilot-TEST (7-preuve-signature-TEST.sql, 9 « OK »)
 -- Préparé le 15/11/2026. Assemble, sans rien changer : la migration supabase/migrations/20261115120000_preuve_signature.sql
 -- (telle quelle) + les mêmes vérifications que le script d'essai.
 -- Où : supabase.com › projet RÉEL (pas ClimPilot-TEST) › SQL Editor › nouvelle requête › coller TOUT › Run.
--- Attendu : 8 lignes, TOUTES « OK ». Une autre valeur, ou un message STOP : n'insiste pas, note ce qui est affiché.
+-- Attendu : 9 lignes, TOUTES « OK ». Une autre valeur, ou un message STOP : n'insiste pas, note ce qui est affiché.
 -- Retour arrière : tests/supabase-test/7-preuve-signature-retour-arriere.sql.
--- Aucune donnée n'est écrite ni lue : seul le code de la fonction de contrôle cp_sig_guard change. Rejouable.
+-- Aucune donnée n'est écrite ni lue : seul le code des deux fonctions de contrôle (cp_sig_guard, cp_sig_insert) change. Rejouable.
 -- =====================================================================
 do $$ begin
   if to_regclass('public.climpilot_marqueur_test') is not null then
     raise exception 'STOP : marqueur climpilot_marqueur_test présent = projet de TEST. Ce script est pour le projet RÉEL (sur le test : 7-preuve-signature-TEST.sql). Rien n''a été modifié.';
   end if;
-  if to_regclass('public.climpilot_signatures') is null or to_regprocedure('public.cp_sig_guard()') is null then
-    raise exception 'STOP : table climpilot_signatures ou fonction cp_sig_guard absente : ce n''est pas la base ClimPilot attendue. Rien n''a été modifié.';
+  if to_regclass('public.climpilot_signatures') is null or to_regprocedure('public.cp_sig_guard()') is null
+     or to_regprocedure('public.cp_sig_insert()') is null then
+    raise exception 'STOP : table climpilot_signatures, fonction cp_sig_guard ou cp_sig_insert absente : ce n''est pas la base ClimPilot attendue. Rien n''a été modifié.';
   end if;
-  if not exists (select 1 from pg_trigger t where t.tgrelid = 'public.climpilot_signatures'::regclass and t.tgname = 'cp_sig_guard') then
-    raise exception 'STOP : déclencheur cp_sig_guard absent de climpilot_signatures. Rien n''a été modifié.';
+  if not exists (select 1 from pg_trigger t where t.tgrelid = 'public.climpilot_signatures'::regclass and t.tgname = 'cp_sig_guard')
+     or not exists (select 1 from pg_trigger t where t.tgrelid = 'public.climpilot_signatures'::regclass and t.tgname = 'cp_sig_insert') then
+    raise exception 'STOP : déclencheur cp_sig_guard ou cp_sig_insert absent de climpilot_signatures. Rien n''a été modifié.';
   end if;
-  -- la fonction en ligne doit être celle lue le 15/11/2026 (le retour arrière la remet à l'identique) ou déjà celle de cette migration
+  -- chaque fonction en ligne doit être celle lue le 15/11/2026 (le retour arrière la remet à l'identique) ou déjà celle de cette migration
   if (select md5(replace(prosrc, E'\r', '')) from pg_proc where oid = to_regprocedure('public.cp_sig_guard()'))
      not in ('01fa989c59f024f00666b9fb48e2d769', '9da1de9b7ce06e426e8695ee03cf8de9') then
     raise exception 'STOP : cp_sig_guard n''est ni la version lue le 15/11/2026 ni celle de cette migration. Rien n''a été modifié : note ce message.';
+  end if;
+  if (select md5(replace(prosrc, E'\r', '')) from pg_proc where oid = to_regprocedure('public.cp_sig_insert()'))
+     not in ('a761e69f5c4d5bc86ac7b1fa64f65bef', 'dd8e9e6a8ab8f37de0861e301f75aaba') then
+    raise exception 'STOP : cp_sig_insert n''est ni la version lue le 15/11/2026 ni celle de cette migration. Rien n''a été modifié : note ce message.';
   end if;
 end $$;
 
@@ -44,11 +50,17 @@ end $$;
 --     et le visiteur non connecté n'a plus aucun droit sur la table depuis la migration 20261031120000_droits_anon.sql.
 -- Messages d'erreur : courts, sans donnée du client (« modification interdite », « changement de statut interdit »).
 --
--- Ce que fait cette migration (rejouable : create or replace) : remplace le corps de la fonction public.cp_sig_guard
--- (même nom, même en-tête : security definer, search_path vide), la commente, et redit ses droits (fonction de
--- déclencheur : jamais appelable par l'API). Le déclencheur cp_sig_guard (before update, for each row), les règles
--- d'accès, les droits sur la table, le déclencheur d'insertion cp_sig_insert et les données ne sont pas touchés.
--- Retour arrière : tests/supabase-test/7-preuve-signature-retour-arriere.sql (remet la fonction lue sur le réel le 15/11/2026).
+-- Règle (déclencheur cp_sig_insert, avant chaque création d'une demande) : comme avant, le serveur calcule l'empreinte
+-- du document et vide les colonnes de preuve ; en plus, il impose la date de création (now()) et un motif de refus vide,
+-- quoi que le compte envoie. L'appli n'envoie ni l'une ni l'autre (next-signature.js, création d'un lien).
+--
+-- Ce que fait cette migration (rejouable : create or replace) :
+--   1. remplace le corps de public.cp_sig_guard ;
+--   2. remplace le corps de public.cp_sig_insert (code précédent + date de création et motif de refus imposés) ;
+--   pour chacune : même nom, même en-tête (security definer, search_path vide), un commentaire, et ses droits redits
+--   (fonction de déclencheur : jamais appelable par l'API). Les déclencheurs cp_sig_guard (before update) et
+--   cp_sig_insert (before insert), les règles d'accès, les droits sur la table et les données ne sont pas touchés.
+-- Retour arrière : tests/supabase-test/7-preuve-signature-retour-arriere.sql (remet les deux fonctions lues sur le réel le 15/11/2026).
 -- Essai : tests/supabase-test/7-preuve-signature-TEST.sql (projet TEST, verrou marqueur) ; réel : 7-REEL-preuve-signature.sql.
 -- Tests : tests/sql/test_preuve_signature.py (PostgreSQL local).
 -- ============================================================
@@ -84,8 +96,26 @@ comment on function public.cp_sig_guard() is
 -- fonction de déclencheur : jamais appelable directement par l'API (comme avant)
 revoke all on function public.cp_sig_guard() from public, anon, authenticated;
 
+-- 2. création d'une demande : code précédent (migration 20261002120000) + date de création et motif de refus imposés
+create or replace function public.cp_sig_insert() returns trigger
+language plpgsql security definer set search_path to '' as $$
+begin
+  new.doc_hash := encode(sha256(convert_to(new.doc_html, 'UTF8')), 'hex');
+  new.signed_at := null; new.signer_nom := null; new.signature_png := null; new.signer_ip := null;
+  new.signer_ua := null; new.consentement := null; new.vu_at := null; new.applique := false;
+  new.support_durable_accord := null; new.copie_le := null; new.copie_nb := 0;
+  new.created_at := now(); new.motif_refus := null;
+  if new.expires_at > now() + interval '120 days' then new.expires_at := now() + interval '90 days'; end if;
+  return new;
+end $$;
+
+comment on function public.cp_sig_insert() is
+  'PREUVE-SIGNATURE (15/11/2026) : à la création d''une demande, empreinte calculée, colonnes de preuve vidées, date de création et motif de refus imposés.';
+
+revoke all on function public.cp_sig_insert() from public, anon, authenticated;
+
 -- ---------------------------------------------------------------------
--- VÉRIFICATIONS : 8 lignes attendues, TOUTES « OK »
+-- VÉRIFICATIONS : 9 lignes attendues, TOUTES « OK »
 -- ---------------------------------------------------------------------
 select controle, etat from (
   select 1 as o, 'cp_sig_guard : présente, security definer, search_path vide' as controle,
@@ -113,9 +143,17 @@ select controle, etat from (
           and (select string_agg(policyname::text || ':' || cmd::text, ',' order by policyname) from pg_policies
                where schemaname = 'public' and tablename = 'climpilot_signatures') = 'sig_insert:INSERT,sig_select:SELECT,sig_update:UPDATE'
          then 'OK' else 'À REVOIR' end
-  union all select 8, 'déclencheur d''insertion cp_sig_insert inchangé (code lu le 15/11/2026, actif)',
+  union all select 8, 'cp_sig_insert : version PREUVE-SIGNATURE (empreinte dd8e9e6a…, security definer, search_path vide, déclencheur actif)',
     case when (select md5(replace(prosrc, E'\r', '')) from pg_proc where oid = to_regprocedure('public.cp_sig_insert()'))
-              = 'a761e69f5c4d5bc86ac7b1fa64f65bef'
+              = 'dd8e9e6a8ab8f37de0861e301f75aaba'
+          and coalesce(obj_description(to_regprocedure('public.cp_sig_insert()'), 'pg_proc'), '') like 'PREUVE-SIGNATURE (15/11/2026)%'
+          and exists (select 1 from pg_proc where oid = to_regprocedure('public.cp_sig_insert()') and prosecdef
+                      and proconfig = array['search_path=""'])
           and exists (select 1 from pg_trigger t where t.tgrelid = 'public.climpilot_signatures'::regclass and t.tgname = 'cp_sig_insert'
                       and t.tgfoid = to_regprocedure('public.cp_sig_insert()') and t.tgtype = 7 and t.tgenabled = 'O') then 'OK' else 'À REVOIR' end
+  union all select 9, 'cp_sig_insert : jamais appelable par l''API (anon, authenticated, public)',
+    case when not has_function_privilege('anon', 'public.cp_sig_insert()', 'execute')
+          and not has_function_privilege('authenticated', 'public.cp_sig_insert()', 'execute')
+          and not exists (select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) x
+                          where p.oid = to_regprocedure('public.cp_sig_insert()') and x.grantee = 0) then 'OK' else 'À REVOIR' end
 ) v order by o;

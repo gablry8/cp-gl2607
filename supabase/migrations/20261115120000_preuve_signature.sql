@@ -15,11 +15,17 @@
 --     et le visiteur non connecté n'a plus aucun droit sur la table depuis la migration 20261031120000_droits_anon.sql.
 -- Messages d'erreur : courts, sans donnée du client (« modification interdite », « changement de statut interdit »).
 --
--- Ce que fait cette migration (rejouable : create or replace) : remplace le corps de la fonction public.cp_sig_guard
--- (même nom, même en-tête : security definer, search_path vide), la commente, et redit ses droits (fonction de
--- déclencheur : jamais appelable par l'API). Le déclencheur cp_sig_guard (before update, for each row), les règles
--- d'accès, les droits sur la table, le déclencheur d'insertion cp_sig_insert et les données ne sont pas touchés.
--- Retour arrière : tests/supabase-test/7-preuve-signature-retour-arriere.sql (remet la fonction lue sur le réel le 15/11/2026).
+-- Règle (déclencheur cp_sig_insert, avant chaque création d'une demande) : comme avant, le serveur calcule l'empreinte
+-- du document et vide les colonnes de preuve ; en plus, il impose la date de création (now()) et un motif de refus vide,
+-- quoi que le compte envoie. L'appli n'envoie ni l'une ni l'autre (next-signature.js, création d'un lien).
+--
+-- Ce que fait cette migration (rejouable : create or replace) :
+--   1. remplace le corps de public.cp_sig_guard ;
+--   2. remplace le corps de public.cp_sig_insert (code précédent + date de création et motif de refus imposés) ;
+--   pour chacune : même nom, même en-tête (security definer, search_path vide), un commentaire, et ses droits redits
+--   (fonction de déclencheur : jamais appelable par l'API). Les déclencheurs cp_sig_guard (before update) et
+--   cp_sig_insert (before insert), les règles d'accès, les droits sur la table et les données ne sont pas touchés.
+-- Retour arrière : tests/supabase-test/7-preuve-signature-retour-arriere.sql (remet les deux fonctions lues sur le réel le 15/11/2026).
 -- Essai : tests/supabase-test/7-preuve-signature-TEST.sql (projet TEST, verrou marqueur) ; réel : 7-REEL-preuve-signature.sql.
 -- Tests : tests/sql/test_preuve_signature.py (PostgreSQL local).
 -- ============================================================
@@ -54,3 +60,21 @@ comment on function public.cp_sig_guard() is
 
 -- fonction de déclencheur : jamais appelable directement par l'API (comme avant)
 revoke all on function public.cp_sig_guard() from public, anon, authenticated;
+
+-- 2. création d'une demande : code précédent (migration 20261002120000) + date de création et motif de refus imposés
+create or replace function public.cp_sig_insert() returns trigger
+language plpgsql security definer set search_path to '' as $$
+begin
+  new.doc_hash := encode(sha256(convert_to(new.doc_html, 'UTF8')), 'hex');
+  new.signed_at := null; new.signer_nom := null; new.signature_png := null; new.signer_ip := null;
+  new.signer_ua := null; new.consentement := null; new.vu_at := null; new.applique := false;
+  new.support_durable_accord := null; new.copie_le := null; new.copie_nb := 0;
+  new.created_at := now(); new.motif_refus := null;
+  if new.expires_at > now() + interval '120 days' then new.expires_at := now() + interval '90 days'; end if;
+  return new;
+end $$;
+
+comment on function public.cp_sig_insert() is
+  'PREUVE-SIGNATURE (15/11/2026) : à la création d''une demande, empreinte calculée, colonnes de preuve vidées, date de création et motif de refus imposés.';
+
+revoke all on function public.cp_sig_insert() from public, anon, authenticated;

@@ -8,6 +8,7 @@
 #   (b) applique false → true, aucune autre colonne changée (l'appli a pris en compte la signature ou le refus).
 # Les colonnes sont lues dans information_schema : une colonne ajoutée plus tard est vérifiée d'office.
 # La fonction publique « signature » (service_role) garde ses droits : vu, signer, refuser, copie. auth.uid() nul : inchangé.
+# Création d'une demande (déclencheur cp_sig_insert) : le serveur impose aussi la date de création et un motif de refus vide.
 # Avant la correction, la migration et ses scripts n'existent pas : ces tests doivent être ROUGES.
 import json, os, uuid, pathlib, contextlib
 import psycopg, pytest
@@ -38,6 +39,7 @@ B = '22222222-2222-2222-2222-222222222222'
 # Empreinte (md5, fins de ligne Windows retirées) du code de public.cp_sig_guard lu en lecture seule sur le projet réel ET
 # sur ClimPilot-TEST le 15/11/2026 : c'est la fonction que le retour arrière doit remettre.
 EMPREINTE_AVANT = '01fa989c59f024f00666b9fb48e2d769'
+EMPREINTE_INSERT_AVANT = 'a761e69f5c4d5bc86ac7b1fa64f65bef'  # public.cp_sig_insert, même lecture (réel et TEST)
 MESSAGES = {'modification interdite', 'changement de statut interdit'}  # courts, sans donnée du client
 STATUTS = ('en_attente', 'signe', 'refuse', 'annule')
 PNG = 'data:image/png;base64,' + 'A' * 900
@@ -401,6 +403,16 @@ def test_ps_12_migration_rejouable_declencheur_et_droits():
             assert a.execute("select has_function_privilege(%s, 'public.cp_sig_guard()', 'EXECUTE')", (r,)).fetchone()[0] is attendu, r
         assert a.execute("""select exists(select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) x
                             where p.oid = 'public.cp_sig_guard()'::regprocedure and x.grantee = 0)""").fetchone()[0] is False
+        # création d'une demande : même en-tête, commentaire, droits, déclencheur inchangé
+        f = a.execute("""select prosecdef, proconfig, obj_description(oid, 'pg_proc') from pg_proc
+                         where oid = 'public.cp_sig_insert()'::regprocedure""").fetchone()
+        assert f[0] is True and f[1] == ['search_path=""'] and (f[2] or '').startswith('PREUVE-SIGNATURE'), f
+        assert empreinte(a, 'public.cp_sig_insert()') != EMPREINTE_INSERT_AVANT
+        trg = a.execute("""select pg_get_triggerdef(t.oid), t.tgenabled from pg_trigger t
+                           where t.tgrelid = 'public.climpilot_signatures'::regclass and t.tgname = 'cp_sig_insert'""").fetchall()
+        assert trg == [('CREATE TRIGGER cp_sig_insert BEFORE INSERT ON public.climpilot_signatures FOR EACH ROW EXECUTE FUNCTION cp_sig_insert()', 'O')], trg
+        for r, attendu in (('anon', False), ('authenticated', False), ('service_role', True)):
+            assert a.execute("select has_function_privilege(%s, 'public.cp_sig_insert()', 'EXECUTE')", (r,)).fetchone()[0] is attendu, r
 
 
 def test_ps_13_banc_part_de_la_fonction_du_reel():
@@ -408,6 +420,7 @@ def test_ps_13_banc_part_de_la_fonction_du_reel():
     with base(avec_ps=False) as nom:
         with admin(nom) as a:
             assert empreinte(a) == EMPREINTE_AVANT
+            assert empreinte(a, 'public.cp_sig_insert()') == EMPREINTE_INSERT_AVANT
 
 
 # ---------- 6. retour arrière ----------
@@ -416,18 +429,26 @@ def test_ps_14_retour_arriere_remet_la_fonction_du_reel_puis_la_migration_revien
     with admin() as a:
         for _ in range(2):  # rejouable
             lignes = resultat_final(a, RETOUR.read_text())
-            assert lignes and all(etat == 'OK' for _, etat in lignes), lignes
+            assert lignes and len(lignes) == 5 and all(etat == 'OK' for _, etat in lignes), lignes
         assert empreinte(a) == EMPREINTE_AVANT
+        assert empreinte(a, 'public.cp_sig_insert()') == EMPREINTE_INSERT_AVANT
+        g = a.execute("""select prosecdef, proconfig, obj_description(oid, 'pg_proc') from pg_proc
+                         where oid = 'public.cp_sig_insert()'::regprocedure""").fetchone()
+        assert g == (True, ['search_path=""'], None), g
         f = a.execute("""select prosecdef, proconfig, obj_description(oid, 'pg_proc') from pg_proc
                          where oid = 'public.cp_sig_guard()'::regprocedure""").fetchone()
         assert f == (True, ['search_path=""'], None), f
         assert a.execute("select has_function_privilege('authenticated', 'public.cp_sig_guard()', 'EXECUTE')").fetchone()[0] is False
         a.execute(MIGRATION_PS.read_text())
         assert empreinte(a) != EMPREINTE_AVANT
+        assert empreinte(a, 'public.cp_sig_insert()') != EMPREINTE_INSERT_AVANT
     tok = demande('signe')
     with cnx(A) as c:
         assert tentative(c, tok, 'titre = titre') == 'acceptée'
         assert tentative(c, tok, "titre = titre || ' (modifié)'") is None
+        r = c.execute(f"""insert into {TABLE}(user_id, doc_type, doc_id, doc_html, created_at, motif_refus)
+                         values (%s, 'devis', 'd-r', '<p>x</p>', now() - interval '3 days', 'x') returning created_at = now(), motif_refus""", (A,)).fetchone()
+        assert r == (True, None), r
 
 
 # ---------- 7. scripts prêts à coller ----------
@@ -443,6 +464,7 @@ def test_ps_16_script_test_refuse_de_tourner_sans_marqueur():
             with pytest.raises(psycopg.errors.RaiseException, match='STOP'):
                 a.execute(SCRIPT_TEST.read_text())
             assert empreinte(a) == EMPREINTE_AVANT  # rien n'a changé
+            assert empreinte(a, 'public.cp_sig_insert()') == EMPREINTE_INSERT_AVANT
 
 
 def test_ps_17_script_reel_refuse_de_tourner_sur_le_projet_test():
@@ -452,6 +474,7 @@ def test_ps_17_script_reel_refuse_de_tourner_sur_le_projet_test():
             with pytest.raises(psycopg.errors.RaiseException, match='STOP'):
                 a.execute(SCRIPT_REEL.read_text())
             assert empreinte(a) == EMPREINTE_AVANT
+            assert empreinte(a, 'public.cp_sig_insert()') == EMPREINTE_INSERT_AVANT
 
 
 def nb_controles(script):
@@ -469,6 +492,7 @@ def test_ps_18_script_test_sur_le_projet_test_toutes_les_lignes_ok():
                 assert lignes and len(lignes) == n, lignes
                 assert all(etat == 'OK' for _, etat in lignes), lignes
             assert empreinte(a) != EMPREINTE_AVANT
+            assert empreinte(a, 'public.cp_sig_insert()') != EMPREINTE_INSERT_AVANT
 
 
 def test_ps_19_script_reel_sur_une_base_sans_marqueur_toutes_les_lignes_ok():
@@ -491,7 +515,8 @@ def test_ps_20_les_controles_des_scripts_savent_dire_a_revoir():
     assert len(lignes) == nb_controles(SCRIPT_REEL)
     a_revoir = sorted(k for k, v in lignes.items() if v != 'OK')
     assert a_revoir == ['cp_sig_guard : code identique à la migration (empreinte 9da1de9b…)',
-                        'cp_sig_guard : version PREUVE-SIGNATURE (commentaire)'], lignes
+                        'cp_sig_guard : version PREUVE-SIGNATURE (commentaire)',
+                        'cp_sig_insert : version PREUVE-SIGNATURE (empreinte dd8e9e6a…, security definer, search_path vide, déclencheur actif)'], lignes
     assert all(lignes[k] == 'À REVOIR' for k in a_revoir)
 
 
@@ -516,8 +541,30 @@ def test_ps_22_vider_une_colonne_remplie_refuse_au_compte_connecte():
     assert pas_refusees == {}, pas_refusees
 
 
+def test_ps_23_creation_d_une_demande_date_et_motif_imposes_par_le_serveur():
+    """À la création d'une demande, le serveur impose la date de création (now()) et un motif de refus vide, quoi que le compte
+    envoie (date passée ou future) ; les colonnes de preuve restent vidées et l'empreinte calculée, comme avant."""
+    with cnx(A) as c:
+        for decalage in ("- interval '30 days'", "+ interval '30 days'"):
+            tok, date_ok = c.execute(f"""insert into {TABLE}(user_id, doc_type, doc_id, doc_num, doc_html, created_at, motif_refus,
+                                           signed_at, signer_nom, signature_png, signer_ip, signer_ua, consentement, vu_at, applique,
+                                           support_durable_accord, copie_le, copie_nb)
+                                         values (%s, 'devis', 'd-ins', 'DV-ESSAI-9', '<p>devis</p>', now() {decalage}, 'motif inventé',
+                                           now(), 'X', %s, '192.0.2.99', 'ua', 'accord', now(), true, true, now(), 5)
+                                         returning token, created_at = now()""", (A, PNG)).fetchone()
+            with admin() as a:
+                l = ligne(a, tok)
+                attendu_hash = a.execute("select encode(sha256(convert_to('<p>devis</p>', 'UTF8')), 'hex')").fetchone()[0]
+            assert date_ok is True, (decalage, l['created_at'])
+            assert l['motif_refus'] is None, l['motif_refus']
+            for k in ('signed_at', 'signer_nom', 'signature_png', 'signer_ip', 'signer_ua', 'consentement', 'vu_at', 'support_durable_accord', 'copie_le'):
+                assert l[k] is None, k
+            assert l['applique'] is False and l['copie_nb'] == 0 and l['statut'] == 'en_attente' and l['doc_hash'] == attendu_hash
+
+
 def test_ps_21_scripts_s_arretent_si_la_fonction_en_ligne_n_est_pas_celle_attendue():
-    """Si cp_sig_guard a changé en ligne depuis la lecture du 15/11/2026, le retour arrière ne la remettrait pas : STOP, rien modifié."""
+    """Si cp_sig_guard ou cp_sig_insert a changé en ligne depuis la lecture du 15/11/2026, le retour arrière ne la remettrait pas :
+    STOP, rien modifié."""
     autre = (ICI / '01_base_actuelle.sql').read_text().split('create function public.cp_sig_guard()')[1].split('$function$;')[0]
     autre = 'create or replace function public.cp_sig_guard()' + autre + '$function$;'
     for script, marqueur in ((SCRIPT_TEST, True), (SCRIPT_REEL, False)):
@@ -531,3 +578,16 @@ def test_ps_21_scripts_s_arretent_si_la_fonction_en_ligne_n_est_pas_celle_attend
                 with pytest.raises(psycopg.errors.RaiseException, match='STOP : cp_sig_guard'):
                     a.execute(script.read_text())
                 assert empreinte(a) == derive, script.name
+    autre_ins = (ICI / '01_base_actuelle.sql').read_text().split('create function public.cp_sig_insert()')[1].split('$function$;')[0]
+    autre_ins = 'create or replace function public.cp_sig_insert()' + autre_ins + '$function$;'
+    for script, marqueur in ((SCRIPT_TEST, True), (SCRIPT_REEL, False)):
+        with base(avec_ps=False) as nom:
+            with admin(nom) as a:
+                a.execute(autre_ins)  # cp_sig_guard attendue, mais une version différente de cp_sig_insert (celle d'avant la 1.10)
+                if marqueur:
+                    a.execute('create table public.climpilot_marqueur_test (note text)')
+                derive = empreinte(a, 'public.cp_sig_insert()')
+                assert derive != EMPREINTE_INSERT_AVANT and empreinte(a) == EMPREINTE_AVANT
+                with pytest.raises(psycopg.errors.RaiseException, match='STOP : cp_sig_insert'):
+                    a.execute(script.read_text())
+                assert empreinte(a, 'public.cp_sig_insert()') == derive and empreinte(a) == EMPREINTE_AVANT, script.name
