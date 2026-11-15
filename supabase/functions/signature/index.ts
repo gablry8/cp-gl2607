@@ -1,13 +1,16 @@
 // ClimPilot — Edge Function « signature » (publique, protégée par un jeton aléatoire par document)
 // Actions : lire (affiche le document), signer, refuser, copie (1.10).
-// Version déployée aujourd'hui : v3 (verify_jwt = false) — sa copie de lecture est dans l'historique de main
-// (commit 665161f, même chemin). La version 1.10 ci-dessous reprend toute sa logique (comparaison faite
-// ligne à ligne le 03/10/2026) ; seules différences : celles décrites plus bas et la phrase « anticipe » du
-// consentement, complétée (perte du droit de rétractation une fois le contrat entièrement exécuté).
+// En ligne sur le projet réel : version 4 (verify_jwt = false), la 1.10, déployée le 08/10/2026 avec l'accord de
+// Gabriel. Relue en lecture seule le 15/11/2026 : son code est identique à ce fichier, de l'import à la fin ;
+// seul l'en-tête de commentaires diffère.
+// Version précédente (v3, avant 1.10) : copie de lecture dans l'historique de main (commit 665161f, même chemin).
+// La 1.10 reprend toute sa logique (comparaison faite ligne à ligne le 03/10/2026) ; seules différences :
+// celles décrites plus bas et la phrase « anticipe » du consentement, complétée (perte du droit de rétractation
+// une fois le contrat entièrement exécuté).
 // Preuve conservée : horodatage serveur, nom saisi, signature manuscrite (image), adresse IP,
 // navigateur, empreinte SHA-256 du document calculée à l'envoi, texte de consentement.
 //
-// 1.10 (PRÉPARÉ, NON DÉPLOYÉ — base : version 3 déployée, relue le 02/10/2026) :
+// 1.10 (déployée : version 4 en ligne ; base : version 3, relue le 02/10/2026) :
 //  - signer : accord facultatif du client pour recevoir son exemplaire sur support durable
 //    (colonne support_durable_accord, ajoutée par la migration 20261002120000) ;
 //  - copie : le client télécharge son exemplaire signé ; le serveur enregistre la date du premier
