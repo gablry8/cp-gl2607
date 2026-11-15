@@ -495,6 +495,27 @@ def test_ps_20_les_controles_des_scripts_savent_dire_a_revoir():
     assert all(lignes[k] == 'À REVOIR' for k in a_revoir)
 
 
+def test_ps_22_vider_une_colonne_remplie_refuse_au_compte_connecte():
+    """Valeur → vide : chaque colonne remplie et sans contrainte « non nul », sur une demande signée et sur une demande refusée."""
+    pas_refusees = {}
+    for statut in ('signe', 'refuse'):
+        tok = demande(statut)
+        with admin() as a:
+            avant = ligne(a, tok)
+            nullables = [r[0] for r in a.execute("""select column_name from information_schema.columns where table_schema = 'public'
+                                                    and table_name = 'climpilot_signatures' and is_nullable = 'YES' order by ordinal_position""")]
+        cibles = [k for k in nullables if avant.get(k) is not None]
+        assert len(cibles) >= 8, (statut, cibles)  # mise en place : la demande a bien des colonnes remplies
+        with cnx(A) as c:
+            for col in cibles:
+                r = tentative(c, tok, f'{col} = null')
+                if r:
+                    pas_refusees[f'{statut} : {col}'] = r
+        with admin() as a:
+            assert ligne(a, tok) == avant
+    assert pas_refusees == {}, pas_refusees
+
+
 def test_ps_21_scripts_s_arretent_si_la_fonction_en_ligne_n_est_pas_celle_attendue():
     """Si cp_sig_guard a changé en ligne depuis la lecture du 15/11/2026, le retour arrière ne la remettrait pas : STOP, rien modifié."""
     autre = (ICI / '01_base_actuelle.sql').read_text().split('create function public.cp_sig_guard()')[1].split('$function$;')[0]
