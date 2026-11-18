@@ -135,11 +135,18 @@ Base neuve à chaque test : Supabase imité **avec un coffre minimal** + base ac
 ### 4.1 Tests SQL complets (certain)
 `pytest tests/sql` : **97 / 97** (66 existants + 31 nouveaux), dont `test_p6_14` et `test_p6_15` verts. `faketime` sur `tests/sql` : samedi 21/11/2026 **97 / 97**, dimanche 22/11/2026 **97 / 97**, 05/01/2027 **97 / 97**. Aucun nouveau test ne lit une date.
 
-### 4.2 Batterie complète (un passage)
-**En cours** au moment de ce commit (résultat ajouté au commit suivant).
+### 4.2 Batterie complète (un passage, `bash tests/run-all.sh`, isolation du noyau active) — certain
+- Arbre testé : celui de `d93d48a` (le passage a commencé sur `159e9fa` + ce compte rendu non encore suivi ; seuls des documents diffèrent).
+- Verdict : **ÉCHEC — 1 637 réussis, 1 échoué, 0 SKIP, 5 non bloquants** (les 5 « À TRANCHER » connus de la suite Y, inchangés).
+- **Étape `sql` : 97 / 0** (la seule étape que FACT-0 devait faire bouger : 66 → 97). Toutes les autres étapes : mêmes comptes que `main` (A 14, B 54 … AB 86, fonctions serveur 10 / 20 / 30 / 18 / 12), sauf la suite Q.
+- **Suite Q** (recette deux appareils, navigateur) : 58 / 1, « Écritures pendant une synchro — essai interrompu — page.evaluate: Execution context was destroyed, most likely because of a navigation ». FACT-0 ne touche aucun fichier que cette suite lit (seulement `tests/sql/` et `tests/supabase-test/`). **Relancée seule** (`CP_SUITES=suiteQ-recette`, code 3 = passage partiel, normal) : **64 / 0**. Classement : instabilité de minutage du test (probable), pas un effet de FACT-0 (certain : aucun fichier commun).
 
 ### 4.3 CI et demande de fusion
-Demande de fusion **en brouillon** : [gablry8/cp-gl2607#28](https://github.com/gablry8/cp-gl2607/pull/28). CI des deux événements (push, demande de fusion) : **en cours** au moment de ce commit (résultat ajouté au commit suivant).
+Demande de fusion **en brouillon** : [gablry8/cp-gl2607#28](https://github.com/gablry8/cp-gl2607/pull/28).
+- `159e9fa` (runs 223 et 224) : **annulés** par le push suivant (réglage « cancel-in-progress » du workflow), sans résultat.
+- `d93d48a`, événement « demande de fusion » (run 226) : **ÉCHEC — 1 seul contrôle en cause, suite AE (AE5, 2 contrôles)** : « le PC « ancienne version » … renvoie O « accepté » » et « le téléphone (P3) reçoit O « accepté » : il le remet « annulé » … ». **Étape `sql` : 97 / 0.** Isolation du noyau absente sur le runner (2 SKIP connus, comme `main`). AE est une suite navigateur deux appareils, à bornes de minutage (déjà desserrées une fois, `docs/P3-COMPTE-RENDU.md` l. 88) ; FACT-0 ne touche aucun fichier qu'elle lit ; en local, AE 26 / 0. Classement : instabilité du runner (probable). `tests/*.mjs` est hors de mon périmètre : je n'y touche pas.
+- `d93d48a`, événement « push » (run 225) : annulé par le push de ce commit-ci.
+- **Tête finale** (ce commit) : résultat des deux événements sur la page de #28 et dans le message de fin de session ; s'il reste rouge pour une suite navigateur que FACT-0 ne touche pas, c'est à toi de juger (relance du passage depuis la page des Actions, ou fusion après lecture du rapport).
 
 ## 5. Fichiers et branches ouvertes
 
